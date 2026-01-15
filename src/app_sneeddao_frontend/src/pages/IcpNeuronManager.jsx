@@ -1669,8 +1669,8 @@ function IcpNeuronManager() {
             }
             const manager = createManagerActor(canisterId, { agent });
             
-            // 0 = private, 1 = public
-            const visibility = makePublic ? 1 : 0;
+            // NNS visibility values: 0 = unspecified, 1 = private, 2 = public
+            const visibility = makePublic ? 2 : 1;
             const result = await manager.setVisibility(selectedNeuronId, visibility);
             
             if ('Ok' in result) {
@@ -3222,13 +3222,13 @@ function IcpNeuronManager() {
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
                                                     <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Visibility</span>
                                                     <span style={{ 
-                                                        color: fullNeuron.visibility?.[0] === 1 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText, 
+                                                        color: fullNeuron.visibility?.[0] === 2 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText, 
                                                         fontSize: '13px',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '4px'
                                                     }}>
-                                                        {fullNeuron.visibility?.[0] === 1 ? '🌐 Public' : '🔒 Private'}
+                                                        {fullNeuron.visibility?.[0] === 2 ? '🌐 Public' : '🔒 Private'}
                                                     </span>
                                                 </div>
                                             )}
@@ -4079,7 +4079,7 @@ function IcpNeuronManager() {
                                         {/* Neuron Visibility */}
                                         <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>
-                                                {fullNeuron?.visibility?.[0] === 1 ? '🌐' : '🔒'} Neuron Visibility
+                                                {fullNeuron?.visibility?.[0] === 2 ? '🌐' : '🔒'} Neuron Visibility
                                             </h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
                                                 Control whether your neuron's voting history and details are publicly visible.
@@ -4090,7 +4090,7 @@ function IcpNeuronManager() {
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     justifyContent: 'space-between',
-                                                    background: fullNeuron.visibility?.[0] === 1 
+                                                    background: fullNeuron.visibility?.[0] === 2 
                                                         ? `${theme.colors.success || '#22c55e'}15` 
                                                         : theme.colors.tertiaryBg || theme.colors.secondaryBg,
                                                     padding: '12px 15px',
@@ -4099,16 +4099,16 @@ function IcpNeuronManager() {
                                                 }}>
                                                     <div>
                                                         <div style={{ 
-                                                            color: fullNeuron.visibility?.[0] === 1 
+                                                            color: fullNeuron.visibility?.[0] === 2 
                                                                 ? (theme.colors.success || '#22c55e') 
                                                                 : theme.colors.primaryText,
                                                             fontWeight: '600',
                                                             fontSize: '14px'
                                                         }}>
-                                                            {fullNeuron.visibility?.[0] === 1 ? '🌐 Public' : '🔒 Private'}
+                                                            {fullNeuron.visibility?.[0] === 2 ? '🌐 Public' : '🔒 Private'}
                                                         </div>
                                                         <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '2px' }}>
-                                                            {fullNeuron.visibility?.[0] === 1 
+                                                            {fullNeuron.visibility?.[0] === 2 
                                                                 ? 'Your neuron\'s voting history is visible to everyone'
                                                                 : 'Your neuron\'s voting history is hidden'}
                                                         </div>
@@ -4117,7 +4117,7 @@ function IcpNeuronManager() {
                                             )}
 
                                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                                {fullNeuron?.visibility?.[0] !== 1 ? (
+                                                {fullNeuron?.visibility?.[0] !== 2 ? (
                                                     <button
                                                         onClick={() => handleSetVisibility(true)}
                                                         disabled={actionLoading === 'visibility'}
