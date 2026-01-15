@@ -54,10 +54,31 @@ const managementCanisterIdlFactory = ({ IDL }) => {
         }),
         'reserved_cycles': IDL.Nat,
     });
+    // Settings for update_settings - all fields are optional
+    const canister_settings = IDL.Record({
+        'controllers': IDL.Opt(IDL.Vec(IDL.Principal)),
+        'compute_allocation': IDL.Opt(IDL.Nat),
+        'memory_allocation': IDL.Opt(IDL.Nat),
+        'freezing_threshold': IDL.Opt(IDL.Nat),
+        'reserved_cycles_limit': IDL.Opt(IDL.Nat),
+        'log_visibility': IDL.Opt(IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        })),
+        'wasm_memory_limit': IDL.Opt(IDL.Nat),
+    });
     return IDL.Service({
         'canister_status': IDL.Func(
             [IDL.Record({ 'canister_id': IDL.Principal })],
             [canister_status_result],
+            []
+        ),
+        'update_settings': IDL.Func(
+            [IDL.Record({
+                'canister_id': IDL.Principal,
+                'settings': canister_settings,
+            })],
+            [],
             []
         ),
     });
