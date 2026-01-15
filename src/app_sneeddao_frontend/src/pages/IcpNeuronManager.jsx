@@ -1629,7 +1629,9 @@ function IcpNeuronManager() {
                         <div style={cardStyle}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
                                 <div>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Canister ID</div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                        Canister ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from wallet/DEX)</span>
+                                    </div>
                                     <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px', marginTop: '4px' }}>
                                         {managerInfo.canisterId}
                                         <button 
@@ -1669,7 +1671,9 @@ function IcpNeuronManager() {
                             </div>
                             
                             <div style={{ marginTop: '15px' }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Account ID (send ICP here)</div>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                    Account ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from CEX)</span>
+                                </div>
                                 <div style={{ 
                                     color: theme.colors.accent, 
                                     fontFamily: 'monospace', 

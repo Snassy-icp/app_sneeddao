@@ -292,7 +292,7 @@ function CreateIcpNeuron() {
             if ('Ok' in result) {
                 const { canisterId, accountId } = result.Ok;
                 const accountIdHex = Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
-                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}\n\nAccount ID (for funding): ${accountIdHex}`);
+                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}\n(use to send ICP from wallet/DEX)\n\nAccount ID: ${accountIdHex}\n(use to send ICP from CEX)`);
                 setCreationStep('done');
                 fetchMyManagers();
                 fetchFactoryInfo();
@@ -724,7 +724,7 @@ function CreateIcpNeuron() {
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                                                 <div style={{ flex: 1, minWidth: '250px' }}>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
-                                                        Canister ID
+                                                        Canister ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from wallet/DEX)</span>
                                                     </div>
                                                     <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px' }}>
                                                         {canisterIdText}
@@ -753,7 +753,7 @@ function CreateIcpNeuron() {
                                             {accountId && (
                                                 <div style={{ marginTop: '12px' }}>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
-                                                        Account ID (send ICP here to fund)
+                                                        Account ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from CEX)</span>
                                                     </div>
                                                     <div style={{ 
                                                         color: theme.colors.accent, 
@@ -837,7 +837,7 @@ function CreateIcpNeuron() {
                     <ol style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px' }}>
                         <li><strong>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
                         <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that can control multiple ICP neurons.</li>
-                        <li><strong>Fund the Manager:</strong> Send ICP to your manager canister's account.</li>
+                        <li><strong>Fund the Manager:</strong> Send ICP to your manager — you can send directly from your Sneed wallet, use the <em>Canister ID</em> when sending from another wallet or DEX (ICRC1), or use the <em>Account ID</em> when sending from a CEX.</li>
                         <li><strong>Stake Neurons:</strong> Use the manager to stake ICP and create NNS neurons.</li>
                         <li><strong>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
                         <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
