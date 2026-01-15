@@ -116,17 +116,6 @@ const getStyles = (theme) => ({
         marginBottom: '1rem',
         border: `1px solid ${theme.colors.border}`,
     },
-    diagram: {
-        backgroundColor: theme.colors.primaryBg,
-        padding: '1.5rem',
-        borderRadius: '8px',
-        marginBottom: '1.5rem',
-        fontFamily: 'monospace',
-        fontSize: '0.9rem',
-        lineHeight: '1.8',
-        overflow: 'auto',
-        textAlign: 'center',
-    },
 });
 
 function HelpIcpNeuronManager() {
@@ -168,24 +157,85 @@ function HelpIcpNeuronManager() {
                         controlling neurons, the canister becomes the neuron controller, and you control the canister.
                     </p>
                     
-                    <div style={styles.diagram}>
-                        <div style={{ color: theme.colors.primaryText }}>
-                            <div>┌─────────────────────────────────────────┐</div>
-                            <div>│           <strong style={styles.strong}>Your Wallet</strong>                    │</div>
-                            <div>│    (Controller of the Canister)         │</div>
-                            <div>└──────────────────┬──────────────────────┘</div>
-                            <div>                   │ controls</div>
-                            <div>                   ▼</div>
-                            <div>┌─────────────────────────────────────────┐</div>
-                            <div>│      <strong style={styles.strong}>ICP Neuron Manager Canister</strong>       │</div>
-                            <div>│         (On-chain smart contract)       │</div>
-                            <div>└──────────────────┬──────────────────────┘</div>
-                            <div>                   │ controls</div>
-                            <div>                   ▼</div>
-                            <div>┌─────────────────────────────────────────┐</div>
-                            <div>│           <strong style={styles.strong}>ICP Neurons</strong>                   │</div>
-                            <div>│       (Staked on NNS Governance)        │</div>
-                            <div>└─────────────────────────────────────────┘</div>
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '2rem',
+                        marginBottom: '1.5rem',
+                    }}>
+                        {/* Your Wallet Box */}
+                        <div style={{
+                            backgroundColor: theme.colors.tertiaryBg,
+                            border: `2px solid ${theme.colors.accent}`,
+                            borderRadius: '12px',
+                            padding: '16px 32px',
+                            textAlign: 'center',
+                            minWidth: '280px',
+                        }}>
+                            <div style={{ color: theme.colors.accent, fontWeight: 'bold', fontSize: '1.1rem' }}>
+                                Your Wallet
+                            </div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                (Controller of the Canister)
+                            </div>
+                        </div>
+                        
+                        {/* Arrow down */}
+                        <div style={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center',
+                            color: theme.colors.mutedText,
+                        }}>
+                            <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>controls</div>
+                            <div style={{ fontSize: '1.5rem' }}>↓</div>
+                        </div>
+                        
+                        {/* Canister Box */}
+                        <div style={{
+                            backgroundColor: theme.colors.tertiaryBg,
+                            border: `2px solid ${theme.colors.accent}`,
+                            borderRadius: '12px',
+                            padding: '16px 32px',
+                            textAlign: 'center',
+                            minWidth: '280px',
+                        }}>
+                            <div style={{ color: theme.colors.accent, fontWeight: 'bold', fontSize: '1.1rem' }}>
+                                ICP Neuron Manager Canister
+                            </div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                (On-chain smart contract)
+                            </div>
+                        </div>
+                        
+                        {/* Arrow down */}
+                        <div style={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center',
+                            color: theme.colors.mutedText,
+                        }}>
+                            <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>controls</div>
+                            <div style={{ fontSize: '1.5rem' }}>↓</div>
+                        </div>
+                        
+                        {/* Neurons Box */}
+                        <div style={{
+                            backgroundColor: theme.colors.tertiaryBg,
+                            border: `2px solid ${theme.colors.accent}`,
+                            borderRadius: '12px',
+                            padding: '16px 32px',
+                            textAlign: 'center',
+                            minWidth: '280px',
+                        }}>
+                            <div style={{ color: theme.colors.accent, fontWeight: 'bold', fontSize: '1.1rem' }}>
+                                ICP Neurons
+                            </div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                (Staked on NNS Governance)
+                            </div>
                         </div>
                     </div>
 
@@ -229,10 +279,10 @@ function HelpIcpNeuronManager() {
                                 Navigate to the <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link> page
                             </li>
                             <li style={styles.stepItem}>
-                                If payment is required, send the required ICP to the displayed payment address
+                                Click "Pay" to send the required ICP creation fee
                             </li>
                             <li style={styles.stepItem}>
-                                Click "Create" to deploy your new canister
+                                Once payment is confirmed, click "Create" to deploy your new canister
                             </li>
                             <li style={styles.stepItem}>
                                 Your new canister will be created with you as the controller
