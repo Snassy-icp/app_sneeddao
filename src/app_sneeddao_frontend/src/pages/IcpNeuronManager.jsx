@@ -179,6 +179,7 @@ function IcpNeuronManager() {
     const [customLedgerInput, setCustomLedgerInput] = useState('');
     const [useCustomLedger, setUseCustomLedger] = useState(false);
     const [fundAmount, setFundAmount] = useState('');
+    const [withdrawSectionExpanded, setWithdrawSectionExpanded] = useState(false);
     const [userIcpBalance, setUserIcpBalance] = useState(null);
     
     // Canister status state
@@ -1684,12 +1685,14 @@ function IcpNeuronManager() {
     }, [canisterId, identity]);
     
     // Fetch token balance when selected token changes
+    // Only fetch withdraw token balance when section is expanded
     useEffect(() => {
+        if (!withdrawSectionExpanded) return;
         const ledgerId = useCustomLedger ? customLedgerInput : withdrawTokenLedger;
         if (ledgerId) {
             fetchWithdrawTokenBalance(ledgerId);
         }
-    }, [withdrawTokenLedger, customLedgerInput, useCustomLedger, fetchWithdrawTokenBalance]);
+    }, [withdrawTokenLedger, customLedgerInput, useCustomLedger, fetchWithdrawTokenBalance, withdrawSectionExpanded]);
 
     const handleWithdrawToken = async () => {
         if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
@@ -2706,132 +2709,161 @@ function IcpNeuronManager() {
                             </p>
                         </div>
 
-                        {/* Withdraw Tokens from Canister */}
+                        {/* Withdraw Tokens from Canister - Collapsible */}
                         <div style={cardStyle}>
-                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💸 Withdraw Tokens</h3>
-                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
-                                Withdraw ICP or any ICRC1 token from this canister's balance. Useful for recovering tokens that were sent accidentally, or for moving funds elsewhere.
-                            </p>
+                            <button
+                                onClick={() => setWithdrawSectionExpanded(!withdrawSectionExpanded)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    width: '100%',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                }}
+                            >
+                                <div>
+                                    <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💸 Withdraw Tokens</h3>
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
+                                        Withdraw ICP or any ICRC1 token from this canister
+                                    </p>
+                                </div>
+                                <span style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '18px',
+                                    transform: withdrawSectionExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.2s ease',
+                                }}>
+                                    ▼
+                                </span>
+                            </button>
                             
-                            {/* Token Selection */}
-                            <div style={{ marginBottom: '15px' }}>
-                                <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '6px' }}>
-                                    Select Token
-                                </label>
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                                    <label style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '6px',
-                                        color: theme.colors.primaryText,
-                                        fontSize: '13px',
-                                        cursor: 'pointer',
+                            {withdrawSectionExpanded && (
+                                <div style={{ marginTop: '15px' }}>
+                                    {/* Token Selection */}
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '6px' }}>
+                                            Select Token
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                                            <label style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '6px',
+                                                color: theme.colors.primaryText,
+                                                fontSize: '13px',
+                                                cursor: 'pointer',
+                                            }}>
+                                                <input 
+                                                    type="radio" 
+                                                    checked={!useCustomLedger} 
+                                                    onChange={() => {
+                                                        setUseCustomLedger(false);
+                                                        setWithdrawTokenLedger(ICP_LEDGER_CANISTER_ID);
+                                                    }}
+                                                    style={{ margin: 0 }}
+                                                />
+                                                From list
+                                            </label>
+                                            <label style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '6px',
+                                                color: theme.colors.primaryText,
+                                                fontSize: '13px',
+                                                cursor: 'pointer',
+                                            }}>
+                                                <input 
+                                                    type="radio" 
+                                                    checked={useCustomLedger} 
+                                                    onChange={() => setUseCustomLedger(true)}
+                                                    style={{ margin: 0 }}
+                                                />
+                                                Custom ledger
+                                            </label>
+                                        </div>
+                                        
+                                        {!useCustomLedger ? (
+                                            <TokenSelector
+                                                value={withdrawTokenLedger}
+                                                onChange={(ledgerId) => setWithdrawTokenLedger(ledgerId)}
+                                                placeholder="Select a token..."
+                                            />
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={customLedgerInput}
+                                                onChange={(e) => setCustomLedgerInput(e.target.value)}
+                                                style={inputStyle}
+                                                placeholder="Enter ledger canister principal"
+                                            />
+                                        )}
+                                    </div>
+                                    
+                                    {/* Token Balance */}
+                                    <div style={{ 
+                                        background: `${theme.colors.accent}10`, 
+                                        padding: '10px', 
+                                        borderRadius: '6px', 
+                                        marginBottom: '12px',
+                                        fontSize: '12px',
+                                        color: theme.colors.mutedText,
                                     }}>
-                                        <input 
-                                            type="radio" 
-                                            checked={!useCustomLedger} 
-                                            onChange={() => {
-                                                setUseCustomLedger(false);
-                                                setWithdrawTokenLedger(ICP_LEDGER_CANISTER_ID);
+                                        Available: <strong style={{ color: theme.colors.primaryText }}>
+                                            {withdrawTokenBalance !== null 
+                                                ? `${(Number(withdrawTokenBalance) / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} ${withdrawTokenSymbol}`
+                                                : 'Loading...'
+                                            }
+                                        </strong>
+                                    </div>
+                                    
+                                    {/* Amount and Destination */}
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                        <div style={{ flex: 1, minWidth: '120px' }}>
+                                            <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                Amount ({withdrawTokenSymbol})
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                value={withdrawAmount}
+                                                onChange={(e) => setWithdrawAmount(e.target.value)}
+                                                style={inputStyle}
+                                                placeholder="Amount to withdraw"
+                                            />
+                                        </div>
+                                        <div style={{ flex: 2, minWidth: '200px' }}>
+                                            <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                Destination Principal
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={withdrawDestination}
+                                                onChange={(e) => setWithdrawDestination(e.target.value)}
+                                                style={inputStyle}
+                                                placeholder="Principal ID"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleWithdrawToken}
+                                            disabled={actionLoading === 'withdraw' || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)}
+                                            style={{ 
+                                                ...buttonStyle, 
+                                                opacity: (actionLoading === 'withdraw' || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)) ? 0.6 : 1,
                                             }}
-                                            style={{ margin: 0 }}
-                                        />
-                                        From list
-                                    </label>
-                                    <label style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '6px',
-                                        color: theme.colors.primaryText,
-                                        fontSize: '13px',
-                                        cursor: 'pointer',
-                                    }}>
-                                        <input 
-                                            type="radio" 
-                                            checked={useCustomLedger} 
-                                            onChange={() => setUseCustomLedger(true)}
-                                            style={{ margin: 0 }}
-                                        />
-                                        Custom ledger
-                                    </label>
+                                        >
+                                            {actionLoading === 'withdraw' ? '⏳...' : '💸 Withdraw'}
+                                        </button>
+                                    </div>
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px', marginBottom: 0 }}>
+                                        Fee: {(withdrawTokenFee / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} {withdrawTokenSymbol}
+                                    </p>
                                 </div>
-                                
-                                {!useCustomLedger ? (
-                                    <TokenSelector
-                                        value={withdrawTokenLedger}
-                                        onChange={(ledgerId) => setWithdrawTokenLedger(ledgerId)}
-                                        placeholder="Select a token..."
-                                    />
-                                ) : (
-                                    <input
-                                        type="text"
-                                        value={customLedgerInput}
-                                        onChange={(e) => setCustomLedgerInput(e.target.value)}
-                                        style={inputStyle}
-                                        placeholder="Enter ledger canister principal"
-                                    />
-                                )}
-                            </div>
-                            
-                            {/* Token Balance */}
-                            <div style={{ 
-                                background: `${theme.colors.accent}10`, 
-                                padding: '10px', 
-                                borderRadius: '6px', 
-                                marginBottom: '12px',
-                                fontSize: '12px',
-                                color: theme.colors.mutedText,
-                            }}>
-                                Available: <strong style={{ color: theme.colors.primaryText }}>
-                                    {withdrawTokenBalance !== null 
-                                        ? `${(Number(withdrawTokenBalance) / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} ${withdrawTokenSymbol}`
-                                        : 'Loading...'
-                                    }
-                                </strong>
-                            </div>
-                            
-                            {/* Amount and Destination */}
-                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                                <div style={{ flex: 1, minWidth: '120px' }}>
-                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                                        Amount ({withdrawTokenSymbol})
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="any"
-                                        value={withdrawAmount}
-                                        onChange={(e) => setWithdrawAmount(e.target.value)}
-                                        style={inputStyle}
-                                        placeholder="Amount to withdraw"
-                                    />
-                                </div>
-                                <div style={{ flex: 2, minWidth: '200px' }}>
-                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                                        Destination Principal
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={withdrawDestination}
-                                        onChange={(e) => setWithdrawDestination(e.target.value)}
-                                        style={inputStyle}
-                                        placeholder="Principal ID"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleWithdrawToken}
-                                    disabled={actionLoading === 'withdraw' || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)}
-                                    style={{ 
-                                        ...buttonStyle, 
-                                        opacity: (actionLoading === 'withdraw' || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)) ? 0.6 : 1,
-                                    }}
-                                >
-                                    {actionLoading === 'withdraw' ? '⏳...' : '💸 Withdraw'}
-                                </button>
-                            </div>
-                            <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px', marginBottom: 0 }}>
-                                Fee: {(withdrawTokenFee / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} {withdrawTokenSymbol}
-                            </p>
+                            )}
                         </div>
                                 </div>
                             )}
