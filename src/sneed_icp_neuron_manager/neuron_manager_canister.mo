@@ -7,48 +7,20 @@ import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Nat8 "mo:base/Nat8";
 import Buffer "mo:base/Buffer";
-import Option "mo:base/Option";
 import Text "mo:base/Text";
-import Iter "mo:base/Iter";
-import HashMap "mo:base/HashMap";
-import Hash "mo:base/Hash";
 
 import T "Types";
 
 // This is the actual canister that gets deployed for each user
-shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Principal) = this {
+// No constructor arguments needed - access control uses IC canister controllers
+shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // ============================================
     // STATE
     // ============================================
 
-    var owner: Principal = initOwner;
     var createdAt: Int = Time.now();
     var version: T.Version = T.CURRENT_VERSION;
-    
-    // Multi-neuron support: Map neuron ID -> memo (needed for refresh operations)
-    // Stable storage as array of entries for upgrades
-    stable var neuronsStable: [(Nat64, Nat64)] = []; // (neuronId.id, memo)
-    
-    // Transient HashMap for efficient lookups
-    func neuronIdHash(id: Nat64): Hash.Hash { 
-        Hash.hash(Nat64.toNat(id)) 
-    };
-    transient var neurons: HashMap.HashMap<Nat64, Nat64> = HashMap.fromIter(
-        neuronsStable.vals(), 
-        10, 
-        Nat64.equal, 
-        neuronIdHash
-    );
-    
-    // Upgrade hooks to persist the HashMap
-    system func preupgrade() {
-        neuronsStable := Iter.toArray(neurons.entries());
-    };
-    
-    system func postupgrade() {
-        neurons := HashMap.fromIter(neuronsStable.vals(), 10, Nat64.equal, neuronIdHash);
-    };
 
     // Actor references
     transient let governance: T.GovernanceActor = actor(T.GOVERNANCE_CANISTER_ID);
@@ -58,10 +30,9 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // ACCESS CONTROL
     // ============================================
 
+    // Check if a principal is a controller of this canister using built-in method
     func isController(caller: Principal): Bool {
-        // In production, this should check if caller is a controller
-        // For now, we check against the owner
-        Principal.equal(caller, owner);
+        Principal.isController(caller)
     };
 
     func assertController(caller: Principal) {
@@ -80,31 +51,90 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         createdAt;
     };
 
-    public query func getOwner(): async Principal {
-        owner;
+    // Legacy compatibility: registerNeuron just verifies control (memo is ignored)
+    // Neurons are now auto-discovered via listNeurons()
+    public shared ({ caller }) func registerNeuron(neuronId: T.NeuronId, _memo: Nat64): async T.OperationResult {
+        assertController(caller);
+        
+        // Verify this canister controls the neuron
+        let result = await governance.get_full_neuron(neuronId.id);
+        switch (result) {
+            case (#Err(e)) {
+                return #Err(#GovernanceError(e));
+            };
+            case (#Ok(neuron)) {
+                let selfPrincipal = Principal.fromActor(this);
+                switch (neuron.controller) {
+                    case null {
+                        return #Err(#InvalidOperation("Neuron has no controller"));
+                    };
+                    case (?ctrl) {
+                        if (Principal.equal(ctrl, selfPrincipal)) {
+                            #Ok
+                        } else {
+                            #Err(#InvalidOperation("This canister is not the neuron's controller"))
+                        }
+                    };
+                };
+            };
+        };
     };
 
-    // Get all managed neuron IDs
-    public query func getNeuronIds(): async [T.NeuronId] {
-        Array.map<(Nat64, Nat64), T.NeuronId>(
-            Iter.toArray(neurons.entries()),
-            func((id, _memo)) { { id = id } }
-        );
+    // Legacy compatibility: getNeuronMemo returns null (we no longer track memos)
+    public query func getNeuronMemo(_neuronId: T.NeuronId): async ?Nat64 {
+        null
     };
 
-    // Get count of managed neurons
-    public query func getNeuronCount(): async Nat {
-        neurons.size();
+    // Get all neurons controlled by this canister from NNS governance
+    public shared func listNeurons(): async [T.Neuron] {
+        let selfPrincipal = Principal.fromActor(this);
+        let response = await governance.list_neurons({
+            neuron_ids = [];
+            include_neurons_readable_by_caller = true;
+            include_empty_neurons_readable_by_caller = ?false;
+            include_public_neurons_in_full_neurons = ?false;
+        });
+        // Filter to only neurons where this canister is the controller
+        Array.filter<T.Neuron>(response.full_neurons, func(n) {
+            switch (n.controller) {
+                case (?ctrl) { Principal.equal(ctrl, selfPrincipal) };
+                case null { false };
+            }
+        })
     };
 
-    // Check if a specific neuron is managed by this canister
-    public query func hasNeuron(neuronId: T.NeuronId): async Bool {
-        Option.isSome(neurons.get(neuronId.id));
+    // Get all neuron IDs controlled by this canister
+    public shared func getNeuronIds(): async [T.NeuronId] {
+        let managedNeurons = await listNeurons();
+        let result = Buffer.Buffer<T.NeuronId>(managedNeurons.size());
+        for (n in managedNeurons.vals()) {
+            switch (n.id) {
+                case (?nid) { result.add(nid) };
+                case null {};
+            };
+        };
+        Buffer.toArray(result)
     };
 
-    // Get the memo for a specific neuron (needed for some operations)
-    public query func getNeuronMemo(neuronId: T.NeuronId): async ?Nat64 {
-        neurons.get(neuronId.id);
+    // Get count of neurons controlled by this canister
+    public shared func getNeuronCount(): async Nat {
+        let neurons = await listNeurons();
+        neurons.size()
+    };
+
+    // Check if this canister controls a specific neuron
+    public shared func hasNeuron(neuronId: T.NeuronId): async Bool {
+        let result = await governance.get_full_neuron(neuronId.id);
+        switch (result) {
+            case (#Err(_)) { false };
+            case (#Ok(neuron)) {
+                let selfPrincipal = Principal.fromActor(this);
+                switch (neuron.controller) {
+                    case (?ctrl) { Principal.equal(ctrl, selfPrincipal) };
+                    case null { false };
+                }
+            }
+        }
     };
 
     // Get this canister's ICP account
@@ -129,30 +159,29 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         await ledger.icrc1_balance_of(account);
     };
 
-    // Get a neuron's account (where ICP should be sent to increase stake)
-    public query func getNeuronAccountId(neuronId: T.NeuronId): async ?T.AccountIdentifier {
-        switch (neurons.get(neuronId.id)) {
-            case null { null };
-            case (?memo) {
-                ?computeNeuronAccountId(Principal.fromActor(this), memo);
-            };
-        };
+    // Get a neuron's account by fetching its info from NNS
+    // Returns the governance canister as owner with the neuron's subaccount
+    public shared func getNeuronAccount(neuronId: T.NeuronId): async ?T.Account {
+        let result = await governance.get_full_neuron(neuronId.id);
+        switch (result) {
+            case (#Err(_)) { null };
+            case (#Ok(neuron)) {
+                ?{
+                    owner = Principal.fromText(T.GOVERNANCE_CANISTER_ID);
+                    subaccount = ?neuron.account; // account is the subaccount Blob
+                }
+            }
+        }
     };
 
     // ============================================
-    // NEURON REGISTRATION
+    // NEURON VERIFICATION (replaces registration)
     // ============================================
 
-    // Register an existing neuron (for re-registering after upgrade or manual management)
-    public shared ({ caller }) func registerNeuron(neuronId: T.NeuronId, memo: Nat64): async T.OperationResult {
+    // Verify this canister controls a neuron (replaces registerNeuron)
+    public shared ({ caller }) func verifyNeuronControl(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        // Check if already registered
-        if (Option.isSome(neurons.get(neuronId.id))) {
-            return #Err(#InvalidOperation("Neuron is already registered"));
-        };
-        
-        // Verify this canister controls the neuron by trying to get its info
         let result = await governance.get_full_neuron(neuronId.id);
         switch (result) {
             case (#Err(e)) {
@@ -160,36 +189,29 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
             };
             case (#Ok(neuron)) {
                 let selfPrincipal = Principal.fromActor(this);
-                // Verify controller
                 switch (neuron.controller) {
                     case null {
                         return #Err(#InvalidOperation("Neuron has no controller"));
                     };
                     case (?ctrl) {
-                        if (not Principal.equal(ctrl, selfPrincipal)) {
-                            return #Err(#InvalidOperation("This canister is not the neuron's controller"));
-                        };
+                        if (Principal.equal(ctrl, selfPrincipal)) {
+                            #Ok
+                        } else {
+                            #Err(#InvalidOperation("This canister is not the neuron's controller"))
+                        }
                     };
                 };
             };
         };
-        
-        neurons.put(neuronId.id, memo);
-        neuronsStable := Iter.toArray(neurons.entries());
-        #Ok;
     };
 
-    // Deregister a neuron (stop managing it, does NOT delete the neuron)
+    // Legacy compatibility: deregisterNeuron is now a no-op since we don't store neurons locally
     public shared ({ caller }) func deregisterNeuron(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
-        
-        switch (neurons.remove(neuronId.id)) {
-            case null { #Err(#NoNeuron) };
-            case (?_) {
-                neuronsStable := Iter.toArray(neurons.entries());
-                #Ok;
-            };
-        };
+        // No-op - we no longer track neurons locally
+        // The neuron still exists on NNS, use transferNeuronController to actually give up control
+        ignore neuronId;
+        #Ok
     };
 
     // ============================================
@@ -267,9 +289,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                         return #Err(#GovernanceError(e));
                     };
                     case (?#NeuronId(nid)) {
-                        // Register the neuron
-                        neurons.put(nid.id, memo);
-                        neuronsStable := Iter.toArray(neurons.entries());
+                        // Neuron created - no need to store locally, we'll query NNS to get our neurons
                         
                         // Set dissolve delay
                         let configResult = await configureNeuron(nid, #IncreaseDissolveDelay({
@@ -300,8 +320,9 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // ============================================
 
     public shared func getNeuronInfo(neuronId: T.NeuronId): async ?T.NeuronInfo {
-        // Verify neuron is managed by this canister
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        // First verify this canister controls the neuron
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return null;
         };
         
@@ -313,8 +334,9 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     };
 
     public shared func getFullNeuron(neuronId: T.NeuronId): async ?T.Neuron {
-        // Verify neuron is managed by this canister
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        // Verify this canister controls the neuron
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return null;
         };
         
@@ -325,17 +347,21 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         };
     };
 
-    // Get info for all managed neurons
+    // Get full info for all neurons controlled by this canister
     public shared func getAllNeuronsInfo(): async [(T.NeuronId, ?T.NeuronInfo)] {
-        let neuronIds = Iter.toArray(neurons.entries());
-        let results = Buffer.Buffer<(T.NeuronId, ?T.NeuronInfo)>(neuronIds.size());
+        let managedNeurons = await listNeurons();
+        let results = Buffer.Buffer<(T.NeuronId, ?T.NeuronInfo)>(managedNeurons.size());
         
-        for ((id, _memo) in neuronIds.vals()) {
-            let nid: T.NeuronId = { id = id };
-            let result = await governance.get_neuron_info(id);
-            switch (result) {
-                case (#Ok(info)) { results.add((nid, ?info)) };
-                case (#Err(_)) { results.add((nid, null)) };
+        for (neuron in managedNeurons.vals()) {
+            switch (neuron.id) {
+                case (?nid) {
+                    let result = await governance.get_neuron_info(nid.id);
+                    switch (result) {
+                        case (#Ok(info)) { results.add((nid, ?info)) };
+                        case (#Err(_)) { results.add((nid, null)) };
+                    };
+                };
+                case null {};
             };
         };
         
@@ -349,10 +375,24 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func increaseStake(neuronId: T.NeuronId, amount_e8s: Nat64): async T.OperationResult {
         assertController(caller);
         
-        switch (neurons.get(neuronId.id)) {
-            case null { return #Err(#NoNeuron) };
-            case (?memo) {
+        // Verify this canister controls the neuron and get its account
+        let neuronResult = await governance.get_full_neuron(neuronId.id);
+        switch (neuronResult) {
+            case (#Err(e)) {
+                return #Err(#GovernanceError(e));
+            };
+            case (#Ok(neuron)) {
                 let selfPrincipal = Principal.fromActor(this);
+                
+                // Verify we control it
+                switch (neuron.controller) {
+                    case null { return #Err(#NoNeuron) };
+                    case (?ctrl) {
+                        if (not Principal.equal(ctrl, selfPrincipal)) {
+                            return #Err(#NoNeuron);
+                        };
+                    };
+                };
                 
                 // Check balance
                 let balance = await getBalance();
@@ -361,22 +401,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                     return #Err(#TransferFailed("Insufficient balance"));
                 };
 
-                // Get neuron subaccount - if memo is 0, fetch from governance
-                let neuronSubaccount: Blob = if (memo == 0) {
-                    // Fetch neuron account from governance
-                    let neuronResult = await governance.get_full_neuron(neuronId.id);
-                    switch (neuronResult) {
-                        case (#Err(e)) {
-                            return #Err(#GovernanceError(e));
-                        };
-                        case (#Ok(neuron)) {
-                            neuron.account;  // Already a Blob
-                        };
-                    };
-                } else {
-                    // Compute from memo
-                    computeNeuronSubaccount(selfPrincipal, memo);
-                };
+                // Use the neuron's account from governance
+                let neuronSubaccount: Blob = neuron.account;
                 
                 // Transfer to neuron
                 let transferArg: T.TransferArg = {
@@ -385,7 +411,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                         subaccount = ?neuronSubaccount;
                     };
                     fee = ?Nat64.toNat(T.ICP_FEE);
-                    memo = if (memo == 0) { null } else { ?Blob.fromArray(nat64ToBytes(memo)) };
+                    memo = null;
                     from_subaccount = null;
                     created_at_time = null;
                     amount = Nat64.toNat(amount_e8s);
@@ -399,7 +425,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                     };
                     case (#Ok(_)) {
                         // Refresh the neuron
-                        return await refreshStakeInternal(neuronId, memo);
+                        return await refreshStakeInternal(neuronId);
                     };
                 };
             };
@@ -409,30 +435,21 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func refreshStake(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        switch (neurons.get(neuronId.id)) {
-            case null { #Err(#NoNeuron) };
-            case (?memo) { await refreshStakeInternal(neuronId, memo) };
+        // Verify this canister controls the neuron
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
+            return #Err(#NoNeuron);
         };
+        
+        await refreshStakeInternal(neuronId);
     };
 
-    func refreshStakeInternal(nid: T.NeuronId, memo: Nat64): async T.OperationResult {
-        let selfPrincipal = Principal.fromActor(this);
-        
-        // If memo is 0, use neuron ID directly (for registered neurons without known memo)
-        // Otherwise use MemoAndController (for neurons we created)
-        let byMethod: ?T.ClaimOrRefreshBy = if (memo == 0) {
-            ?#NeuronIdOrSubaccount;
-        } else {
-            ?#MemoAndController({
-                controller = ?selfPrincipal;
-                memo = memo;
-            });
-        };
-        
+    func refreshStakeInternal(nid: T.NeuronId): async T.OperationResult {
+        // Use NeuronIdOrSubaccount method - works for all neurons
         let request: T.ManageNeuronRequest = {
-            id = ?nid;  // Always specify the neuron ID
+            id = ?nid;
             command = ?#ClaimOrRefresh({
-                by = byMethod;
+                by = ?#NeuronIdOrSubaccount;
             });
             neuron_id_or_subaccount = null;
         };
@@ -454,7 +471,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func setDissolveDelay(neuronId: T.NeuronId, additionalSeconds: Nat32): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         await configureNeuron(neuronId, #IncreaseDissolveDelay({
@@ -465,7 +483,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func startDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         await configureNeuron(neuronId, #StartDissolving({}));
@@ -474,7 +493,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func stopDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         await configureNeuron(neuronId, #StopDissolving({}));
@@ -491,7 +511,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     ): async T.DisburseResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -607,7 +628,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     ): async T.SpawnResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -630,9 +652,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                 switch (r.created_neuron_id) {
                     case null { #Err(#InvalidOperation("No neuron ID returned")) };
                     case (?newNid) {
-                        // Auto-register the spawned neuron (with 0 memo since spawned neurons use different mechanism)
-                        neurons.put(newNid.id, 0);
-                        neuronsStable := Iter.toArray(neurons.entries());
+                        // Spawned neuron will be auto-discovered via listNeurons
                         #Ok(newNid);
                     };
                 };
@@ -644,7 +664,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func stakeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -667,7 +688,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func mergeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -694,7 +716,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     ): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -720,7 +743,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func setAutoStakeMaturity(neuronId: T.NeuronId, enabled: Bool): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         await configureNeuron(neuronId, #ChangeAutoStakeMaturity({
@@ -735,7 +759,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func vote(neuronId: T.NeuronId, proposal_id: Nat64, voteValue: Int32): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -765,7 +790,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     ): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -791,7 +817,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func refreshVotingPower(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -815,7 +842,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func confirmFollowing(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -857,7 +885,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func addHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         await configureNeuron(neuronId, #AddHotKey({ new_hot_key = ?hotkey }));
@@ -866,7 +895,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func removeHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         await configureNeuron(neuronId, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
@@ -879,7 +909,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func splitNeuron(neuronId: T.NeuronId, amount_e8s: Nat64): async T.SplitResult {
         assertController(caller);
         
-        if (Option.isNull(neurons.get(neuronId.id))) {
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
             return #Err(#NoNeuron);
         };
         
@@ -898,9 +929,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                 switch (r.created_neuron_id) {
                     case null { #Err(#InvalidOperation("No neuron ID returned")) };
                     case (?newNid) {
-                        // Auto-register the new split neuron (with 0 memo since split neurons use different mechanism)
-                        neurons.put(newNid.id, 0);
-                        neuronsStable := Iter.toArray(neurons.entries());
+                        // New split neuron will be auto-discovered via listNeurons
                         #Ok(newNid);
                     };
                 };
@@ -912,12 +941,14 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     public shared ({ caller }) func mergeNeurons(targetNeuronId: T.NeuronId, sourceNeuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        // Verify both neurons are managed
-        if (Option.isNull(neurons.get(targetNeuronId.id))) {
+        // Verify both neurons are controlled by this canister
+        let hasTargetControl = await hasNeuron(targetNeuronId);
+        if (not hasTargetControl) {
             return #Err(#NoNeuron);
         };
-        if (Option.isNull(neurons.get(sourceNeuronId.id))) {
-            return #Err(#InvalidOperation("Source neuron is not managed by this canister"));
+        let hasSourceControl = await hasNeuron(sourceNeuronId);
+        if (not hasSourceControl) {
+            return #Err(#InvalidOperation("Source neuron is not controlled by this canister"));
         };
         
         let request: T.ManageNeuronRequest = {
@@ -932,9 +963,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
             case (?#Merge(_)) {
-                // Remove the merged (destroyed) source neuron from our registry
-                ignore neurons.remove(sourceNeuronId.id);
-                neuronsStable := Iter.toArray(neurons.entries());
+                // Source neuron is destroyed, it will no longer appear in listNeurons
                 #Ok;
             };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
@@ -1038,11 +1067,6 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         for (b in memoBytes.vals()) { preimage.add(b) };
         
         Blob.fromArray(sha256(Buffer.toArray(preimage)));
-    };
-
-    func computeNeuronAccountId(controller: Principal, memo: Nat64): T.AccountIdentifier {
-        let subaccount = computeNeuronSubaccount(controller, memo);
-        computeAccountId(Principal.fromText(T.GOVERNANCE_CANISTER_ID), ?subaccount);
     };
 
     // SHA-256/SHA-224 implementation

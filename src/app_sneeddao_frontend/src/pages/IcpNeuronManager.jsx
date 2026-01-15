@@ -280,8 +280,7 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             // Fetch basic info
-            const [owner, version, neuronIdsResult, accountId] = await Promise.all([
-                manager.getOwner(),
+            const [version, neuronIdsResult, accountId] = await Promise.all([
                 manager.getVersion(),
                 manager.getNeuronIds(),
                 manager.getAccountId(),
@@ -289,7 +288,6 @@ function IcpNeuronManager() {
             
             setManagerInfo({
                 canisterId,
-                owner: owner.toText(),
                 version: `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`,
                 accountId: Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join(''),
             });
@@ -1891,12 +1889,6 @@ function IcpNeuronManager() {
                             </div>
 
                             <div style={{ marginTop: '15px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                                <div>
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Owner: </span>
-                                    <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '12px' }}>
-                                        {managerInfo.owner.slice(0, 15)}...
-                                    </span>
-                                </div>
                                 <div>
                                     <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Version: </span>
                                     <span style={{ color: theme.colors.primaryText, fontSize: '12px' }}>

@@ -555,12 +555,33 @@ module {
         freezing_threshold: ?Nat;
     };
 
+    // Definite canister settings (returned from canister_status)
+    public type DefiniteCanisterSettings = {
+        controllers: [Principal];
+        compute_allocation: Nat;
+        memory_allocation: Nat;
+        freezing_threshold: Nat;
+    };
+
     public type CreateCanisterArgs = {
         settings: ?CanisterSettings;
     };
 
     public type CanisterIdRecord = {
         canister_id: Principal;
+    };
+
+    public type CanisterStatusArgs = {
+        canister_id: Principal;
+    };
+
+    public type CanisterStatusResult = {
+        status: { #running; #stopping; #stopped };
+        settings: DefiniteCanisterSettings;
+        module_hash: ?Blob;
+        memory_size: Nat;
+        cycles: Nat;
+        idle_cycles_burned_per_day: Nat;
     };
 
     public type InstallCodeArgs = {
@@ -579,6 +600,7 @@ module {
         create_canister: shared (CreateCanisterArgs) -> async CanisterIdRecord;
         install_code: shared (InstallCodeArgs) -> async ();
         update_settings: shared (UpdateSettingsArgs) -> async ();
+        canister_status: shared (CanisterStatusArgs) -> async CanisterStatusResult;
     };
 
     // ============================================

@@ -374,13 +374,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
         // Now create the canister
         try {
-            // Spawn a new NeuronManagerCanister with the caller as the owner
+            // Spawn a new NeuronManagerCanister (no init args needed)
             let newManager = await (with cycles = CANISTER_CREATION_CYCLES) 
-                NeuronManagerCanister.NeuronManagerCanister(caller);
+                NeuronManagerCanister.NeuronManagerCanister();
             
             let canisterId = Principal.fromActor(newManager);
 
-            // Add caller as controller alongside factory (factory remains controller for now)
+            // Set controllers: user and factory
             await ic.update_settings({
                 canister_id = canisterId;
                 settings = {
