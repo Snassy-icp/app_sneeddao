@@ -36,7 +36,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
         if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
-        if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) return 'Me';
+        if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
@@ -53,7 +53,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
@@ -98,7 +98,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
