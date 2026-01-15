@@ -192,7 +192,9 @@ function IcpNeuronManager() {
     
     // Upgrade state
     const [nextAvailableVersion, setNextAvailableVersion] = useState(null);
+    const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     const [upgrading, setUpgrading] = useState(false);
+    const [upgradeMode, setUpgradeMode] = useState('upgrade'); // 'upgrade' or 'reinstall'
     const [upgradeError, setUpgradeError] = useState(null);
     const [upgradeSuccess, setUpgradeSuccess] = useState(null);
     
@@ -460,6 +462,33 @@ function IcpNeuronManager() {
         setMatchedOfficialVersion(matched || null);
     }, [canisterStatus?.moduleHash, officialVersions]);
 
+    // Helper to compare versions
+    const compareVersions = (a, b) => {
+        const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
+        const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
+        if (aMajor !== bMajor) return aMajor - bMajor;
+        if (aMinor !== bMinor) return aMinor - bMinor;
+        return aPatch - bPatch;
+    };
+
+    // Find the latest official version with a WASM URL
+    useEffect(() => {
+        if (officialVersions.length === 0) {
+            setLatestOfficialVersion(null);
+            return;
+        }
+        
+        const versionsWithWasm = officialVersions.filter(v => v.wasmUrl && v.wasmUrl.trim().length > 0);
+        if (versionsWithWasm.length === 0) {
+            setLatestOfficialVersion(null);
+            return;
+        }
+        
+        // Sort descending and get the highest version
+        versionsWithWasm.sort((a, b) => compareVersions(b, a));
+        setLatestOfficialVersion(versionsWithWasm[0]);
+    }, [officialVersions]);
+
     // Find next available version (higher than current, with a WASM URL)
     useEffect(() => {
         if (!matchedOfficialVersion || officialVersions.length === 0) {
@@ -470,15 +499,6 @@ function IcpNeuronManager() {
         const currentMajor = Number(matchedOfficialVersion.major);
         const currentMinor = Number(matchedOfficialVersion.minor);
         const currentPatch = Number(matchedOfficialVersion.patch);
-        
-        // Helper to compare versions
-        const compareVersions = (a, b) => {
-            const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
-            const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
-            if (aMajor !== bMajor) return aMajor - bMajor;
-            if (aMinor !== bMinor) return aMinor - bMinor;
-            return aPatch - bPatch;
-        };
         
         // Filter versions that are higher than current and have a wasmUrl
         const higherVersions = officialVersions.filter(v => {
@@ -648,23 +668,24 @@ function IcpNeuronManager() {
         setConfirmRemoveController(null);
     };
 
-    // Handle one-click upgrade to next version
-    const handleUpgrade = async () => {
-        if (!identity || !canisterId || !nextAvailableVersion || !nextAvailableVersion.wasmUrl) {
+    // Handle one-click upgrade/reinstall to a version
+    const handleUpgrade = async (targetVersion, mode = 'upgrade') => {
+        if (!identity || !canisterId || !targetVersion || !targetVersion.wasmUrl) {
             return;
         }
         
         setUpgrading(true);
+        setUpgradeMode(mode);
         setUpgradeError(null);
         setUpgradeSuccess(null);
         
         try {
-            const versionStr = `${Number(nextAvailableVersion.major)}.${Number(nextAvailableVersion.minor)}.${Number(nextAvailableVersion.patch)}`;
-            console.log(`Starting upgrade to v${versionStr}...`);
+            const versionStr = `${Number(targetVersion.major)}.${Number(targetVersion.minor)}.${Number(targetVersion.patch)}`;
+            console.log(`Starting ${mode} to v${versionStr}...`);
             
             // Step 1: Fetch the WASM from URL
-            console.log(`Fetching WASM from: ${nextAvailableVersion.wasmUrl}`);
-            const response = await fetch(nextAvailableVersion.wasmUrl);
+            console.log(`Fetching WASM from: ${targetVersion.wasmUrl}`);
+            const response = await fetch(targetVersion.wasmUrl);
             
             if (!response.ok) {
                 throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
@@ -710,17 +731,20 @@ function IcpNeuronManager() {
             // Empty Candid args (DIDL header for no arguments)
             const emptyArgs = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
             
-            console.log('Calling install_code...');
+            console.log(`Calling install_code with mode: ${mode}...`);
+            
+            // Set the mode based on parameter
+            const installMode = mode === 'reinstall' ? { reinstall: null } : { upgrade: null };
             
             await managementCanister.install_code({
-                mode: { upgrade: null },
+                mode: installMode,
                 canister_id: canisterPrincipal,
                 wasm_module: wasmModule,
                 arg: emptyArgs,
             });
             
-            console.log('Upgrade successful!');
-            setUpgradeSuccess(`✅ Successfully upgraded to v${versionStr}`);
+            console.log(`${mode === 'reinstall' ? 'Reinstall' : 'Upgrade'} successful!`);
+            setUpgradeSuccess(`✅ Successfully ${mode === 'reinstall' ? 'reinstalled' : 'upgraded'} to v${versionStr}`);
             
             // Refresh canister status and manager data to show the new version
             await Promise.all([
@@ -2254,7 +2278,7 @@ function IcpNeuronManager() {
                                                     </div>
                                                 </div>
                                                 <button
-                                                    onClick={handleUpgrade}
+                                                    onClick={() => handleUpgrade(nextAvailableVersion, 'upgrade')}
                                                     disabled={upgrading}
                                                     style={{
                                                         background: theme.colors.accent,
@@ -2271,7 +2295,7 @@ function IcpNeuronManager() {
                                                         gap: '6px',
                                                     }}
                                                 >
-                                                    {upgrading ? (
+                                                    {upgrading && upgradeMode === 'upgrade' ? (
                                                         <>
                                                             <span style={{
                                                                 animation: 'spin 1s linear infinite',
@@ -2293,6 +2317,111 @@ function IcpNeuronManager() {
                                                         style={{ color: theme.colors.accent }}
                                                     >
                                                         View release notes →
+                                                    </a>
+                                                </div>
+                                            )}
+                                            {upgradeError && (
+                                                <div style={{
+                                                    marginTop: '10px',
+                                                    padding: '8px 10px',
+                                                    background: `${theme.colors.error || '#ef4444'}20`,
+                                                    borderRadius: '4px',
+                                                    color: theme.colors.error || '#ef4444',
+                                                    fontSize: '12px',
+                                                }}>
+                                                    {upgradeError}
+                                                </div>
+                                            )}
+                                            {upgradeSuccess && (
+                                                <div style={{
+                                                    marginTop: '10px',
+                                                    padding: '8px 10px',
+                                                    background: `${theme.colors.success || '#22c55e'}20`,
+                                                    borderRadius: '4px',
+                                                    color: theme.colors.success || '#22c55e',
+                                                    fontSize: '12px',
+                                                }}>
+                                                    {upgradeSuccess}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Install Official Version Section - shown when WASM is unverified */}
+                                    {canisterStatus?.moduleHash && !matchedOfficialVersion && latestOfficialVersion && isController && (
+                                        <div style={{
+                                            marginTop: '12px',
+                                            padding: '12px',
+                                            background: `${theme.colors.warning || '#f59e0b'}15`,
+                                            borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                                        }}>
+                                            <div style={{ 
+                                                color: theme.colors.warning || '#f59e0b', 
+                                                fontWeight: '600',
+                                                fontSize: '13px',
+                                                marginBottom: '6px'
+                                            }}>
+                                                ⚠️ Unknown WASM Version
+                                            </div>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '12px',
+                                                marginBottom: '12px'
+                                            }}>
+                                                This canister is running an unverified WASM module. You can install the latest official version (v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}).
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={() => handleUpgrade(latestOfficialVersion, 'upgrade')}
+                                                    disabled={upgrading}
+                                                    style={{
+                                                        background: theme.colors.accent,
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        padding: '8px 16px',
+                                                        fontSize: '13px',
+                                                        fontWeight: '600',
+                                                        cursor: upgrading ? 'wait' : 'pointer',
+                                                        opacity: upgrading ? 0.7 : 1,
+                                                    }}
+                                                    title="Upgrade keeps canister state"
+                                                >
+                                                    {upgrading && upgradeMode === 'upgrade' ? '⏳ Upgrading...' : '⬆️ Upgrade'}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE. This cannot be undone. Are you sure?')) {
+                                                            handleUpgrade(latestOfficialVersion, 'reinstall');
+                                                        }
+                                                    }}
+                                                    disabled={upgrading}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        color: theme.colors.error || '#ef4444',
+                                                        border: `1px solid ${theme.colors.error || '#ef4444'}`,
+                                                        borderRadius: '6px',
+                                                        padding: '8px 16px',
+                                                        fontSize: '13px',
+                                                        fontWeight: '600',
+                                                        cursor: upgrading ? 'wait' : 'pointer',
+                                                        opacity: upgrading ? 0.7 : 1,
+                                                    }}
+                                                    title="⚠️ Reinstall DELETES all canister state!"
+                                                >
+                                                    {upgrading && upgradeMode === 'reinstall' ? '⏳ Reinstalling...' : '🔄 Reinstall'}
+                                                </button>
+                                            </div>
+                                            {latestOfficialVersion.sourceUrl && (
+                                                <div style={{ marginTop: '10px', fontSize: '11px' }}>
+                                                    <a 
+                                                        href={latestOfficialVersion.sourceUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: theme.colors.accent }}
+                                                    >
+                                                        View source code →
                                                     </a>
                                                 </div>
                                             )}
