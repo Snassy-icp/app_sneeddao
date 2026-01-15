@@ -149,6 +149,12 @@ function IcpNeuronManager() {
     const [canisterStatus, setCanisterStatus] = useState(null);
     const [controllers, setControllers] = useState([]);
     
+    // Controller management state
+    const [newControllerInput, setNewControllerInput] = useState('');
+    const [updatingControllers, setUpdatingControllers] = useState(false);
+    const [confirmRemoveController, setConfirmRemoveController] = useState(null);
+    const [controllerSuccess, setControllerSuccess] = useState(null);
+    
     // Cycles top-up state
     const [topUpAmount, setTopUpAmount] = useState('');
     const [conversionRate, setConversionRate] = useState(null);
@@ -414,6 +420,104 @@ function IcpNeuronManager() {
         const icpAmount = parseFloat(topUpAmount);
         if (isNaN(icpAmount) || icpAmount <= 0) return null;
         return icpAmount * conversionRate.cyclesPerIcp;
+    };
+
+    // Update controllers on the canister
+    const updateControllers = async (newControllers) => {
+        if (!identity || !canisterId) return;
+        
+        setUpdatingControllers(true);
+        setError('');
+        setControllerSuccess(null);
+        
+        try {
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://icp0.io' 
+                : 'http://localhost:4943';
+            const agent = HttpAgent.createSync({ host, identity });
+
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+
+            const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+
+            await managementCanister.update_settings({
+                canister_id: canisterPrincipal,
+                settings: {
+                    controllers: [newControllers],
+                    compute_allocation: [],
+                    memory_allocation: [],
+                    freezing_threshold: [],
+                    reserved_cycles_limit: [],
+                    log_visibility: [],
+                    wasm_memory_limit: [],
+                },
+            });
+
+            setControllerSuccess('Controllers updated successfully');
+            
+            // Refresh canister status
+            await fetchCanisterStatus();
+            
+        } catch (e) {
+            console.error('Failed to update controllers:', e);
+            setError('Failed to update controllers: ' + (e.message || 'Unknown error'));
+        } finally {
+            setUpdatingControllers(false);
+        }
+    };
+
+    // Add a new controller
+    const handleAddController = async () => {
+        if (!newControllerInput.trim()) return;
+        
+        try {
+            const newControllerPrincipal = Principal.fromText(newControllerInput.trim());
+            
+            // Check if already a controller
+            const isAlreadyController = controllers.some(c => c.toString() === newControllerPrincipal.toString());
+            
+            if (isAlreadyController) {
+                setError('This principal is already a controller');
+                return;
+            }
+            
+            // Create new list with the added controller
+            const newControllers = [...controllers, newControllerPrincipal];
+            
+            await updateControllers(newControllers);
+            setNewControllerInput('');
+            
+        } catch (e) {
+            setError('Invalid principal ID format');
+        }
+    };
+
+    // Remove a controller
+    const handleRemoveController = async (controllerToRemove) => {
+        const controllerStr = controllerToRemove.toString();
+        
+        // Check if this is the last controller
+        if (controllers.length === 1) {
+            setError('Cannot remove the last controller - the canister would become permanently uncontrollable');
+            setConfirmRemoveController(null);
+            return;
+        }
+        
+        // Filter out the controller to remove
+        const newControllers = controllers.filter(c => c.toString() !== controllerStr);
+        
+        await updateControllers(newControllers);
+        setConfirmRemoveController(null);
     };
 
     // Handle cycles top-up
@@ -1807,6 +1911,7 @@ function IcpNeuronManager() {
                                         {controllers.map((controller, index) => {
                                             const controllerStr = controller.toString();
                                             const isCurrentUser = identity && controllerStr === identity.getPrincipal().toString();
+                                            const isConfirmingRemove = confirmRemoveController === controllerStr;
                                             return (
                                                 <div 
                                                     key={index}
@@ -1814,7 +1919,7 @@ function IcpNeuronManager() {
                                                         display: 'flex', 
                                                         alignItems: 'center', 
                                                         gap: '8px',
-                                                        padding: '4px 0',
+                                                        padding: '6px 0',
                                                         borderBottom: index < controllers.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                                     }}
                                                 >
@@ -1846,9 +1951,150 @@ function IcpNeuronManager() {
                                                     >
                                                         Copy
                                                     </button>
+                                                    {/* Remove button */}
+                                                    {isConfirmingRemove ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ 
+                                                                color: isCurrentUser ? theme.colors.warning : theme.colors.error, 
+                                                                fontSize: '10px',
+                                                                whiteSpace: 'nowrap'
+                                                            }}>
+                                                                {isCurrentUser ? '⚠️ Remove yourself?' : 'Confirm?'}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => handleRemoveController(controller)}
+                                                                disabled={updatingControllers}
+                                                                style={{
+                                                                    backgroundColor: theme.colors.error || '#ef4444',
+                                                                    color: '#fff',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '2px 6px',
+                                                                    cursor: updatingControllers ? 'not-allowed' : 'pointer',
+                                                                    fontSize: '10px',
+                                                                    fontWeight: '500',
+                                                                    opacity: updatingControllers ? 0.7 : 1,
+                                                                }}
+                                                            >
+                                                                {updatingControllers ? '...' : 'Yes'}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setConfirmRemoveController(null)}
+                                                                style={{
+                                                                    backgroundColor: theme.colors.secondaryBg,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '4px',
+                                                                    padding: '2px 6px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '10px',
+                                                                }}
+                                                            >
+                                                                No
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setConfirmRemoveController(controllerStr)}
+                                                            disabled={updatingControllers}
+                                                            style={{
+                                                                backgroundColor: 'transparent',
+                                                                color: theme.colors.error || '#ef4444',
+                                                                border: `1px solid ${theme.colors.error || '#ef4444'}`,
+                                                                borderRadius: '4px',
+                                                                padding: '2px 6px',
+                                                                cursor: updatingControllers ? 'not-allowed' : 'pointer',
+                                                                fontSize: '10px',
+                                                                fontWeight: '500',
+                                                                opacity: updatingControllers ? 0.7 : 1,
+                                                            }}
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         })}
+                                        
+                                        {/* Add Controller */}
+                                        <div style={{ 
+                                            marginTop: '12px',
+                                            paddingTop: '12px',
+                                            borderTop: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '11px',
+                                                marginBottom: '6px'
+                                            }}>
+                                                Add Controller
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                <input
+                                                    type="text"
+                                                    value={newControllerInput}
+                                                    onChange={(e) => setNewControllerInput(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            handleAddController();
+                                                        }
+                                                    }}
+                                                    placeholder="Enter principal ID"
+                                                    disabled={updatingControllers}
+                                                    style={{
+                                                        flex: '1',
+                                                        minWidth: '180px',
+                                                        padding: '6px 10px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '4px',
+                                                        backgroundColor: theme.colors.secondaryBg,
+                                                        color: theme.colors.primaryText,
+                                                        fontSize: '12px',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={handleAddController}
+                                                    disabled={updatingControllers || !newControllerInput.trim()}
+                                                    style={{
+                                                        backgroundColor: theme.colors.success || '#22c55e',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '6px 12px',
+                                                        cursor: (updatingControllers || !newControllerInput.trim()) ? 'not-allowed' : 'pointer',
+                                                        fontSize: '12px',
+                                                        fontWeight: '500',
+                                                        opacity: (updatingControllers || !newControllerInput.trim()) ? 0.7 : 1
+                                                    }}
+                                                >
+                                                    {updatingControllers ? 'Updating...' : 'Add'}
+                                                </button>
+                                            </div>
+                                            <p style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '10px',
+                                                marginTop: '6px',
+                                                marginBottom: 0
+                                            }}>
+                                                ⚠️ Be careful when modifying controllers. Removing all controllers will make the canister permanently uncontrollable.
+                                            </p>
+                                        </div>
+                                        
+                                        {/* Controller Success Message */}
+                                        {controllerSuccess && (
+                                            <div style={{
+                                                marginTop: '10px',
+                                                padding: '8px',
+                                                backgroundColor: `${theme.colors.success || '#22c55e'}20`,
+                                                borderRadius: '4px',
+                                                color: theme.colors.success || '#22c55e',
+                                                fontSize: '12px',
+                                            }}>
+                                                ✅ {controllerSuccess}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
