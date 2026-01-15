@@ -3274,7 +3274,30 @@ function IcpNeuronManager() {
                                             )}
                                         </div>
                                         
-                                        <div style={{ marginTop: '20px' }}>
+                                        {/* Link to IC Dashboard */}
+                                        {selectedNeuronId && (
+                                            <div style={{ marginTop: '15px' }}>
+                                                <a 
+                                                    href={`https://dashboard.internetcomputer.org/neuron/${selectedNeuronId.id.toString()}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ 
+                                                        color: theme.colors.accent, 
+                                                        fontSize: '13px',
+                                                        textDecoration: 'none',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                >
+                                                    🔗 View on IC Dashboard →
+                                                </a>
+                                            </div>
+                                        )}
+                                        
+                                        <div style={{ marginTop: '15px' }}>
                                             <button 
                                                 onClick={fetchManagerData}
                                                 style={secondaryButtonStyle}
