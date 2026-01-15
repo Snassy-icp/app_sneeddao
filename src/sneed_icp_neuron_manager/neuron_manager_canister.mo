@@ -50,6 +50,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         currentVersion;
     };
 
+    public query func getCreatedVersion(): async T.Version {
+        version;
+    };
+
     public query func getCreatedAt(): async Int {
         createdAt;
     };
