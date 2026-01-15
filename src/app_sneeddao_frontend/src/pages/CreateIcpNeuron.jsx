@@ -4,6 +4,7 @@ import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import Header from '../components/Header';
@@ -20,6 +21,7 @@ function CreateIcpNeuron() {
     const { identity, isAuthenticated, login } = useAuth();
     const [managers, setManagers] = useState([]);
     const [balances, setBalances] = useState({}); // canisterId -> balance in e8s
+    const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -141,9 +143,10 @@ function CreateIcpNeuron() {
             setManagers(result);
             setError('');
             
-            // Fetch balances for all managers
+            // Fetch balances and neuron counts for all managers
             if (result.length > 0) {
                 fetchBalances(result, agent);
+                fetchNeuronCounts(result, agent);
             }
         } catch (err) {
             console.error('Error fetching managers:', err);
@@ -188,6 +191,32 @@ function CreateIcpNeuron() {
             setBalances(newBalances);
         } catch (err) {
             console.error('Error fetching balances:', err);
+        }
+    };
+
+    const fetchNeuronCounts = async (managerList, agent) => {
+        try {
+            const counts = {};
+            
+            const countPromises = managerList.map(async (manager) => {
+                try {
+                    const managerActor = createManagerActor(manager.canisterId, { agent });
+                    const count = await managerActor.getNeuronCount();
+                    return { canisterId: manager.canisterId.toText(), count: Number(count) };
+                } catch (err) {
+                    console.error(`Error fetching neuron count for ${manager.canisterId.toText()}:`, err);
+                    return { canisterId: manager.canisterId.toText(), count: null };
+                }
+            });
+            
+            const results = await Promise.all(countPromises);
+            results.forEach(({ canisterId, count }) => {
+                counts[canisterId] = count;
+            });
+            
+            setNeuronCounts(counts);
+        } catch (err) {
+            console.error('Error fetching neuron counts:', err);
         }
     };
 
@@ -749,16 +778,17 @@ function CreateIcpNeuron() {
                                             <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                                                     <div>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neuron: </span>
-                                                        {manager.neuronId && manager.neuronId.length > 0 ? (
-                                                            <span style={{ color: theme.colors.success || '#22c55e', fontFamily: 'monospace' }}>
-                                                                #{manager.neuronId[0].id.toString()}
-                                                            </span>
-                                                        ) : (
-                                                            <span style={{ color: theme.colors.warning || '#f59e0b' }}>
-                                                                Not created yet
-                                                            </span>
-                                                        )}
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neurons: </span>
+                                                        {(() => {
+                                                            const count = neuronCounts[manager.canisterId.toText()];
+                                                            if (count === undefined || count === null) {
+                                                                return <span style={{ color: theme.colors.mutedText }}>...</span>;
+                                                            } else if (count === 0) {
+                                                                return <span style={{ color: theme.colors.warning || '#f59e0b' }}>None yet</span>;
+                                                            } else {
+                                                                return <span style={{ color: theme.colors.success || '#22c55e' }}>{count}</span>;
+                                                            }
+                                                        })()}
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                                         <span style={{ color: theme.colors.mutedText, fontSize: '12px', flexShrink: 0 }}>
@@ -806,10 +836,10 @@ function CreateIcpNeuron() {
                     <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>How It Works</h3>
                     <ol style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px' }}>
                         <li><strong>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
-                        <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that will control one ICP neuron.</li>
+                        <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that can control multiple ICP neurons.</li>
                         <li><strong>Fund the Manager:</strong> Send ICP to your manager canister's account.</li>
-                        <li><strong>Stake a Neuron:</strong> Use the manager to stake ICP and create an NNS neuron.</li>
-                        <li><strong>Manage Your Neuron:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
+                        <li><strong>Stake Neurons:</strong> Use the manager to stake ICP and create NNS neurons.</li>
+                        <li><strong>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
                         <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
                     </ol>
                 </div>
