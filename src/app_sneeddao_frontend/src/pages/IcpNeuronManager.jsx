@@ -1455,27 +1455,26 @@ function IcpNeuronManager() {
         }
     };
 
-    // Fetch token balance from the manager canister
+    // Fetch token balance directly from the ledger (balances are public)
     const fetchWithdrawTokenBalance = useCallback(async (ledgerId) => {
         if (!ledgerId || !canisterId) return;
         
         try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const manager = createManagerActor(canisterId, { agent });
-            
-            const balance = await manager.getTokenBalance(Principal.fromText(ledgerId));
-            setWithdrawTokenBalance(balance);
-            
-            // Fetch token metadata
+            // Call the ledger directly - no need to go through the manager canister
             const ledgerActor = createLedgerActor(ledgerId, { agentOptions: { identity } });
-            const [symbol, decimals, fee] = await Promise.all([
+            
+            // Fetch balance and metadata in parallel
+            const [balance, symbol, decimals, fee] = await Promise.all([
+                ledgerActor.icrc1_balance_of({
+                    owner: Principal.fromText(canisterId),
+                    subaccount: [],
+                }),
                 ledgerActor.icrc1_symbol(),
                 ledgerActor.icrc1_decimals(),
                 ledgerActor.icrc1_fee(),
             ]);
+            
+            setWithdrawTokenBalance(balance);
             setWithdrawTokenSymbol(symbol);
             setWithdrawTokenDecimals(decimals);
             setWithdrawTokenFee(Number(fee));
