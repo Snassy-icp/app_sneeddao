@@ -805,11 +805,14 @@ export default function CanisterPage() {
             // Call install_code with the selected mode
             const mode = upgradeMode === 'reinstall' ? { reinstall: null } : { upgrade: null };
             
+            // Candid encoding for empty arguments: "DIDL" magic bytes + 0 types + 0 args
+            const emptyArg = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
+            
             await managementCanister.install_code({
                 mode,
                 canister_id: canisterPrincipal,
                 wasm_module: wasmModule,
-                arg: [], // Empty initialization argument
+                arg: emptyArg,
             });
             
             console.log('Canister upgrade successful!');
