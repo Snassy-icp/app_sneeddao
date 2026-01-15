@@ -129,6 +129,77 @@ const hexToUint8Array = (hex) => {
     return bytes;
 };
 
+// Encode a Principal to Candid bytes: (principal "...")
+const encodePrincipalArg = (principalText) => {
+    const principal = Principal.fromText(principalText);
+    const principalBytes = principal.toUint8Array();
+    
+    // Candid encoding for (principal "..."):
+    // Magic: DIDL (4 bytes)
+    // Type table count: 0 (1 byte)
+    // Arg count: 1 (1 byte)  
+    // Arg type: 0x68 = Principal type (-24 as sleb128) (1 byte)
+    // Principal value: length (1 byte for <=127) + bytes
+    const result = new Uint8Array(4 + 1 + 1 + 1 + 1 + principalBytes.length);
+    result[0] = 0x44; // D
+    result[1] = 0x49; // I
+    result[2] = 0x44; // D
+    result[3] = 0x4C; // L
+    result[4] = 0x00; // 0 types
+    result[5] = 0x01; // 1 arg
+    result[6] = 0x68; // Principal type
+    result[7] = principalBytes.length; // Length prefix
+    result.set(principalBytes, 8);
+    
+    return result;
+};
+
+// Encode an optional Principal to Candid bytes: (opt principal "...") or (null)
+const encodeOptPrincipalArg = (principalText) => {
+    if (!principalText || principalText.trim() === '' || principalText.trim().toLowerCase() === 'null') {
+        // Encode (null : ?Principal)
+        // Type table: 1 entry (opt principal)
+        // opt is type constructor 0x6e followed by the inner type
+        return new Uint8Array([
+            0x44, 0x49, 0x44, 0x4C, // DIDL
+            0x01,                   // 1 type in type table
+            0x6e, 0x68,            // Type 0: opt (0x6e) principal (0x68)
+            0x01,                   // 1 argument
+            0x00,                   // Arg 0 is type index 0
+            0x00                    // Value: null (0 = None)
+        ]);
+    } else {
+        // Encode (opt principal "...")
+        const principal = Principal.fromText(principalText.trim());
+        const principalBytes = principal.toUint8Array();
+        
+        const result = new Uint8Array(4 + 1 + 2 + 1 + 1 + 1 + 1 + principalBytes.length);
+        let offset = 0;
+        
+        // Magic
+        result[offset++] = 0x44; // D
+        result[offset++] = 0x49; // I
+        result[offset++] = 0x44; // D
+        result[offset++] = 0x4C; // L
+        
+        // Type table: 1 entry
+        result[offset++] = 0x01;
+        result[offset++] = 0x6e; // opt
+        result[offset++] = 0x68; // principal
+        
+        // Args
+        result[offset++] = 0x01; // 1 arg
+        result[offset++] = 0x00; // Type index 0
+        
+        // Value: Some(principal)
+        result[offset++] = 0x01; // 1 = Some
+        result[offset++] = principalBytes.length;
+        result.set(principalBytes, offset);
+        
+        return result;
+    }
+};
+
 export default function CanisterPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
@@ -170,6 +241,8 @@ export default function CanisterPage() {
     const [upgrading, setUpgrading] = useState(false);
     const [confirmUpgrade, setConfirmUpgrade] = useState(false);
     const [initArgHex, setInitArgHex] = useState(''); // Hex-encoded Candid init arguments
+    const [initArgMode, setInitArgMode] = useState('none'); // 'none', 'hex', 'principal', 'optPrincipal'
+    const [initArgPrincipal, setInitArgPrincipal] = useState(''); // Principal text input
     const wasmInputRef = useRef(null);
 
     const canisterIdParam = searchParams.get('id');
@@ -825,19 +898,37 @@ export default function CanisterPage() {
             // Call install_code with the selected mode
             const mode = upgradeMode === 'reinstall' ? { reinstall: null } : { upgrade: null };
             
-            // Determine init arguments
+            // Determine init arguments based on mode
             let initArg;
-            if (initArgHex.trim()) {
-                try {
-                    initArg = hexToUint8Array(initArgHex.trim());
-                    console.log(`Using provided init args: ${initArg.length} bytes`);
-                } catch (e) {
-                    throw new Error(`Invalid hex in init arguments: ${e.message}`);
+            try {
+                switch (initArgMode) {
+                    case 'principal':
+                        if (!initArgPrincipal.trim()) {
+                            throw new Error('Principal ID is required');
+                        }
+                        initArg = encodePrincipalArg(initArgPrincipal.trim());
+                        console.log(`Using principal init arg: ${initArg.length} bytes`);
+                        break;
+                    case 'optPrincipal':
+                        initArg = encodeOptPrincipalArg(initArgPrincipal.trim());
+                        console.log(`Using optional principal init arg: ${initArg.length} bytes`);
+                        break;
+                    case 'hex':
+                        if (!initArgHex.trim()) {
+                            throw new Error('Hex-encoded arguments are required');
+                        }
+                        initArg = hexToUint8Array(initArgHex.trim());
+                        console.log(`Using hex init args: ${initArg.length} bytes`);
+                        break;
+                    case 'none':
+                    default:
+                        // Candid encoding for empty arguments: "DIDL" magic bytes + 0 types + 0 args
+                        initArg = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
+                        console.log('Using empty init args (DIDL encoding)');
+                        break;
                 }
-            } else {
-                // Candid encoding for empty arguments: "DIDL" magic bytes + 0 types + 0 args
-                initArg = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
-                console.log('Using empty init args (DIDL encoding)');
+            } catch (e) {
+                throw new Error(`Invalid init arguments: ${e.message}`);
             }
             
             await managementCanister.install_code({
@@ -854,7 +945,9 @@ export default function CanisterPage() {
             setWasmFile(null);
             setConfirmUpgrade(false);
             setShowUpgradeSection(false);
+            setInitArgMode('none');
             setInitArgHex('');
+            setInitArgPrincipal('');
             if (wasmInputRef.current) {
                 wasmInputRef.current.value = '';
             }
@@ -1721,7 +1814,9 @@ export default function CanisterPage() {
                                                 setWasmFile(null);
                                                 setConfirmUpgrade(false);
                                                 setUpgradeMode('upgrade');
+                                                setInitArgMode('none');
                                                 setInitArgHex('');
+                                                setInitArgPrincipal('');
                                             }
                                         }}
                                         style={{
@@ -1896,7 +1991,7 @@ export default function CanisterPage() {
                                             </div>
                                         </div>
                                         
-                                        {/* Init Arguments (optional) */}
+                                        {/* Init Arguments */}
                                         <div style={{ marginBottom: '16px' }}>
                                             <label style={{ 
                                                 display: 'block',
@@ -1904,41 +1999,145 @@ export default function CanisterPage() {
                                                 fontSize: '12px',
                                                 marginBottom: '8px'
                                             }}>
-                                                Init Arguments <span style={{ opacity: 0.7 }}>(optional, hex-encoded Candid)</span>
+                                                Init Arguments
                                             </label>
-                                            <textarea
-                                                value={initArgHex}
-                                                onChange={(e) => setInitArgHex(e.target.value)}
-                                                placeholder="e.g., 4449444c0001710568656c6c6f (leave empty for no args)"
-                                                style={{
-                                                    width: '100%',
-                                                    minHeight: '60px',
-                                                    padding: '10px 12px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    borderRadius: '6px',
-                                                    backgroundColor: theme.colors.secondaryBg,
-                                                    color: theme.colors.primaryText,
-                                                    fontSize: '13px',
-                                                    fontFamily: 'monospace',
-                                                    outline: 'none',
-                                                    resize: 'vertical',
-                                                    boxSizing: 'border-box'
-                                                }}
-                                            />
-                                            <p style={{ 
-                                                color: theme.colors.mutedText, 
-                                                fontSize: '11px', 
-                                                marginTop: '6px',
-                                                marginBottom: 0
+                                            
+                                            {/* Mode selector */}
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                gap: '8px', 
+                                                marginBottom: '12px',
+                                                flexWrap: 'wrap'
                                             }}>
-                                                Some canisters require initialization arguments during upgrade. 
-                                                You can get the hex-encoded Candid from <code style={{ 
-                                                    backgroundColor: theme.colors.tertiaryBg, 
-                                                    padding: '2px 4px', 
-                                                    borderRadius: '3px',
-                                                    fontSize: '10px'
-                                                }}>didc encode</code> or check the canister's documentation.
-                                            </p>
+                                                {[
+                                                    { value: 'none', label: 'None (empty)' },
+                                                    { value: 'principal', label: 'Principal' },
+                                                    { value: 'optPrincipal', label: 'Optional Principal' },
+                                                    { value: 'hex', label: 'Raw Hex' },
+                                                ].map(option => (
+                                                    <label 
+                                                        key={option.value}
+                                                        style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '6px',
+                                                            cursor: 'pointer',
+                                                            padding: '8px 12px',
+                                                            backgroundColor: initArgMode === option.value 
+                                                                ? `${theme.colors.accent}20` 
+                                                                : theme.colors.secondaryBg,
+                                                            border: `1px solid ${initArgMode === option.value 
+                                                                ? theme.colors.accent 
+                                                                : theme.colors.border}`,
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="radio"
+                                                            name="initArgMode"
+                                                            value={option.value}
+                                                            checked={initArgMode === option.value}
+                                                            onChange={(e) => setInitArgMode(e.target.value)}
+                                                            style={{ accentColor: theme.colors.accent }}
+                                                        />
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            {option.label}
+                                                        </span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            
+                                            {/* Principal input */}
+                                            {(initArgMode === 'principal' || initArgMode === 'optPrincipal') && (
+                                                <div style={{ marginBottom: '8px' }}>
+                                                    <input
+                                                        type="text"
+                                                        value={initArgPrincipal}
+                                                        onChange={(e) => setInitArgPrincipal(e.target.value)}
+                                                        placeholder={initArgMode === 'optPrincipal' 
+                                                            ? "Principal ID (leave empty for null)" 
+                                                            : "Principal ID (e.g., aaaaa-aa)"}
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '10px 12px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '6px',
+                                                            backgroundColor: theme.colors.secondaryBg,
+                                                            color: theme.colors.primaryText,
+                                                            fontSize: '13px',
+                                                            fontFamily: 'monospace',
+                                                            outline: 'none',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                    />
+                                                    {initArgMode === 'optPrincipal' && (
+                                                        <p style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            fontSize: '11px', 
+                                                            marginTop: '6px',
+                                                            marginBottom: 0
+                                                        }}>
+                                                            Leave empty to pass <code style={{ 
+                                                                backgroundColor: theme.colors.tertiaryBg, 
+                                                                padding: '2px 4px', 
+                                                                borderRadius: '3px',
+                                                                fontSize: '10px'
+                                                            }}>null</code> for optional principal.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Hex input */}
+                                            {initArgMode === 'hex' && (
+                                                <div>
+                                                    <textarea
+                                                        value={initArgHex}
+                                                        onChange={(e) => setInitArgHex(e.target.value)}
+                                                        placeholder="Hex-encoded Candid (e.g., 4449444c0001710568656c6c6f)"
+                                                        style={{
+                                                            width: '100%',
+                                                            minHeight: '60px',
+                                                            padding: '10px 12px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '6px',
+                                                            backgroundColor: theme.colors.secondaryBg,
+                                                            color: theme.colors.primaryText,
+                                                            fontSize: '13px',
+                                                            fontFamily: 'monospace',
+                                                            outline: 'none',
+                                                            resize: 'vertical',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                    />
+                                                    <p style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '11px', 
+                                                        marginTop: '6px',
+                                                        marginBottom: 0
+                                                    }}>
+                                                        Use <code style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            padding: '2px 4px', 
+                                                            borderRadius: '3px',
+                                                            fontSize: '10px'
+                                                        }}>didc encode '(args)' --format blob</code> to generate hex.
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
+                                            {initArgMode === 'none' && (
+                                                <p style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '11px', 
+                                                    marginTop: '0',
+                                                    marginBottom: 0
+                                                }}>
+                                                    No init arguments will be passed (empty Candid encoding).
+                                                </p>
+                                            )}
                                         </div>
                                         
                                         {/* Reinstall Warning */}
