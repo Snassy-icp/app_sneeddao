@@ -23,7 +23,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     transient let CANISTER_CREATION_CYCLES: Nat = 1_000_000_000_000; // 1T cycles for new canister
-    transient let CURRENT_VERSION: T.Version = { major = 1; minor = 0; patch = 0 };
     
     // CMC memo for top-up: "TPUP" in little-endian
     transient let TOP_UP_MEMO: Blob = "\54\50\55\50\00\00\00\00";
@@ -43,10 +42,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
     
     // Current version (stable - preserved across upgrades)
-    var currentVersion: T.Version = CURRENT_VERSION;
+    var currentVersion: T.Version = T.CURRENT_VERSION; // DEPRECATED
     
     // Factory version (transient - always reflects compiled WASM version)
-    transient let factoryVersion: T.Version = CURRENT_VERSION;
+    transient let factoryVersion: T.Version = T.CURRENT_VERSION;
     
     // Official versions registry (list of known verified WASM versions)
     var officialVersions: [T.OfficialVersion] = [];
