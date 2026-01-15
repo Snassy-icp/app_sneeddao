@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
 import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain } from 'react-icons/fa';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 
 export default function CanistersPage() {
     const { theme } = useTheme();
@@ -20,6 +22,52 @@ export default function CanistersPage() {
     const [removingCanister, setRemovingCanister] = useState(null);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
+    
+    // Neuron Managers state
+    const [neuronManagers, setNeuronManagers] = useState([]);
+    const [loadingNeuronManagers, setLoadingNeuronManagers] = useState(true);
+    
+    // Collapsible section states
+    const [customExpanded, setCustomExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('canisters_customExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch { return true; }
+    });
+    const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('canisters_neuronManagersExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch { return true; }
+    });
+
+    // Fetch neuron managers
+    const fetchNeuronManagers = useCallback(async () => {
+        if (!identity) {
+            setNeuronManagers([]);
+            setLoadingNeuronManagers(false);
+            return;
+        }
+        
+        setLoadingNeuronManagers(true);
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const managers = await factory.getMyManagers();
+            setNeuronManagers(managers);
+        } catch (err) {
+            console.error('Error loading neuron managers:', err);
+        } finally {
+            setLoadingNeuronManagers(false);
+        }
+    }, [identity]);
 
     // Load tracked canisters on mount and when identity changes
     useEffect(() => {
@@ -43,7 +91,17 @@ export default function CanistersPage() {
         };
 
         loadCanisters();
-    }, [identity]);
+        fetchNeuronManagers();
+    }, [identity, fetchNeuronManagers]);
+    
+    // Persist collapsible states
+    useEffect(() => {
+        try { localStorage.setItem('canisters_customExpanded', JSON.stringify(customExpanded)); } catch {}
+    }, [customExpanded]);
+    
+    useEffect(() => {
+        try { localStorage.setItem('canisters_neuronManagersExpanded', JSON.stringify(neuronManagersExpanded)); } catch {}
+    }, [neuronManagersExpanded]);
 
     // Clear messages after timeout
     useEffect(() => {
@@ -296,6 +354,70 @@ export default function CanistersPage() {
             fontSize: '13px',
             fontWeight: 500,
         },
+        sectionHeader: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 0',
+            cursor: 'pointer',
+            borderBottom: `1px solid ${theme.colors.border}`,
+            marginBottom: '16px',
+        },
+        sectionTitle: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '18px',
+            fontWeight: 600,
+            color: theme.colors.text,
+        },
+        sectionCount: {
+            fontSize: '14px',
+            fontWeight: 400,
+            color: theme.colors.textSecondary,
+            backgroundColor: theme.colors.primary + '15',
+            padding: '2px 10px',
+            borderRadius: '12px',
+        },
+        sectionToggle: {
+            color: theme.colors.textSecondary,
+            fontSize: '14px',
+        },
+        managerCard: {
+            backgroundColor: theme.colors.card,
+            borderRadius: '12px',
+            padding: '16px 20px',
+            border: `1px solid ${theme.colors.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap',
+        },
+        managerInfo: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flex: 1,
+            minWidth: '200px',
+        },
+        managerIcon: {
+            width: '40px',
+            height: '40px',
+            borderRadius: '8px',
+            backgroundColor: '#8b5cf620',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#8b5cf6',
+        },
+        managerVersion: {
+            fontSize: '11px',
+            color: theme.colors.textSecondary,
+            backgroundColor: theme.colors.inputBackground,
+            padding: '2px 8px',
+            borderRadius: '10px',
+        },
     };
 
     return (
@@ -356,68 +478,188 @@ export default function CanistersPage() {
                             </div>
                         </div>
 
-                        {/* Canister list */}
-                        {loading ? (
-                            <div style={styles.loadingSpinner}>
-                                <FaSpinner className="spin" size={24} />
+                        {/* Custom Canisters Section */}
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => setCustomExpanded(!customExpanded)}
+                        >
+                            <div style={styles.sectionTitle}>
+                                {customExpanded ? <FaChevronDown /> : <FaChevronRight />}
+                                <FaCube />
+                                Custom
+                                {canisters.length > 0 && (
+                                    <span style={styles.sectionCount}>{canisters.length}</span>
+                                )}
                             </div>
-                        ) : canisters.length === 0 ? (
-                            <div style={styles.emptyState}>
-                                <div style={styles.emptyIcon}>📦</div>
-                                <div style={styles.emptyText}>No canisters being tracked</div>
-                                <div style={styles.emptySubtext}>
-                                    Add a canister ID above to start tracking it.
-                                </div>
-                            </div>
-                        ) : (
-                            <div style={styles.canisterList}>
-                                {canisters.map((canisterId) => {
-                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
-                                    
-                                    return (
-                                    <div 
-                                        key={canisterId} 
-                                        style={styles.canisterCard}
-                                    >
-                                        <div style={styles.canisterInfo}>
-                                            <div style={styles.canisterIcon}>
-                                                <FaCube size={18} />
-                                            </div>
-                                            <PrincipalDisplay
-                                                principal={canisterId}
-                                                displayInfo={displayInfo}
-                                                showCopyButton={true}
-                                                isAuthenticated={isAuthenticated}
-                                                noLink={true}
-                                                style={{ fontSize: '14px' }}
-                                                showSendMessage={false}
-                                                showViewProfile={false}
-                                            />
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <Link
-                                                to={`/canister?id=${canisterId}`}
-                                                style={styles.viewLink}
-                                            >
-                                                View Details
-                                            </Link>
-                                            <button
-                                                onClick={() => handleRemoveCanister(canisterId)}
-                                                style={styles.removeButton}
-                                                disabled={removingCanister === canisterId}
-                                                title="Remove from tracking"
-                                            >
-                                                {removingCanister === canisterId ? (
-                                                    <FaSpinner className="spin" />
-                                                ) : (
-                                                    <FaTrash />
-                                                )}
-                                            </button>
+                        </div>
+                        
+                        {customExpanded && (
+                            <>
+                                {loading ? (
+                                    <div style={styles.loadingSpinner}>
+                                        <FaSpinner className="spin" size={24} />
+                                    </div>
+                                ) : canisters.length === 0 ? (
+                                    <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
+                                        <div style={styles.emptyIcon}>📦</div>
+                                        <div style={styles.emptyText}>No custom canisters being tracked</div>
+                                        <div style={styles.emptySubtext}>
+                                            Add a canister ID above to start tracking it.
                                         </div>
                                     </div>
-                                    );
-                                })}
+                                ) : (
+                                    <div style={{ ...styles.canisterList, marginBottom: '24px' }}>
+                                        {canisters.map((canisterId) => {
+                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                            
+                                            return (
+                                            <div 
+                                                key={canisterId} 
+                                                style={styles.canisterCard}
+                                            >
+                                                <div style={styles.canisterInfo}>
+                                                    <div style={styles.canisterIcon}>
+                                                        <FaCube size={18} />
+                                                    </div>
+                                                    <PrincipalDisplay
+                                                        principal={canisterId}
+                                                        displayInfo={displayInfo}
+                                                        showCopyButton={true}
+                                                        isAuthenticated={isAuthenticated}
+                                                        noLink={true}
+                                                        style={{ fontSize: '14px' }}
+                                                        showSendMessage={false}
+                                                        showViewProfile={false}
+                                                    />
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <Link
+                                                        to={`/canister?id=${canisterId}`}
+                                                        style={styles.viewLink}
+                                                    >
+                                                        View Details
+                                                    </Link>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleRemoveCanister(canisterId); }}
+                                                        style={styles.removeButton}
+                                                        disabled={removingCanister === canisterId}
+                                                        title="Remove from tracking"
+                                                    >
+                                                        {removingCanister === canisterId ? (
+                                                            <FaSpinner className="spin" />
+                                                        ) : (
+                                                            <FaTrash />
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {/* ICP Neuron Managers Section */}
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
+                        >
+                            <div style={styles.sectionTitle}>
+                                {neuronManagersExpanded ? <FaChevronDown /> : <FaChevronRight />}
+                                <FaBrain style={{ color: '#8b5cf6' }} />
+                                ICP Neuron Managers
+                                {neuronManagers.length > 0 && (
+                                    <span style={styles.sectionCount}>{neuronManagers.length}</span>
+                                )}
                             </div>
+                            <Link 
+                                to="/create_icp_neuron"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                    ...styles.addButton,
+                                    padding: '6px 12px',
+                                    fontSize: '12px',
+                                    backgroundColor: '#8b5cf6',
+                                }}
+                            >
+                                <FaPlus size={10} /> Create
+                            </Link>
+                        </div>
+                        
+                        {neuronManagersExpanded && (
+                            <>
+                                {loadingNeuronManagers ? (
+                                    <div style={styles.loadingSpinner}>
+                                        <FaSpinner className="spin" size={24} />
+                                    </div>
+                                ) : neuronManagers.length === 0 ? (
+                                    <div style={styles.emptyState}>
+                                        <div style={styles.emptyIcon}>🧠</div>
+                                        <div style={styles.emptyText}>No ICP Neuron Managers</div>
+                                        <div style={styles.emptySubtext}>
+                                            <Link to="/create_icp_neuron" style={{ color: theme.colors.primary }}>
+                                                Create your first neuron manager →
+                                            </Link>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={styles.canisterList}>
+                                        {neuronManagers.map((manager) => {
+                                            const canisterId = manager.canisterId.toText();
+                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                            
+                                            return (
+                                                <div 
+                                                    key={canisterId} 
+                                                    style={styles.managerCard}
+                                                >
+                                                    <div style={styles.managerInfo}>
+                                                        <div style={styles.managerIcon}>
+                                                            <FaBrain size={18} />
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                                                <PrincipalDisplay
+                                                                    principal={canisterId}
+                                                                    displayInfo={displayInfo}
+                                                                    showCopyButton={true}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                    noLink={true}
+                                                                    style={{ fontSize: '14px' }}
+                                                                    showSendMessage={false}
+                                                                    showViewProfile={false}
+                                                                />
+                                                            </div>
+                                                            <span style={styles.managerVersion}>
+                                                                v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                        <Link
+                                                            to={`/icp_neuron_manager/${canisterId}`}
+                                                            style={{
+                                                                ...styles.viewLink,
+                                                                backgroundColor: '#8b5cf615',
+                                                                color: '#8b5cf6',
+                                                            }}
+                                                        >
+                                                            Manage
+                                                        </Link>
+                                                        <Link
+                                                            to={`/canister?id=${canisterId}`}
+                                                            style={styles.viewLink}
+                                                        >
+                                                            Details
+                                                        </Link>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </>
                 )}
