@@ -27,6 +27,10 @@ export default function CanistersPage() {
     // Neuron Managers state
     const [neuronManagers, setNeuronManagers] = useState([]);
     const [loadingNeuronManagers, setLoadingNeuronManagers] = useState(true);
+    const [newManagerId, setNewManagerId] = useState('');
+    const [addingManager, setAddingManager] = useState(false);
+    const [removingManager, setRemovingManager] = useState(null);
+    const [managerError, setManagerError] = useState(null);
     
     // Collapsible section states
     const [customExpanded, setCustomExpanded] = useState(() => {
@@ -181,6 +185,77 @@ export default function CanistersPage() {
             setError('Failed to remove canister');
         } finally {
             setRemovingCanister(null);
+        }
+    };
+
+    const handleAddManager = async () => {
+        if (!newManagerId.trim()) return;
+
+        let canisterId;
+        try {
+            canisterId = Principal.fromText(newManagerId.trim());
+        } catch (err) {
+            setManagerError('Invalid canister ID format');
+            return;
+        }
+
+        setAddingManager(true);
+        setManagerError(null);
+
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.registerManager(canisterId);
+            
+            if ('Err' in result) {
+                throw new Error(result.Err);
+            }
+            
+            await fetchNeuronManagers();
+            setNewManagerId('');
+            setSuccessMessage('Manager added to list');
+        } catch (err) {
+            console.error('Error adding manager:', err);
+            setManagerError(err.message || 'Failed to add manager');
+        } finally {
+            setAddingManager(false);
+        }
+    };
+
+    const handleRemoveManager = async (canisterId) => {
+        setRemovingManager(canisterId.toString());
+        setManagerError(null);
+
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.deregisterManager(canisterId);
+            
+            if ('Err' in result) {
+                throw new Error(result.Err);
+            }
+            
+            await fetchNeuronManagers();
+            setSuccessMessage('Manager removed from list');
+        } catch (err) {
+            console.error('Error removing manager:', err);
+            setManagerError(err.message || 'Failed to remove manager');
+        } finally {
+            setRemovingManager(null);
         }
     };
 
@@ -613,6 +688,47 @@ export default function CanistersPage() {
                         
                         {neuronManagersExpanded && (
                             <>
+                                {/* Add existing manager input */}
+                                <div style={{ ...styles.addSection, marginBottom: '16px' }}>
+                                    <div style={styles.addSectionTitle}>Add existing manager</div>
+                                    <div style={styles.inputRow}>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter neuron manager canister ID"
+                                            value={newManagerId}
+                                            onChange={(e) => {
+                                                setNewManagerId(e.target.value);
+                                                setManagerError(null);
+                                            }}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddManager()}
+                                            style={styles.input}
+                                            disabled={addingManager}
+                                        />
+                                        <button
+                                            onClick={handleAddManager}
+                                            style={{
+                                                ...styles.addButton,
+                                                backgroundColor: (addingManager || !newManagerId.trim()) ? '#6c757d' : '#8b5cf6',
+                                                cursor: (addingManager || !newManagerId.trim()) ? 'not-allowed' : 'pointer',
+                                                opacity: (addingManager || !newManagerId.trim()) ? 0.6 : 1,
+                                            }}
+                                            disabled={addingManager || !newManagerId.trim()}
+                                        >
+                                            {addingManager ? (
+                                                <FaSpinner className="spin" />
+                                            ) : (
+                                                <FaPlus />
+                                            )}
+                                            Add
+                                        </button>
+                                    </div>
+                                    {managerError && (
+                                        <div style={{ color: '#dc3545', fontSize: '13px', marginTop: '8px' }}>
+                                            {managerError}
+                                        </div>
+                                    )}
+                                </div>
+
                                 {loadingNeuronManagers ? (
                                     <div style={styles.loadingSpinner}>
                                         <FaSpinner className="spin" size={24} />
@@ -677,6 +793,18 @@ export default function CanistersPage() {
                                                         >
                                                             Details
                                                         </Link>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleRemoveManager(manager.canisterId); }}
+                                                            style={styles.removeButton}
+                                                            disabled={removingManager === canisterId}
+                                                            title="Remove from list (does not delete canister)"
+                                                        >
+                                                            {removingManager === canisterId ? (
+                                                                <FaSpinner className="spin" />
+                                                            ) : (
+                                                                <FaTrash />
+                                                            )}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             );

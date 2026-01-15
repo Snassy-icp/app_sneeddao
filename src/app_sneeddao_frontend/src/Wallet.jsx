@@ -365,6 +365,10 @@ function Wallet() {
     const [transferring, setTransferring] = useState(false);
     const [transferError, setTransferError] = useState('');
     const [transferSuccess, setTransferSuccess] = useState('');
+    const [registerManagerId, setRegisterManagerId] = useState('');
+    const [registeringManager, setRegisteringManager] = useState(false);
+    const [registerManagerError, setRegisterManagerError] = useState('');
+    const [deregisteringManager, setDeregisteringManager] = useState(null);
 
     const dex_icpswap = 1;
  
@@ -1155,6 +1159,15 @@ function Wallet() {
                 },
             });
             
+            // Also transfer the factory registration to the new owner
+            try {
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                await factory.transferManager(transferTargetManager.canisterId, newController);
+            } catch (factoryErr) {
+                console.warn('Could not transfer factory registration (may not have been registered):', factoryErr);
+                // Don't fail the transfer if factory registration fails
+            }
+            
             setTransferSuccess(`✅ Successfully transferred control to ${newController.toText()}`);
             
             // Refresh the list (the transferred manager will no longer appear)
@@ -1173,6 +1186,58 @@ function Wallet() {
             setTransferError(`Transfer failed: ${err.message || 'Unknown error'}`);
         } finally {
             setTransferring(false);
+        }
+    }
+
+    // Handle registering an existing manager canister
+    async function handleRegisterManager(canisterId) {
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.registerManager(canisterId);
+            
+            if ('Err' in result) {
+                throw new Error(result.Err);
+            }
+            
+            await fetchNeuronManagers();
+            return { success: true };
+        } catch (err) {
+            console.error('Error registering manager:', err);
+            return { success: false, error: err.message || 'Unknown error' };
+        }
+    }
+
+    // Handle deregistering a manager canister
+    async function handleDeregisterManager(canisterId) {
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.deregisterManager(canisterId);
+            
+            if ('Err' in result) {
+                throw new Error(result.Err);
+            }
+            
+            await fetchNeuronManagers();
+            return { success: true };
+        } catch (err) {
+            console.error('Error deregistering manager:', err);
+            return { success: false, error: err.message || 'Unknown error' };
         }
     }
 
@@ -4086,6 +4151,85 @@ function Wallet() {
                 </div>
                 {neuronManagersExpanded && (
                     <div style={{ marginBottom: '20px' }}>
+                        {/* Add existing manager input */}
+                        <div style={{ 
+                            backgroundColor: theme.colors.secondaryBg, 
+                            borderRadius: '8px', 
+                            padding: '12px 16px',
+                            marginBottom: '12px',
+                            display: 'flex',
+                            gap: '10px',
+                            alignItems: 'center',
+                            flexWrap: 'wrap'
+                        }}>
+                            <input
+                                type="text"
+                                placeholder="Add existing manager by canister ID"
+                                value={registerManagerId}
+                                onChange={(e) => {
+                                    setRegisterManagerId(e.target.value);
+                                    setRegisterManagerError('');
+                                }}
+                                style={{
+                                    flex: 1,
+                                    minWidth: '200px',
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    backgroundColor: theme.colors.primaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '13px',
+                                    fontFamily: 'monospace',
+                                }}
+                                disabled={registeringManager}
+                            />
+                            <button
+                                onClick={async () => {
+                                    if (!registerManagerId.trim()) return;
+                                    let canisterId;
+                                    try {
+                                        canisterId = Principal.fromText(registerManagerId.trim());
+                                    } catch (e) {
+                                        setRegisterManagerError('Invalid canister ID format');
+                                        return;
+                                    }
+                                    setRegisteringManager(true);
+                                    const result = await handleRegisterManager(canisterId);
+                                    setRegisteringManager(false);
+                                    if (result.success) {
+                                        setRegisterManagerId('');
+                                    } else {
+                                        setRegisterManagerError(result.error);
+                                    }
+                                }}
+                                disabled={registeringManager || !registerManagerId.trim()}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: (registeringManager || !registerManagerId.trim()) ? theme.colors.mutedText : theme.colors.accent,
+                                    color: '#fff',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: (registeringManager || !registerManagerId.trim()) ? 'not-allowed' : 'pointer',
+                                    opacity: (registeringManager || !registerManagerId.trim()) ? 0.6 : 1,
+                                }}
+                            >
+                                {registeringManager ? '...' : '+ Add'}
+                            </button>
+                        </div>
+                        {registerManagerError && (
+                            <div style={{ 
+                                color: '#ef4444', 
+                                fontSize: '12px', 
+                                marginBottom: '12px',
+                                marginTop: '-8px',
+                                padding: '0 4px'
+                            }}>
+                                {registerManagerError}
+                            </div>
+                        )}
+                        
                         {neuronManagersLoading ? (
                             <div className="card">
                                 <div className="spinner"></div>
@@ -4236,6 +4380,30 @@ function Wallet() {
                                                             }}
                                                         >
                                                             Transfer
+                                                        </button>
+                                                        <button
+                                                            onClick={async () => {
+                                                                setDeregisteringManager(canisterId);
+                                                                const result = await handleDeregisterManager(manager.canisterId);
+                                                                setDeregisteringManager(null);
+                                                                if (!result.success) {
+                                                                    alert(`Failed to remove: ${result.error}`);
+                                                                }
+                                                            }}
+                                                            disabled={deregisteringManager === canisterId}
+                                                            style={{
+                                                                background: 'transparent',
+                                                                color: theme.colors.mutedText,
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                padding: '8px 12px',
+                                                                borderRadius: '6px',
+                                                                cursor: deregisteringManager === canisterId ? 'not-allowed' : 'pointer',
+                                                                fontSize: '13px',
+                                                                opacity: deregisteringManager === canisterId ? 0.6 : 1,
+                                                            }}
+                                                            title="Remove from list (does not delete canister)"
+                                                        >
+                                                            {deregisteringManager === canisterId ? '...' : '✕'}
                                                         </button>
                                                     </div>
                                                 </div>

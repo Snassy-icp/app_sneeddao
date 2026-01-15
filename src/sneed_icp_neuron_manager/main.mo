@@ -571,6 +571,82 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
+    // MANAGER REGISTRATION (for externally created/transferred canisters)
+    // ============================================
+
+    // Register a manager canister to the caller's list
+    // Anyone can register any canister - we don't verify ownership
+    // This is useful for canisters created elsewhere or transferred from others
+    public shared ({ caller }) func registerManager(canisterId: Principal): async { #Ok; #Err: Text } {
+        // Check if already registered
+        switch (managers.get(canisterId)) {
+            case (?existing) {
+                // If already registered to the same owner, it's a no-op
+                if (Principal.equal(existing.owner, caller)) {
+                    return #Ok;
+                };
+                // If registered to someone else, don't allow re-registration
+                return #Err("Canister is already registered to another user. Ask them to transfer it or deregister it first.");
+            };
+            case null {
+                // Register new manager
+                let managerInfo: T.ManagerInfo = {
+                    canisterId = canisterId;
+                    owner = caller;
+                    createdAt = Time.now();
+                    version = { major = 0; minor = 0; patch = 0 }; // Unknown version for externally registered
+                    neuronId = null;
+                };
+                managers.put(canisterId, managerInfo);
+                #Ok;
+            };
+        };
+    };
+
+    // Deregister a manager canister from the caller's list
+    // Only the registered owner can deregister
+    public shared ({ caller }) func deregisterManager(canisterId: Principal): async { #Ok; #Err: Text } {
+        switch (managers.get(canisterId)) {
+            case null {
+                #Err("Canister is not registered");
+            };
+            case (?info) {
+                if (not Principal.equal(info.owner, caller)) {
+                    return #Err("Only the registered owner can deregister this canister");
+                };
+                managers.delete(canisterId);
+                #Ok;
+            };
+        };
+    };
+
+    // Transfer a manager canister from the caller to a new owner
+    // This updates the factory's records - it does NOT change canister controllers
+    // The caller should separately update the canister's controllers
+    public shared ({ caller }) func transferManager(canisterId: Principal, newOwner: Principal): async { #Ok; #Err: Text } {
+        switch (managers.get(canisterId)) {
+            case null {
+                #Err("Canister is not registered");
+            };
+            case (?info) {
+                if (not Principal.equal(info.owner, caller)) {
+                    return #Err("Only the registered owner can transfer this canister");
+                };
+                // Update the owner
+                let updatedInfo: T.ManagerInfo = {
+                    canisterId = info.canisterId;
+                    owner = newOwner;
+                    createdAt = info.createdAt;
+                    version = info.version;
+                    neuronId = info.neuronId;
+                };
+                managers.put(canisterId, updatedInfo);
+                #Ok;
+            };
+        };
+    };
+
+    // ============================================
     // HELPER FUNCTIONS
     // ============================================
 
