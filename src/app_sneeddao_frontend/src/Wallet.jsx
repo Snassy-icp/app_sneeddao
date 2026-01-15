@@ -1033,18 +1033,20 @@ function Wallet() {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             const managers = await factory.getMyManagers();
-            setNeuronManagers(managers);
             
-            // Fetch balances and neuron counts for all managers
+            // Fetch balances, neuron counts, and current versions for all managers
             if (managers.length > 0) {
                 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
                 const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host } });
                 
                 const balances = {};
                 const counts = {};
+                const updatedManagers = [];
                 
                 await Promise.all(managers.map(async (manager) => {
                     const canisterId = manager.canisterId.toText();
+                    let currentVersion = manager.version; // Fall back to factory version
+                    
                     try {
                         const balance = await ledger.icrc1_balance_of({
                             owner: manager.canisterId,
@@ -1058,16 +1060,25 @@ function Wallet() {
                     
                     try {
                         const managerActor = createManagerActor(manager.canisterId, { agent });
-                        const count = await managerActor.getNeuronCount();
+                        const [count, version] = await Promise.all([
+                            managerActor.getNeuronCount(),
+                            managerActor.getVersion(),
+                        ]);
                         counts[canisterId] = Number(count);
+                        currentVersion = version;
                     } catch (err) {
-                        console.error(`Error fetching neuron count for ${canisterId}:`, err);
+                        console.error(`Error fetching data for ${canisterId}:`, err);
                         counts[canisterId] = null;
                     }
+                    
+                    updatedManagers.push({ ...manager, version: currentVersion });
                 }));
                 
+                setNeuronManagers(updatedManagers);
                 setNeuronManagerBalances(balances);
                 setNeuronManagerCounts(counts);
+            } else {
+                setNeuronManagers(managers);
             }
         } catch (err) {
             console.error('Error fetching neuron managers:', err);

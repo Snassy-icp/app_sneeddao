@@ -10,6 +10,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain } from 'react-icons/fa';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 
 export default function CanistersPage() {
     const { theme } = useTheme();
@@ -61,7 +62,22 @@ export default function CanistersPage() {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             const managers = await factory.getMyManagers();
-            setNeuronManagers(managers);
+            
+            // Fetch current version from each canister (the factory stores creation version, not current)
+            const managersWithCurrentVersion = await Promise.all(
+                managers.map(async (manager) => {
+                    try {
+                        const managerActor = createManagerActor(manager.canisterId.toString(), { agent });
+                        const currentVersion = await managerActor.getVersion();
+                        return { ...manager, version: currentVersion };
+                    } catch (err) {
+                        console.error(`Error fetching version for ${manager.canisterId.toString()}:`, err);
+                        return manager; // Fall back to factory version
+                    }
+                })
+            );
+            
+            setNeuronManagers(managersWithCurrentVersion);
         } catch (err) {
             console.error('Error loading neuron managers:', err);
         } finally {
