@@ -2347,8 +2347,17 @@ function IcpNeuronManager() {
                                         </div>
                                     )}
                                     
-                                    {/* Install Official Version Section - shown when WASM is unverified */}
-                                    {canisterStatus?.moduleHash && !matchedOfficialVersion && latestOfficialVersion && isController && (
+                                    {/* Install Official Version Section - shown when WASM is unverified OR version mismatch */}
+                                    {(() => {
+                                        // Check for version mismatch (hash matches official but version doesn't match what canister claims)
+                                        const hasVersionMismatch = matchedOfficialVersion && managerInfo?.version && 
+                                            `${Number(matchedOfficialVersion.major)}.${Number(matchedOfficialVersion.minor)}.${Number(matchedOfficialVersion.patch)}` !== managerInfo.version;
+                                        const isUnverifiedWasm = canisterStatus?.moduleHash && !matchedOfficialVersion;
+                                        const shouldShowWarning = (isUnverifiedWasm || hasVersionMismatch) && latestOfficialVersion && isController;
+                                        
+                                        if (!shouldShowWarning) return null;
+                                        
+                                        return (
                                         <div style={{
                                             marginTop: '12px',
                                             padding: '12px',
@@ -2362,14 +2371,17 @@ function IcpNeuronManager() {
                                                 fontSize: '13px',
                                                 marginBottom: '6px'
                                             }}>
-                                                ⚠️ Unknown WASM Version
+                                                {hasVersionMismatch ? '⚠️ Version Mismatch' : '⚠️ Unknown WASM Version'}
                                             </div>
                                             <div style={{ 
                                                 color: theme.colors.mutedText, 
                                                 fontSize: '12px',
                                                 marginBottom: '12px'
                                             }}>
-                                                This canister is running an unverified WASM module. You can install the latest official version (v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}).
+                                                {hasVersionMismatch 
+                                                    ? `The WASM hash matches official v${Number(matchedOfficialVersion.major)}.${Number(matchedOfficialVersion.minor)}.${Number(matchedOfficialVersion.patch)}, but the canister reports v${managerInfo.version}. You can install the latest official version (v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}).`
+                                                    : `This canister is running an unverified WASM module. You can install the latest official version (v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}).`
+                                                }
                                             </div>
                                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                                 <button
@@ -2450,7 +2462,8 @@ function IcpNeuronManager() {
                                                 </div>
                                             )}
                                         </div>
-                                    )}
+                                        );
+                                    })()}
                                 </div>
                             )}
 
