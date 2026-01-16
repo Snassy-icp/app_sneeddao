@@ -14,7 +14,6 @@ import Cycles "mo:base/ExperimentalCycles";
 import Text "mo:base/Text";
 
 import T "Types";
-import NeuronManagerCanister "neuron_manager_canister";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
@@ -42,14 +41,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var managersStable: [(Principal, T.ManagerInfo)] = [];
     transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
     
-    // Current version (stable - preserved across upgrades)
-    var currentVersion: T.Version = T.CURRENT_VERSION; // DEPRECATED
-    
-    // Factory version (transient - always reflects compiled WASM version)
-    transient let factoryVersion: T.Version = T.CURRENT_VERSION;
+    // Current manager version (set by admin when uploading WASM)
+    var currentVersion: T.Version = { major = 0; minor = 0; patch = 0 };
     
     // Official versions registry (list of known verified WASM versions)
     var officialVersions: [T.OfficialVersion] = [];
+    
+    // Manager WASM module (uploaded by admin, used for creating new managers)
+    var managerWasm: ?Blob = null;
     
     // Creation log (audit trail of all created managers)
     var creationLog: [T.CreationLogEntry] = [];
@@ -221,15 +220,52 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
+    // MANAGER WASM MANAGEMENT
+    // ============================================
+
+    // Upload manager WASM module (admin only)
+    // This WASM will be used when creating new manager canisters
+    public shared ({ caller }) func setManagerWasm(wasm: Blob): async () {
+        assert(isAdminOrGovernance(caller));
+        managerWasm := ?wasm;
+    };
+
+    // Check if manager WASM is set
+    public query func hasManagerWasm(): async Bool {
+        switch (managerWasm) {
+            case null { false };
+            case (?_) { true };
+        };
+    };
+
+    // Get manager WASM size (for verification)
+    public query func getManagerWasmSize(): async Nat {
+        switch (managerWasm) {
+            case null { 0 };
+            case (?wasm) { wasm.size() };
+        };
+    };
+
+    // Clear manager WASM (admin only)
+    public shared ({ caller }) func clearManagerWasm(): async () {
+        assert(isAdminOrGovernance(caller));
+        managerWasm := null;
+    };
+
+    // ============================================
     // VERSION MANAGEMENT
     // ============================================
 
+    // Get the current manager version (set by admin)
     public query func getCurrentVersion(): async T.Version {
-        factoryVersion;
+        currentVersion;
     };
 
-    public query func getStoredVersion(): async T.Version {
-        currentVersion;
+    // Set the current manager version (admin only)
+    // Should be called when uploading a new WASM
+    public shared ({ caller }) func setCurrentVersion(version: T.Version): async () {
+        assert(isAdminOrGovernance(caller));
+        currentVersion := version;
     };
 
     // ============================================
@@ -478,23 +514,35 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
         };
 
-        // Now create the canister
-        try {
-            // Spawn a new NeuronManagerCanister (no init args needed)
-            let newManager = await (with cycles = canisterCreationCycles) 
-                NeuronManagerCanister.NeuronManagerCanister();
-            
-            let canisterId = Principal.fromActor(newManager);
+        // Check that we have a WASM module to install
+        let wasm = switch (managerWasm) {
+            case null {
+                return #Err(#CanisterCreationFailed("No manager WASM uploaded. Admin must upload WASM first."));
+            };
+            case (?w) { w };
+        };
 
-            // Set controllers: user and factory
-            await ic.update_settings({
-                canister_id = canisterId;
-                settings = {
+        // Now create the canister using management canister
+        try {
+            // Step 1: Create a new empty canister with controllers set
+            let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
+                settings = ?{
                     controllers = ?[caller, Principal.fromActor(this)];
                     compute_allocation = null;
                     memory_allocation = null;
                     freezing_threshold = null;
                 };
+            });
+            
+            let canisterId = createResult.canister_id;
+
+            // Step 2: Install the WASM code (empty Candid args: DIDL\00\00)
+            let emptyArgs: Blob = "\44\49\44\4c\00\00"; // DIDL header for empty args
+            await ic.install_code({
+                mode = #install;
+                canister_id = canisterId;
+                wasm_module = wasm;
+                arg = emptyArgs;
             });
 
             // Compute the account ID for the new canister
@@ -506,7 +554,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 canisterId = canisterId;
                 owner = caller;
                 createdAt = createdAt;
-                version = factoryVersion;
+                version = currentVersion;
                 neuronId = null;
             };
             managers.put(canisterId, managerInfo);

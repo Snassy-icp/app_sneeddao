@@ -30,6 +30,16 @@ export default function IcpNeuronManagerFactoryAdmin() {
   // Canister creation cycles
   const [canisterCreationCycles, setCanisterCreationCycles] = useState('');
   
+  // Manager WASM management
+  const [hasWasm, setHasWasm] = useState(false);
+  const [wasmSize, setWasmSize] = useState(0);
+  const [wasmFile, setWasmFile] = useState(null);
+  const [uploadingWasm, setUploadingWasm] = useState(false);
+  const [wasmVersionMajor, setWasmVersionMajor] = useState('');
+  const [wasmVersionMinor, setWasmVersionMinor] = useState('');
+  const [wasmVersionPatch, setWasmVersionPatch] = useState('');
+  const [managerVersion, setManagerVersion] = useState(null);
+  
   // Admin management
   const [adminList, setAdminList] = useState([]);
   const [addAdminPrincipal, setAddAdminPrincipal] = useState('');
@@ -100,7 +110,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       const actor = getFactoryActor();
       if (!actor) return;
 
-      const [config, admins, governance, cycles, icp, count, rate, versions, creationCycles] = await Promise.all([
+      const [config, admins, governance, cycles, icp, count, rate, versions, creationCycles, wasmExists, wasmBytes, mgrVersion] = await Promise.all([
         actor.getPaymentConfig(),
         actor.getAdmins(),
         actor.getSneedGovernance(),
@@ -109,7 +119,10 @@ export default function IcpNeuronManagerFactoryAdmin() {
         actor.getManagerCount(),
         actor.getConversionRate().catch(() => null),
         actor.getOfficialVersions().catch(() => []),
-        actor.getCanisterCreationCycles().catch(() => 1_000_000_000_000n)
+        actor.getCanisterCreationCycles().catch(() => 1_000_000_000_000n),
+        actor.hasManagerWasm().catch(() => false),
+        actor.getManagerWasmSize().catch(() => 0),
+        actor.getCurrentVersion().catch(() => ({ major: 0n, minor: 0n, patch: 0n }))
       ]);
 
       setPaymentConfig(config);
@@ -131,6 +144,12 @@ export default function IcpNeuronManagerFactoryAdmin() {
       setManagerCount(Number(count));
       setOfficialVersions(versions);
       setCanisterCreationCycles((Number(creationCycles) / 1_000_000_000_000).toString());
+      setHasWasm(wasmExists);
+      setWasmSize(Number(wasmBytes));
+      setManagerVersion(mgrVersion);
+      setWasmVersionMajor(Number(mgrVersion.major).toString());
+      setWasmVersionMinor(Number(mgrVersion.minor).toString());
+      setWasmVersionPatch(Number(mgrVersion.patch).toString());
     } catch (err) {
       console.error('Error fetching initial data:', err);
       setError('Failed to load initial data: ' + err.message);
@@ -238,6 +257,100 @@ export default function IcpNeuronManagerFactoryAdmin() {
     } catch (err) {
       console.error('Error setting canister creation cycles:', err);
       setError('Failed to set canister creation cycles: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWasmFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.name.endsWith('.wasm')) {
+        setError('Please select a .wasm file');
+        return;
+      }
+      setWasmFile(file);
+      setError('');
+    }
+  };
+
+  const handleUploadWasm = async () => {
+    if (!wasmFile) {
+      setError('Please select a WASM file first');
+      return;
+    }
+
+    // Validate version
+    const major = parseInt(wasmVersionMajor, 10);
+    const minor = parseInt(wasmVersionMinor, 10);
+    const patch = parseInt(wasmVersionPatch, 10);
+    
+    if (isNaN(major) || isNaN(minor) || isNaN(patch) || major < 0 || minor < 0 || patch < 0) {
+      setError('Please enter a valid version (major, minor, patch must be non-negative integers)');
+      return;
+    }
+
+    try {
+      setUploadingWasm(true);
+      setError('');
+      setSuccess('');
+      
+      const actor = getFactoryActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      // Read file as ArrayBuffer
+      const arrayBuffer = await wasmFile.arrayBuffer();
+      const wasmBytes = new Uint8Array(arrayBuffer);
+      
+      // Validate WASM magic bytes
+      if (wasmBytes[0] !== 0x00 || wasmBytes[1] !== 0x61 || 
+          wasmBytes[2] !== 0x73 || wasmBytes[3] !== 0x6d) {
+        setError('Invalid WASM file: missing magic bytes');
+        return;
+      }
+
+      // Upload WASM to canister
+      await actor.setManagerWasm(wasmBytes);
+      
+      // Set the version
+      await actor.setCurrentVersion({
+        major: BigInt(major),
+        minor: BigInt(minor),
+        patch: BigInt(patch)
+      });
+      
+      setSuccess(`Successfully uploaded WASM v${major}.${minor}.${patch} (${(wasmBytes.length / 1024).toFixed(1)} KB)`);
+      setWasmFile(null);
+      await fetchInitialData();
+    } catch (err) {
+      console.error('Error uploading WASM:', err);
+      setError('Failed to upload WASM: ' + err.message);
+    } finally {
+      setUploadingWasm(false);
+    }
+  };
+
+  const handleClearWasm = async () => {
+    if (!window.confirm('Are you sure you want to clear the manager WASM? New managers cannot be created until a new WASM is uploaded.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      
+      const actor = getFactoryActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      await actor.clearManagerWasm();
+      
+      setSuccess('Manager WASM cleared successfully');
+      await fetchInitialData();
+    } catch (err) {
+      console.error('Error clearing WASM:', err);
+      setError('Failed to clear WASM: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1230,6 +1343,174 @@ export default function IcpNeuronManagerFactoryAdmin() {
             Withdraw ICP
           </button>
         </form>
+      </div>
+
+      {/* Manager WASM Management */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginTop: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Manager WASM Module</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Upload the ICP Neuron Manager WASM module. This WASM is used when creating new manager canisters.
+        </p>
+        
+        {/* Current Status */}
+        <div style={{
+          backgroundColor: '#1a1a1a',
+          borderRadius: '6px',
+          padding: '15px',
+          marginBottom: '15px',
+          border: `1px solid ${hasWasm ? '#2ecc71' : '#e74c3c'}40`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ 
+                color: hasWasm ? '#2ecc71' : '#e74c3c', 
+                fontWeight: 'bold',
+                marginBottom: '5px'
+              }}>
+                {hasWasm ? '✓ WASM Uploaded' : '✗ No WASM Uploaded'}
+              </div>
+              {hasWasm && managerVersion && (
+                <div style={{ color: '#888', fontSize: '13px' }}>
+                  Version: <strong style={{ color: '#3498db' }}>v{Number(managerVersion.major)}.{Number(managerVersion.minor)}.{Number(managerVersion.patch)}</strong>
+                  {' · '}Size: {(wasmSize / 1024).toFixed(1)} KB ({wasmSize.toLocaleString()} bytes)
+                </div>
+              )}
+              {!hasWasm && (
+                <div style={{ color: '#888', fontSize: '13px' }}>
+                  New managers cannot be created until a WASM is uploaded.
+                </div>
+              )}
+            </div>
+            {hasWasm && (
+              <button
+                onClick={handleClearWasm}
+                disabled={loading}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: '#e74c3c',
+                  border: '1px solid #e74c3c',
+                  borderRadius: '4px',
+                  padding: '6px 12px',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Clear WASM
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Upload Form */}
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '15px' }}>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+              Select WASM File
+            </label>
+            <input
+              type="file"
+              accept=".wasm"
+              onChange={handleWasmFileSelect}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff'
+              }}
+            />
+          </div>
+        </div>
+        
+        {/* Version Input */}
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+            WASM Version
+          </label>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input
+              type="number"
+              min="0"
+              placeholder="Major"
+              value={wasmVersionMajor}
+              onChange={(e) => setWasmVersionMajor(e.target.value)}
+              style={{
+                width: '80px',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff',
+                textAlign: 'center'
+              }}
+            />
+            <span style={{ color: '#888' }}>.</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="Minor"
+              value={wasmVersionMinor}
+              onChange={(e) => setWasmVersionMinor(e.target.value)}
+              style={{
+                width: '80px',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff',
+                textAlign: 'center'
+              }}
+            />
+            <span style={{ color: '#888' }}>.</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="Patch"
+              value={wasmVersionPatch}
+              onChange={(e) => setWasmVersionPatch(e.target.value)}
+              style={{
+                width: '80px',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff',
+                textAlign: 'center'
+              }}
+            />
+          </div>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            onClick={handleUploadWasm}
+            disabled={uploadingWasm || !wasmFile}
+            style={{
+              backgroundColor: wasmFile ? '#9b59b6' : '#444',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              cursor: (uploadingWasm || !wasmFile) ? 'not-allowed' : 'pointer',
+              opacity: uploadingWasm ? 0.6 : 1,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {uploadingWasm ? 'Uploading...' : 'Upload WASM'}
+          </button>
+          {wasmFile && (
+            <span style={{ color: '#888', fontSize: '12px' }}>
+              Selected: {wasmFile.name} ({(wasmFile.size / 1024).toFixed(1)} KB)
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
