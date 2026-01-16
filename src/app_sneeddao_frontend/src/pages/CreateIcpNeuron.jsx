@@ -10,6 +10,8 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import { useNaming } from '../NamingContext';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -19,6 +21,7 @@ const ICP_FEE = 10_000;
 function CreateIcpNeuron() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
+    const { principalNames, principalNicknames } = useNaming();
     const [managers, setManagers] = useState([]);
     const [balances, setBalances] = useState({}); // canisterId -> balance in e8s
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
@@ -729,21 +732,23 @@ function CreateIcpNeuron() {
                                     const accountId = computeAccountId(manager.canisterId);
                                     const canisterIdText = manager.canisterId.toText();
                                     const balance = balances[canisterIdText];
+                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames);
                                     return (
                                         <div key={canisterIdText} style={cardStyle}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                                                 <div style={{ flex: 1, minWidth: '250px' }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
-                                                        Canister ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from wallet/DEX)</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '20px' }}>🧠</span>
+                                                        <PrincipalDisplay
+                                                            principal={canisterIdText}
+                                                            displayInfo={displayInfo}
+                                                            showCopyButton={true}
+                                                            isAuthenticated={isAuthenticated}
+                                                            noLink={true}
+                                                        />
                                                     </div>
-                                                    <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px' }}>
-                                                        {canisterIdText}
-                                                        <button 
-                                                            style={smallButtonStyle}
-                                                            onClick={() => copyToClipboard(canisterIdText)}
-                                                        >
-                                                            Copy
-                                                        </button>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                        <span style={{ color: theme.colors.accent }}>(send ICP from wallet/DEX)</span>
                                                     </div>
                                                 </div>
                                                 <div style={{ textAlign: 'right' }}>

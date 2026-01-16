@@ -11,6 +11,9 @@ import Header from '../components/Header';
 import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import { useNaming } from '../NamingContext';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
 import { FaGasPump } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 
@@ -138,6 +141,19 @@ function IcpNeuronManager() {
     const navigate = useNavigate();
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
+    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    
+    // Get display info for the canister
+    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+    
+    // Naming state
+    const [showNamingSection, setShowNamingSection] = useState(false);
+    const [nicknameInput, setNicknameInput] = useState('');
+    const [publicNameInput, setPublicNameInput] = useState('');
+    const [savingNickname, setSavingNickname] = useState(false);
+    const [savingPublicName, setSavingPublicName] = useState(false);
+    const [namingError, setNamingError] = useState('');
+    const [namingSuccess, setNamingSuccess] = useState('');
     
     // Manager state
     const [managerInfo, setManagerInfo] = useState(null);
@@ -1972,10 +1988,17 @@ function IcpNeuronManager() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="wallet-container">
-                <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px' }}>
-                    ICP Neuron Manager
+                <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '32px' }}>🧠</span>
+                    <PrincipalDisplay
+                        principal={canisterId}
+                        displayInfo={displayInfo}
+                        showCopyButton={false}
+                        isAuthenticated={isAuthenticated}
+                        noLink={true}
+                    />
                 </h1>
-                <div style={{ marginBottom: '20px' }}>
+                <div style={{ marginBottom: '20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <Link 
                         to="/help/icp-neuron-manager" 
                         style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
@@ -1984,7 +2007,172 @@ function IcpNeuronManager() {
                     >
                         Learn how it works →
                     </Link>
+                    <span style={{ color: theme.colors.border }}>|</span>
+                    <button
+                        onClick={() => setShowNamingSection(!showNamingSection)}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.accent,
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            padding: 0,
+                        }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        {showNamingSection ? 'Hide naming options ↑' : 'Set name or nickname →'}
+                    </button>
                 </div>
+                
+                {/* Naming Section */}
+                {showNamingSection && (
+                    <div style={{ 
+                        ...cardStyle, 
+                        marginBottom: '20px',
+                        backgroundColor: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                    }}>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px', fontSize: '16px' }}>
+                            🏷️ Name This Manager
+                        </h3>
+                        
+                        {namingError && (
+                            <div style={{ 
+                                color: theme.colors.error || '#ef4444', 
+                                fontSize: '13px', 
+                                marginBottom: '12px',
+                                padding: '8px 12px',
+                                backgroundColor: `${theme.colors.error || '#ef4444'}20`,
+                                borderRadius: '6px',
+                            }}>
+                                {namingError}
+                            </div>
+                        )}
+                        
+                        {namingSuccess && (
+                            <div style={{ 
+                                color: theme.colors.success || '#22c55e', 
+                                fontSize: '13px', 
+                                marginBottom: '12px',
+                                padding: '8px 12px',
+                                backgroundColor: `${theme.colors.success || '#22c55e'}20`,
+                                borderRadius: '6px',
+                            }}>
+                                {namingSuccess}
+                            </div>
+                        )}
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Nickname (private, only you see it) */}
+                            <div>
+                                <label style={{ color: theme.colors.secondaryText, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+                                    Private Nickname <span style={{ color: theme.colors.mutedText }}>(only you can see this)</span>
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        value={nicknameInput}
+                                        onChange={(e) => setNicknameInput(e.target.value)}
+                                        placeholder={displayInfo?.nickname || 'e.g., My Staking Manager'}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px 12px',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            backgroundColor: theme.colors.primaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '14px',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            if (!nicknameInput.trim()) return;
+                                            setSavingNickname(true);
+                                            setNamingError('');
+                                            setNamingSuccess('');
+                                            try {
+                                                await setPrincipalNickname(identity, canisterId, nicknameInput.trim());
+                                                setNamingSuccess('Nickname saved!');
+                                                setNicknameInput('');
+                                                if (fetchAllNames) fetchAllNames();
+                                            } catch (err) {
+                                                setNamingError(`Failed to save nickname: ${err.message}`);
+                                            } finally {
+                                                setSavingNickname(false);
+                                            }
+                                        }}
+                                        disabled={savingNickname || !nicknameInput.trim()}
+                                        style={{
+                                            ...buttonStyle,
+                                            opacity: (savingNickname || !nicknameInput.trim()) ? 0.6 : 1,
+                                        }}
+                                    >
+                                        {savingNickname ? '...' : 'Save'}
+                                    </button>
+                                </div>
+                                {displayInfo?.nickname && (
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
+                                        Current: "{displayInfo.nickname}"
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Public Name (everyone sees it) */}
+                            <div>
+                                <label style={{ color: theme.colors.secondaryText, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+                                    Public Name <span style={{ color: theme.colors.mutedText }}>(visible to everyone)</span>
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        value={publicNameInput}
+                                        onChange={(e) => setPublicNameInput(e.target.value)}
+                                        placeholder={displayInfo?.name || 'e.g., Alice\'s NNS Manager'}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px 12px',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            backgroundColor: theme.colors.primaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '14px',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            if (!publicNameInput.trim()) return;
+                                            setSavingPublicName(true);
+                                            setNamingError('');
+                                            setNamingSuccess('');
+                                            try {
+                                                await setPrincipalNameFor(identity, canisterId, publicNameInput.trim());
+                                                setNamingSuccess('Public name saved!');
+                                                setPublicNameInput('');
+                                                if (fetchAllNames) fetchAllNames();
+                                            } catch (err) {
+                                                setNamingError(`Failed to save public name: ${err.message}`);
+                                            } finally {
+                                                setSavingPublicName(false);
+                                            }
+                                        }}
+                                        disabled={savingPublicName || !publicNameInput.trim()}
+                                        style={{
+                                            ...buttonStyle,
+                                            opacity: (savingPublicName || !publicNameInput.trim()) ? 0.6 : 1,
+                                        }}
+                                    >
+                                        {savingPublicName ? '...' : 'Save'}
+                                    </button>
+                                </div>
+                                {displayInfo?.name && (
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
+                                        Current: "{displayInfo.name}"
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
                 
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.primaryText }}>
@@ -2062,14 +2250,14 @@ function IcpNeuronManager() {
                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
                                         Canister ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from wallet/DEX)</span>
                                     </div>
-                                    <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px', marginTop: '4px' }}>
-                                        {managerInfo.canisterId}
-                                        <button 
-                                            onClick={() => copyToClipboard(managerInfo.canisterId)}
-                                            style={{ ...secondaryButtonStyle, padding: '2px 8px', fontSize: '11px', marginLeft: '8px' }}
-                                        >
-                                            Copy
-                                        </button>
+                                    <div style={{ color: theme.colors.primaryText, fontSize: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <PrincipalDisplay
+                                            principal={managerInfo.canisterId}
+                                            displayInfo={displayInfo}
+                                            showCopyButton={true}
+                                            isAuthenticated={isAuthenticated}
+                                            noLink={true}
+                                        />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
