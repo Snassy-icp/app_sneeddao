@@ -370,6 +370,11 @@ function Wallet() {
     const [registerManagerError, setRegisterManagerError] = useState('');
     const [deregisteringManager, setDeregisteringManager] = useState(null);
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
+    
+    // Expanded manager cards and their neurons
+    const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
+    const [managerNeurons, setManagerNeurons] = useState({}); // canisterId -> { loading, neurons, error }
+    const [managerNeuronsTotal, setManagerNeuronsTotal] = useState(0); // Total ICP value of all manager neurons
 
     const dex_icpswap = 1;
  
@@ -1082,6 +1087,9 @@ function Wallet() {
                 setNeuronManagers(updatedManagers);
                 setNeuronManagerBalances(balances);
                 setNeuronManagerCounts(counts);
+                
+                // Fetch neurons for all managers in parallel (for wallet total calculation)
+                Promise.all(managers.map(m => fetchManagerNeuronsData(m.canisterId.toText())));
             } else {
                 setNeuronManagers(managers);
             }
@@ -1091,6 +1099,93 @@ function Wallet() {
             setNeuronManagersLoading(false);
         }
     }
+
+    // Fetch neurons for a specific manager canister
+    async function fetchManagerNeuronsData(managerCanisterId) {
+        if (!identity) return;
+        
+        const canisterIdStr = typeof managerCanisterId === 'string' ? managerCanisterId : managerCanisterId.toText();
+        
+        // Set loading state
+        setManagerNeurons(prev => ({
+            ...prev,
+            [canisterIdStr]: { loading: true, neurons: [], error: null }
+        }));
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const manager = createManagerActor(canisterIdStr, { agent });
+            
+            // Get neuron IDs
+            const neuronIds = await manager.getNeuronIds();
+            
+            if (!neuronIds || neuronIds.length === 0) {
+                setManagerNeurons(prev => ({
+                    ...prev,
+                    [canisterIdStr]: { loading: false, neurons: [], error: null }
+                }));
+                return;
+            }
+            
+            // Fetch neuron info for each neuron
+            const neuronsData = await Promise.all(
+                neuronIds.map(async (neuronId) => {
+                    try {
+                        const [infoResult, fullResult] = await Promise.all([
+                            manager.getNeuronInfo(neuronId),
+                            manager.getFullNeuron(neuronId),
+                        ]);
+                        
+                        const neuronInfo = infoResult && infoResult.length > 0 ? infoResult[0] : null;
+                        const fullNeuron = fullResult && fullResult.length > 0 ? fullResult[0] : null;
+                        
+                        return {
+                            id: neuronId,
+                            info: neuronInfo,
+                            full: fullNeuron,
+                        };
+                    } catch (err) {
+                        console.error(`Error fetching neuron ${neuronId}:`, err);
+                        return { id: neuronId, info: null, full: null, error: err.message };
+                    }
+                })
+            );
+            
+            setManagerNeurons(prev => ({
+                ...prev,
+                [canisterIdStr]: { loading: false, neurons: neuronsData, error: null }
+            }));
+        } catch (err) {
+            console.error(`Error fetching neurons for ${canisterIdStr}:`, err);
+            setManagerNeurons(prev => ({
+                ...prev,
+                [canisterIdStr]: { loading: false, neurons: [], error: err.message }
+            }));
+        }
+    }
+    
+    // Toggle manager card expansion
+    const toggleManagerCard = (canisterId) => {
+        const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toText();
+        const isExpanding = !expandedManagerCards[canisterIdStr];
+        
+        setExpandedManagerCards(prev => ({
+            ...prev,
+            [canisterIdStr]: isExpanding
+        }));
+        
+        // Fetch neurons when expanding if not already loaded
+        if (isExpanding && (!managerNeurons[canisterIdStr] || managerNeurons[canisterIdStr].error)) {
+            fetchManagerNeuronsData(canisterIdStr);
+        }
+    };
 
     // Handle transfer of neuron manager control
     async function handleTransferManager() {
@@ -1520,6 +1615,11 @@ function Wallet() {
             }
         }
 
+        // Add manager neurons ICP value to total (converted to USD)
+        if (managerNeuronsTotal > 0 && icpPrice) {
+            total += managerNeuronsTotal * icpPrice;
+        }
+
         // Format with commas and 2 decimals
         const formattedTotal = total.toLocaleString(undefined, { 
             minimumFractionDigits: 2, 
@@ -1549,7 +1649,33 @@ function Wallet() {
         // Calculate LP positions total (liquidity + fees)
         const lpUsdTotal = liquidityTotal + feesTotal;
         setLpPositionsTotal(lpUsdTotal);
-    }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
+    }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals, managerNeuronsTotal, icpPrice]);
+
+    // Calculate total ICP value from all manager neurons
+    useEffect(() => {
+        let totalIcp = 0;
+        
+        Object.values(managerNeurons).forEach(managerData => {
+            if (managerData.neurons && managerData.neurons.length > 0) {
+                managerData.neurons.forEach(neuron => {
+                    if (neuron.info) {
+                        // Add stake (in e8s)
+                        totalIcp += Number(neuron.info.stake_e8s || 0) / 1e8;
+                    }
+                    if (neuron.full) {
+                        // Add maturity (in e8s)
+                        totalIcp += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+                        // Add staked maturity if any
+                        if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
+                            totalIcp += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
+                        }
+                    }
+                });
+            }
+        });
+        
+        setManagerNeuronsTotal(totalIcp);
+    }, [managerNeurons]);
 
     const calc_send_amounts = (token, amount) => {
         console.log('=== calc_send_amounts START ===');
@@ -4131,7 +4257,11 @@ function Wallet() {
                 {/* ICP Neuron Managers Section */}
                 <SectionHeader 
                     title="ICP Neuron Managers"
-                    subtitle={neuronManagers.length > 0 ? `${neuronManagers.length}` : null}
+                    subtitle={neuronManagers.length > 0 
+                        ? (managerNeuronsTotal > 0 && icpPrice 
+                            ? `${neuronManagers.length} • $${(managerNeuronsTotal * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${neuronManagers.length}`)
+                        : null}
                     isExpanded={neuronManagersExpanded}
                     onToggle={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
                     onRefresh={handleRefreshNeuronManagers}
@@ -4266,85 +4396,131 @@ function Wallet() {
                                     const canisterId = manager.canisterId.toText();
                                     const balance = neuronManagerBalances[canisterId];
                                     const neuronCount = neuronManagerCounts[canisterId];
+                                    const isExpanded = expandedManagerCards[canisterId];
+                                    const neuronsData = managerNeurons[canisterId];
+                                    
+                                    // Calculate total ICP value for this manager (stake + maturity)
+                                    let managerTotalIcp = 0;
+                                    if (neuronsData?.neurons) {
+                                        neuronsData.neurons.forEach(neuron => {
+                                            if (neuron.info) managerTotalIcp += Number(neuron.info.stake_e8s || 0) / 1e8;
+                                            if (neuron.full) {
+                                                managerTotalIcp += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+                                                if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
+                                                    managerTotalIcp += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
+                                                }
+                                            }
+                                        });
+                                    }
                                     
                                     return (
                                         <div 
                                             key={canisterId}
                                             className="card"
                                             style={{
-                                                padding: '16px 20px',
+                                                padding: 0,
+                                                overflow: 'hidden',
                                             }}
                                         >
-                                            <div style={{ 
-                                                display: 'flex', 
-                                                justifyContent: 'space-between', 
-                                                alignItems: 'center',
-                                                flexWrap: 'wrap',
-                                                gap: '12px'
-                                            }}>
-                                                <div style={{ flex: 1, minWidth: '200px' }}>
-                                                    <div style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '8px',
-                                                        marginBottom: '8px'
-                                                    }}>
-                                                        <span style={{ fontSize: '18px' }}>🧠</span>
-                                                        <span style={{ 
-                                                            color: theme.colors.primaryText, 
-                                                            fontWeight: '600',
-                                                            fontSize: '15px'
+                                            {/* Card Header - Clickable to expand */}
+                                            <div 
+                                                onClick={() => toggleManagerCard(canisterId)}
+                                                style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    alignItems: 'center',
+                                                    flexWrap: 'wrap',
+                                                    gap: '12px',
+                                                    padding: '16px 20px',
+                                                    cursor: 'pointer',
+                                                    transition: 'background-color 0.2s',
+                                                }}
+                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.colors.tertiaryBg || 'rgba(255,255,255,0.03)'}
+                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                            >
+                                                <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '16px',
+                                                        transition: 'transform 0.2s',
+                                                        transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                    }}>▶</span>
+                                                    <div>
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '8px',
+                                                            marginBottom: '4px'
                                                         }}>
-                                                            Neuron Manager
-                                                        </span>
-                                                        <span style={{ 
-                                                            color: theme.colors.mutedText, 
-                                                            fontSize: '12px',
-                                                            backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
-                                                            padding: '2px 8px',
-                                                            borderRadius: '10px'
+                                                            <span style={{ fontSize: '18px' }}>🧠</span>
+                                                            <span style={{ 
+                                                                color: theme.colors.primaryText, 
+                                                                fontWeight: '600',
+                                                                fontSize: '15px'
+                                                            }}>
+                                                                Neuron Manager
+                                                            </span>
+                                                            <span style={{ 
+                                                                color: theme.colors.mutedText, 
+                                                                fontSize: '12px',
+                                                                backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                                                padding: '2px 8px',
+                                                                borderRadius: '10px'
+                                                            }}>
+                                                                v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ 
+                                                            color: theme.colors.secondaryText, 
+                                                            fontFamily: 'monospace', 
+                                                            fontSize: '11px',
+                                                            wordBreak: 'break-all'
                                                         }}>
-                                                            v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ 
-                                                        color: theme.colors.secondaryText, 
-                                                        fontFamily: 'monospace', 
-                                                        fontSize: '12px',
-                                                        wordBreak: 'break-all'
-                                                    }}>
-                                                        {canisterId}
+                                                            {canisterId}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 
                                                 <div style={{ 
                                                     display: 'flex', 
-                                                    gap: '24px', 
+                                                    gap: '20px', 
                                                     alignItems: 'center',
                                                     flexWrap: 'wrap'
                                                 }}>
-                                                    <div style={{ textAlign: 'center', minWidth: '80px' }}>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Balance</div>
+                                                    <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Balance</div>
                                                         <div style={{ 
                                                             color: balance > 0 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText,
                                                             fontWeight: '600',
-                                                            fontSize: '14px'
+                                                            fontSize: '13px'
                                                         }}>
                                                             {formatIcpAmount(balance)} ICP
                                                         </div>
                                                     </div>
-                                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Neurons</div>
+                                                    <div style={{ textAlign: 'center', minWidth: '50px' }}>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Neurons</div>
                                                         <div style={{ 
                                                             color: neuronCount > 0 ? (theme.colors.success || '#22c55e') : theme.colors.warning || '#f59e0b',
                                                             fontWeight: '600',
-                                                            fontSize: '14px'
+                                                            fontSize: '13px'
                                                         }}>
                                                             {neuronCount !== null && neuronCount !== undefined ? neuronCount : '...'}
                                                         </div>
                                                     </div>
+                                                    {neuronsData?.neurons?.length > 0 && icpPrice && (
+                                                        <div style={{ textAlign: 'center', minWidth: '80px' }}>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Value</div>
+                                                            <div style={{ 
+                                                                color: theme.colors.accent,
+                                                                fontWeight: '600',
+                                                                fontSize: '13px'
+                                                            }}>
+                                                                ${(managerTotalIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     
-                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
                                                         <Link 
                                                             to={`/icp_neuron_manager/${canisterId}`}
                                                             style={{
@@ -4453,6 +4629,174 @@ function Wallet() {
                                                     </div>
                                                 </div>
                                             </div>
+                                            
+                                            {/* Expanded Neurons Section */}
+                                            {isExpanded && (
+                                                <div style={{ 
+                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                    padding: '16px 20px',
+                                                    backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.1)',
+                                                }}>
+                                                    {neuronsData?.loading ? (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            justifyContent: 'center',
+                                                            padding: '20px',
+                                                            gap: '10px'
+                                                        }}>
+                                                            <div className="spinner" style={{ width: '20px', height: '20px' }}></div>
+                                                            <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Loading neurons...</span>
+                                                        </div>
+                                                    ) : neuronsData?.error ? (
+                                                        <div style={{ color: theme.colors.error || '#ef4444', fontSize: '13px', padding: '10px' }}>
+                                                            Error loading neurons: {neuronsData.error}
+                                                        </div>
+                                                    ) : neuronsData?.neurons?.length === 0 ? (
+                                                        <div style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            fontSize: '13px', 
+                                                            textAlign: 'center',
+                                                            padding: '16px' 
+                                                        }}>
+                                                            No neurons found in this manager. <Link to={`/icp_neuron_manager/${canisterId}`} style={{ color: theme.colors.accent }}>Stake ICP →</Link>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                            {neuronsData?.neurons?.map((neuron) => {
+                                                                const stake = neuron.info ? Number(neuron.info.stake_e8s || 0) / 1e8 : 0;
+                                                                const maturity = neuron.full ? Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8 : 0;
+                                                                const stakedMaturity = neuron.full?.staked_maturity_e8s_equivalent?.[0] 
+                                                                    ? Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8 
+                                                                    : 0;
+                                                                const totalNeuronIcp = stake + maturity + stakedMaturity;
+                                                                const stateNum = neuron.info?.state;
+                                                                const stateLabel = stateNum === 1 ? 'Locked' 
+                                                                    : stateNum === 2 ? 'Dissolving' 
+                                                                    : stateNum === 3 ? 'Dissolved' 
+                                                                    : 'Unknown';
+                                                                const stateColor = stateNum === 1 ? (theme.colors.success || '#22c55e')
+                                                                    : stateNum === 2 ? (theme.colors.warning || '#f59e0b')
+                                                                    : stateNum === 3 ? (theme.colors.accent || '#3b82f6')
+                                                                    : theme.colors.mutedText;
+                                                                
+                                                                return (
+                                                                    <div 
+                                                                        key={neuron.id.toString()}
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'space-between',
+                                                                            padding: '12px 16px',
+                                                                            backgroundColor: theme.colors.secondaryBg,
+                                                                            borderRadius: '8px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            flexWrap: 'wrap',
+                                                                            gap: '12px',
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ minWidth: '140px' }}>
+                                                                            <div style={{ 
+                                                                                color: theme.colors.primaryText, 
+                                                                                fontSize: '13px',
+                                                                                fontWeight: '600',
+                                                                                marginBottom: '2px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '8px'
+                                                                            }}>
+                                                                                <span>Neuron #{neuron.id.toString().slice(-6)}</span>
+                                                                                <span style={{
+                                                                                    background: stateColor,
+                                                                                    color: '#fff',
+                                                                                    padding: '1px 6px',
+                                                                                    borderRadius: '4px',
+                                                                                    fontSize: '10px',
+                                                                                    fontWeight: '500',
+                                                                                }}>
+                                                                                    {stateLabel}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div style={{ 
+                                                                                color: theme.colors.mutedText, 
+                                                                                fontSize: '11px',
+                                                                                fontFamily: 'monospace'
+                                                                            }}>
+                                                                                {neuron.id.toString()}
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                            <div style={{ textAlign: 'center', minWidth: '80px' }}>
+                                                                                <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Stake</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontSize: '13px', fontWeight: '600' }}>
+                                                                                    {stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ICP
+                                                                                </div>
+                                                                                {icpPrice && (
+                                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                                                        ${(stake * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                            
+                                                                            {(maturity > 0 || stakedMaturity > 0) && (
+                                                                                <div style={{ textAlign: 'center', minWidth: '80px' }}>
+                                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Maturity</div>
+                                                                                    <div style={{ color: theme.colors.primaryText, fontSize: '13px', fontWeight: '600' }}>
+                                                                                        {(maturity + stakedMaturity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ICP
+                                                                                    </div>
+                                                                                    {icpPrice && (
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                                                            ${((maturity + stakedMaturity) * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                            
+                                                                            <div style={{ textAlign: 'center', minWidth: '90px' }}>
+                                                                                <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Total Value</div>
+                                                                                <div style={{ color: theme.colors.accent, fontSize: '14px', fontWeight: '700' }}>
+                                                                                    {totalNeuronIcp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ICP
+                                                                                </div>
+                                                                                {icpPrice && (
+                                                                                    <div style={{ color: theme.colors.accent, fontSize: '12px', fontWeight: '600' }}>
+                                                                                        ${(totalNeuronIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            
+                                                            {/* Manager Total Summary */}
+                                                            {neuronsData?.neurons?.length > 1 && (
+                                                                <div style={{
+                                                                    display: 'flex',
+                                                                    justifyContent: 'flex-end',
+                                                                    alignItems: 'center',
+                                                                    gap: '16px',
+                                                                    padding: '12px 16px',
+                                                                    borderTop: `1px dashed ${theme.colors.border}`,
+                                                                    marginTop: '4px',
+                                                                }}>
+                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px', fontWeight: '500' }}>
+                                                                        Manager Total:
+                                                                    </span>
+                                                                    <span style={{ color: theme.colors.accent, fontSize: '15px', fontWeight: '700' }}>
+                                                                        {managerTotalIcp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ICP
+                                                                    </span>
+                                                                    {icpPrice && (
+                                                                        <span style={{ color: theme.colors.accent, fontSize: '14px', fontWeight: '600' }}>
+                                                                            (${(managerTotalIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
