@@ -2256,7 +2256,7 @@ function IcpNeuronManager() {
                                         }}>
                                             <div style={{ 
                                                 display: 'flex', 
-                                                alignItems: 'center', 
+                                                alignItems: 'flex-start', 
                                                 justifyContent: 'space-between',
                                                 flexWrap: 'wrap',
                                                 gap: '10px'
@@ -2277,36 +2277,60 @@ function IcpNeuronManager() {
                                                         v{Number(nextAvailableVersion.major)}.{Number(nextAvailableVersion.minor)}.{Number(nextAvailableVersion.patch)} is available
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleUpgrade(nextAvailableVersion, 'upgrade')}
-                                                    disabled={upgrading}
-                                                    style={{
-                                                        background: theme.colors.accent,
-                                                        color: '#fff',
-                                                        border: 'none',
-                                                        borderRadius: '6px',
-                                                        padding: '8px 16px',
-                                                        fontSize: '13px',
-                                                        fontWeight: '600',
-                                                        cursor: upgrading ? 'wait' : 'pointer',
-                                                        opacity: upgrading ? 0.7 : 1,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                    }}
-                                                >
-                                                    {upgrading && upgradeMode === 'upgrade' ? (
-                                                        <>
-                                                            <span style={{
-                                                                animation: 'spin 1s linear infinite',
-                                                                display: 'inline-block',
-                                                            }}>⏳</span>
-                                                            Upgrading...
-                                                        </>
-                                                    ) : (
-                                                        <>Upgrade Now</>
-                                                    )}
-                                                </button>
+                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <button
+                                                        onClick={() => handleUpgrade(nextAvailableVersion, 'upgrade')}
+                                                        disabled={upgrading}
+                                                        style={{
+                                                            background: theme.colors.accent,
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            padding: '8px 16px',
+                                                            fontSize: '13px',
+                                                            fontWeight: '600',
+                                                            cursor: upgrading ? 'wait' : 'pointer',
+                                                            opacity: upgrading ? 0.7 : 1,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                        }}
+                                                        title="Upgrade keeps canister state"
+                                                    >
+                                                        {upgrading && upgradeMode === 'upgrade' ? (
+                                                            <>
+                                                                <span style={{
+                                                                    animation: 'spin 1s linear infinite',
+                                                                    display: 'inline-block',
+                                                                }}>⏳</span>
+                                                                Upgrading...
+                                                            </>
+                                                        ) : (
+                                                            <>⬆️ Upgrade</>
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm('⚠️ Reinstall will WIPE ALL CANISTER STATE including creation time. This cannot be undone. Are you sure?')) {
+                                                                handleUpgrade(nextAvailableVersion, 'reinstall');
+                                                            }
+                                                        }}
+                                                        disabled={upgrading}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            color: theme.colors.mutedText,
+                                                            border: `1px solid ${theme.colors.border || '#3a3a3a'}`,
+                                                            borderRadius: '6px',
+                                                            padding: '8px 12px',
+                                                            fontSize: '12px',
+                                                            cursor: upgrading ? 'wait' : 'pointer',
+                                                            opacity: upgrading ? 0.7 : 1,
+                                                        }}
+                                                        title="⚠️ Reinstall DELETES all canister state!"
+                                                    >
+                                                        {upgrading && upgradeMode === 'reinstall' ? '⏳...' : '🔄 Reinstall'}
+                                                    </button>
+                                                </div>
                                             </div>
                                             {nextAvailableVersion.sourceUrl && (
                                                 <div style={{ marginTop: '8px', fontSize: '11px' }}>
