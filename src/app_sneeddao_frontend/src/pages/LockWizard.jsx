@@ -1007,9 +1007,9 @@ function LockWizard() {
                                 flex: 'none',
                                 padding: '14px 28px',
                             }}
-                            onClick={() => navigate('/sneedlock_info')}
+                            onClick={() => navigate(`/sneedlock_info?owner=${identity.getPrincipal().toString()}`)}
                         >
-                            View All Locks
+                            View My Locks
                         </button>
                     </div>
                 </div>
