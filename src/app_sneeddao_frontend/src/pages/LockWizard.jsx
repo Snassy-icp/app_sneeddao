@@ -16,7 +16,7 @@ import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry }
 import ConfirmationModal from '../ConfirmationModal';
 
 const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
-const dex_icpswap = { ICPSwap: null };
+const dex_icpswap = 1;
 
 function LockWizard() {
     const navigate = useNavigate();
