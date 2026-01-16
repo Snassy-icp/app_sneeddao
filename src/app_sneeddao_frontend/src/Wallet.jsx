@@ -42,6 +42,8 @@ import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { useNaming } from './NamingContext';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
@@ -272,6 +274,7 @@ var summed_locks = {};
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
+    const { principalNames, principalNicknames } = useNaming();
     const navigate = useNavigate();
     const location = useLocation();
     const [tokens, setTokens] = useState([]);
@@ -4398,6 +4401,7 @@ function Wallet() {
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
+                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
                                     
                                     // Calculate total ICP value for this manager (stake + maturity)
                                     let managerTotalIcp = 0;
@@ -4429,7 +4433,15 @@ function Wallet() {
                                                 <div className="header-content-column">
                                                     {/* Row 1: Name and USD value */}
                                                     <div className="header-row-1" style={{ minWidth: 0 }}>
-                                                        <span className="token-name">Neuron Manager</span>
+                                                        <span className="token-name">
+                                                            <PrincipalDisplay
+                                                                principal={canisterId}
+                                                                displayInfo={displayInfo}
+                                                                showCopyButton={false}
+                                                                isAuthenticated={isAuthenticated}
+                                                                noLink={true}
+                                                            />
+                                                        </span>
                                                         <span className="token-usd-value">
                                                             {managerTotalIcp > 0 && icpPrice && 
                                                                 `$${(managerTotalIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
