@@ -226,9 +226,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     case (?#NeuronId(nid)) {
                         // Neuron created - no need to store locally, we'll query NNS to get our neurons
                         
-                        // Set dissolve delay
-                        let configResult = await configureNeuron(nid, #IncreaseDissolveDelay({
-                            additional_dissolve_delay_seconds = Nat32.fromNat(Nat64.toNat(dissolve_delay_seconds));
+                        // Set dissolve delay using absolute timestamp
+                        // Using SetDissolveTimestamp instead of IncreaseDissolveDelay to avoid adding to any default delay
+                        let nowSeconds: Nat64 = Nat64.fromNat(Int.abs(Time.now() / 1_000_000_000));
+                        let dissolveTimestamp: Nat64 = nowSeconds + dissolve_delay_seconds;
+                        
+                        let configResult = await configureNeuron(nid, #SetDissolveTimestamp({
+                            dissolve_timestamp_seconds = dissolveTimestamp;
                         }));
                         
                         switch (configResult) {
