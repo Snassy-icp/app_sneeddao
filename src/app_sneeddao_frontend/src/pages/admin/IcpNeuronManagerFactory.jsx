@@ -526,8 +526,15 @@ export default function IcpNeuronManagerFactoryAdmin() {
       const actor = getFactoryActor();
       if (!actor) return;
       
-      const allManagers = await actor.getAllManagers();
-      setManagers(allManagers);
+      const allRegistrations = await actor.getAllRegistrations();
+      // Flatten the registrations into a displayable format
+      const flattenedManagers = [];
+      for (const [owner, canisterIds] of allRegistrations) {
+        for (const canisterId of canisterIds) {
+          flattenedManagers.push({ owner, canisterId });
+        }
+      }
+      setManagers(flattenedManagers);
     } catch (err) {
       console.error('Error fetching managers:', err);
       setError('Failed to fetch managers: ' + err.message);
@@ -1518,7 +1525,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
   const renderManagers = () => (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>All Managers ({managers.length})</h2>
+        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>All Registrations ({managers.length})</h2>
         <button
           onClick={fetchAllManagers}
           disabled={loading}
@@ -1532,14 +1539,14 @@ export default function IcpNeuronManagerFactoryAdmin() {
             opacity: loading ? 0.6 : 1
           }}
         >
-          Load Managers
+          Load Registrations
         </button>
       </div>
       
       <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
         {managers.length === 0 ? (
           <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
-            Click "Load Managers" to fetch all created managers
+            Click "Load Registrations" to fetch all user registrations
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1561,29 +1568,9 @@ export default function IcpNeuronManagerFactoryAdmin() {
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: '#888', fontSize: '11px' }}>Owner</div>
+                    <div style={{ color: '#888', fontSize: '11px' }}>Registered By</div>
                     <div style={{ color: '#ffffff', fontSize: '13px', fontFamily: 'monospace' }}>
                       {formatPrincipal(manager.owner)}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: '#888', fontSize: '11px' }}>Created</div>
-                    <div style={{ color: '#ffffff', fontSize: '12px' }}>
-                      {formatTimestamp(manager.createdAt)}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: '#888', fontSize: '11px' }}>Version</div>
-                    <div style={{ color: '#ffffff', fontSize: '13px' }}>
-                      {manager.version.major}.{manager.version.minor}.{manager.version.patch}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: '#888', fontSize: '11px' }}>Neuron ID</div>
-                    <div style={{ color: manager.neuronId && manager.neuronId.length > 0 ? '#2ecc71' : '#666', fontSize: '13px' }}>
-                      {manager.neuronId && manager.neuronId.length > 0 
-                        ? Number(manager.neuronId[0].id).toString() 
-                        : 'Not set'}
                     </div>
                   </div>
                 </div>

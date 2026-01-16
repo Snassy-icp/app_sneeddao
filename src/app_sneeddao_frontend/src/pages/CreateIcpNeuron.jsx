@@ -142,14 +142,20 @@ function CreateIcpNeuron() {
                 await agent.fetchRootKey();
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.getMyManagers();
-            setManagers(result);
+            const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
+            
+            // Convert to manager objects with canisterId field
+            const managerList = canisterIds.map(canisterIdPrincipal => ({
+                canisterId: canisterIdPrincipal
+            }));
+            
+            setManagers(managerList);
             setError('');
             
             // Fetch balances and neuron counts for all managers
-            if (result.length > 0) {
-                fetchBalances(result, agent);
-                fetchNeuronCounts(result, agent);
+            if (managerList.length > 0) {
+                fetchBalances(managerList, agent);
+                fetchNeuronCounts(managerList, agent);
             }
         } catch (err) {
             console.error('Error fetching managers:', err);

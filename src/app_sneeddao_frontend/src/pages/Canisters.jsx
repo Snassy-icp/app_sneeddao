@@ -67,18 +67,19 @@ export default function CanistersPage() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const managers = await factory.getMyManagers();
+            const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
             
-            // Fetch current version from each canister (the factory stores creation version, not current)
+            // Fetch current version from each canister
             const managersWithCurrentVersion = await Promise.all(
-                managers.map(async (manager) => {
+                canisterIds.map(async (canisterIdPrincipal) => {
+                    const canisterId = canisterIdPrincipal.toString();
                     try {
-                        const managerActor = createManagerActor(manager.canisterId.toString(), { agent });
+                        const managerActor = createManagerActor(canisterId, { agent });
                         const currentVersion = await managerActor.getVersion();
-                        return { ...manager, version: currentVersion };
+                        return { canisterId: canisterIdPrincipal, version: currentVersion };
                     } catch (err) {
-                        console.error(`Error fetching version for ${manager.canisterId.toString()}:`, err);
-                        return manager; // Fall back to factory version
+                        console.error(`Error fetching version for ${canisterId}:`, err);
+                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 } };
                     }
                 })
             );

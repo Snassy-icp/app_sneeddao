@@ -1046,10 +1046,10 @@ function Wallet() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const managers = await factory.getMyManagers();
+            const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
             
             // Fetch balances, neuron counts, and current versions for all managers
-            if (managers.length > 0) {
+            if (canisterIds.length > 0) {
                 const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
                 const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host } });
                 
@@ -1057,13 +1057,13 @@ function Wallet() {
                 const counts = {};
                 const updatedManagers = [];
                 
-                await Promise.all(managers.map(async (manager) => {
-                    const canisterId = manager.canisterId.toText();
-                    let currentVersion = manager.version; // Fall back to factory version
+                await Promise.all(canisterIds.map(async (canisterIdPrincipal) => {
+                    const canisterId = canisterIdPrincipal.toText();
+                    let currentVersion = { major: 0, minor: 0, patch: 0 };
                     
                     try {
                         const balance = await ledger.icrc1_balance_of({
-                            owner: manager.canisterId,
+                            owner: canisterIdPrincipal,
                             subaccount: [],
                         });
                         balances[canisterId] = Number(balance);
@@ -1073,7 +1073,7 @@ function Wallet() {
                     }
                     
                     try {
-                        const managerActor = createManagerActor(manager.canisterId, { agent });
+                        const managerActor = createManagerActor(canisterIdPrincipal, { agent });
                         const [count, version] = await Promise.all([
                             managerActor.getNeuronCount(),
                             managerActor.getVersion(),
@@ -1085,7 +1085,8 @@ function Wallet() {
                         counts[canisterId] = null;
                     }
                     
-                    updatedManagers.push({ ...manager, version: currentVersion });
+                    // Create manager object with canisterId and version
+                    updatedManagers.push({ canisterId: canisterIdPrincipal, version: currentVersion });
                 }));
                 
                 setNeuronManagers(updatedManagers);
@@ -1093,9 +1094,9 @@ function Wallet() {
                 setNeuronManagerCounts(counts);
                 
                 // Fetch neurons for all managers in parallel (for wallet total calculation)
-                Promise.all(managers.map(m => fetchManagerNeuronsData(m.canisterId.toText())));
+                Promise.all(canisterIds.map(cid => fetchManagerNeuronsData(cid.toText())));
             } else {
-                setNeuronManagers(managers);
+                setNeuronManagers([]);
             }
         } catch (err) {
             console.error('Error fetching neuron managers:', err);

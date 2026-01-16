@@ -37,9 +37,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Sneed governance canister (can also modify settings)
     var sneedGovernance: ?Principal = null;
     
-    // Mapping of canister ID -> manager canister info (allows multiple per user)
+    // DEPRECATED: Old mapping of canister ID -> manager canister info
+    // Kept for migration purposes - will be migrated to userRegistrations on upgrade
     var managersStable: [(Principal, T.ManagerInfo)] = [];
-    transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
+    transient var _managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
+    
+    // NEW: User registrations - maps owner to list of canister IDs (like bookmarks)
+    // Multiple users can register the same canister
+    var userRegistrationsStable: [(Principal, [Principal])] = [];
+    transient var userRegistrations = HashMap.HashMap<Principal, [Principal]>(10, Principal.equal, Principal.hash);
     
     // Current manager version (set by admin when uploading WASM)
     var currentVersion: T.Version = { major = 0; minor = 0; patch = 0 };
@@ -78,12 +84,37 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     system func preupgrade() {
-        managersStable := Iter.toArray(managers.entries());
+        // Save new userRegistrations to stable storage
+        userRegistrationsStable := Iter.toArray(userRegistrations.entries());
+        // Note: We no longer save to managersStable (deprecated)
     };
 
     system func postupgrade() {
-        managers := HashMap.fromIter(managersStable.vals(), managersStable.size(), Principal.equal, Principal.hash);
-        managersStable := [];
+        // First, restore userRegistrations from stable storage (if any)
+        userRegistrations := HashMap.fromIter(userRegistrationsStable.vals(), userRegistrationsStable.size(), Principal.equal, Principal.hash);
+        userRegistrationsStable := [];
+        
+        // Migration: If there's data in old managersStable, migrate it to userRegistrations
+        if (managersStable.size() > 0) {
+            for ((canisterId, info) in managersStable.vals()) {
+                // Add this canister to the owner's list
+                let owner = info.owner;
+                switch (userRegistrations.get(owner)) {
+                    case null {
+                        userRegistrations.put(owner, [canisterId]);
+                    };
+                    case (?existingList) {
+                        // Check if already in the list (avoid duplicates)
+                        let alreadyExists = Array.find<Principal>(existingList, func(p) { Principal.equal(p, canisterId) });
+                        if (alreadyExists == null) {
+                            userRegistrations.put(owner, Array.append(existingList, [canisterId]));
+                        };
+                    };
+                };
+            };
+            // Clear old stable storage after migration
+            managersStable := [];
+        };
     };
 
     // ============================================
@@ -548,16 +579,16 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Compute the account ID for the new canister
             let accountId = computeAccountId(canisterId, null);
 
-            // Record the manager (keyed by canister ID to allow multiple per user)
+            // Register the manager to the caller's bookmarks
             let createdAt = Time.now();
-            let managerInfo: T.ManagerInfo = {
-                canisterId = canisterId;
-                owner = caller;
-                createdAt = createdAt;
-                version = currentVersion;
-                neuronId = null;
+            switch (userRegistrations.get(caller)) {
+                case null {
+                    userRegistrations.put(caller, [canisterId]);
+                };
+                case (?existingList) {
+                    userRegistrations.put(caller, Array.append(existingList, [canisterId]));
+                };
             };
-            managers.put(canisterId, managerInfo);
             
             // Add to creation log
             let logEntry: T.CreationLogEntry = {
@@ -584,138 +615,151 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         await* topUpSelfWithCycles(icpAmountE8s);
     };
 
-    // Get all manager canisters owned by the caller
-    public query ({ caller }) func getMyManagers(): async [T.ManagerInfo] {
-        let result = Buffer.Buffer<T.ManagerInfo>(5);
-        for ((_, info) in managers.entries()) {
-            if (Principal.equal(info.owner, caller)) {
-                result.add(info);
-            };
+    // Get all manager canister IDs registered by the caller (bookmarks)
+    public query ({ caller }) func getMyManagers(): async [Principal] {
+        switch (userRegistrations.get(caller)) {
+            case null { [] };
+            case (?list) { list };
         };
-        Buffer.toArray(result);
     };
 
-    // Get manager info by canister ID
-    public query func getManagerByCanisterId(canisterId: Principal): async ?T.ManagerInfo {
-        managers.get(canisterId);
+    // DEPRECATED: Get manager info by canister ID
+    // With the new bookmark system, this doesn't return useful data
+    // Use the manager canister's own methods to get its info
+    public query func getManagerByCanisterId(_canisterId: Principal): async ?T.ManagerInfo {
+        null; // No longer tracked centrally
     };
 
-    // Get all managers for a specific owner
-    public query func getManagersByOwner(owner: Principal): async [T.ManagerInfo] {
-        let result = Buffer.Buffer<T.ManagerInfo>(5);
-        for ((_, info) in managers.entries()) {
-            if (Principal.equal(info.owner, owner)) {
-                result.add(info);
-            };
+    // Get all manager canister IDs registered by a specific owner
+    public query func getManagersByOwner(owner: Principal): async [Principal] {
+        switch (userRegistrations.get(owner)) {
+            case null { [] };
+            case (?list) { list };
         };
-        Buffer.toArray(result);
     };
 
-    // Get all managers (admin only)
-    public query ({ caller }) func getAllManagers(): async [T.ManagerInfo] {
+    // Get all registrations (admin only) - returns owner -> canister IDs mapping
+    public query ({ caller }) func getAllRegistrations(): async [(Principal, [Principal])] {
         assert(isAdmin(caller));
-        Iter.toArray(Iter.map<(Principal, T.ManagerInfo), T.ManagerInfo>(
-            managers.entries(),
-            func((_, info)) { info }
-        ));
+        Iter.toArray(userRegistrations.entries());
     };
 
-    // Get total number of managers
-    public query func getManagerCount(): async Nat {
-        managers.size();
+    // Get total number of unique users with registrations
+    public query func getRegisteredUserCount(): async Nat {
+        userRegistrations.size();
     };
-
-    // Update neuron ID for a manager (called by the manager canister itself or admin)
-    public shared ({ caller }) func updateManagerNeuronId(canisterId: Principal, neuronId: ?T.NeuronId): async () {
-        switch (managers.get(canisterId)) {
-            case null { /* Manager not found */ };
-            case (?info) {
-                // Only the manager canister itself or an admin can update
-                if (Principal.equal(caller, canisterId) or isAdmin(caller)) {
-                    let updatedInfo: T.ManagerInfo = {
-                        canisterId = info.canisterId;
-                        owner = info.owner;
-                        createdAt = info.createdAt;
-                        version = info.version;
-                        neuronId = neuronId;
-                    };
-                    managers.put(canisterId, updatedInfo);
-                };
-            };
+    
+    // Get total number of registrations across all users
+    public query func getTotalRegistrationCount(): async Nat {
+        var count = 0;
+        for ((_, list) in userRegistrations.entries()) {
+            count += list.size();
         };
+        count;
+    };
+    
+    // BACKWARD COMPAT: Alias for getTotalRegistrationCount
+    public query func getManagerCount(): async Nat {
+        var count = 0;
+        for ((_, list) in userRegistrations.entries()) {
+            count += list.size();
+        };
+        count;
+    };
+
+    // DEPRECATED: Update neuron ID for a manager
+    // With the new bookmark system, we no longer store neuron IDs in the factory
+    // The neuron ID should be queried directly from the manager canister
+    public shared ({ caller = _caller }) func updateManagerNeuronId(_canisterId: Principal, _neuronId: ?T.NeuronId): async () {
+        // No-op - kept for API compatibility during transition
     };
 
     // ============================================
-    // MANAGER REGISTRATION (for externally created/transferred canisters)
+    // MANAGER REGISTRATION (bookmarks - multiple users can register the same canister)
     // ============================================
 
-    // Register a manager canister to the caller's list
+    // Register a manager canister to the caller's bookmarks
     // Anyone can register any canister - we don't verify ownership
-    // This is useful for canisters created elsewhere or transferred from others
+    // Multiple users can register the same canister (it's just a bookmark)
     public shared ({ caller }) func registerManager(canisterId: Principal): async { #Ok; #Err: Text } {
-        // Check if already registered
-        switch (managers.get(canisterId)) {
-            case (?existing) {
-                // If already registered to the same owner, it's a no-op
-                if (Principal.equal(existing.owner, caller)) {
+        switch (userRegistrations.get(caller)) {
+            case null {
+                // First registration for this user
+                userRegistrations.put(caller, [canisterId]);
+                #Ok;
+            };
+            case (?existingList) {
+                // Check if already in the list
+                let alreadyExists = Array.find<Principal>(existingList, func(p) { Principal.equal(p, canisterId) });
+                if (alreadyExists != null) {
+                    // Already registered, no-op
                     return #Ok;
                 };
-                // If registered to someone else, don't allow re-registration
-                return #Err("Canister is already registered to another user. Ask them to transfer it or deregister it first.");
-            };
-            case null {
-                // Register new manager
-                let managerInfo: T.ManagerInfo = {
-                    canisterId = canisterId;
-                    owner = caller;
-                    createdAt = Time.now();
-                    version = { major = 0; minor = 0; patch = 0 }; // Unknown version for externally registered
-                    neuronId = null;
-                };
-                managers.put(canisterId, managerInfo);
+                // Add to the list
+                userRegistrations.put(caller, Array.append(existingList, [canisterId]));
                 #Ok;
             };
         };
     };
 
-    // Deregister a manager canister from the caller's list
-    // Only the registered owner can deregister
+    // Deregister a manager canister from the caller's bookmarks
     public shared ({ caller }) func deregisterManager(canisterId: Principal): async { #Ok; #Err: Text } {
-        switch (managers.get(canisterId)) {
+        switch (userRegistrations.get(caller)) {
             case null {
-                #Err("Canister is not registered");
+                #Err("You have no registered canisters");
             };
-            case (?info) {
-                if (not Principal.equal(info.owner, caller)) {
-                    return #Err("Only the registered owner can deregister this canister");
+            case (?existingList) {
+                let newList = Array.filter<Principal>(existingList, func(p) { not Principal.equal(p, canisterId) });
+                if (newList.size() == existingList.size()) {
+                    return #Err("Canister is not in your registered list");
                 };
-                managers.delete(canisterId);
+                if (newList.size() == 0) {
+                    userRegistrations.delete(caller);
+                } else {
+                    userRegistrations.put(caller, newList);
+                };
                 #Ok;
             };
         };
     };
 
-    // Transfer a manager canister from the caller to a new owner
-    // This updates the factory's records - it does NOT change canister controllers
-    // The caller should separately update the canister's controllers
+    // Transfer a manager canister registration from the caller to a new owner
+    // This removes from caller's bookmarks and adds to newOwner's bookmarks
+    // This does NOT change canister controllers - the caller should do that separately
     public shared ({ caller }) func transferManager(canisterId: Principal, newOwner: Principal): async { #Ok; #Err: Text } {
-        switch (managers.get(canisterId)) {
+        // First, check if caller has this canister registered
+        switch (userRegistrations.get(caller)) {
             case null {
-                #Err("Canister is not registered");
+                return #Err("You have no registered canisters");
             };
-            case (?info) {
-                if (not Principal.equal(info.owner, caller)) {
-                    return #Err("Only the registered owner can transfer this canister");
+            case (?callerList) {
+                let exists = Array.find<Principal>(callerList, func(p) { Principal.equal(p, canisterId) });
+                if (exists == null) {
+                    return #Err("Canister is not in your registered list");
                 };
-                // Update the owner
-                let updatedInfo: T.ManagerInfo = {
-                    canisterId = info.canisterId;
-                    owner = newOwner;
-                    createdAt = info.createdAt;
-                    version = info.version;
-                    neuronId = info.neuronId;
+                
+                // Remove from caller's list
+                let newCallerList = Array.filter<Principal>(callerList, func(p) { not Principal.equal(p, canisterId) });
+                if (newCallerList.size() == 0) {
+                    userRegistrations.delete(caller);
+                } else {
+                    userRegistrations.put(caller, newCallerList);
                 };
-                managers.put(canisterId, updatedInfo);
+                
+                // Add to new owner's list
+                switch (userRegistrations.get(newOwner)) {
+                    case null {
+                        userRegistrations.put(newOwner, [canisterId]);
+                    };
+                    case (?ownerList) {
+                        // Check if already in new owner's list
+                        let alreadyExists = Array.find<Principal>(ownerList, func(p) { Principal.equal(p, canisterId) });
+                        if (alreadyExists == null) {
+                            userRegistrations.put(newOwner, Array.append(ownerList, [canisterId]));
+                        };
+                    };
+                };
+                
                 #Ok;
             };
         };
