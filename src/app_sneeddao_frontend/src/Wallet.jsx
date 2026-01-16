@@ -369,6 +369,7 @@ function Wallet() {
     const [registeringManager, setRegisteringManager] = useState(false);
     const [registerManagerError, setRegisterManagerError] = useState('');
     const [deregisteringManager, setDeregisteringManager] = useState(null);
+    const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
 
     const dex_icpswap = 1;
  
@@ -4381,30 +4382,74 @@ function Wallet() {
                                                         >
                                                             Transfer
                                                         </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                setDeregisteringManager(canisterId);
-                                                                const result = await handleDeregisterManager(manager.canisterId);
-                                                                setDeregisteringManager(null);
-                                                                if (!result.success) {
-                                                                    alert(`Failed to remove: ${result.error}`);
-                                                                }
-                                                            }}
-                                                            disabled={deregisteringManager === canisterId}
-                                                            style={{
-                                                                background: 'transparent',
-                                                                color: theme.colors.mutedText,
-                                                                border: `1px solid ${theme.colors.border}`,
-                                                                padding: '8px 12px',
-                                                                borderRadius: '6px',
-                                                                cursor: deregisteringManager === canisterId ? 'not-allowed' : 'pointer',
-                                                                fontSize: '13px',
-                                                                opacity: deregisteringManager === canisterId ? 0.6 : 1,
-                                                            }}
-                                                            title="Remove from list (does not delete canister)"
-                                                        >
-                                                            {deregisteringManager === canisterId ? '...' : '✕'}
-                                                        </button>
+                                                        {confirmRemoveManager === canisterId ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{ 
+                                                                    color: theme.colors.mutedText, 
+                                                                    fontSize: '11px',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    Remove?
+                                                                </span>
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        setConfirmRemoveManager(null);
+                                                                        setDeregisteringManager(canisterId);
+                                                                        const result = await handleDeregisterManager(manager.canisterId);
+                                                                        setDeregisteringManager(null);
+                                                                        if (!result.success) {
+                                                                            alert(`Failed to remove: ${result.error}`);
+                                                                        }
+                                                                    }}
+                                                                    disabled={deregisteringManager === canisterId}
+                                                                    style={{
+                                                                        backgroundColor: theme.colors.error || '#ef4444',
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '4px 10px',
+                                                                        cursor: deregisteringManager === canisterId ? 'not-allowed' : 'pointer',
+                                                                        fontSize: '12px',
+                                                                        fontWeight: '500',
+                                                                        opacity: deregisteringManager === canisterId ? 0.7 : 1,
+                                                                    }}
+                                                                >
+                                                                    {deregisteringManager === canisterId ? '...' : 'Yes'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setConfirmRemoveManager(null)}
+                                                                    style={{
+                                                                        backgroundColor: theme.colors.secondaryBg,
+                                                                        color: theme.colors.primaryText,
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        borderRadius: '4px',
+                                                                        padding: '4px 10px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '12px',
+                                                                    }}
+                                                                >
+                                                                    No
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => setConfirmRemoveManager(canisterId)}
+                                                                disabled={deregisteringManager === canisterId}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    color: theme.colors.mutedText,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    padding: '8px 12px',
+                                                                    borderRadius: '6px',
+                                                                    cursor: deregisteringManager === canisterId ? 'not-allowed' : 'pointer',
+                                                                    fontSize: '13px',
+                                                                    opacity: deregisteringManager === canisterId ? 0.6 : 1,
+                                                                }}
+                                                                title="Remove from list (does not delete canister)"
+                                                            >
+                                                                {deregisteringManager === canisterId ? '...' : '✕'}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>

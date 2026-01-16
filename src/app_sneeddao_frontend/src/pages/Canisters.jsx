@@ -21,6 +21,7 @@ export default function CanistersPage() {
     const [newCanisterId, setNewCanisterId] = useState('');
     const [addingCanister, setAddingCanister] = useState(false);
     const [removingCanister, setRemovingCanister] = useState(null);
+    const [confirmRemoveCanister, setConfirmRemoveCanister] = useState(null);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
     
@@ -30,6 +31,7 @@ export default function CanistersPage() {
     const [newManagerId, setNewManagerId] = useState('');
     const [addingManager, setAddingManager] = useState(false);
     const [removingManager, setRemovingManager] = useState(null);
+    const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     const [managerError, setManagerError] = useState(null);
     
     // Collapsible section states
@@ -630,18 +632,71 @@ export default function CanistersPage() {
                                                     >
                                                         View Details
                                                     </Link>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleRemoveCanister(canisterId); }}
-                                                        style={styles.removeButton}
-                                                        disabled={removingCanister === canisterId}
-                                                        title="Remove from tracking"
-                                                    >
-                                                        {removingCanister === canisterId ? (
-                                                            <FaSpinner className="spin" />
-                                                        ) : (
-                                                            <FaTrash />
-                                                        )}
-                                                    </button>
+                                                    {confirmRemoveCanister === canisterId ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                                                            <span style={{ 
+                                                                color: '#888', 
+                                                                fontSize: '11px',
+                                                                whiteSpace: 'nowrap'
+                                                            }}>
+                                                                Remove?
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setConfirmRemoveCanister(null);
+                                                                    handleRemoveCanister(canisterId);
+                                                                }}
+                                                                disabled={removingCanister === canisterId}
+                                                                style={{
+                                                                    backgroundColor: '#ef4444',
+                                                                    color: '#fff',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '4px 10px',
+                                                                    cursor: removingCanister === canisterId ? 'not-allowed' : 'pointer',
+                                                                    fontSize: '12px',
+                                                                    fontWeight: '500',
+                                                                    opacity: removingCanister === canisterId ? 0.7 : 1,
+                                                                }}
+                                                            >
+                                                                {removingCanister === canisterId ? '...' : 'Yes'}
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setConfirmRemoveCanister(null);
+                                                                }}
+                                                                style={{
+                                                                    backgroundColor: '#2a2a2a',
+                                                                    color: '#fff',
+                                                                    border: '1px solid #3a3a3a',
+                                                                    borderRadius: '4px',
+                                                                    padding: '4px 10px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '12px',
+                                                                }}
+                                                            >
+                                                                No
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                setConfirmRemoveCanister(canisterId);
+                                                            }}
+                                                            style={styles.removeButton}
+                                                            disabled={removingCanister === canisterId}
+                                                            title="Remove from tracking"
+                                                        >
+                                                            {removingCanister === canisterId ? (
+                                                                <FaSpinner className="spin" />
+                                                            ) : (
+                                                                <FaTrash />
+                                                            )}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                             );
@@ -793,18 +848,71 @@ export default function CanistersPage() {
                                                         >
                                                             Details
                                                         </Link>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleRemoveManager(manager.canisterId); }}
-                                                            style={styles.removeButton}
-                                                            disabled={removingManager === canisterId}
-                                                            title="Remove from list (does not delete canister)"
-                                                        >
-                                                            {removingManager === canisterId ? (
-                                                                <FaSpinner className="spin" />
-                                                            ) : (
-                                                                <FaTrash />
-                                                            )}
-                                                        </button>
+                                                        {confirmRemoveManager === canisterId ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                                                                <span style={{ 
+                                                                    color: '#888', 
+                                                                    fontSize: '11px',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    Remove?
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setConfirmRemoveManager(null);
+                                                                        handleRemoveManager(manager.canisterId);
+                                                                    }}
+                                                                    disabled={removingManager === canisterId}
+                                                                    style={{
+                                                                        backgroundColor: '#ef4444',
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '4px 10px',
+                                                                        cursor: removingManager === canisterId ? 'not-allowed' : 'pointer',
+                                                                        fontSize: '12px',
+                                                                        fontWeight: '500',
+                                                                        opacity: removingManager === canisterId ? 0.7 : 1,
+                                                                    }}
+                                                                >
+                                                                    {removingManager === canisterId ? '...' : 'Yes'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setConfirmRemoveManager(null);
+                                                                    }}
+                                                                    style={{
+                                                                        backgroundColor: '#2a2a2a',
+                                                                        color: '#fff',
+                                                                        border: '1px solid #3a3a3a',
+                                                                        borderRadius: '4px',
+                                                                        padding: '4px 10px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '12px',
+                                                                    }}
+                                                                >
+                                                                    No
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={(e) => { 
+                                                                    e.stopPropagation(); 
+                                                                    setConfirmRemoveManager(canisterId);
+                                                                }}
+                                                                style={styles.removeButton}
+                                                                disabled={removingManager === canisterId}
+                                                                title="Remove from list (does not delete canister)"
+                                                            >
+                                                                {removingManager === canisterId ? (
+                                                                    <FaSpinner className="spin" />
+                                                                ) : (
+                                                                    <FaTrash />
+                                                                )}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
