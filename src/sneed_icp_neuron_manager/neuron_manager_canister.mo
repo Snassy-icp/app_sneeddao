@@ -20,9 +20,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // ============================================
 
     var createdAt: Int = Time.now();
-    var version: T.Version = T.CURRENT_VERSION; // Stable - kept for upgrade compatibility
     
-    // Transient version that always reflects the compiled WASM version
+    // Version is transient - always reflects the compiled WASM version
     transient let currentVersion: T.Version = T.CURRENT_VERSION;
 
     // Actor references
@@ -48,10 +47,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public query func getVersion(): async T.Version {
         currentVersion;
-    };
-
-    public query func getCreatedVersion(): async T.Version {
-        version;
     };
 
     public query func getCreatedAt(): async Int {
