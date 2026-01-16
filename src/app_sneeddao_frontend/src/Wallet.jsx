@@ -1231,7 +1231,7 @@ function Wallet() {
                 'wasm_memory_limit': IDL.Opt(IDL.Nat),
             });
             
-            const managementIdl = IDL.Service({
+            const managementIdl = ({ IDL }) => IDL.Service({
                 update_settings: IDL.Func([IDL.Record({
                     canister_id: IDL.Principal,
                     settings: canister_settings,
@@ -1239,14 +1239,22 @@ function Wallet() {
             });
             
             const { Actor } = await import('@dfinity/agent');
+            const targetCanisterId = transferTargetManager.canisterId;
             const managementCanister = Actor.createActor(
-                () => managementIdl, 
-                { agent, canisterId: Principal.fromText('aaaaa-aa') }
+                managementIdl, 
+                { 
+                    agent, 
+                    canisterId: Principal.fromText('aaaaa-aa'),
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: targetCanisterId,
+                    }),
+                }
             );
             
             // Transfer: set only the new controller (removes all existing)
             await managementCanister.update_settings({
-                canister_id: transferTargetManager.canisterId,
+                canister_id: targetCanisterId,
                 settings: {
                     controllers: [[newController]],
                     compute_allocation: [],
