@@ -378,6 +378,7 @@ function Wallet() {
     const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
     const [managerNeurons, setManagerNeurons] = useState({}); // canisterId -> { loading, neurons, error }
     const [managerNeuronsTotal, setManagerNeuronsTotal] = useState(0); // Total ICP value of all manager neurons
+    const [expandedNeuronsInManager, setExpandedNeuronsInManager] = useState({}); // "canisterId:neuronId" -> boolean
 
     const dex_icpswap = 1;
  
@@ -4596,56 +4597,253 @@ function Wallet() {
                                                                     : stateNum === 2 ? (theme.colors.warning || '#f59e0b')
                                                                     : stateNum === 3 ? (theme.colors.accent || '#3b82f6')
                                                                     : theme.colors.mutedText;
+                                                                const stateIcon = stateNum === 1 ? '🔒' : stateNum === 2 ? '⏳' : stateNum === 3 ? '✅' : '❓';
                                                                 
                                                                 const neuronIdStr = neuron.id?.id?.toString() || neuron.id?.toString() || 'Unknown';
+                                                                const neuronExpandKey = `${canisterId}:${neuronIdStr}`;
+                                                                const isNeuronExpanded = expandedNeuronsInManager[neuronExpandKey];
+                                                                
+                                                                // Get additional neuron details
+                                                                const dissolveDelay = neuron.info?.dissolve_delay_seconds ? Number(neuron.info.dissolve_delay_seconds) : 0;
+                                                                const votingPower = neuron.info?.voting_power ? Number(neuron.info.voting_power) / 1e8 : 0;
+                                                                const age = neuron.info?.age_seconds ? Number(neuron.info.age_seconds) : 0;
+                                                                const autoStakeMaturity = neuron.full?.auto_stake_maturity?.[0] || false;
                                                                 
                                                                 return (
                                                                     <div 
                                                                         key={neuronIdStr}
                                                                         style={{
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'space-between',
-                                                                            padding: '10px 12px',
-                                                                            backgroundColor: theme.colors.secondaryBg,
-                                                                            borderRadius: '6px',
+                                                                            borderRadius: '8px',
                                                                             border: `1px solid ${theme.colors.border}`,
-                                                                            flexWrap: 'wrap',
-                                                                            gap: '10px',
+                                                                            overflow: 'hidden',
                                                                         }}
                                                                     >
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                            <span style={{
-                                                                                background: stateColor,
-                                                                                color: '#fff',
-                                                                                padding: '2px 6px',
-                                                                                borderRadius: '4px',
-                                                                                fontSize: '10px',
-                                                                                fontWeight: '500',
-                                                                            }}>
-                                                                                {stateLabel}
-                                                                            </span>
-                                                                            <span style={{ 
-                                                                                color: theme.colors.mutedText, 
-                                                                                fontSize: '11px',
-                                                                                fontFamily: 'monospace'
-                                                                            }}>
-                                                                                {neuronIdStr}
-                                                                            </span>
-                                                                        </div>
-                                                                        
-                                                                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                                                                            <div style={{ textAlign: 'right' }}>
-                                                                                <div style={{ color: theme.colors.primaryText, fontSize: '13px', fontWeight: '600' }}>
-                                                                                    {totalNeuronIcp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ICP
+                                                                        {/* Neuron Header - Click to expand */}
+                                                                        <div 
+                                                                            onClick={() => setExpandedNeuronsInManager(prev => ({
+                                                                                ...prev,
+                                                                                [neuronExpandKey]: !prev[neuronExpandKey]
+                                                                            }))}
+                                                                            style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'space-between',
+                                                                                padding: '10px 12px',
+                                                                                backgroundColor: theme.colors.secondaryBg,
+                                                                                cursor: 'pointer',
+                                                                                transition: 'background 0.2s ease',
+                                                                            }}
+                                                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.colors.tertiaryBg || theme.colors.primaryBg}
+                                                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = theme.colors.secondaryBg}
+                                                                        >
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                                                                <div style={{ 
+                                                                                    color: theme.colors.primaryText, 
+                                                                                    fontWeight: '500',
+                                                                                    fontSize: '0.9rem'
+                                                                                }}>
+                                                                                    Neuron #{neuronIdStr.slice(-8)}...
                                                                                 </div>
-                                                                                {icpPrice && (
-                                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
-                                                                                        ${(totalNeuronIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                                    </div>
+                                                                                <div style={{ 
+                                                                                    color: theme.colors.accent, 
+                                                                                    fontWeight: '600',
+                                                                                    fontSize: '0.95rem'
+                                                                                }}>
+                                                                                    {stake.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ICP
+                                                                                    {icpPrice && (
+                                                                                        <span style={{ color: theme.colors.mutedText, fontWeight: '400', fontSize: '0.85rem', marginLeft: '6px' }}>
+                                                                                            (${(stake * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                {/* Maturity indicator */}
+                                                                                {maturity > 0 && (
+                                                                                    <span 
+                                                                                        style={{ fontSize: '1rem', cursor: 'help' }} 
+                                                                                        title={`${maturity.toFixed(4)} ICP maturity`}
+                                                                                    >
+                                                                                        🌱
+                                                                                    </span>
                                                                                 )}
+                                                                                {/* State icon */}
+                                                                                <span 
+                                                                                    style={{ fontSize: '1.1rem', cursor: 'help' }}
+                                                                                    title={stateLabel}
+                                                                                >
+                                                                                    {stateIcon}
+                                                                                </span>
+                                                                                {/* Expand indicator */}
+                                                                                <span style={{ 
+                                                                                    color: theme.colors.mutedText, 
+                                                                                    fontSize: '1rem',
+                                                                                    transform: isNeuronExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                                                    transition: 'transform 0.2s ease'
+                                                                                }}>
+                                                                                    ▼
+                                                                                </span>
                                                                             </div>
                                                                         </div>
+                                                                        
+                                                                        {/* Expanded Neuron Details */}
+                                                                        {isNeuronExpanded && (
+                                                                            <div style={{
+                                                                                padding: '12px',
+                                                                                background: theme.colors.primaryBg,
+                                                                                borderTop: `1px solid ${theme.colors.border}`
+                                                                            }}>
+                                                                                {/* Manage button row */}
+                                                                                <div style={{ 
+                                                                                    display: 'flex',
+                                                                                    justifyContent: 'flex-end',
+                                                                                    gap: '8px',
+                                                                                    marginBottom: '12px',
+                                                                                    paddingBottom: '12px',
+                                                                                    borderBottom: `1px solid ${theme.colors.border}`
+                                                                                }}>
+                                                                                    <Link
+                                                                                        to={`/icp_neuron_manager/${canisterId}`}
+                                                                                        style={{
+                                                                                            background: theme.colors.secondaryBg,
+                                                                                            color: theme.colors.primaryText,
+                                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                                            borderRadius: '6px',
+                                                                                            padding: '6px 12px',
+                                                                                            textDecoration: 'none',
+                                                                                            fontSize: '0.85rem',
+                                                                                            fontWeight: '500',
+                                                                                            display: 'inline-flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '6px',
+                                                                                        }}
+                                                                                    >
+                                                                                        ⚙️ Manage
+                                                                                    </Link>
+                                                                                    <a
+                                                                                        href={`https://dashboard.internetcomputer.org/neuron/${neuronIdStr}`}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        style={{
+                                                                                            background: theme.colors.secondaryBg,
+                                                                                            color: theme.colors.primaryText,
+                                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                                            borderRadius: '6px',
+                                                                                            padding: '6px 12px',
+                                                                                            textDecoration: 'none',
+                                                                                            fontSize: '0.85rem',
+                                                                                            fontWeight: '500',
+                                                                                            display: 'inline-flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '6px',
+                                                                                        }}
+                                                                                    >
+                                                                                        🔗 Dashboard
+                                                                                    </a>
+                                                                                </div>
+                                                                                
+                                                                                {/* Neuron Details */}
+                                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.9rem' }}>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
+                                                                                        <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                                                                            {neuronIdStr}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Stake:</span>
+                                                                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                                            {stake.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ICP
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>State:</span>
+                                                                                        <span style={{ 
+                                                                                            color: stateColor,
+                                                                                            fontWeight: '500',
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '4px'
+                                                                                        }}>
+                                                                                            {stateIcon} {stateLabel}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Dissolve Delay:</span>
+                                                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                                                            {dissolveDelay > 0 ? format_duration(dissolveDelay * 1000) : 'Not set'}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
+                                                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                                                            {votingPower.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Age:</span>
+                                                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                                                            {age > 0 ? format_duration(age * 1000) : '0'}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Maturity:</span>
+                                                                                        <span style={{ color: maturity > 0 ? theme.colors.accent : theme.colors.primaryText, fontWeight: maturity > 0 ? '600' : '400' }}>
+                                                                                            {maturity.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ICP
+                                                                                            {maturity > 0 && icpPrice && (
+                                                                                                <span style={{ color: theme.colors.mutedText, fontWeight: '400', marginLeft: '6px' }}>
+                                                                                                    (${(maturity * icpPrice).toFixed(2)})
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    {stakedMaturity > 0 && (
+                                                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                            <span style={{ color: theme.colors.secondaryText }}>Staked Maturity:</span>
+                                                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                                                {stakedMaturity.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ICP
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Auto-stake Maturity:</span>
+                                                                                        <span style={{ color: autoStakeMaturity ? theme.colors.success : theme.colors.mutedText }}>
+                                                                                            {autoStakeMaturity ? '✅ Enabled' : '❌ Disabled'}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText }}>Total Value:</span>
+                                                                                        <span style={{ color: theme.colors.accent, fontWeight: '700' }}>
+                                                                                            {totalNeuronIcp.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ICP
+                                                                                            {icpPrice && (
+                                                                                                <span style={{ marginLeft: '6px' }}>
+                                                                                                    (${(totalNeuronIcp * icpPrice).toFixed(2)})
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                
+                                                                                {/* Quick Actions Note */}
+                                                                                <div style={{ 
+                                                                                    marginTop: '12px',
+                                                                                    padding: '10px',
+                                                                                    backgroundColor: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                                                                    borderRadius: '6px',
+                                                                                    fontSize: '0.85rem',
+                                                                                    color: theme.colors.mutedText,
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '8px'
+                                                                                }}>
+                                                                                    <span>💡</span>
+                                                                                    <span>
+                                                                                        For advanced actions like dissolving, disburse maturity, staking, or following, 
+                                                                                        use the <strong style={{ color: theme.colors.primaryText }}>Manage</strong> button above.
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 );
                                                             })}
