@@ -4680,9 +4680,11 @@ function Wallet() {
                                                                     : stateNum === 3 ? (theme.colors.accent || '#3b82f6')
                                                                     : theme.colors.mutedText;
                                                                 
+                                                                const neuronIdStr = neuron.id?.id?.toString() || neuron.id?.toString() || 'Unknown';
+                                                                
                                                                 return (
                                                                     <div 
-                                                                        key={neuron.id.toString()}
+                                                                        key={neuronIdStr}
                                                                         style={{
                                                                             display: 'flex',
                                                                             alignItems: 'center',
@@ -4705,7 +4707,7 @@ function Wallet() {
                                                                                 alignItems: 'center',
                                                                                 gap: '8px'
                                                                             }}>
-                                                                                <span>Neuron #{neuron.id.toString().slice(-6)}</span>
+                                                                                <span>Neuron #{neuronIdStr.slice(-6)}</span>
                                                                                 <span style={{
                                                                                     background: stateColor,
                                                                                     color: '#fff',
@@ -4722,7 +4724,7 @@ function Wallet() {
                                                                                 fontSize: '11px',
                                                                                 fontFamily: 'monospace'
                                                                             }}>
-                                                                                {neuron.id.toString()}
+                                                                                {neuronIdStr}
                                                                             </div>
                                                                         </div>
                                                                         
