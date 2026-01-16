@@ -2,7 +2,7 @@
 import { principalToSubAccount } from "@dfinity/utils";
 import { Principal } from "@dfinity/principal";
 import { HttpAgent } from "@dfinity/agent";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
@@ -43,7 +43,7 @@ import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { useNaming } from './NamingContext';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
@@ -276,6 +276,12 @@ function Wallet() {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const navigate = useNavigate();
+    
+    // Compute account ID for the logged-in user
+    const userAccountId = useMemo(() => {
+        if (!identity) return null;
+        return computeAccountId(identity.getPrincipal());
+    }, [identity]);
     const location = useLocation();
     const [tokens, setTokens] = useState([]);
     const [showSendModal, setShowSendModal] = useState(false);
@@ -3476,63 +3482,149 @@ function Wallet() {
                         {/* Collapsible Content */}
                         {principalExpanded && (
                             <div style={{ padding: '20px' }}>
-                                <div style={{
-                                    color: theme.colors.primaryText,
-                                    fontSize: '16px',
-                                    fontWeight: '500',
-                                    marginBottom: '12px',
-                                    wordBreak: 'break-all',
-                                    fontFamily: 'monospace',
-                                    background: theme.colors.tertiaryBg,
-                                    padding: '12px',
-                                    borderRadius: '8px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: '12px',
-                                    flexWrap: 'wrap'
-                                }}>
-                                    <span style={{ flex: 1, minWidth: '200px' }}>
-                                        {identity.getPrincipal().toText()}
-                                    </span>
-                                    <button
-                                        onClick={async () => {
-                                            try {
-                                                await navigator.clipboard.writeText(identity.getPrincipal().toText());
-                                                // Could add a toast notification here
-                                            } catch (err) {
-                                                console.error('Failed to copy:', err);
-                                            }
-                                        }}
-                                        style={{
-                                            background: theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: '500',
-                                            transition: 'all 0.2s ease',
-                                            whiteSpace: 'nowrap'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.background = theme.colors.accent;
-                                        }}
-                                    >
-                                        Copy
-                                    </button>
+                                {/* Principal ID */}
+                                <div style={{ marginBottom: '16px' }}>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '11px', 
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        marginBottom: '6px'
+                                    }}>
+                                        Principal ID
+                                    </div>
+                                    <div style={{
+                                        color: theme.colors.primaryText,
+                                        fontSize: '14px',
+                                        fontWeight: '500',
+                                        wordBreak: 'break-all',
+                                        fontFamily: 'monospace',
+                                        background: theme.colors.tertiaryBg,
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '12px',
+                                        flexWrap: 'wrap'
+                                    }}>
+                                        <span style={{ flex: 1, minWidth: '200px' }}>
+                                            {identity.getPrincipal().toText()}
+                                        </span>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    await navigator.clipboard.writeText(identity.getPrincipal().toText());
+                                                } catch (err) {
+                                                    console.error('Failed to copy:', err);
+                                                }
+                                            }}
+                                            style={{
+                                                background: theme.colors.accent,
+                                                color: theme.colors.primaryBg,
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                padding: '8px 16px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '500',
+                                                transition: 'all 0.2s ease',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.target.style.background = theme.colors.accent;
+                                            }}
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
                                 </div>
+                                
+                                {/* Account ID */}
+                                {userAccountId && (
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '11px', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                            marginBottom: '6px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}>
+                                            Account ID 
+                                            <span style={{ 
+                                                color: theme.colors.accent, 
+                                                fontSize: '10px',
+                                                fontWeight: 'normal',
+                                                textTransform: 'none'
+                                            }}>
+                                                (send ICP from CEX)
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            color: theme.colors.primaryText,
+                                            fontSize: '12px',
+                                            fontWeight: '500',
+                                            wordBreak: 'break-all',
+                                            fontFamily: 'monospace',
+                                            background: theme.colors.tertiaryBg,
+                                            padding: '12px',
+                                            borderRadius: '8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '12px',
+                                            flexWrap: 'wrap'
+                                        }}>
+                                            <span style={{ flex: 1, minWidth: '200px' }}>
+                                                {userAccountId}
+                                            </span>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await navigator.clipboard.writeText(userAccountId);
+                                                    } catch (err) {
+                                                        console.error('Failed to copy:', err);
+                                                    }
+                                                }}
+                                                style={{
+                                                    background: theme.colors.accent,
+                                                    color: theme.colors.primaryBg,
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    padding: '8px 16px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '500',
+                                                    transition: 'all 0.2s ease',
+                                                    whiteSpace: 'nowrap'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.target.style.background = theme.colors.accent;
+                                                }}
+                                            >
+                                                Copy
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                
                                 <div style={{
                                     color: theme.colors.secondaryText,
                                     fontSize: '14px',
                                     lineHeight: '1.6'
                                 }}>
-                                    Use this principal to send tokens, LP positions, or neurons to your Sneed Wallet. 
-                                    You can also add this as a hotkey to your neurons on the NNS dApp to manage them from Sneed Hub.
+                                    Use the <strong>Principal ID</strong> to send tokens, LP positions, or neurons to your Sneed Wallet. 
+                                    Use the <strong>Account ID</strong> to send ICP from centralized exchanges (CEX).
+                                    You can also add this principal as a hotkey to your neurons on the NNS dApp to manage them from Sneed Hub.
                                 </div>
                             </div>
                         )}

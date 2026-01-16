@@ -1,8 +1,66 @@
 import React, { useState, useCallback } from 'react';
+import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 import PrincipalContextMenu from '../components/PrincipalContextMenu';
 import MessageDialog from '../components/MessageDialog';
 import NicknameDialog from '../components/NicknameDialog';
+
+// ============================================
+// ACCOUNT ID UTILITIES
+// ============================================
+
+// CRC32 table for checksum computation
+const getCrc32Table = () => {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) {
+            c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        table[i] = c;
+    }
+    return table;
+};
+
+// CRC32 checksum computation
+const crc32 = (data) => {
+    let crc = 0xffffffff;
+    const table = getCrc32Table();
+    for (let i = 0; i < data.length; i++) {
+        crc = (crc >>> 8) ^ table[(crc ^ data[i]) & 0xff];
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+};
+
+// Compute ICP Account ID from a principal (with optional subaccount)
+// Returns a 64-character hex string
+export const computeAccountId = (principal, subaccountBytes = null) => {
+    try {
+        const principalBytes = principal.toUint8Array();
+        const domainSeparator = new Uint8Array([0x0a, ...new TextEncoder().encode('account-id')]);
+        const subaccount = subaccountBytes || new Uint8Array(32);
+        const preimage = new Uint8Array(domainSeparator.length + principalBytes.length + subaccount.length);
+        preimage.set(domainSeparator, 0);
+        preimage.set(principalBytes, domainSeparator.length);
+        preimage.set(subaccount, domainSeparator.length + principalBytes.length);
+        const hash = sha224(preimage);
+        const crc = crc32(hash);
+        const accountId = new Uint8Array(32);
+        accountId[0] = (crc >> 24) & 0xff;
+        accountId[1] = (crc >> 16) & 0xff;
+        accountId[2] = (crc >> 8) & 0xff;
+        accountId[3] = crc & 0xff;
+        accountId.set(hash, 4);
+        return Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (err) {
+        console.error('Error computing account ID:', err);
+        return null;
+    }
+};
+
+// ============================================
+// PRINCIPAL DISPLAY UTILITIES  
+// ============================================
 
 // Truncate a principal ID for display
 export const truncatePrincipal = (principal) => {

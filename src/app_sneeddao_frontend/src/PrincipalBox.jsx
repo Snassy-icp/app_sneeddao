@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaCopy, FaCheck } from 'react-icons/fa';
 import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
+import { computeAccountId } from './utils/PrincipalUtils';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
@@ -44,30 +45,43 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Get user's display name
     const userDisplayName = identity ? getPrincipalDisplayName(identity.getPrincipal()) : null;
     const userName = userDisplayName?.name;
+    
+    // Compute account ID for the user's principal
+    const accountId = useMemo(() => {
+        if (!identity) return null;
+        return computeAccountId(identity.getPrincipal());
+    }, [identity]);
+    
+    // Track which value was copied (principal or accountId)
+    const [copiedType, setCopiedType] = useState(null);
 
-    const handleCopy = async () => {
+    const handleCopy = async (text, type = 'principal') => {
         try {
-            await navigator.clipboard.writeText(principalText);
+            await navigator.clipboard.writeText(text);
             setCopied(true);
-            setCopyFeedback('Copied to clipboard!');
+            setCopiedType(type);
+            setCopyFeedback(type === 'accountId' ? 'Account ID copied!' : 'Principal copied!');
             
             // Reset after 2 seconds
             setTimeout(() => {
                 setCopied(false);
+                setCopiedType(null);
                 setCopyFeedback('');
             }, 2000);
         } catch (err) {
             // Fallback for older browsers
             const textArea = document.createElement('textarea');
-            textArea.value = principalText;
+            textArea.value = text;
             document.body.appendChild(textArea);
             textArea.select();
             try {
                 document.execCommand('copy');
                 setCopied(true);
-                setCopyFeedback('Copied to clipboard!');
+                setCopiedType(type);
+                setCopyFeedback(type === 'accountId' ? 'Account ID copied!' : 'Principal copied!');
                 setTimeout(() => {
                     setCopied(false);
+                    setCopiedType(null);
                     setCopyFeedback('');
                 }, 2000);
             } catch (fallbackErr) {
@@ -147,28 +161,81 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                   
                   {/* Principal ID Section */}
                   <div style={{ marginBottom: '12px' }}>
-                      <div className="principal-id-container" onClick={handleCopy}>
+                      <div style={{ 
+                          color: theme.colors.mutedText, 
+                          fontSize: '10px', 
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          marginBottom: '4px'
+                      }}>
+                          Principal ID
+                      </div>
+                      <div className="principal-id-container" onClick={() => handleCopy(principalText, 'principal')}>
                           <span className="principal-id-text">
                               {truncateString(principalText, 20, "...", 6, 6)}
                           </span>
                           <button
-                              className={`copy-button ${copied ? 'copied' : ''}`}
+                              className={`copy-button ${copied && copiedType === 'principal' ? 'copied' : ''}`}
                               onClick={(e) => {
                                   e.stopPropagation();
-                                  handleCopy();
+                                  handleCopy(principalText, 'principal');
                               }}
                           >
-                              {copied ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                              {copied && copiedType === 'principal' ? <FaCheck size={12} /> : <FaCopy size={12} />}
                           </button>
                       </div>
-                      
-                      {/* Copy feedback */}
-                      {copyFeedback && (
-                          <div className="copy-feedback">
-                              {copyFeedback}
-                          </div>
-                      )}
                   </div>
+                  
+                  {/* Account ID Section */}
+                  {accountId && (
+                      <div style={{ marginBottom: '12px' }}>
+                          <div style={{ 
+                              color: theme.colors.mutedText, 
+                              fontSize: '10px', 
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              marginBottom: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                          }}>
+                              Account ID 
+                              <span style={{ 
+                                  color: theme.colors.accent, 
+                                  fontSize: '9px',
+                                  fontWeight: 'normal',
+                                  textTransform: 'none'
+                              }}>
+                                  (for CEX)
+                              </span>
+                          </div>
+                          <div 
+                              className="principal-id-container" 
+                              onClick={() => handleCopy(accountId, 'accountId')}
+                              style={{ cursor: 'pointer' }}
+                          >
+                              <span className="principal-id-text" style={{ fontSize: '11px' }}>
+                                  {truncateString(accountId, 20, "...", 8, 8)}
+                              </span>
+                              <button
+                                  className={`copy-button ${copied && copiedType === 'accountId' ? 'copied' : ''}`}
+                                  onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopy(accountId, 'accountId');
+                                  }}
+                              >
+                                  {copied && copiedType === 'accountId' ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                              </button>
+                          </div>
+                      </div>
+                  )}
+                      
+                  {/* Copy feedback */}
+                  {copyFeedback && (
+                      <div className="copy-feedback">
+                          {copyFeedback}
+                      </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="action-buttons">
