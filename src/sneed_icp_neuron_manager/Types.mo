@@ -486,6 +486,31 @@ module {
         neuronId: ?NeuronId;
     };
 
+    // Creation log entry (for factory audit log)
+    public type CreationLogEntry = {
+        canisterId: Principal;
+        caller: Principal;
+        createdAt: Int;
+        index: Nat; // Sequential index for paging
+    };
+
+    // Query parameters for creation log
+    public type CreationLogQuery = {
+        startIndex: ?Nat;      // Start from this index (for paging)
+        limit: ?Nat;           // Max entries to return
+        callerFilter: ?Principal;  // Filter by caller
+        canisterFilter: ?Principal; // Filter by canister ID
+        fromTime: ?Int;        // Filter: created after this time
+        toTime: ?Int;          // Filter: created before this time
+    };
+
+    // Result for creation log query
+    public type CreationLogResult = {
+        entries: [CreationLogEntry];
+        totalCount: Nat;       // Total matching entries (before paging)
+        hasMore: Bool;         // More entries available
+    };
+
     // ============================================
     // TOPIC ENUM (for following)
     // ============================================

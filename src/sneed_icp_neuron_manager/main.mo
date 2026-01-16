@@ -51,6 +51,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Official versions registry (list of known verified WASM versions)
     var officialVersions: [T.OfficialVersion] = [];
     
+    // Creation log (audit trail of all created managers)
+    var creationLog: [T.CreationLogEntry] = [];
+    var creationLogNextIndex: Nat = 0;
+    
     // Payment configuration
     var creationFeeE8s: Nat64 = 100_000_000; // 1 ICP default
     var icpForCyclesE8s: Nat64 = 2_000_000;  // 0.02 ICP default (~2T cycles) DEPRECATED
@@ -497,14 +501,25 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             let accountId = computeAccountId(canisterId, null);
 
             // Record the manager (keyed by canister ID to allow multiple per user)
+            let createdAt = Time.now();
             let managerInfo: T.ManagerInfo = {
                 canisterId = canisterId;
                 owner = caller;
-                createdAt = Time.now();
+                createdAt = createdAt;
                 version = factoryVersion;
                 neuronId = null;
             };
             managers.put(canisterId, managerInfo);
+            
+            // Add to creation log
+            let logEntry: T.CreationLogEntry = {
+                canisterId = canisterId;
+                caller = caller;
+                createdAt = createdAt;
+                index = creationLogNextIndex;
+            };
+            creationLog := Array.append(creationLog, [logEntry]);
+            creationLogNextIndex += 1;
 
             #Ok({
                 canisterId = canisterId;
@@ -655,6 +670,108 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 managers.put(canisterId, updatedInfo);
                 #Ok;
             };
+        };
+    };
+
+    // ============================================
+    // CREATION LOG (Admin audit trail)
+    // ============================================
+
+    // Query creation log with filtering and paging (admin only)
+    public query ({ caller }) func getCreationLog(params: T.CreationLogQuery): async T.CreationLogResult {
+        assert(isAdmin(caller));
+        
+        let startIndex = switch (params.startIndex) { case null { 0 }; case (?s) { s } };
+        let limit = switch (params.limit) { case null { 50 }; case (?l) { if (l > 500) { 500 } else { l } } };
+        
+        // Filter entries
+        let filtered = Array.filter<T.CreationLogEntry>(creationLog, func(entry) {
+            // Filter by caller
+            switch (params.callerFilter) {
+                case (?filterCaller) {
+                    if (not Principal.equal(entry.caller, filterCaller)) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            // Filter by canister
+            switch (params.canisterFilter) {
+                case (?filterCanister) {
+                    if (not Principal.equal(entry.canisterId, filterCanister)) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            // Filter by time range
+            switch (params.fromTime) {
+                case (?from) {
+                    if (entry.createdAt < from) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            switch (params.toTime) {
+                case (?to) {
+                    if (entry.createdAt > to) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            true;
+        });
+        
+        let totalCount = filtered.size();
+        
+        // Apply paging (skip to startIndex, take limit)
+        let buf = Buffer.Buffer<T.CreationLogEntry>(limit);
+        var idx: Nat = 0;
+        var count: Nat = 0;
+        
+        for (entry in filtered.vals()) {
+            if (idx >= startIndex and count < limit) {
+                buf.add(entry);
+                count += 1;
+            };
+            idx += 1;
+        };
+        
+        {
+            entries = Buffer.toArray(buf);
+            totalCount = totalCount;
+            hasMore = (startIndex + count) < totalCount;
+        };
+    };
+
+    // Get total count of creation log entries (admin only)
+    public query ({ caller }) func getCreationLogCount(): async Nat {
+        assert(isAdmin(caller));
+        creationLog.size();
+    };
+
+    // Get recent creations (convenience method, admin only)
+    public query ({ caller }) func getRecentCreations(limit: Nat): async [T.CreationLogEntry] {
+        assert(isAdmin(caller));
+        let safeLimit = if (limit > 100) { 100 } else { limit };
+        let size = creationLog.size();
+        
+        if (size <= safeLimit) {
+            // Return all in reverse order (most recent first)
+            Array.tabulate<T.CreationLogEntry>(size, func(i) {
+                creationLog[size - 1 - i];
+            });
+        } else {
+            // Return last `safeLimit` entries in reverse order
+            Array.tabulate<T.CreationLogEntry>(safeLimit, func(i) {
+                creationLog[size - 1 - i];
+            });
         };
     };
 

@@ -60,6 +60,18 @@ export default function IcpNeuronManagerFactoryAdmin() {
     sourceUrl: ''
   });
   const [editingVersionHash, setEditingVersionHash] = useState(null);
+  
+  // Creation log state
+  const [creationLog, setCreationLog] = useState([]);
+  const [creationLogTotalCount, setCreationLogTotalCount] = useState(0);
+  const [creationLogHasMore, setCreationLogHasMore] = useState(false);
+  const [creationLogPage, setCreationLogPage] = useState(0);
+  const [creationLogPageSize] = useState(20);
+  const [creationLogLoading, setCreationLogLoading] = useState(false);
+  const [logCallerFilter, setLogCallerFilter] = useState('');
+  const [logCanisterFilter, setLogCanisterFilter] = useState('');
+  const [logFromDate, setLogFromDate] = useState('');
+  const [logToDate, setLogToDate] = useState('');
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -508,6 +520,82 @@ export default function IcpNeuronManagerFactoryAdmin() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Creation log handlers
+  const fetchCreationLog = async (page = 0, resetFilters = false) => {
+    try {
+      setCreationLogLoading(true);
+      const actor = getFactoryActor();
+      if (!actor) return;
+
+      const query = {
+        startIndex: [BigInt(page * creationLogPageSize)],
+        limit: [BigInt(creationLogPageSize)],
+        callerFilter: [],
+        canisterFilter: [],
+        fromTime: [],
+        toTime: []
+      };
+
+      // Apply filters if not resetting
+      if (!resetFilters) {
+        if (logCallerFilter.trim()) {
+          try {
+            query.callerFilter = [Principal.fromText(logCallerFilter.trim())];
+          } catch (e) {
+            setError('Invalid caller principal format');
+            setCreationLogLoading(false);
+            return;
+          }
+        }
+        
+        if (logCanisterFilter.trim()) {
+          try {
+            query.canisterFilter = [Principal.fromText(logCanisterFilter.trim())];
+          } catch (e) {
+            setError('Invalid canister principal format');
+            setCreationLogLoading(false);
+            return;
+          }
+        }
+        
+        if (logFromDate) {
+          const fromTime = new Date(logFromDate).getTime() * 1_000_000; // Convert to nanoseconds
+          query.fromTime = [BigInt(fromTime)];
+        }
+        
+        if (logToDate) {
+          const toTime = new Date(logToDate).getTime() * 1_000_000 + 86400_000_000_000; // End of day in nanoseconds
+          query.toTime = [BigInt(toTime)];
+        }
+      }
+
+      const result = await actor.getCreationLog(query);
+      
+      setCreationLog(result.entries);
+      setCreationLogTotalCount(Number(result.totalCount));
+      setCreationLogHasMore(result.hasMore);
+      setCreationLogPage(page);
+    } catch (err) {
+      console.error('Error fetching creation log:', err);
+      setError('Failed to fetch creation log: ' + err.message);
+    } finally {
+      setCreationLogLoading(false);
+    }
+  };
+
+  const handleLogSearch = (e) => {
+    e.preventDefault();
+    fetchCreationLog(0, false);
+  };
+
+  const handleLogReset = () => {
+    setLogCallerFilter('');
+    setLogCanisterFilter('');
+    setLogFromDate('');
+    setLogToDate('');
+    fetchCreationLog(0, true);
   };
 
   // Render functions
@@ -1536,6 +1624,266 @@ export default function IcpNeuronManagerFactoryAdmin() {
     </div>
   );
 
+  const renderCreationLog = () => (
+    <div>
+      <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Creation Log</h2>
+      <p style={{ color: '#888', fontSize: '14px', marginBottom: '20px' }}>
+        Audit trail of all manager canisters created through this factory.
+      </p>
+      
+      {/* Search/Filter Form */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Search & Filter</h3>
+        <form onSubmit={handleLogSearch}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Caller Principal
+              </label>
+              <input
+                type="text"
+                placeholder="Filter by creator..."
+                value={logCallerFilter}
+                onChange={(e) => setLogCallerFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Canister ID
+              </label>
+              <input
+                type="text"
+                placeholder="Filter by canister..."
+                value={logCanisterFilter}
+                onChange={(e) => setLogCanisterFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                From Date
+              </label>
+              <input
+                type="date"
+                value={logFromDate}
+                onChange={(e) => setLogFromDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                To Date
+              </label>
+              <input
+                type="date"
+                value={logToDate}
+                onChange={(e) => setLogToDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="submit"
+              disabled={creationLogLoading}
+              style={{
+                backgroundColor: '#3498db',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: creationLogLoading ? 'not-allowed' : 'pointer',
+                opacity: creationLogLoading ? 0.6 : 1
+              }}
+            >
+              {creationLogLoading ? 'Searching...' : 'Search'}
+            </button>
+            <button
+              type="button"
+              onClick={handleLogReset}
+              disabled={creationLogLoading}
+              style={{
+                backgroundColor: 'transparent',
+                color: '#888',
+                border: '1px solid #3a3a3a',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: creationLogLoading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Results */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ color: '#ffffff', fontSize: '18px' }}>
+            Results ({creationLogTotalCount} total)
+          </h3>
+          <button
+            onClick={() => fetchCreationLog(creationLogPage)}
+            disabled={creationLogLoading}
+            style={{
+              backgroundColor: '#2ecc71',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              cursor: creationLogLoading ? 'not-allowed' : 'pointer',
+              opacity: creationLogLoading ? 0.6 : 1
+            }}
+          >
+            {creationLogLoading ? 'Loading...' : 'Load / Refresh'}
+          </button>
+        </div>
+
+        {creationLog.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '30px' }}>
+            {creationLogLoading ? 'Loading...' : 'No entries found. Click "Load / Refresh" to fetch the log.'}
+          </div>
+        ) : (
+          <>
+            {/* Log entries table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #3a3a3a' }}>
+                    <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>#</th>
+                    <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>Canister ID</th>
+                    <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>Creator</th>
+                    <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>Created At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creationLog.map((entry, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                      <td style={{ color: '#666', padding: '10px' }}>{Number(entry.index)}</td>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ 
+                          color: '#3498db', 
+                          fontFamily: 'monospace',
+                          fontSize: '12px'
+                        }}>
+                          {entry.canisterId.toString()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ 
+                          color: '#9b59b6', 
+                          fontFamily: 'monospace',
+                          fontSize: '12px'
+                        }}>
+                          {formatPrincipal(entry.caller)}
+                        </span>
+                      </td>
+                      <td style={{ color: '#ffffff', padding: '10px' }}>
+                        {formatTimestamp(entry.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginTop: '20px',
+              paddingTop: '15px',
+              borderTop: '1px solid #3a3a3a'
+            }}>
+              <div style={{ color: '#888', fontSize: '13px' }}>
+                Showing {creationLogPage * creationLogPageSize + 1} - {Math.min((creationLogPage + 1) * creationLogPageSize, creationLogTotalCount)} of {creationLogTotalCount}
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => fetchCreationLog(creationLogPage - 1)}
+                  disabled={creationLogPage === 0 || creationLogLoading}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: creationLogPage === 0 ? '#555' : '#3498db',
+                    border: `1px solid ${creationLogPage === 0 ? '#333' : '#3498db'}`,
+                    borderRadius: '4px',
+                    padding: '8px 16px',
+                    cursor: creationLogPage === 0 || creationLogLoading ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  ← Previous
+                </button>
+                <span style={{ color: '#888', padding: '8px 12px' }}>
+                  Page {creationLogPage + 1}
+                </span>
+                <button
+                  onClick={() => fetchCreationLog(creationLogPage + 1)}
+                  disabled={!creationLogHasMore || creationLogLoading}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: !creationLogHasMore ? '#555' : '#3498db',
+                    border: `1px solid ${!creationLogHasMore ? '#333' : '#3498db'}`,
+                    borderRadius: '4px',
+                    padding: '8px 16px',
+                    cursor: !creationLogHasMore || creationLogLoading ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   if (!isAuthenticated) {
     return (
       <div className='page-container'>
@@ -1607,7 +1955,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
           paddingBottom: '10px',
           flexWrap: 'wrap'
         }}>
-          {['config', 'admins', 'operations', 'managers', 'versions'].map(tab => (
+          {['config', 'admins', 'operations', 'managers', 'versions', 'log'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1628,6 +1976,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
               {tab === 'operations' && 'Operations'}
               {tab === 'managers' && 'Managers'}
               {tab === 'versions' && 'Versions'}
+              {tab === 'log' && 'Creation Log'}
             </button>
           ))}
         </div>
@@ -1644,6 +1993,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
             {activeTab === 'operations' && renderOperations()}
             {activeTab === 'managers' && renderManagers()}
             {activeTab === 'versions' && renderVersions()}
+            {activeTab === 'log' && renderCreationLog()}
           </>
         )}
       </main>
