@@ -22,10 +22,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // CONSTANTS
     // ============================================
 
-    transient let CANISTER_CREATION_CYCLES: Nat = 1_000_000_000_000; // 1T cycles for new canister
-    
     // CMC memo for top-up: "TPUP" in little-endian
     transient let TOP_UP_MEMO: Blob = "\54\50\55\50\00\00\00\00";
+    
+    // Cycles to allocate when creating new canisters (configurable)
+    var canisterCreationCycles: Nat = 1_000_000_000_000; // 1T cycles default
 
     // ============================================
     // STATE
@@ -204,6 +205,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         paymentRequired := required;
     };
 
+    // Get the cycles allocated to new canisters
+    public query func getCanisterCreationCycles(): async Nat {
+        canisterCreationCycles;
+    };
+
+    // Set the cycles allocated to new canisters (admin only)
+    public shared ({ caller }) func setCanisterCreationCycles(cycles: Nat): async () {
+        assert(isAdminOrGovernance(caller));
+        canisterCreationCycles := cycles;
+    };
+
     // ============================================
     // VERSION MANAGEMENT
     // ============================================
@@ -374,7 +386,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // 3. Factory checks balance, calculates ICP for cycles dynamically, processes payment, creates canister
     public shared ({ caller }) func createNeuronManager(): async T.CreateManagerResult {
         // Check cycles
-        if (Cycles.balance() < CANISTER_CREATION_CYCLES) {
+        if (Cycles.balance() < canisterCreationCycles) {
             return #Err(#InsufficientCycles);
         };
 
@@ -465,7 +477,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         // Now create the canister
         try {
             // Spawn a new NeuronManagerCanister (no init args needed)
-            let newManager = await (with cycles = CANISTER_CREATION_CYCLES) 
+            let newManager = await (with cycles = canisterCreationCycles) 
                 NeuronManagerCanister.NeuronManagerCanister();
             
             let canisterId = Principal.fromActor(newManager);

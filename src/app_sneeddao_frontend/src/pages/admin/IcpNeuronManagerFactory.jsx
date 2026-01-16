@@ -27,6 +27,9 @@ export default function IcpNeuronManagerFactoryAdmin() {
   const [cyclesBalance, setCyclesBalance] = useState(null);
   const [icpBalance, setIcpBalance] = useState(null);
   
+  // Canister creation cycles
+  const [canisterCreationCycles, setCanisterCreationCycles] = useState('');
+  
   // Admin management
   const [adminList, setAdminList] = useState([]);
   const [addAdminPrincipal, setAddAdminPrincipal] = useState('');
@@ -85,7 +88,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       const actor = getFactoryActor();
       if (!actor) return;
 
-      const [config, admins, governance, cycles, icp, count, rate, versions] = await Promise.all([
+      const [config, admins, governance, cycles, icp, count, rate, versions, creationCycles] = await Promise.all([
         actor.getPaymentConfig(),
         actor.getAdmins(),
         actor.getSneedGovernance(),
@@ -93,7 +96,8 @@ export default function IcpNeuronManagerFactoryAdmin() {
         actor.getIcpBalance(),
         actor.getManagerCount(),
         actor.getConversionRate().catch(() => null),
-        actor.getOfficialVersions().catch(() => [])
+        actor.getOfficialVersions().catch(() => []),
+        actor.getCanisterCreationCycles().catch(() => 1_000_000_000_000n)
       ]);
 
       setPaymentConfig(config);
@@ -114,6 +118,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       setIcpBalance(icp);
       setManagerCount(Number(count));
       setOfficialVersions(versions);
+      setCanisterCreationCycles((Number(creationCycles) / 1_000_000_000_000).toString());
     } catch (err) {
       console.error('Error fetching initial data:', err);
       setError('Failed to load initial data: ' + err.message);
@@ -195,6 +200,32 @@ export default function IcpNeuronManagerFactoryAdmin() {
     } catch (err) {
       console.error('Error setting payment required:', err);
       setError('Failed to set payment required: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetCanisterCreationCycles = async (e) => {
+    e.preventDefault();
+    if (!canisterCreationCycles || parseFloat(canisterCreationCycles) <= 0) {
+      setError('Please enter a valid cycles amount (in Trillion)');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getFactoryActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const cyclesAmount = BigInt(Math.round(parseFloat(canisterCreationCycles) * 1_000_000_000_000));
+      await actor.setCanisterCreationCycles(cyclesAmount);
+      setSuccess(`Canister creation cycles updated to ${canisterCreationCycles}T`);
+      await fetchInitialData();
+    } catch (err) {
+      console.error('Error setting canister creation cycles:', err);
+      setError('Failed to set canister creation cycles: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -708,6 +739,62 @@ export default function IcpNeuronManagerFactoryAdmin() {
             }}
           >
             Update Configuration
+          </button>
+        </form>
+      </div>
+
+      {/* Canister Creation Cycles */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Canister Creation Cycles</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Amount of cycles allocated to each new neuron manager canister when created.
+        </p>
+        <form onSubmit={handleSetCanisterCreationCycles} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, maxWidth: '300px' }}>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+              Cycles (Trillion)
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              min="0.1"
+              placeholder="1"
+              value={canisterCreationCycles}
+              onChange={(e) => setCanisterCreationCycles(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff'
+              }}
+            />
+            <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+              Current: {canisterCreationCycles ? `${canisterCreationCycles}T cycles` : 'Loading...'}
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              backgroundColor: '#9b59b6',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap',
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            Update Cycles
           </button>
         </form>
       </div>
