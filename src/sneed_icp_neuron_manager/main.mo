@@ -527,7 +527,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Step 1: Create a new empty canister with controllers set
             let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
                 settings = ?{
-                    controllers = ?[caller, Principal.fromActor(this)];
+                    controllers = ?[caller];
                     compute_allocation = null;
                     memory_allocation = null;
                     freezing_threshold = null;
