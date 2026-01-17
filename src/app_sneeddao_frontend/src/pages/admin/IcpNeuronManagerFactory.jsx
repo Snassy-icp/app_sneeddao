@@ -82,6 +82,10 @@ export default function IcpNeuronManagerFactoryAdmin() {
   const [logCanisterFilter, setLogCanisterFilter] = useState('');
   const [logFromDate, setLogFromDate] = useState('');
   const [logToDate, setLogToDate] = useState('');
+  
+  // Factory aggregates (financial stats)
+  const [factoryAggregates, setFactoryAggregates] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -716,6 +720,24 @@ export default function IcpNeuronManagerFactoryAdmin() {
     setLogFromDate('');
     setLogToDate('');
     fetchCreationLog(0, true);
+  };
+
+  // Fetch factory aggregates (financial stats)
+  const fetchFactoryAggregates = async () => {
+    try {
+      setStatsLoading(true);
+      const actor = getFactoryActor();
+      if (!actor) return;
+
+      const aggregates = await actor.getFactoryAggregates();
+      setFactoryAggregates(aggregates);
+    } catch (err) {
+      console.error('Error fetching factory aggregates:', err);
+      // Don't show error - the method might not exist on older deployments
+      setFactoryAggregates(null);
+    } finally {
+      setStatsLoading(false);
+    }
   };
 
   // Render functions
@@ -2152,6 +2174,230 @@ export default function IcpNeuronManagerFactoryAdmin() {
     </div>
   );
 
+  const renderStats = () => (
+    <div>
+      <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Factory Statistics</h2>
+      <p style={{ color: '#888', fontSize: '14px', marginBottom: '20px' }}>
+        Aggregate financial metrics for all canister creations. Note: Only creations after the metrics update are tracked.
+      </p>
+      
+      {/* Load Stats Button */}
+      <div style={{ marginBottom: '20px' }}>
+        <button
+          onClick={fetchFactoryAggregates}
+          disabled={statsLoading}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '12px 24px',
+            cursor: statsLoading ? 'not-allowed' : 'pointer',
+            opacity: statsLoading ? 0.6 : 1,
+            fontSize: '16px'
+          }}
+        >
+          {statsLoading ? 'Loading...' : 'Load Statistics'}
+        </button>
+      </div>
+
+      {factoryAggregates ? (
+        <>
+          {/* Summary Cards */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '20px',
+            marginBottom: '30px'
+          }}>
+            {/* Total Canisters */}
+            <div style={{
+              backgroundColor: '#2a2a2a',
+              borderRadius: '8px',
+              padding: '20px',
+              border: '1px solid #3a3a3a'
+            }}>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Total Canisters Created
+              </div>
+              <div style={{ color: '#3498db', fontSize: '36px', fontWeight: 'bold' }}>
+                {Number(factoryAggregates.totalCanistersCreated)}
+              </div>
+              <div style={{ color: '#666', fontSize: '12px', marginTop: '5px' }}>
+                (with financial tracking)
+              </div>
+            </div>
+
+            {/* Total ICP Paid */}
+            <div style={{
+              backgroundColor: '#2a2a2a',
+              borderRadius: '8px',
+              padding: '20px',
+              border: '1px solid #3a3a3a'
+            }}>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Total ICP Received
+              </div>
+              <div style={{ color: '#f39c12', fontSize: '36px', fontWeight: 'bold' }}>
+                {(Number(factoryAggregates.totalIcpPaidE8s) / E8S).toFixed(4)}
+              </div>
+              <div style={{ color: '#666', fontSize: '12px', marginTop: '5px' }}>
+                ICP from user payments
+              </div>
+            </div>
+
+            {/* Total Profit */}
+            <div style={{
+              backgroundColor: '#2a2a2a',
+              borderRadius: '8px',
+              padding: '20px',
+              border: '1px solid #2ecc71',
+              background: 'linear-gradient(135deg, #2a2a2a 0%, rgba(46, 204, 113, 0.1) 100%)'
+            }}>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                Total Profit
+              </div>
+              <div style={{ color: '#2ecc71', fontSize: '36px', fontWeight: 'bold' }}>
+                {(Number(factoryAggregates.totalIcpProfitE8s) / E8S).toFixed(4)}
+              </div>
+              <div style={{ color: '#666', fontSize: '12px', marginTop: '5px' }}>
+                ICP sent to fee destination
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Breakdown */}
+          <div style={{
+            backgroundColor: '#2a2a2a',
+            borderRadius: '8px',
+            padding: '20px',
+            marginBottom: '20px',
+            border: '1px solid #3a3a3a'
+          }}>
+            <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '20px' }}>ICP Breakdown</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Total ICP Paid by Users</div>
+                <div style={{ color: '#f39c12', fontSize: '20px', fontWeight: 'bold' }}>
+                  {(Number(factoryAggregates.totalIcpPaidE8s) / E8S).toFixed(4)} ICP
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>ICP Used for Cycles</div>
+                <div style={{ color: '#9b59b6', fontSize: '20px', fontWeight: 'bold' }}>
+                  {(Number(factoryAggregates.totalIcpForCyclesE8s) / E8S).toFixed(4)} ICP
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>ICP Profit (Fee Destination)</div>
+                <div style={{ color: '#2ecc71', fontSize: '20px', fontWeight: 'bold' }}>
+                  {(Number(factoryAggregates.totalIcpProfitE8s) / E8S).toFixed(4)} ICP
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>ICP for Transfer Fees</div>
+                <div style={{ color: '#e74c3c', fontSize: '20px', fontWeight: 'bold' }}>
+                  {(Number(factoryAggregates.totalIcpTransferFeesE8s) / E8S).toFixed(4)} ICP
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cycles Breakdown */}
+          <div style={{
+            backgroundColor: '#2a2a2a',
+            borderRadius: '8px',
+            padding: '20px',
+            border: '1px solid #3a3a3a'
+          }}>
+            <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '20px' }}>Cycles Breakdown</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Total Cycles Received from CMC</div>
+                <div style={{ color: '#2ecc71', fontSize: '20px', fontWeight: 'bold' }}>
+                  {formatCycles(factoryAggregates.totalCyclesReceivedFromCmc)}
+                </div>
+                <div style={{ color: '#666', fontSize: '11px', marginTop: '3px' }}>
+                  {Number(factoryAggregates.totalCyclesReceivedFromCmc).toLocaleString()} cycles
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Total Cycles Spent on Creation</div>
+                <div style={{ color: '#e74c3c', fontSize: '20px', fontWeight: 'bold' }}>
+                  {formatCycles(factoryAggregates.totalCyclesSpentOnCreation)}
+                </div>
+                <div style={{ color: '#666', fontSize: '11px', marginTop: '3px' }}>
+                  {Number(factoryAggregates.totalCyclesSpentOnCreation).toLocaleString()} cycles
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Net Cycles (Received - Spent)</div>
+                <div style={{ 
+                  color: Number(factoryAggregates.totalCyclesReceivedFromCmc) >= Number(factoryAggregates.totalCyclesSpentOnCreation) ? '#2ecc71' : '#e74c3c', 
+                  fontSize: '20px', 
+                  fontWeight: 'bold' 
+                }}>
+                  {formatCycles(Number(factoryAggregates.totalCyclesReceivedFromCmc) - Number(factoryAggregates.totalCyclesSpentOnCreation))}
+                </div>
+                <div style={{ color: '#666', fontSize: '11px', marginTop: '3px' }}>
+                  {(Number(factoryAggregates.totalCyclesReceivedFromCmc) - Number(factoryAggregates.totalCyclesSpentOnCreation)).toLocaleString()} cycles
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-Canister Averages */}
+          {Number(factoryAggregates.totalCanistersCreated) > 0 && (
+            <div style={{
+              backgroundColor: '#2a2a2a',
+              borderRadius: '8px',
+              padding: '20px',
+              marginTop: '20px',
+              border: '1px solid #3a3a3a'
+            }}>
+              <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '20px' }}>Per-Canister Averages</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                <div>
+                  <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Avg ICP Paid</div>
+                  <div style={{ color: '#f39c12', fontSize: '18px', fontWeight: 'bold' }}>
+                    {(Number(factoryAggregates.totalIcpPaidE8s) / Number(factoryAggregates.totalCanistersCreated) / E8S).toFixed(4)} ICP
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Avg Profit</div>
+                  <div style={{ color: '#2ecc71', fontSize: '18px', fontWeight: 'bold' }}>
+                    {(Number(factoryAggregates.totalIcpProfitE8s) / Number(factoryAggregates.totalCanistersCreated) / E8S).toFixed(4)} ICP
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Avg Cycles Used</div>
+                  <div style={{ color: '#9b59b6', fontSize: '18px', fontWeight: 'bold' }}>
+                    {formatCycles(Number(factoryAggregates.totalCyclesSpentOnCreation) / Number(factoryAggregates.totalCanistersCreated))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{
+          backgroundColor: '#2a2a2a',
+          borderRadius: '8px',
+          padding: '40px',
+          border: '1px solid #3a3a3a',
+          textAlign: 'center'
+        }}>
+          <div style={{ color: '#888', fontSize: '16px' }}>
+            {statsLoading ? 'Loading statistics...' : 'Click "Load Statistics" to fetch factory aggregate data'}
+          </div>
+          <div style={{ color: '#666', fontSize: '13px', marginTop: '10px' }}>
+            Note: Statistics are only available for factory deployments that include financial tracking.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   if (!isAuthenticated) {
     return (
       <div className='page-container'>
@@ -2223,7 +2469,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
           paddingBottom: '10px',
           flexWrap: 'wrap'
         }}>
-          {['config', 'admins', 'operations', 'managers', 'versions', 'log'].map(tab => (
+          {['config', 'admins', 'operations', 'managers', 'versions', 'log', 'stats'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -2245,6 +2491,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
               {tab === 'managers' && 'Managers'}
               {tab === 'versions' && 'Versions'}
               {tab === 'log' && 'Creation Log'}
+              {tab === 'stats' && '📊 Stats'}
             </button>
           ))}
         </div>
@@ -2262,6 +2509,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
             {activeTab === 'managers' && renderManagers()}
             {activeTab === 'versions' && renderVersions()}
             {activeTab === 'log' && renderCreationLog()}
+            {activeTab === 'stats' && renderStats()}
           </>
         )}
       </main>
