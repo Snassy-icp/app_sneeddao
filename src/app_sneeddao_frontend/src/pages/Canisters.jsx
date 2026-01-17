@@ -64,7 +64,7 @@ export default function CanistersPage() {
     const { principalNames, principalNicknames } = useNaming();
     // Canister Groups state
     const [canisterGroups, setCanisterGroupsState] = useState({ groups: [], ungrouped: [] });
-    const [canisterCycles, setCanisterCycles] = useState({}); // canisterId -> cycles (or null if can't fetch)
+    const [canisterStatus, setCanisterStatus] = useState({}); // canisterId -> { cycles, memory } (or null if can't fetch)
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [newCanisterId, setNewCanisterId] = useState('');
@@ -167,9 +167,10 @@ export default function CanistersPage() {
                             managerActor.getNeuronIds(),
                         ]);
                         
-                        // Try to fetch cycles (may fail if not controller)
+                        // Try to fetch cycles and memory (may fail if not controller)
                         // Need to create actor with effectiveCanisterId for management canister
                         let cycles = null;
+                        let memory = null;
                         try {
                             const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
                                 agent,
@@ -181,9 +182,10 @@ export default function CanistersPage() {
                             });
                             const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                             cycles = Number(status.cycles);
+                            memory = Number(status.memory_size);
                         } catch (cyclesErr) {
-                            // Not a controller, can't get cycles
-                            console.log(`Cannot fetch cycles for ${canisterId} (not a controller)`);
+                            // Not a controller, can't get status
+                            console.log(`Cannot fetch status for ${canisterId} (not a controller)`);
                         }
                         
                         return { 
@@ -191,10 +193,11 @@ export default function CanistersPage() {
                             version: currentVersion,
                             neuronCount: neuronIds?.length || 0,
                             cycles,
+                            memory,
                         };
                     } catch (err) {
                         console.error(`Error fetching info for ${canisterId}:`, err);
-                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, cycles: null };
+                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, cycles: null, memory: null };
                     }
                 })
             );
@@ -207,8 +210,8 @@ export default function CanistersPage() {
         }
     }, [identity]);
 
-    // Fetch cycles for a single custom canister (async, doesn't block UI)
-    const fetchCanisterCycles = useCallback(async (canisterId) => {
+    // Fetch status (cycles & memory) for a single custom canister (async, doesn't block UI)
+    const fetchCanisterStatus = useCallback(async (canisterId) => {
         if (!identity) return;
         
         try {
@@ -233,12 +236,13 @@ export default function CanistersPage() {
             
             const status = await mgmtActor.canister_status({ canister_id: canisterPrincipal });
             const cycles = Number(status.cycles);
+            const memory = Number(status.memory_size);
             
-            setCanisterCycles(prev => ({ ...prev, [canisterId]: cycles }));
+            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory } }));
         } catch (err) {
-            // Not a controller or other error - mark as null (won't show cycles)
-            console.log(`Cannot fetch cycles for ${canisterId}:`, err.message || err);
-            setCanisterCycles(prev => ({ ...prev, [canisterId]: null }));
+            // Not a controller or other error - mark as null (won't show status)
+            console.log(`Cannot fetch status for ${canisterId}:`, err.message || err);
+            setCanisterStatus(prev => ({ ...prev, [canisterId]: null }));
         }
     }, [identity]);
 
@@ -260,7 +264,7 @@ export default function CanistersPage() {
         const loadCanisterGroups = async () => {
             if (!identity) {
                 setCanisterGroupsState({ groups: [], ungrouped: [] });
-                setCanisterCycles({});
+                setCanisterStatus({});
                 setLoading(false);
                 return;
             }
@@ -274,7 +278,7 @@ export default function CanistersPage() {
                 // Fetch cycles for all canisters asynchronously
                 const allCanisterIds = getAllCanisterIds(groups);
                 allCanisterIds.forEach(canisterId => {
-                    fetchCanisterCycles(canisterId);
+                    fetchCanisterStatus(canisterId);
                 });
             } catch (err) {
                 console.error('Error loading canister groups:', err);
@@ -286,7 +290,7 @@ export default function CanistersPage() {
 
         loadCanisterGroups();
         fetchNeuronManagers();
-    }, [identity, fetchNeuronManagers, fetchCanisterCycles, getAllCanisterIds]);
+    }, [identity, fetchNeuronManagers, fetchCanisterStatus, getAllCanisterIds]);
     
     // Save canister groups to backend
     const saveCanisterGroups = useCallback(async (newGroups) => {
@@ -388,7 +392,7 @@ export default function CanistersPage() {
             setNewCanisterId('');
             setSuccessMessage('Canister added');
             // Fetch cycles for the new canister asynchronously
-            fetchCanisterCycles(canisterIdStr);
+            fetchCanisterStatus(canisterIdStr);
         } catch (err) {
             console.error('Error adding canister:', err);
             setError('Failed to add canister');
@@ -580,7 +584,7 @@ export default function CanistersPage() {
             setNewCanisterForGroup('');
             setAddingCanisterToGroupId(null);
             setSuccessMessage('Canister added to group');
-            fetchCanisterCycles(canisterIdStr);
+            fetchCanisterStatus(canisterIdStr);
         } catch (err) {
             console.error('Error adding canister to group:', err);
             setError('Failed to add canister');
@@ -726,7 +730,7 @@ export default function CanistersPage() {
     const GroupComponent = ({ 
         group, depth, styles, theme, expandedGroups, setExpandedGroups,
         editingGroup, setEditingGroup, editingGroupName, setEditingGroupName,
-        handleRenameGroup, handleDeleteGroup, canisterCycles, cycleSettings,
+        handleRenameGroup, handleDeleteGroup, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
         confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
         canisterGroups, handleMoveCanister,
@@ -984,7 +988,7 @@ export default function CanistersPage() {
                                 setEditingGroupName={setEditingGroupName}
                                 handleRenameGroup={handleRenameGroup}
                                 handleDeleteGroup={handleDeleteGroup}
-                                canisterCycles={canisterCycles}
+                                canisterStatus={canisterStatus}
                                 cycleSettings={cycleSettings}
                                 principalNames={principalNames}
                                 principalNicknames={principalNicknames}
@@ -1017,7 +1021,7 @@ export default function CanistersPage() {
                                         groupId={group.id}
                                         styles={styles}
                                         theme={theme}
-                                        canisterCycles={canisterCycles}
+                                        canisterStatus={canisterStatus}
                                         cycleSettings={cycleSettings}
                                         principalNames={principalNames}
                                         principalNicknames={principalNicknames}
@@ -1050,15 +1054,31 @@ export default function CanistersPage() {
         );
     };
 
+    // Helper to format memory size
+    const formatMemory = (bytes) => {
+        if (bytes === null || bytes === undefined) return 'N/A';
+        const MB = 1024 * 1024;
+        const GB = 1024 * 1024 * 1024;
+        if (bytes >= GB) {
+            return `${(bytes / GB).toFixed(2)} GB`;
+        } else if (bytes >= MB) {
+            return `${(bytes / MB).toFixed(1)} MB`;
+        } else {
+            return `${(bytes / 1024).toFixed(0)} KB`;
+        }
+    };
+
     // Component for rendering a single canister card
     const CanisterCard = ({ 
-        canisterId, groupId, styles, theme, canisterCycles, cycleSettings,
+        canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
         confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
         canisterGroups, handleMoveCanister
     }) => {
         const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
-        const cycles = canisterCycles[canisterId];
+        const status = canisterStatus[canisterId];
+        const cycles = status?.cycles;
+        const memory = status?.memory;
         const isConfirming = confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === groupId;
 
         // Collect all groups for the move dropdown
@@ -1105,7 +1125,20 @@ export default function CanistersPage() {
                             ⚡ {formatCyclesCompact(cycles)}
                         </span>
                     )}
-                    {cycles === undefined && (
+                    {/* Memory badge */}
+                    {memory !== undefined && memory !== null && (
+                        <span 
+                            style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${theme.colors.primary || '#3b82f6'}20`,
+                                color: theme.colors.primary || '#3b82f6',
+                            }}
+                            title={`${memory.toLocaleString()} bytes`}
+                        >
+                            💾 {formatMemory(memory)}
+                        </span>
+                    )}
+                    {status === undefined && (
                         <span 
                             style={{
                                 ...styles.managerVersion,
@@ -1609,7 +1642,7 @@ export default function CanistersPage() {
                                                 setEditingGroupName={setEditingGroupName}
                                                 handleRenameGroup={handleRenameGroup}
                                                 handleDeleteGroup={handleDeleteGroup}
-                                                canisterCycles={canisterCycles}
+                                                canisterStatus={canisterStatus}
                                                 cycleSettings={cycleSettings}
                                                 principalNames={principalNames}
                                                 principalNicknames={principalNicknames}
@@ -1651,7 +1684,7 @@ export default function CanistersPage() {
                                                             groupId="ungrouped"
                                                             styles={styles}
                                                             theme={theme}
-                                                            canisterCycles={canisterCycles}
+                                                            canisterStatus={canisterStatus}
                                                             cycleSettings={cycleSettings}
                                                             principalNames={principalNames}
                                                             principalNicknames={principalNicknames}
@@ -1825,6 +1858,18 @@ export default function CanistersPage() {
                                                                         title={`${manager.cycles.toLocaleString()} cycles`}
                                                                     >
                                                                         ⚡ {formatCyclesCompact(manager.cycles)}
+                                                                    </span>
+                                                                )}
+                                                                {manager.memory !== null && (
+                                                                    <span 
+                                                                        style={{
+                                                                            ...styles.managerVersion,
+                                                                            backgroundColor: `${theme.colors.primary || '#3b82f6'}20`,
+                                                                            color: theme.colors.primary || '#3b82f6',
+                                                                        }}
+                                                                        title={`${manager.memory.toLocaleString()} bytes`}
+                                                                    >
+                                                                        💾 {formatMemory(manager.memory)}
                                                                     </span>
                                                                 )}
                                                             </div>
