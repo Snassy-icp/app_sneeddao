@@ -290,7 +290,9 @@ export default function CanistersPage() {
     
     // Save canister groups to backend
     const saveCanisterGroups = useCallback(async (newGroups) => {
-        if (!identity) return;
+        if (!identity) {
+            throw new Error('Please log in to save changes');
+        }
         
         setSaving(true);
         try {
@@ -299,6 +301,7 @@ export default function CanistersPage() {
         } catch (err) {
             console.error('Error saving canister groups:', err);
             setError('Failed to save changes');
+            throw err;  // Re-throw so callers know save failed
         } finally {
             setSaving(false);
         }
@@ -1490,7 +1493,7 @@ export default function CanistersPage() {
                                     disabled={addingCanister}
                                 />
                                 <button
-                                    onClick={handleAddCanister}
+                                    onClick={() => handleAddCanister()}
                                     style={styles.addButton}
                                     disabled={addingCanister || !newCanisterId.trim()}
                                 >

@@ -271,13 +271,13 @@ export const PrincipalDisplay = React.memo(({
         };
     }, [principal, noLink, handleContextMenu, handleTouchStart, handleTouchEnd, handleTouchMove, principalId]);
     
-    console.log('PrincipalDisplay rendered with:', {
+    /*console.log('PrincipalDisplay rendered with:', {
         principal: principalId,
         displayInfo: displayInfo,
         showCopyButton: showCopyButton,
         style: style,
         enableContextMenu: enableContextMenu
-    });
+    });*/
 
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
