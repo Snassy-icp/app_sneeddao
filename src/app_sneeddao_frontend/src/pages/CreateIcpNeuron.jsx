@@ -7,13 +7,18 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
+import { useSns } from '../contexts/SnsContext';
+import { useNeurons } from '../contexts/NeuronsContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
-import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaLock } from 'react-icons/fa';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import { getSnsById } from '../utils/SnsUtils';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
@@ -66,6 +71,8 @@ function CreateIcpNeuron() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
+    const { SNEED_SNS_ROOT } = useSns();
+    const { fetchNeuronsForSns } = useNeurons();
     const [managers, setManagers] = useState([]);
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
     const [managerVersions, setManagerVersions] = useState({}); // canisterId -> version object
@@ -88,6 +95,12 @@ function CreateIcpNeuron() {
     
     // Creation step: 'idle' | 'payment' | 'creating' | 'done'
     const [creationStep, setCreationStep] = useState('idle');
+    
+    // Sneed DAO membership gating state
+    const [sneedNeurons, setSneedNeurons] = useState([]);
+    const [sneedNervousSystemParams, setSneedNervousSystemParams] = useState(null);
+    const [sneedVotingPower, setSneedVotingPower] = useState(0);
+    const [loadingSneedVP, setLoadingSneedVP] = useState(false);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -95,6 +108,69 @@ function CreateIcpNeuron() {
             : 'http://localhost:4943';
         return new HttpAgent({ identity, host });
     }, [identity]);
+
+    // Fetch Sneed neurons and calculate voting power for membership gating
+    const fetchSneedMembership = useCallback(async () => {
+        if (!identity || !SNEED_SNS_ROOT) {
+            setSneedNeurons([]);
+            setSneedVotingPower(0);
+            return;
+        }
+
+        setLoadingSneedVP(true);
+        try {
+            // Fetch neurons for Sneed SNS
+            const neurons = await fetchNeuronsForSns(SNEED_SNS_ROOT);
+            
+            // Filter to only hotkeyed neurons (where user has hotkey permission)
+            const hotkeyNeurons = neurons.filter(neuron => {
+                return neuron.permissions?.some(p => 
+                    p.principal?.toString() === identity.getPrincipal().toString() &&
+                    p.permission_type.includes(4) // Hotkey permission
+                );
+            });
+            
+            setSneedNeurons(hotkeyNeurons);
+
+            // Fetch nervous system parameters for VP calculation
+            const sneedSns = getSnsById(SNEED_SNS_ROOT);
+            if (sneedSns) {
+                const snsGovActor = createSnsGovernanceActor(sneedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setSneedNervousSystemParams(params);
+
+                // Calculate total voting power from hotkeyed Sneed neurons
+                const totalVP = hotkeyNeurons.reduce((total, neuron) => {
+                    try {
+                        const vp = calculateVotingPower(neuron, params);
+                        return total + vp;
+                    } catch (err) {
+                        console.warn('Error calculating VP for neuron:', err);
+                        return total;
+                    }
+                }, 0);
+                setSneedVotingPower(totalVP);
+            }
+        } catch (err) {
+            console.error('Error fetching Sneed membership:', err);
+            setSneedNeurons([]);
+            setSneedVotingPower(0);
+        } finally {
+            setLoadingSneedVP(false);
+        }
+    }, [identity, SNEED_SNS_ROOT, fetchNeuronsForSns]);
+
+    // Effect to fetch Sneed membership when authenticated
+    useEffect(() => {
+        if (isAuthenticated && identity) {
+            fetchSneedMembership();
+        } else {
+            setSneedNeurons([]);
+            setSneedVotingPower(0);
+        }
+    }, [isAuthenticated, identity, fetchSneedMembership]);
 
     const fetchFactoryInfo = useCallback(async () => {
         try {
@@ -465,6 +541,9 @@ function CreateIcpNeuron() {
     const canSendPayment = paymentConfig && userIcpBalance !== null &&
         userIcpBalance >= paymentConfig.creationFeeE8s + ICP_FEE;
 
+    // Check if user is a Sneed DAO member (has hotkeyed neurons with VP > 0)
+    const isSneedMember = sneedVotingPower > 0;
+
     const cardStyle = {
         background: theme.colors.cardBackground,
         borderRadius: '12px',
@@ -556,8 +635,134 @@ function CreateIcpNeuron() {
                     </div>
                 )}
 
+                {/* Sneed DAO Membership Gating */}
+                {isAuthenticated && !loadingSneedVP && !isSneedMember && (
+                    <div style={{ 
+                        ...cardStyle, 
+                        marginBottom: '30px',
+                        background: `linear-gradient(135deg, ${theme.colors.cardBackground} 0%, ${theme.colors.headerBg || theme.colors.cardBackground} 100%)`,
+                        border: `2px solid ${theme.colors.accent}40`
+                    }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <FaLock size={48} style={{ color: theme.colors.accent, marginBottom: '16px' }} />
+                            <h3 style={{ color: theme.colors.primaryText, marginBottom: '12px' }}>
+                                🌱 Sneed DAO Members Only
+                            </h3>
+                            <p style={{ color: theme.colors.mutedText, marginBottom: '20px', lineHeight: '1.6' }}>
+                                Creating an ICP Neuron Manager is exclusive to Sneed DAO staking members.
+                                <br />
+                                To access this feature, you need to have <strong style={{ color: theme.colors.accent }}>Voting Power &gt; 0</strong> from hotkeyed Sneed neurons.
+                            </p>
+                            
+                            <div style={{ 
+                                background: `${theme.colors.warning || '#f59e0b'}15`,
+                                border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                                borderRadius: '12px',
+                                padding: '20px',
+                                marginBottom: '24px'
+                            }}>
+                                <h4 style={{ color: theme.colors.warning || '#f59e0b', marginBottom: '12px' }}>
+                                    How to become a Sneed DAO member:
+                                </h4>
+                                <ol style={{ 
+                                    textAlign: 'left', 
+                                    color: theme.colors.mutedText, 
+                                    lineHeight: '1.8',
+                                    paddingLeft: '24px',
+                                    margin: 0
+                                }}>
+                                    <li>
+                                        <strong>Create a Sneed Neuron</strong> – You can stake SNEED tokens directly from your{' '}
+                                        <Link to="/wallet" style={{ color: theme.colors.accent }}>Sneed Wallet</Link>
+                                    </li>
+                                    <li>
+                                        <strong>Add Hotkey Permission</strong> – Add your principal as a hotkey to your Sneed neuron
+                                    </li>
+                                    <li>
+                                        <strong>Return Here</strong> – Once you have Sneed VP, you'll be able to create a Neuron Manager
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '12px', 
+                                justifyContent: 'center',
+                                flexWrap: 'wrap'
+                            }}>
+                                <Link 
+                                    to="/wallet"
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: '#fff',
+                                        padding: '12px 24px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    🌱 Go to Sneed Wallet
+                                </Link>
+                                <Link 
+                                    to="/neurons"
+                                    style={{
+                                        background: 'transparent',
+                                        color: theme.colors.accent,
+                                        border: `1px solid ${theme.colors.accent}`,
+                                        padding: '12px 24px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    View Sneed Neurons
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Loading Sneed VP */}
+                {isAuthenticated && loadingSneedVP && (
+                    <div style={{ ...cardStyle, textAlign: 'center', marginBottom: '30px' }}>
+                        <p style={{ color: theme.colors.mutedText }}>
+                            ⏳ Checking Sneed DAO membership...
+                        </p>
+                    </div>
+                )}
+
+                {/* Sneed Member Badge */}
+                {isAuthenticated && !loadingSneedVP && isSneedMember && (
+                    <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        marginBottom: '20px',
+                        padding: '12px 20px',
+                        background: `${theme.colors.success || '#22c55e'}15`,
+                        border: `1px solid ${theme.colors.success || '#22c55e'}40`,
+                        borderRadius: '8px'
+                    }}>
+                        <FaCheckCircle color={theme.colors.success || '#22c55e'} />
+                        <span style={{ color: theme.colors.success || '#22c55e', fontWeight: '500' }}>
+                            🌱 Sneed DAO Member
+                        </span>
+                        <span style={{ color: theme.colors.mutedText }}>•</span>
+                        <span style={{ color: theme.colors.primaryText }}>
+                            {sneedNeurons.length} hotkeyed {sneedNeurons.length === 1 ? 'neuron' : 'neurons'}
+                        </span>
+                        <span style={{ color: theme.colors.mutedText }}>•</span>
+                        <span style={{ color: theme.colors.accent, fontWeight: '600' }}>
+                            {formatVotingPower(sneedVotingPower)} VP
+                        </span>
+                    </div>
+                )}
+
                 {/* Create Manager Section with Payment Flow */}
-                {isAuthenticated && paymentConfig && (
+                {isAuthenticated && paymentConfig && isSneedMember && (
                     <div style={{ ...cardStyle, marginBottom: '30px' }}>
                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '20px', textAlign: 'center' }}>
                             ➕ Create New Neuron Manager
