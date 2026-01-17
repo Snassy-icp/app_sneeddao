@@ -25,6 +25,7 @@ function CreateIcpNeuron() {
     const [managers, setManagers] = useState([]);
     const [balances, setBalances] = useState({}); // canisterId -> balance in e8s
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
+    const [managerVersions, setManagerVersions] = useState({}); // canisterId -> version object
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -152,10 +153,11 @@ function CreateIcpNeuron() {
             setManagers(managerList);
             setError('');
             
-            // Fetch balances and neuron counts for all managers
+            // Fetch balances, neuron counts, and versions for all managers
             if (managerList.length > 0) {
                 fetchBalances(managerList, agent);
                 fetchNeuronCounts(managerList, agent);
+                fetchManagerVersions(managerList, agent);
             }
         } catch (err) {
             console.error('Error fetching managers:', err);
@@ -226,6 +228,32 @@ function CreateIcpNeuron() {
             setNeuronCounts(counts);
         } catch (err) {
             console.error('Error fetching neuron counts:', err);
+        }
+    };
+
+    const fetchManagerVersions = async (managerList, agent) => {
+        try {
+            const versions = {};
+            
+            const versionPromises = managerList.map(async (manager) => {
+                try {
+                    const managerActor = createManagerActor(manager.canisterId, { agent });
+                    const version = await managerActor.getVersion();
+                    return { canisterId: manager.canisterId.toText(), version };
+                } catch (err) {
+                    console.error(`Error fetching version for ${manager.canisterId.toText()}:`, err);
+                    return { canisterId: manager.canisterId.toText(), version: null };
+                }
+            });
+            
+            const results = await Promise.all(versionPromises);
+            results.forEach(({ canisterId, version }) => {
+                versions[canisterId] = version;
+            });
+            
+            setManagerVersions(versions);
+        } catch (err) {
+            console.error('Error fetching manager versions:', err);
         }
     };
 
@@ -812,9 +840,11 @@ function CreateIcpNeuron() {
                                                         })()}
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px', flexShrink: 0 }}>
-                                                            Version {Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
-                                                        </span>
+                                                        {managerVersions[canisterIdText] && (
+                                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px', flexShrink: 0 }}>
+                                                                Version {Number(managerVersions[canisterIdText].major)}.{Number(managerVersions[canisterIdText].minor)}.{Number(managerVersions[canisterIdText].patch)}
+                                                            </span>
+                                                        )}
                                                         <Link 
                                                             to={`/icp_neuron_manager/${canisterIdText}`}
                                                             style={{
