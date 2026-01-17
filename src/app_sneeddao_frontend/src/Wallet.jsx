@@ -42,6 +42,7 @@ import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from './utils/NeuronManagerSettings';
@@ -49,6 +50,11 @@ import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const E8S_ICP = 100_000_000;
+const ICP_FEE = 10_000;
+// CMC memo for top-up operation: "TPUP" = 0x50555054
+const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 // Management canister IDL factory for canister_status
 const managementCanisterIdlFactory = ({ IDL }) => {
@@ -407,6 +413,13 @@ function Wallet() {
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     const [cycleSettings, setCycleSettings] = useState(() => getNeuronManagerSettings());
+    // Cycles top-up state
+    const [topUpManagerId, setTopUpManagerId] = useState(null); // Which manager is showing top-up UI
+    const [topUpAmount, setTopUpAmount] = useState('');
+    const [toppingUp, setToppingUp] = useState(false);
+    const [topUpError, setTopUpError] = useState('');
+    const [topUpSuccess, setTopUpSuccess] = useState('');
+    const [icpToCyclesRate, setIcpToCyclesRate] = useState(null);
     const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('neuronManagersExpanded');
@@ -525,6 +538,7 @@ function Wallet() {
         fetchLiquidityPositions();
         fetchIcpPrice();
         fetchNeuronManagers();
+        fetchIcpToCyclesRate();
     }, [isAuthenticated, location.search, refreshTrigger]);
 
     // Fetch ICP price
@@ -1187,6 +1201,134 @@ function Wallet() {
             console.error('Error fetching neuron managers:', err);
         } finally {
             setNeuronManagersLoading(false);
+        }
+    }
+
+    // Fetch ICP to cycles conversion rate
+    async function fetchIcpToCyclesRate() {
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ host });
+            
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            const response = await cmc.get_icp_xdr_conversion_rate();
+            
+            const xdrPerIcp = Number(response.data.xdr_permyriad_per_icp) / 10000;
+            const cyclesPerIcp = xdrPerIcp * 1_000_000_000_000;
+            
+            setIcpToCyclesRate(cyclesPerIcp);
+        } catch (err) {
+            console.error('Error fetching ICP to cycles rate:', err);
+        }
+    }
+
+    // Handle cycles top-up for a manager canister
+    async function handleCyclesTopUp(managerCanisterId) {
+        if (!identity || !managerCanisterId || !topUpAmount) return;
+        
+        const icpAmount = parseFloat(topUpAmount);
+        if (isNaN(icpAmount) || icpAmount <= 0) {
+            setTopUpError('Please enter a valid ICP amount');
+            return;
+        }
+        
+        const amountE8s = BigInt(Math.floor(icpAmount * E8S_ICP));
+        const totalNeeded = amountE8s + BigInt(ICP_FEE);
+        
+        // Check user's ICP balance
+        const icpToken = tokens.find(t => t.ledger?.toText?.() === ICP_LEDGER_CANISTER_ID || t.ledger === ICP_LEDGER_CANISTER_ID);
+        const userIcpBalance = icpToken ? BigInt(icpToken.available || 0) + BigInt(icpToken.available_backend || 0) : 0n;
+        
+        if (userIcpBalance < totalNeeded) {
+            setTopUpError(`Insufficient ICP balance. Need ${(Number(totalNeeded) / E8S_ICP).toFixed(4)} ICP (including fee)`);
+            return;
+        }
+        
+        setToppingUp(true);
+        setTopUpError('');
+        setTopUpSuccess('');
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const canisterPrincipal = Principal.fromText(managerCanisterId);
+            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
+            
+            // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const subaccount = principalToSubAccount(canisterPrincipal);
+            
+            console.log('Transferring ICP to CMC for cycles top-up...');
+            
+            const transferResult = await ledger.icrc1_transfer({
+                to: {
+                    owner: cmcPrincipal,
+                    subaccount: [subaccount],
+                },
+                amount: amountE8s,
+                fee: [BigInt(ICP_FEE)],
+                memo: [TOP_UP_MEMO],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds: ${(Number(err.InsufficientFunds.balance) / E8S_ICP).toFixed(4)} ICP available`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            const blockIndex = transferResult.Ok;
+            console.log('Transfer successful, block index:', blockIndex.toString());
+            
+            // Step 2: Notify CMC to mint cycles
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            
+            console.log('Notifying CMC to mint cycles...');
+            const notifyResult = await cmc.notify_top_up({
+                block_index: blockIndex,
+                canister_id: canisterPrincipal,
+            });
+            
+            if ('Err' in notifyResult) {
+                const err = notifyResult.Err;
+                if ('Refunded' in err) {
+                    throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
+                } else if ('InvalidTransaction' in err) {
+                    throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
+                } else if ('Other' in err) {
+                    throw new Error(`CMC error: ${err.Other.error_message}`);
+                } else if ('Processing' in err) {
+                    throw new Error('Transaction is still being processed. Please try again in a moment.');
+                }
+                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
+            }
+            
+            const cyclesAdded = Number(notifyResult.Ok);
+            setTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles!`);
+            setTopUpAmount('');
+            setTopUpManagerId(null);
+            
+            // Refresh data
+            fetchNeuronManagers();
+            fetchTokens();
+            
+        } catch (err) {
+            console.error('Cycles top-up error:', err);
+            setTopUpError(`Top-up failed: ${err.message || 'Unknown error'}`);
+        } finally {
+            setToppingUp(false);
         }
     }
 
@@ -5066,6 +5208,33 @@ function Wallet() {
                                                         >
                                                             Transfer
                                                         </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (topUpManagerId === canisterId) {
+                                                                    setTopUpManagerId(null);
+                                                                    setTopUpAmount('');
+                                                                    setTopUpError('');
+                                                                    setTopUpSuccess('');
+                                                                } else {
+                                                                    setTopUpManagerId(canisterId);
+                                                                    setTopUpAmount('');
+                                                                    setTopUpError('');
+                                                                    setTopUpSuccess('');
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                background: 'transparent',
+                                                                color: theme.colors.success || '#22c55e',
+                                                                border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                                                padding: '8px 16px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '13px',
+                                                                fontWeight: '600',
+                                                            }}
+                                                        >
+                                                            ⚡ Top-Up
+                                                        </button>
                                                         {confirmRemoveManager === canisterId ? (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                 <span style={{ 
@@ -5134,6 +5303,128 @@ function Wallet() {
                                                             </button>
                                                         )}
                                                     </div>
+                                                    
+                                                    {/* Top-Up Section */}
+                                                    {topUpManagerId === canisterId && (
+                                                        <div style={{
+                                                            marginTop: '16px',
+                                                            padding: '16px',
+                                                            backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.05)',
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${theme.colors.success || '#22c55e'}40`,
+                                                        }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                marginBottom: '12px'
+                                                            }}>
+                                                                <span style={{ fontSize: '18px' }}>⚡</span>
+                                                                <span style={{ 
+                                                                    fontWeight: '600', 
+                                                                    color: theme.colors.primaryText,
+                                                                    fontSize: '14px'
+                                                                }}>
+                                                                    Add Cycles
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {topUpError && (
+                                                                <div style={{
+                                                                    padding: '10px',
+                                                                    backgroundColor: (theme.colors.error || '#ef4444') + '20',
+                                                                    borderRadius: '6px',
+                                                                    color: theme.colors.error || '#ef4444',
+                                                                    fontSize: '12px',
+                                                                    marginBottom: '12px',
+                                                                }}>
+                                                                    {topUpError}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {topUpSuccess && (
+                                                                <div style={{
+                                                                    padding: '10px',
+                                                                    backgroundColor: (theme.colors.success || '#22c55e') + '20',
+                                                                    borderRadius: '6px',
+                                                                    color: theme.colors.success || '#22c55e',
+                                                                    fontSize: '12px',
+                                                                    marginBottom: '12px',
+                                                                }}>
+                                                                    {topUpSuccess}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
+                                                                <div style={{ flex: '1', minWidth: '150px' }}>
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="ICP amount"
+                                                                        value={topUpAmount}
+                                                                        onChange={(e) => setTopUpAmount(e.target.value)}
+                                                                        step="0.0001"
+                                                                        min="0"
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            padding: '10px 12px',
+                                                                            borderRadius: '6px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            backgroundColor: theme.colors.primaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            fontSize: '14px',
+                                                                            boxSizing: 'border-box',
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleCyclesTopUp(canisterId)}
+                                                                    disabled={toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0}
+                                                                    style={{
+                                                                        padding: '10px 20px',
+                                                                        borderRadius: '6px',
+                                                                        border: 'none',
+                                                                        backgroundColor: theme.colors.success || '#22c55e',
+                                                                        color: '#fff',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '13px',
+                                                                        cursor: (toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0) ? 'not-allowed' : 'pointer',
+                                                                        opacity: (toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0) ? 0.6 : 1,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                    }}
+                                                                >
+                                                                    {toppingUp ? (
+                                                                        <>
+                                                                            <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }}></div>
+                                                                            Processing...
+                                                                        </>
+                                                                    ) : (
+                                                                        'Top Up'
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                            
+                                                            {/* Conversion estimate */}
+                                                            {topUpAmount && parseFloat(topUpAmount) > 0 && icpToCyclesRate && (
+                                                                <div style={{
+                                                                    marginTop: '10px',
+                                                                    fontSize: '12px',
+                                                                    color: theme.colors.mutedText,
+                                                                }}>
+                                                                    ≈ {formatCyclesCompact(parseFloat(topUpAmount) * icpToCyclesRate)} cycles
+                                                                </div>
+                                                            )}
+                                                            
+                                                            <div style={{
+                                                                marginTop: '10px',
+                                                                fontSize: '11px',
+                                                                color: theme.colors.mutedText,
+                                                            }}>
+                                                                Converts ICP from your wallet to cycles for this canister.
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
