@@ -422,7 +422,8 @@ function CreateIcpNeuron() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="wallet-container">
-                <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', textAlign: 'center' }}>
+                <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '2.5rem' }}>🧠</span>
                     ICP Neuron Manager
                 </h1>
                 <p style={{ color: theme.colors.mutedText, textAlign: 'center', marginBottom: '10px' }}>
