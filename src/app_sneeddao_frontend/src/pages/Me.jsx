@@ -620,6 +620,18 @@ export default function Me() {
                             >
                                 🔒 My Locks
                             </Link>
+                            {' • '}
+                            <Link
+                                to="/canisters"
+                                style={{
+                                    color: theme.colors.accent,
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                🗄️ My Canisters
+                            </Link>
                         </div>
 
                         {editingPrincipalName && (

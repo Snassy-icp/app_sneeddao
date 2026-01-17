@@ -335,6 +335,33 @@ function Sneedlock() {
                         flexWrap: 'wrap'
                     }}>
                         <Link
+                            to="/lock_wizard"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: `linear-gradient(135deg, ${theme.colors.warning}, ${theme.colors.warning}dd)`,
+                                color: theme.colors.primaryBg,
+                                padding: '14px 28px',
+                                borderRadius: '10px',
+                                textDecoration: 'none',
+                                fontSize: '1.1rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease',
+                                boxShadow: `0 4px 15px ${theme.colors.warning}30`
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.boxShadow = `0 8px 25px ${theme.colors.warning}40`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.transform = 'translateY(0)';
+                                e.target.style.boxShadow = `0 4px 15px ${theme.colors.warning}30`;
+                            }}
+                        >
+                            🧙 Lock Wizard
+                        </Link>
+                        <Link
                             to="/wallet"
                             style={{
                                 display: 'inline-flex',
@@ -395,7 +422,43 @@ function Sneedlock() {
                                     objectFit: 'contain'
                                 }}
                             />
-                            View All Locks
+                            My Locks
+                        </Link>
+                        <Link
+                            to="/sneedlock_info"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: theme.colors.tertiaryBg,
+                                color: theme.colors.secondaryText,
+                                padding: '14px 28px',
+                                borderRadius: '10px',
+                                textDecoration: 'none',
+                                fontSize: '1.1rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease',
+                                border: `2px solid ${theme.colors.border}`
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.borderColor = theme.colors.mutedText;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.transform = 'translateY(0)';
+                                e.target.style.borderColor = theme.colors.border;
+                            }}
+                        >
+                            <img 
+                                src="/sneedlock-logo4.png" 
+                                alt="Sneedlock"
+                                style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    objectFit: 'contain'
+                                }}
+                            />
+                            All Locks
                         </Link>
                     </div>
                 </section>
