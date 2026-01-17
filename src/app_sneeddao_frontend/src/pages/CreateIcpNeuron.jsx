@@ -646,13 +646,26 @@ function CreateIcpNeuron() {
                         <div style={{ textAlign: 'center' }}>
                             <FaLock size={48} style={{ color: theme.colors.accent, marginBottom: '16px' }} />
                             <h3 style={{ color: theme.colors.primaryText, marginBottom: '12px' }}>
-                                🌱 Sneed DAO Members Only
+                                🧪 Closed Beta – Sneed DAO Members Only
                             </h3>
                             <p style={{ color: theme.colors.mutedText, marginBottom: '20px', lineHeight: '1.6' }}>
-                                Creating an ICP Neuron Manager is exclusive to Sneed DAO staking members.
+                                The ICP Neuron Manager is currently in <strong style={{ color: theme.colors.warning || '#f59e0b' }}>closed beta</strong>, 
+                                available exclusively to Sneed DAO staking members.
                                 <br />
                                 To access this feature, you need to have <strong style={{ color: theme.colors.accent }}>Voting Power &gt; 0</strong> from hotkeyed Sneed neurons.
                             </p>
+
+                            <div style={{ 
+                                background: `${theme.colors.accent}15`,
+                                border: `1px solid ${theme.colors.accent}40`,
+                                borderRadius: '8px',
+                                padding: '12px 16px',
+                                marginBottom: '20px',
+                                fontSize: '13px',
+                                color: theme.colors.primaryText
+                            }}>
+                                🎉 <strong>Coming Soon:</strong> This feature will be open to everyone after the beta period!
+                            </div>
                             
                             <div style={{ 
                                 background: `${theme.colors.warning || '#f59e0b'}15`,
@@ -662,7 +675,7 @@ function CreateIcpNeuron() {
                                 marginBottom: '24px'
                             }}>
                                 <h4 style={{ color: theme.colors.warning || '#f59e0b', marginBottom: '12px' }}>
-                                    How to become a Sneed DAO member:
+                                    How to join the closed beta:
                                 </h4>
                                 <ol style={{ 
                                     textAlign: 'left', 
@@ -758,6 +771,37 @@ function CreateIcpNeuron() {
                         <span style={{ color: theme.colors.accent, fontWeight: '600' }}>
                             {formatVotingPower(sneedVotingPower)} VP
                         </span>
+                    </div>
+                )}
+
+                {/* Beta Warning Banner */}
+                {isAuthenticated && !loadingSneedVP && isSneedMember && (
+                    <div style={{ 
+                        ...cardStyle,
+                        marginBottom: '20px',
+                        background: `linear-gradient(135deg, ${theme.colors.warning || '#f59e0b'}10 0%, ${theme.colors.warning || '#f59e0b'}05 100%)`,
+                        border: `2px solid ${theme.colors.warning || '#f59e0b'}50`,
+                        textAlign: 'center'
+                    }}>
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: '8px',
+                            marginBottom: '12px'
+                        }}>
+                            <span style={{ fontSize: '24px' }}>🧪</span>
+                            <h3 style={{ color: theme.colors.warning || '#f59e0b', margin: 0, fontSize: '18px' }}>
+                                Beta Feature
+                            </h3>
+                        </div>
+                        <p style={{ color: theme.colors.mutedText, marginBottom: '12px', lineHeight: '1.6' }}>
+                            The ICP Neuron Manager is in <strong style={{ color: theme.colors.warning || '#f59e0b' }}>closed beta</strong>. 
+                            We recommend <strong>testing with small amounts</strong> first to familiarize yourself with the feature.
+                        </p>
+                        <p style={{ color: theme.colors.primaryText, fontSize: '13px', margin: 0 }}>
+                            🎉 Thank you for being an early tester! This feature will soon be open to everyone.
+                        </p>
                     </div>
                 )}
 
