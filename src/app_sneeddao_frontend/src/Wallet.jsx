@@ -4595,26 +4595,14 @@ function Wallet() {
                                                                     {canisterId}
                                                                 </div>
                                                             </div>
-                                                            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                                                                <div style={{ textAlign: 'center' }}>
-                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Balance</div>
-                                                                    <div style={{ 
-                                                                        color: balance > 0 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText,
-                                                                        fontWeight: '600',
-                                                                        fontSize: '13px'
-                                                                    }}>
-                                                                        {formatIcpAmount(balance)} ICP
-                                                                    </div>
-                                                                </div>
-                                                                <div style={{ textAlign: 'center' }}>
-                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Neurons</div>
-                                                                    <div style={{ 
-                                                                        color: neuronCount > 0 ? (theme.colors.success || '#22c55e') : theme.colors.warning || '#f59e0b',
-                                                                        fontWeight: '600',
-                                                                        fontSize: '13px'
-                                                                    }}>
-                                                                        {neuronCount !== null && neuronCount !== undefined ? neuronCount : '...'}
-                                                                    </div>
+                                                            <div style={{ textAlign: 'center' }}>
+                                                                <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Neurons</div>
+                                                                <div style={{ 
+                                                                    color: neuronCount > 0 ? (theme.colors.success || '#22c55e') : theme.colors.warning || '#f59e0b',
+                                                                    fontWeight: '600',
+                                                                    fontSize: '13px'
+                                                                }}>
+                                                                    {neuronCount !== null && neuronCount !== undefined ? neuronCount : '...'}
                                                                 </div>
                                                             </div>
                                                         </div>

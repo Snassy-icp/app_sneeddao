@@ -367,10 +367,6 @@ function HelpIcpNeuronManager() {
                     <div style={styles.scenarioBox}>
                         <ol style={styles.stepList}>
                             <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Fund the Canister:</strong> Send ICP to your canister's address 
-                                (displayed on the management page)
-                            </li>
-                            <li style={styles.stepItem}>
                                 <strong style={styles.strong}>Set Stake Amount:</strong> Enter how much ICP to stake (minimum 1 ICP)
                             </li>
                             <li style={styles.stepItem}>
@@ -378,7 +374,7 @@ function HelpIcpNeuronManager() {
                                 (minimum 6 months for voting rewards)
                             </li>
                             <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Create:</strong> The canister transfers ICP to NNS and creates the neuron
+                                <strong style={styles.strong}>Create:</strong> ICP is sent directly from your wallet to NNS to create the neuron
                             </li>
                         </ol>
                     </div>
@@ -725,11 +721,8 @@ function HelpIcpNeuronManager() {
                                 to deploy your canister
                             </li>
                             <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Fund It:</strong> Send ICP to your canister's address
-                            </li>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Create Neurons:</strong> Stake ICP to create neurons with 
-                                your desired dissolve delay
+                                <strong style={styles.strong}>Create Neurons:</strong> Stake ICP directly from your wallet 
+                                to create neurons with your desired dissolve delay
                             </li>
                             <li style={styles.stepItem}>
                                 <strong style={styles.strong}>Set Up Following:</strong> Configure automatic voting to 

@@ -768,8 +768,7 @@ function CreateIcpNeuron() {
                     <ol style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px' }}>
                         <li><strong>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
                         <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that can control multiple ICP neurons.</li>
-                        <li><strong>Fund the Manager:</strong> Send ICP to your manager's Canister ID from your wallet or DEX.</li>
-                        <li><strong>Stake Neurons:</strong> Use the manager to stake ICP and create NNS neurons.</li>
+                        <li><strong>Stake Neurons:</strong> Use the manager to stake ICP directly from your wallet and create NNS neurons.</li>
                         <li><strong>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
                         <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
                     </ol>
