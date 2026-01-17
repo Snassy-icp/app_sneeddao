@@ -5259,7 +5259,14 @@ function Wallet() {
                             
                             <p>Sneed Lock is ideal for token developers, team members, and investors who want to demonstrate long-term commitment and prevent "rug pulls" by locking large token and liquidity positions. Maximum lock time is 10 years.</p>
                             
-                            <p style={{ marginTop: '12px' }}>
+                            <p style={{ marginTop: '12px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                                <Link to="/lock_wizard" style={{ 
+                                    color: theme.colors.warning, 
+                                    textDecoration: 'none',
+                                    fontWeight: '600'
+                                }}>
+                                    🧙 Lock Wizard →
+                                </Link>
                                 <Link to="/help/sneedlock" style={{ 
                                     color: theme.colors.accent, 
                                     textDecoration: 'none',

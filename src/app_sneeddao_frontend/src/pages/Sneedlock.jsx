@@ -143,6 +143,30 @@ function Sneedlock() {
                         >
                             💼 Open Wallet
                         </Link>
+                        <Link
+                            to="/lock_wizard"
+                            style={{
+                                background: `${theme.colors.warning}20`,
+                                color: theme.colors.warning,
+                                border: `2px solid ${theme.colors.warning}`,
+                                borderRadius: '8px',
+                                padding: '10px 20px',
+                                textDecoration: 'none',
+                                fontSize: '1rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.warning;
+                                e.target.style.color = theme.colors.primaryBg;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = `${theme.colors.warning}20`;
+                                e.target.style.color = theme.colors.warning;
+                            }}
+                        >
+                            🧙 Lock Wizard
+                        </Link>
                     </div>
                 </div>
 
@@ -293,7 +317,7 @@ function Sneedlock() {
                         marginLeft: '2rem',
                         marginBottom: '2rem'
                     }}>
-                        <li><strong style={{ color: theme.colors.primaryText }}>Open Your Wallet:</strong> Navigate to your <Link to="/wallet" style={{ color: theme.colors.accent, textDecoration: 'none' }}>Sneed Wallet</Link></li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Open Your Wallet:</strong> Navigate to your <Link to="/wallet" style={{ color: theme.colors.accent, textDecoration: 'none' }}>Sneed Wallet</Link> or use the <Link to="/lock_wizard" style={{ color: theme.colors.accent, textDecoration: 'none' }}>Lock Wizard</Link></li>
                         <li><strong style={{ color: theme.colors.primaryText }}>Register Tokens or LP Positions:</strong> Add the tokens or swap pairs you want to lock</li>
                         <li><strong style={{ color: theme.colors.primaryText }}>Create a Lock:</strong> Click the lock button, specify the amount and expiration date</li>
                         <li><strong style={{ color: theme.colors.primaryText }}>Optional - Transfer:</strong> Use Liquid Locking to transfer locked assets to other users</li>

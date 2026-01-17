@@ -187,9 +187,18 @@ function HelpSneedlock() {
                     <h2 style={styles.subheading}>How to Lock Tokens</h2>
                     
                     <p style={styles.paragraph}>
-                        Token locking is done through the <Link to="/wallet" style={styles.link}>Wallet page</Link>. Here's 
+                        Token locking can be done through the <Link to="/wallet" style={styles.link}>Wallet page</Link> or 
+                        using the guided <Link to="/lock_wizard" style={styles.link}>Lock Wizard</Link>. Here's 
                         the step-by-step process:
                     </p>
+                    
+                    <div style={styles.successBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>🧙 New to Locking?</strong> Try the{' '}
+                            <Link to="/lock_wizard" style={styles.link}>Lock Wizard</Link> for a guided step-by-step 
+                            experience that walks you through selecting what to lock and configuring your lock parameters.
+                        </p>
+                    </div>
                     
                     <h3 style={styles.subsubheading}>Step 1: Navigate to Your Wallet</h3>
                     <p style={styles.paragraph}>
@@ -722,6 +731,9 @@ function HelpSneedlock() {
                     <h2 style={styles.subheading}>Related Help Topics</h2>
                     
                     <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <Link to="/lock_wizard" style={styles.link}>Lock Wizard</Link> - Guided step-by-step lock creation
+                        </li>
                         <li style={styles.listItem}>
                             <Link to="/help/wallet" style={styles.link}>Understanding Your Wallet</Link> - Learn how to 
                             manage tokens, positions, and neurons in your wallet
