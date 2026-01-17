@@ -3508,17 +3508,17 @@ function IcpNeuronManager() {
                                     </div>
                                     <button
                                         onClick={handleStakeNeuron}
-                                        disabled={actionLoading === 'stake' || icpBalance < E8S}
+                                        disabled={actionLoading === 'stake' || !userIcpBalance || userIcpBalance < E8S}
                                         style={{ 
                                             ...buttonStyle, 
-                                            opacity: (actionLoading === 'stake' || icpBalance < E8S) ? 0.6 : 1,
+                                            opacity: (actionLoading === 'stake' || !userIcpBalance || userIcpBalance < E8S) ? 0.6 : 1,
                                         }}
                                     >
                                         {actionLoading === 'stake' ? '⏳...' : '🚀 Create'}
                                     </button>
                                 </div>
                                 <p style={{ color: theme.colors.mutedText, fontSize: '11px', margin: 0 }}>
-                                    💡 Min 183 days to vote, max 8 years. Canister Balance: {formatIcp(icpBalance)} ICP
+                                    💡 Min 183 days to vote, max 8 years. Stakes directly from your wallet ({formatIcp(userIcpBalance)} ICP available)
                                 </p>
                             </div>
                         </div>
@@ -3863,7 +3863,7 @@ function IcpNeuronManager() {
                                         <div style={{ marginBottom: '30px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Stake</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '15px' }}>
-                                                Add more ICP to your neuron from this canister's balance. More stake = more voting power.
+                                                Add more ICP to your neuron directly from your wallet. More stake = more voting power.
                                             </p>
                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                                 <div style={{ flex: 1, minWidth: '150px' }}>
@@ -3882,20 +3882,18 @@ function IcpNeuronManager() {
                                                 </div>
                                                 <button
                                                     onClick={handleIncreaseStake}
-                                                    disabled={actionLoading === 'increaseStake' || !icpBalance || icpBalance < E8S * 0.01}
+                                                    disabled={actionLoading === 'increaseStake' || !userIcpBalance || userIcpBalance < E8S * 0.01}
                                                     style={{ 
                                                         ...buttonStyle, 
-                                                        opacity: (actionLoading === 'increaseStake' || !icpBalance || icpBalance < E8S * 0.01) ? 0.6 : 1,
+                                                        opacity: (actionLoading === 'increaseStake' || !userIcpBalance || userIcpBalance < E8S * 0.01) ? 0.6 : 1,
                                                     }}
                                                 >
                                                     {actionLoading === 'increaseStake' ? '⏳...' : '➕ Add to Stake'}
                                                 </button>
                                             </div>
-                                            {icpBalance !== null && icpBalance < E8S * 0.01 && (
-                                                <p style={{ color: theme.colors.warning || '#f59e0b', fontSize: '12px', marginTop: '8px' }}>
-                                                    ⚠️ Fund this canister with ICP first (send to the account ID shown above).
-                                                </p>
-                                            )}
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
+                                                Your wallet: {formatIcp(userIcpBalance)} ICP available
+                                            </p>
                                         </div>
 
                                         {/* Auto-stake Maturity */}
