@@ -716,9 +716,9 @@ module {
     public let MIN_STAKE_E8S: Nat64 = 100_000_000; // 1 ICP minimum to create neuron
 
     public let CURRENT_VERSION: Version = {
-        major = 1;
-        minor = 0;
-        patch = 5;
+        major = 0;
+        minor = 9;
+        patch = 0;
     };
 
 };
