@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { HttpAgent } from '@dfinity/agent';
+import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
+import { IDL } from '@dfinity/candid';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -12,10 +13,54 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
+import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
 const ICP_FEE = 10_000;
+const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
+
+// Management canister IDL factory for canister_status
+const managementCanisterIdlFactory = ({ IDL }) => {
+    const definite_canister_settings = IDL.Record({
+        'controllers': IDL.Vec(IDL.Principal),
+        'freezing_threshold': IDL.Nat,
+        'memory_allocation': IDL.Nat,
+        'compute_allocation': IDL.Nat,
+        'reserved_cycles_limit': IDL.Nat,
+        'log_visibility': IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        }),
+        'wasm_memory_limit': IDL.Nat,
+    });
+    const canister_status_result = IDL.Record({
+        'status': IDL.Variant({
+            'running': IDL.Null,
+            'stopping': IDL.Null,
+            'stopped': IDL.Null,
+        }),
+        'settings': definite_canister_settings,
+        'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
+        'memory_size': IDL.Nat,
+        'cycles': IDL.Nat,
+        'idle_cycles_burned_per_day': IDL.Nat,
+        'query_stats': IDL.Record({
+            'num_calls_total': IDL.Nat,
+            'num_instructions_total': IDL.Nat,
+            'request_payload_bytes_total': IDL.Nat,
+            'response_payload_bytes_total': IDL.Nat,
+        }),
+        'reserved_cycles': IDL.Nat,
+    });
+    return IDL.Service({
+        'canister_status': IDL.Func(
+            [IDL.Record({ 'canister_id': IDL.Principal })],
+            [canister_status_result],
+            []
+        ),
+    });
+};
 
 function CreateIcpNeuron() {
     const { theme } = useTheme();
@@ -24,7 +69,9 @@ function CreateIcpNeuron() {
     const [managers, setManagers] = useState([]);
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
     const [managerVersions, setManagerVersions] = useState({}); // canisterId -> version object
+    const [managerCycles, setManagerCycles] = useState({}); // canisterId -> cycles
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
+    const [cycleSettings, setCycleSettings] = useState(() => getNeuronManagerSettings());
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -178,10 +225,11 @@ function CreateIcpNeuron() {
             setManagers(managerList);
             setError('');
             
-            // Fetch neuron counts and versions for all managers
+            // Fetch neuron counts, versions, and cycles for all managers
             if (managerList.length > 0) {
                 fetchNeuronCounts(managerList, agent);
                 fetchManagerVersions(managerList, agent);
+                fetchManagerCycles(managerList, agent);
             }
         } catch (err) {
             console.error('Error fetching managers:', err);
@@ -249,6 +297,40 @@ function CreateIcpNeuron() {
             setManagerVersions(versions);
         } catch (err) {
             console.error('Error fetching manager versions:', err);
+        }
+    };
+
+    const fetchManagerCycles = async (managerList, agent) => {
+        try {
+            const cycles = {};
+            
+            const cyclesPromises = managerList.map(async (manager) => {
+                try {
+                    // Need to create actor with effectiveCanisterId for management canister
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        callTransform: (methodName, args, callConfig) => ({
+                            ...callConfig,
+                            effectiveCanisterId: manager.canisterId,
+                        }),
+                    });
+                    const status = await mgmtActor.canister_status({ canister_id: manager.canisterId });
+                    return { canisterId: manager.canisterId.toText(), cycles: Number(status.cycles) };
+                } catch (err) {
+                    // Not a controller, can't get cycles
+                    return { canisterId: manager.canisterId.toText(), cycles: null };
+                }
+            });
+            
+            const results = await Promise.all(cyclesPromises);
+            results.forEach(({ canisterId, cycles: c }) => {
+                cycles[canisterId] = c;
+            });
+            
+            setManagerCycles(cycles);
+        } catch (err) {
+            console.error('Error fetching manager cycles:', err);
         }
     };
 
@@ -747,6 +829,21 @@ function CreateIcpNeuron() {
                                                         })()}
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                        {managerCycles[canisterIdText] !== undefined && managerCycles[canisterIdText] !== null && (
+                                                            <span 
+                                                                style={{ 
+                                                                    color: getCyclesColor(managerCycles[canisterIdText], cycleSettings), 
+                                                                    fontSize: '12px', 
+                                                                    flexShrink: 0,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                }}
+                                                                title={`${managerCycles[canisterIdText].toLocaleString()} cycles`}
+                                                            >
+                                                                ⚡ {formatCyclesCompact(managerCycles[canisterIdText])}
+                                                            </span>
+                                                        )}
                                                         {managerVersions[canisterIdText] && (
                                                             <span 
                                                                 style={{ 

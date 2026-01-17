@@ -16,6 +16,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
 import { FaGasPump } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
+import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const NNS_GOVERNANCE_CANISTER_ID = 'rrkah-fqaaa-aaaaa-aaaaq-cai';
@@ -221,6 +222,7 @@ function IcpNeuronManager() {
     // Cycles top-up state
     const [topUpAmount, setTopUpAmount] = useState('');
     const [conversionRate, setConversionRate] = useState(null);
+    const [cycleSettings] = useState(() => getNeuronManagerSettings());
     const [showTopUpSection, setShowTopUpSection] = useState(false);
     const [toppingUp, setToppingUp] = useState(false);
     
@@ -2331,7 +2333,7 @@ function IcpNeuronManager() {
                                     <div style={{ textAlign: 'right' }}>
                                         <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Cycles</div>
                                         <div style={{ 
-                                            color: canisterStatus.cycles > 1_000_000_000_000 ? (theme.colors.success || '#22c55e') : theme.colors.warning || '#f59e0b', 
+                                            color: getCyclesColor(canisterStatus.cycles, cycleSettings), 
                                             fontSize: '24px', 
                                             fontWeight: '700',
                                             marginTop: '4px',

@@ -31,6 +31,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import TransactionList from '../components/TransactionList';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import { getNeuronManagerSettings, saveNeuronManagerSettings, formatCyclesCompact, parseCyclesInput, getCyclesColor } from '../utils/NeuronManagerSettings';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -76,6 +77,19 @@ export default function Me() {
             return false;
         }
     });
+    
+    // ICP Neuron Manager Settings
+    const [neuronManagerSettingsExpanded, setNeuronManagerSettingsExpanded] = useState(false);
+    const [cycleThresholdRed, setCycleThresholdRed] = useState('');
+    const [cycleThresholdOrange, setCycleThresholdOrange] = useState('');
+    const [settingsSaved, setSettingsSaved] = useState(false);
+    
+    // Load neuron manager settings on mount
+    useEffect(() => {
+        const settings = getNeuronManagerSettings();
+        setCycleThresholdRed(formatCyclesCompact(settings.cycleThresholdRed));
+        setCycleThresholdOrange(formatCyclesCompact(settings.cycleThresholdOrange));
+    }, []);
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
@@ -738,6 +752,253 @@ export default function Me() {
                     </div>
 
 
+                </div>
+
+                {/* ICP Neuron Manager Settings Section */}
+                <div style={{
+                    backgroundColor: theme.colors.secondaryBg,
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.colors.border}`,
+                    marginTop: '20px',
+                    overflow: 'hidden',
+                }}>
+                    <div 
+                        onClick={() => setNeuronManagerSettingsExpanded(!neuronManagerSettingsExpanded)}
+                        style={{
+                            padding: '15px 20px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            borderBottom: neuronManagerSettingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ 
+                                fontSize: '16px',
+                                color: theme.colors.mutedText,
+                                transition: 'transform 0.2s',
+                                transform: neuronManagerSettingsExpanded ? 'none' : 'rotate(-90deg)'
+                            }}>▼</span>
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                🧠 ICP Neuron Manager Settings
+                            </span>
+                        </div>
+                    </div>
+                    
+                    {neuronManagerSettingsExpanded && (
+                        <div style={{ padding: '20px' }}>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
+                                Configure cycle warning thresholds for your ICP Neuron Manager canisters. 
+                                These thresholds determine when cycle balances are shown in red (critical), orange (warning), or green (healthy).
+                            </p>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                <div>
+                                    <label style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '12px', 
+                                        display: 'block', 
+                                        marginBottom: '6px' 
+                                    }}>
+                                        🔴 Critical Threshold (Red) - cycles below this are critical
+                                    </label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <input
+                                            type="text"
+                                            value={cycleThresholdRed}
+                                            onChange={(e) => {
+                                                setCycleThresholdRed(e.target.value);
+                                                setSettingsSaved(false);
+                                            }}
+                                            placeholder="e.g., 1T, 500B"
+                                            style={{
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '4px',
+                                                color: theme.colors.primaryText,
+                                                padding: '8px 12px',
+                                                width: '150px',
+                                            }}
+                                        />
+                                        <span style={{ 
+                                            color: '#ef4444', 
+                                            fontSize: '20px',
+                                            padding: '4px 12px',
+                                            background: '#ef444420',
+                                            borderRadius: '4px',
+                                        }}>
+                                            ⚡
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '12px', 
+                                        display: 'block', 
+                                        marginBottom: '6px' 
+                                    }}>
+                                        🟠 Warning Threshold (Orange) - cycles below this show a warning
+                                    </label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <input
+                                            type="text"
+                                            value={cycleThresholdOrange}
+                                            onChange={(e) => {
+                                                setCycleThresholdOrange(e.target.value);
+                                                setSettingsSaved(false);
+                                            }}
+                                            placeholder="e.g., 5T, 2T"
+                                            style={{
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '4px',
+                                                color: theme.colors.primaryText,
+                                                padding: '8px 12px',
+                                                width: '150px',
+                                            }}
+                                        />
+                                        <span style={{ 
+                                            color: '#f59e0b', 
+                                            fontSize: '20px',
+                                            padding: '4px 12px',
+                                            background: '#f59e0b20',
+                                            borderRadius: '4px',
+                                        }}>
+                                            ⚡
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '11px', 
+                                    padding: '10px',
+                                    background: theme.colors.tertiaryBg,
+                                    borderRadius: '4px',
+                                }}>
+                                    💡 Use suffixes: <strong>T</strong> (trillion), <strong>B</strong> (billion), <strong>M</strong> (million). 
+                                    Example: "1T" = 1,000,000,000,000 cycles
+                                </div>
+                                
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <button
+                                        onClick={() => {
+                                            const redValue = parseCyclesInput(cycleThresholdRed);
+                                            const orangeValue = parseCyclesInput(cycleThresholdOrange);
+                                            
+                                            if (redValue === null || orangeValue === null) {
+                                                alert('Invalid input. Please use format like "1T", "500B", or "1000000000000"');
+                                                return;
+                                            }
+                                            
+                                            if (redValue >= orangeValue) {
+                                                alert('Critical threshold must be lower than warning threshold');
+                                                return;
+                                            }
+                                            
+                                            saveNeuronManagerSettings({
+                                                cycleThresholdRed: redValue,
+                                                cycleThresholdOrange: orangeValue,
+                                            });
+                                            
+                                            // Update display to normalized format
+                                            setCycleThresholdRed(formatCyclesCompact(redValue));
+                                            setCycleThresholdOrange(formatCyclesCompact(orangeValue));
+                                            setSettingsSaved(true);
+                                            
+                                            setTimeout(() => setSettingsSaved(false), 3000);
+                                        }}
+                                        style={{
+                                            backgroundColor: theme.colors.accent,
+                                            color: theme.colors.primaryText,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '10px 20px',
+                                            cursor: 'pointer',
+                                            fontWeight: '500',
+                                        }}
+                                    >
+                                        Save Settings
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => {
+                                            setCycleThresholdRed('1.0T');
+                                            setCycleThresholdOrange('5.0T');
+                                            saveNeuronManagerSettings({
+                                                cycleThresholdRed: 1_000_000_000_000,
+                                                cycleThresholdOrange: 5_000_000_000_000,
+                                            });
+                                            setSettingsSaved(true);
+                                            setTimeout(() => setSettingsSaved(false), 3000);
+                                        }}
+                                        style={{
+                                            backgroundColor: 'transparent',
+                                            color: theme.colors.mutedText,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '4px',
+                                            padding: '10px 20px',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        Reset to Defaults
+                                    </button>
+                                    
+                                    {settingsSaved && (
+                                        <span style={{ color: theme.colors.success || '#22c55e', fontSize: '13px' }}>
+                                            ✓ Settings saved!
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                {/* Preview */}
+                                <div style={{ 
+                                    marginTop: '10px',
+                                    padding: '15px',
+                                    background: theme.colors.tertiaryBg,
+                                    borderRadius: '8px',
+                                }}>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '10px' }}>
+                                        Preview:
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                                        {(() => {
+                                            const redValue = parseCyclesInput(cycleThresholdRed) || 1_000_000_000_000;
+                                            const orangeValue = parseCyclesInput(cycleThresholdOrange) || 5_000_000_000_000;
+                                            const settings = { cycleThresholdRed: redValue, cycleThresholdOrange: orangeValue };
+                                            
+                                            const examples = [
+                                                { value: redValue / 2, label: 'Critical' },
+                                                { value: (redValue + orangeValue) / 2, label: 'Warning' },
+                                                { value: orangeValue * 2, label: 'Healthy' },
+                                            ];
+                                            
+                                            return examples.map((ex, i) => (
+                                                <div key={i} style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '6px',
+                                                    padding: '6px 12px',
+                                                    background: `${getCyclesColor(ex.value, settings)}20`,
+                                                    borderRadius: '20px',
+                                                }}>
+                                                    <span style={{ color: getCyclesColor(ex.value, settings), fontWeight: '500' }}>
+                                                        ⚡ {formatCyclesCompact(ex.value)}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                        ({ex.label})
+                                                    </span>
+                                                </div>
+                                            ));
+                                        })()}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {error && (

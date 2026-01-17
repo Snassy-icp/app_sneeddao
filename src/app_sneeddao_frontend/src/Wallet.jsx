@@ -44,6 +44,53 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { useNaming } from './NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
+import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from './utils/NeuronManagerSettings';
+import { Actor } from '@dfinity/agent';
+import { IDL } from '@dfinity/candid';
+
+const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
+
+// Management canister IDL factory for canister_status
+const managementCanisterIdlFactory = ({ IDL }) => {
+    const definite_canister_settings = IDL.Record({
+        'controllers': IDL.Vec(IDL.Principal),
+        'freezing_threshold': IDL.Nat,
+        'memory_allocation': IDL.Nat,
+        'compute_allocation': IDL.Nat,
+        'reserved_cycles_limit': IDL.Nat,
+        'log_visibility': IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        }),
+        'wasm_memory_limit': IDL.Nat,
+    });
+    const canister_status_result = IDL.Record({
+        'status': IDL.Variant({
+            'running': IDL.Null,
+            'stopping': IDL.Null,
+            'stopped': IDL.Null,
+        }),
+        'settings': definite_canister_settings,
+        'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
+        'memory_size': IDL.Nat,
+        'cycles': IDL.Nat,
+        'idle_cycles_burned_per_day': IDL.Nat,
+        'query_stats': IDL.Record({
+            'num_calls_total': IDL.Nat,
+            'num_instructions_total': IDL.Nat,
+            'request_payload_bytes_total': IDL.Nat,
+            'response_payload_bytes_total': IDL.Nat,
+        }),
+        'reserved_cycles': IDL.Nat,
+    });
+    return IDL.Service({
+        'canister_status': IDL.Func(
+            [IDL.Record({ 'canister_id': IDL.Principal })],
+            [canister_status_result],
+            []
+        ),
+    });
+};
 
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
@@ -357,7 +404,9 @@ function Wallet() {
     // ICP Neuron Manager state
     const [neuronManagers, setNeuronManagers] = useState([]);
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
+    const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
+    const [cycleSettings, setCycleSettings] = useState(() => getNeuronManagerSettings());
     const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('neuronManagersExpanded');
@@ -1080,9 +1129,10 @@ function Wallet() {
                 setLatestOfficialVersion(sorted[0]);
             }
             
-            // Fetch neuron counts and current versions for all managers
+            // Fetch neuron counts, versions, and cycles for all managers
             if (canisterIds.length > 0) {
                 const counts = {};
+                const cycles = {};
                 const updatedManagers = [];
                 
                 await Promise.all(canisterIds.map(async (canisterIdPrincipal) => {
@@ -1102,12 +1152,31 @@ function Wallet() {
                         counts[canisterId] = null;
                     }
                     
+                    // Try to fetch cycles (may fail if not controller)
+                    // Need to create actor with effectiveCanisterId for management canister
+                    try {
+                        const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                            agent,
+                            canisterId: MANAGEMENT_CANISTER_ID,
+                            callTransform: (methodName, args, callConfig) => ({
+                                ...callConfig,
+                                effectiveCanisterId: canisterIdPrincipal,
+                            }),
+                        });
+                        const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                        cycles[canisterId] = Number(status.cycles);
+                    } catch (cyclesErr) {
+                        // Not a controller, can't get cycles
+                        cycles[canisterId] = null;
+                    }
+                    
                     // Create manager object with canisterId and version
                     updatedManagers.push({ canisterId: canisterIdPrincipal, version: currentVersion });
                 }));
                 
                 setNeuronManagers(updatedManagers);
                 setNeuronManagerCounts(counts);
+                setNeuronManagerCycles(cycles);
                 
                 // Fetch neurons for all managers in parallel (for wallet total calculation)
                 Promise.all(canisterIds.map(cid => fetchManagerNeuronsData(cid.toText())));
@@ -4570,7 +4639,7 @@ function Wallet() {
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    {/* Row 3: Version and icons */}
+                                                    {/* Row 3: Version, cycles, and icons */}
                                                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <span 
                                                             style={{
@@ -4589,6 +4658,22 @@ function Wallet() {
                                                             {isVersionOutdated(manager.version) && '⚠️ '}
                                                             v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                         </span>
+                                                        {/* Cycles badge */}
+                                                        {neuronManagerCycles[canisterId] !== undefined && neuronManagerCycles[canisterId] !== null && (
+                                                            <span 
+                                                                style={{
+                                                                    background: `${getCyclesColor(neuronManagerCycles[canisterId], cycleSettings)}20`,
+                                                                    color: getCyclesColor(neuronManagerCycles[canisterId], cycleSettings),
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                }}
+                                                                title={`${neuronManagerCycles[canisterId].toLocaleString()} cycles`}
+                                                            >
+                                                                ⚡ {formatCyclesCompact(neuronManagerCycles[canisterId])}
+                                                            </span>
+                                                        )}
                                                         {/* Neurons icon */}
                                                         {neuronCount > 0 && (
                                                             <span 
