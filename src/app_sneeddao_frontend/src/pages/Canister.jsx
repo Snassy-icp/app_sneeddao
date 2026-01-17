@@ -11,6 +11,7 @@ import { useNaming } from '../NamingContext';
 import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
 // ICP Ledger constants
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -290,6 +291,7 @@ export default function CanisterPage() {
     const [toppingUp, setToppingUp] = useState(false);
     const [conversionRate, setConversionRate] = useState(null);
     const [showTopUpSection, setShowTopUpSection] = useState(false);
+    const [cycleSettings] = useState(() => getNeuronManagerSettings());
     
     // WASM upgrade state
     const [showUpgradeSection, setShowUpgradeSection] = useState(false);
@@ -1680,10 +1682,18 @@ export default function CanisterPage() {
                                     Cycles
                                 </div>
                                 <div style={{ 
-                                    color: theme.colors.primaryText, 
-                                    fontSize: '14px'
+                                    color: getCyclesColor(Number(canisterInfo.cycles), cycleSettings), 
+                                    fontSize: '18px',
+                                    fontWeight: '600'
                                 }}>
-                                    {(Number(canisterInfo.cycles) / 1_000_000_000_000).toFixed(4)} T
+                                    ⚡ {(Number(canisterInfo.cycles) / 1_000_000_000_000).toFixed(4)} T
+                                </div>
+                                <div style={{
+                                    color: theme.colors.mutedText,
+                                    fontSize: '11px',
+                                    marginTop: '4px'
+                                }}>
+                                    {Number(canisterInfo.cycles).toLocaleString()} cycles
                                 </div>
                             </div>
                         )}
