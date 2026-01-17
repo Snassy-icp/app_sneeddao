@@ -356,7 +356,6 @@ function Wallet() {
     
     // ICP Neuron Manager state
     const [neuronManagers, setNeuronManagers] = useState([]);
-    const [neuronManagerBalances, setNeuronManagerBalances] = useState({}); // canisterId -> balance
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
     const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
         try {
@@ -1054,29 +1053,14 @@ function Wallet() {
             const factory = createFactoryActor(factoryCanisterId, { agent });
             const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
             
-            // Fetch balances, neuron counts, and current versions for all managers
+            // Fetch neuron counts and current versions for all managers
             if (canisterIds.length > 0) {
-                const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
-                const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host } });
-                
-                const balances = {};
                 const counts = {};
                 const updatedManagers = [];
                 
                 await Promise.all(canisterIds.map(async (canisterIdPrincipal) => {
                     const canisterId = canisterIdPrincipal.toText();
                     let currentVersion = { major: 0, minor: 0, patch: 0 };
-                    
-                    try {
-                        const balance = await ledger.icrc1_balance_of({
-                            owner: canisterIdPrincipal,
-                            subaccount: [],
-                        });
-                        balances[canisterId] = Number(balance);
-                    } catch (err) {
-                        console.error(`Error fetching balance for ${canisterId}:`, err);
-                        balances[canisterId] = null;
-                    }
                     
                     try {
                         const managerActor = createManagerActor(canisterIdPrincipal, { agent });
@@ -1096,7 +1080,6 @@ function Wallet() {
                 }));
                 
                 setNeuronManagers(updatedManagers);
-                setNeuronManagerBalances(balances);
                 setNeuronManagerCounts(counts);
                 
                 // Fetch neurons for all managers in parallel (for wallet total calculation)
@@ -4499,7 +4482,6 @@ function Wallet() {
                             <div className="card-grid">
                                 {neuronManagers.map((manager) => {
                                     const canisterId = manager.canisterId.toText();
-                                    const balance = neuronManagerBalances[canisterId];
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
@@ -4573,15 +4555,6 @@ function Wallet() {
                                                         }}>
                                                             v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                         </span>
-                                                        {/* Balance icon if any */}
-                                                        {balance > 0 && (
-                                                            <span 
-                                                                style={{ fontSize: '14px', cursor: 'help' }} 
-                                                                title={`${formatIcpAmount(balance)} ICP canister balance`}
-                                                            >
-                                                                💰
-                                                            </span>
-                                                        )}
                                                         {/* Neurons icon */}
                                                         {neuronCount > 0 && (
                                                             <span 
