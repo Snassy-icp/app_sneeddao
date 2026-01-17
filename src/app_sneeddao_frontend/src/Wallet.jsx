@@ -411,6 +411,7 @@ function Wallet() {
     const [neuronManagers, setNeuronManagers] = useState([]);
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
+    const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     const [cycleSettings, setCycleSettings] = useState(() => getNeuronManagerSettings());
     // Cycles top-up state
@@ -1168,6 +1169,7 @@ function Wallet() {
                     
                     // Try to fetch cycles (may fail if not controller)
                     // Need to create actor with effectiveCanisterId for management canister
+                    let isController = false;
                     try {
                         const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
                             agent,
@@ -1179,18 +1181,26 @@ function Wallet() {
                         });
                         const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                         cycles[canisterId] = Number(status.cycles);
+                        isController = true;
                     } catch (cyclesErr) {
                         // Not a controller, can't get cycles
                         cycles[canisterId] = null;
                     }
                     
                     // Create manager object with canisterId and version
-                    updatedManagers.push({ canisterId: canisterIdPrincipal, version: currentVersion });
+                    updatedManagers.push({ canisterId: canisterIdPrincipal, version: currentVersion, isController });
                 }));
                 
                 setNeuronManagers(updatedManagers);
                 setNeuronManagerCounts(counts);
                 setNeuronManagerCycles(cycles);
+                
+                // Set controller status from manager objects
+                const controllerStatus = {};
+                updatedManagers.forEach(m => {
+                    controllerStatus[m.canisterId.toText()] = m.isController;
+                });
+                setNeuronManagerIsController(controllerStatus);
                 
                 // Fetch neurons for all managers in parallel (for wallet total calculation)
                 Promise.all(canisterIds.map(cid => fetchManagerNeuronsData(cid.toText())));
@@ -4752,8 +4762,21 @@ function Wallet() {
                                                 className="card-header"
                                                 onClick={() => toggleManagerCard(canisterId)}
                                             >
-                                                <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                     <span style={{ fontSize: '36px' }}>🧠</span>
+                                                    {neuronManagerIsController[canisterId] && (
+                                                        <span 
+                                                            style={{ 
+                                                                position: 'absolute', 
+                                                                top: 0, 
+                                                                right: 0, 
+                                                                fontSize: '14px',
+                                                            }}
+                                                            title="You are a controller"
+                                                        >
+                                                            👑
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="header-content-column">
                                                     {/* Row 1: Name and USD value */}
