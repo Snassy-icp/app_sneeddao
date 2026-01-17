@@ -106,9 +106,10 @@ const managementCanisterIdlFactory = ({ IDL }) => {
     });
 };
 
-// NNS Governance Topics (matching official NNS GUI)
-// Note: "All Except Governance, and SNS & Neurons' Fund" in NNS GUI is a convenience - 
-// it sets following for all topics except the critical ones (4 and 12)
+// NNS Governance Topics - Official IDs from NNS Governance Canister
+// Source: https://github.com/dfinity/ic/blob/master/rs/nns/governance/proto/ic_nns_governance/pb/v1/governance.proto
+// IMPORTANT: These IDs MUST match the governance canister exactly!
+// Critical topics (4 and 14) require explicit followee settings - they don't inherit from "All Topics"
 const NNS_TOPICS = [
     { id: 0, name: 'All Topics (Catch-all)', description: 'Default following for all topics without specific followees set', isCritical: false },
     { id: 1, name: 'Neuron Management', description: 'Proposals about neuron-related changes', isCritical: false },
@@ -121,14 +122,14 @@ const NNS_TOPICS = [
     { id: 8, name: 'Network Canister Management', description: 'NNS canister upgrades', isCritical: false },
     { id: 9, name: 'KYC', description: 'Know Your Customer related', isCritical: false },
     { id: 10, name: 'Node Provider Rewards', description: 'Rewards for node providers', isCritical: false },
-    { id: 12, name: 'SNS & Neurons\' Fund', description: 'SNS launches and community fund (critical topic)', isCritical: true },
-    { id: 13, name: 'Subnet Rental', description: 'Subnet rental requests', isCritical: false },
-    { id: 14, name: 'Protocol Canister Management', description: 'Protocol-level canister management', isCritical: false },
-    { id: 15, name: 'Service Nervous System Management', description: 'SNS governance management', isCritical: false },
-    { id: 16, name: 'IC OS Version Election', description: 'Electing new IC-OS versions', isCritical: false },
-    { id: 17, name: 'IC OS Version Deployment', description: 'Deploying IC-OS versions to subnets', isCritical: false },
-    { id: 18, name: 'API Boundary Node Management', description: 'Managing API boundary nodes', isCritical: false },
-    { id: 19, name: 'Application Canister Management', description: 'Managing application-level canisters', isCritical: false },
+    { id: 11, name: 'SNS Decentralization Sale', description: 'SNS token sale proposals (legacy)', isCritical: false },
+    { id: 12, name: 'Subnet Replica Version Management', description: 'Managing replica versions for subnets (IC OS deployment)', isCritical: false },
+    { id: 13, name: 'Replica Version Management', description: 'Managing IC replica versions (IC OS election)', isCritical: false },
+    { id: 14, name: 'SNS & Community Fund', description: 'SNS launches and Neurons\' Fund management (critical topic)', isCritical: true },
+    { id: 15, name: 'API Boundary Node Management', description: 'Managing API boundary nodes', isCritical: false },
+    { id: 16, name: 'Subnet Rental', description: 'Subnet rental requests', isCritical: false },
+    { id: 17, name: 'Protocol Canister Management', description: 'Protocol-level canister management', isCritical: false },
+    { id: 18, name: 'Service Nervous System Management', description: 'SNS governance system management', isCritical: false },
 ];
 
 // Fallback known neurons (used if governance fetch fails)
