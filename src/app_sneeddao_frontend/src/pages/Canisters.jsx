@@ -69,22 +69,29 @@ export default function CanistersPage() {
             const factory = createFactoryActor(factoryCanisterId, { agent });
             const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
             
-            // Fetch current version from each canister
-            const managersWithCurrentVersion = await Promise.all(
+            // Fetch current version and neuron count from each canister
+            const managersWithInfo = await Promise.all(
                 canisterIds.map(async (canisterIdPrincipal) => {
                     const canisterId = canisterIdPrincipal.toString();
                     try {
                         const managerActor = createManagerActor(canisterId, { agent });
-                        const currentVersion = await managerActor.getVersion();
-                        return { canisterId: canisterIdPrincipal, version: currentVersion };
+                        const [currentVersion, neuronIds] = await Promise.all([
+                            managerActor.getVersion(),
+                            managerActor.getNeuronIds(),
+                        ]);
+                        return { 
+                            canisterId: canisterIdPrincipal, 
+                            version: currentVersion,
+                            neuronCount: neuronIds?.length || 0,
+                        };
                     } catch (err) {
-                        console.error(`Error fetching version for ${canisterId}:`, err);
-                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 } };
+                        console.error(`Error fetching info for ${canisterId}:`, err);
+                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0 };
                     }
                 })
             );
             
-            setNeuronManagers(managersWithCurrentVersion);
+            setNeuronManagers(managersWithInfo);
         } catch (err) {
             console.error('Error loading neuron managers:', err);
         } finally {
@@ -827,9 +834,18 @@ export default function CanistersPage() {
                                                                     showViewProfile={false}
                                                                 />
                                                             </div>
-                                                            <span style={styles.managerVersion}>
-                                                                v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
-                                                            </span>
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                <span style={styles.managerVersion}>
+                                                                    v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
+                                                                </span>
+                                                                <span style={{
+                                                                    ...styles.managerVersion,
+                                                                    backgroundColor: manager.neuronCount > 0 ? '#8b5cf620' : theme.colors.inputBackground,
+                                                                    color: manager.neuronCount > 0 ? '#8b5cf6' : theme.colors.textSecondary,
+                                                                }}>
+                                                                    🧠 {manager.neuronCount} neuron{manager.neuronCount !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

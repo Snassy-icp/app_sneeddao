@@ -330,16 +330,14 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             // Fetch basic info
-            const [version, neuronIdsResult, accountId] = await Promise.all([
+            const [version, neuronIdsResult] = await Promise.all([
                 manager.getVersion(),
                 manager.getNeuronIds(),
-                manager.getAccountId(),
             ]);
             
             setManagerInfo({
                 canisterId,
                 version: `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`,
-                accountId: Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join(''),
             });
             
             // Set neuron IDs
@@ -2292,7 +2290,7 @@ function IcpNeuronManager() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
                                 <div>
                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                        Canister ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from wallet/DEX)</span>
+                                        Canister ID
                                     </div>
                                     <div style={{ color: theme.colors.primaryText, fontSize: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <PrincipalDisplay
@@ -2317,30 +2315,6 @@ function IcpNeuronManager() {
                                         </div>
                                     </div>
                                 )}
-                            </div>
-                            
-                            <div style={{ marginTop: '15px' }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                    Account ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from CEX)</span>
-                                </div>
-                                <div style={{ 
-                                    color: theme.colors.accent, 
-                                    fontFamily: 'monospace', 
-                                    fontSize: '12px',
-                                    marginTop: '4px',
-                                    wordBreak: 'break-all',
-                                    background: `${theme.colors.accent}10`,
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                }}>
-                                    {managerInfo.accountId}
-                                    <button 
-                                        onClick={() => copyToClipboard(managerInfo.accountId)}
-                                        style={{ ...secondaryButtonStyle, padding: '2px 8px', fontSize: '11px', marginLeft: '8px' }}
-                                    >
-                                        Copy
-                                    </button>
-                                </div>
                             </div>
 
                             <div style={{ marginTop: '15px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
