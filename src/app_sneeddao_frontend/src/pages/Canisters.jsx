@@ -63,6 +63,7 @@ export default function CanistersPage() {
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [canisters, setCanisters] = useState([]);
+    const [canisterCycles, setCanisterCycles] = useState({}); // canisterId -> cycles (or null if can't fetch)
     const [loading, setLoading] = useState(true);
     const [newCanisterId, setNewCanisterId] = useState('');
     const [addingCanister, setAddingCanister] = useState(false);
@@ -194,11 +195,47 @@ export default function CanistersPage() {
         }
     }, [identity]);
 
+    // Fetch cycles for a single custom canister (async, doesn't block UI)
+    const fetchCanisterCycles = useCallback(async (canisterId) => {
+        if (!identity) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://icp0.io' 
+                : 'http://localhost:4943';
+            const agent = HttpAgent.createSync({ host, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            const status = await mgmtActor.canister_status({ canister_id: canisterPrincipal });
+            const cycles = Number(status.cycles);
+            
+            setCanisterCycles(prev => ({ ...prev, [canisterId]: cycles }));
+        } catch (err) {
+            // Not a controller or other error - mark as null (won't show cycles)
+            console.log(`Cannot fetch cycles for ${canisterId}:`, err.message || err);
+            setCanisterCycles(prev => ({ ...prev, [canisterId]: null }));
+        }
+    }, [identity]);
+
     // Load tracked canisters on mount and when identity changes
     useEffect(() => {
         const loadCanisters = async () => {
             if (!identity) {
                 setCanisters([]);
+                setCanisterCycles({});
                 setLoading(false);
                 return;
             }
@@ -206,7 +243,13 @@ export default function CanistersPage() {
             setLoading(true);
             try {
                 const result = await getTrackedCanisters(identity);
-                setCanisters(result.map(p => p.toString()));
+                const canisterIds = result.map(p => p.toString());
+                setCanisters(canisterIds);
+                
+                // Fetch cycles for each canister asynchronously (don't await - let them update as they complete)
+                canisterIds.forEach(canisterId => {
+                    fetchCanisterCycles(canisterId);
+                });
             } catch (err) {
                 console.error('Error loading tracked canisters:', err);
                 setError('Failed to load tracked canisters');
@@ -217,7 +260,7 @@ export default function CanistersPage() {
 
         loadCanisters();
         fetchNeuronManagers();
-    }, [identity, fetchNeuronManagers]);
+    }, [identity, fetchNeuronManagers, fetchCanisterCycles]);
     
     // Persist collapsible states
     useEffect(() => {
@@ -266,9 +309,12 @@ export default function CanistersPage() {
 
         try {
             await registerTrackedCanister(identity, canisterPrincipal);
-            setCanisters(prev => [canisterPrincipal.toString(), ...prev]);
+            const canisterIdStr = canisterPrincipal.toString();
+            setCanisters(prev => [canisterIdStr, ...prev]);
             setNewCanisterId('');
             setSuccessMessage('Canister added to tracking list');
+            // Fetch cycles for the new canister asynchronously
+            fetchCanisterCycles(canisterIdStr);
         } catch (err) {
             console.error('Error adding canister:', err);
             setError('Failed to add canister');
@@ -707,6 +753,7 @@ export default function CanistersPage() {
                                     <div style={{ ...styles.canisterList, marginBottom: '24px' }}>
                                         {canisters.map((canisterId) => {
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                            const cycles = canisterCycles[canisterId];
                                             
                                             return (
                                             <div 
@@ -727,6 +774,33 @@ export default function CanistersPage() {
                                                         showSendMessage={false}
                                                         showViewProfile={false}
                                                     />
+                                                    {/* Cycles badge - shows when cycles are loaded */}
+                                                    {cycles !== undefined && cycles !== null && (
+                                                        <span 
+                                                            style={{
+                                                                ...styles.managerVersion,
+                                                                backgroundColor: `${getCyclesColor(cycles, cycleSettings)}20`,
+                                                                color: getCyclesColor(cycles, cycleSettings),
+                                                                marginLeft: '8px',
+                                                            }}
+                                                            title={`${cycles.toLocaleString()} cycles`}
+                                                        >
+                                                            ⚡ {formatCyclesCompact(cycles)}
+                                                        </span>
+                                                    )}
+                                                    {/* Loading indicator while fetching cycles */}
+                                                    {cycles === undefined && (
+                                                        <span 
+                                                            style={{
+                                                                ...styles.managerVersion,
+                                                                backgroundColor: `${theme.colors.mutedText}20`,
+                                                                color: theme.colors.mutedText,
+                                                                marginLeft: '8px',
+                                                            }}
+                                                        >
+                                                            ⚡ ...
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                                     <Link
