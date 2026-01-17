@@ -176,7 +176,7 @@ function IcpNeuronManager() {
     const [hotKeyPrincipal, setHotKeyPrincipal] = useState('');
     const [disburseAmount, setDisburseAmount] = useState('');
     const [disburseToAccount, setDisburseToAccount] = useState('');
-    const [selectedTopic, setSelectedTopic] = useState(0);
+    const [selectedTopics, setSelectedTopics] = useState([0]);
     const [followeeIds, setFolloweeIds] = useState('');
     const [increaseStakeAmount, setIncreaseStakeAmount] = useState('');
     const [maturityPercentage, setMaturityPercentage] = useState('100');
@@ -1250,6 +1250,11 @@ function IcpNeuronManager() {
             return;
         }
         
+        if (selectedTopics.length === 0) {
+            setError('No topics selected');
+            return;
+        }
+        
         setActionLoading('following');
         setError('');
         setSuccess('');
@@ -1268,19 +1273,39 @@ function IcpNeuronManager() {
                 .filter(s => s.length > 0)
                 .map(id => ({ id: BigInt(id) }));
             
-            const result = await manager.setFollowing(selectedNeuronId, selectedTopic, followees);
+            // Set following for all selected topics
+            const results = [];
+            const errors = [];
             
-            if ('Ok' in result) {
-                const topicName = NNS_TOPICS.find(t => t.id === selectedTopic)?.name || `Topic ${selectedTopic}`;
+            for (const topic of selectedTopics) {
+                try {
+                    const result = await manager.setFollowing(selectedNeuronId, topic, followees);
+                    if ('Ok' in result) {
+                        results.push(topic);
+                    } else {
+                        const topicName = NNS_TOPICS.find(t => t.id === topic)?.name || `Topic ${topic}`;
+                        errors.push(`${topicName}: ${result.Err?.GovernanceError?.error_message || 'Unknown error'}`);
+                    }
+                } catch (err) {
+                    const topicName = NNS_TOPICS.find(t => t.id === topic)?.name || `Topic ${topic}`;
+                    errors.push(`${topicName}: ${err.message}`);
+                }
+            }
+            
+            if (results.length > 0) {
+                const topicNames = results.map(id => NNS_TOPICS.find(t => t.id === id)?.name || `Topic ${id}`);
                 if (followees.length === 0) {
-                    setSuccess(`✅ Cleared following for ${topicName}`);
+                    setSuccess(`✅ Cleared following for ${results.length} topic(s): ${topicNames.join(', ')}`);
                 } else {
-                    setSuccess(`✅ Now following ${followees.length} neuron(s) for ${topicName}`);
+                    setSuccess(`✅ Now following ${followees.length} neuron(s) for ${results.length} topic(s): ${topicNames.join(', ')}`);
                 }
                 setFolloweeIds('');
+                setSelectedTopics([0]); // Reset to default
                 fetchManagerData();
-            } else {
-                handleOperationError(result.Err);
+            }
+            
+            if (errors.length > 0) {
+                setError(`Errors: ${errors.join('; ')}`);
             }
         } catch (err) {
             console.error('Error setting following:', err);
@@ -4103,35 +4128,129 @@ function IcpNeuronManager() {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                             <div>
                                                 <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-                                                    Topic
+                                                    Topics <span style={{ color: theme.colors.accent }}>({selectedTopics.length} selected)</span>
                                                 </label>
-                                                <select
-                                                    value={selectedTopic}
-                                                    onChange={(e) => setSelectedTopic(parseInt(e.target.value))}
-                                                    style={{ 
-                                                        ...inputStyle, 
-                                                        cursor: 'pointer',
-                                                    }}
-                                                >
+                                                
+                                                {/* Quick select buttons */}
+                                                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                                    <button
+                                                        onClick={() => setSelectedTopics(NNS_TOPICS.map(t => t.id))}
+                                                        style={{
+                                                            ...secondaryButtonStyle,
+                                                            padding: '4px 10px',
+                                                            fontSize: '11px',
+                                                        }}
+                                                    >
+                                                        Select All
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setSelectedTopics(NNS_TOPICS.filter(t => t.isCritical).map(t => t.id))}
+                                                        style={{
+                                                            ...secondaryButtonStyle,
+                                                            padding: '4px 10px',
+                                                            fontSize: '11px',
+                                                            borderColor: theme.colors.warning || '#f59e0b',
+                                                            color: theme.colors.warning || '#f59e0b',
+                                                        }}
+                                                    >
+                                                        ⚠️ Critical Only
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setSelectedTopics(NNS_TOPICS.filter(t => !t.isCritical).map(t => t.id))}
+                                                        style={{
+                                                            ...secondaryButtonStyle,
+                                                            padding: '4px 10px',
+                                                            fontSize: '11px',
+                                                        }}
+                                                    >
+                                                        Non-Critical Only
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setSelectedTopics([])}
+                                                        style={{
+                                                            ...secondaryButtonStyle,
+                                                            padding: '4px 10px',
+                                                            fontSize: '11px',
+                                                        }}
+                                                    >
+                                                        Clear All
+                                                    </button>
+                                                </div>
+                                                
+                                                {/* Topic checkboxes */}
+                                                <div style={{ 
+                                                    display: 'grid', 
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                                    gap: '4px',
+                                                    maxHeight: '300px',
+                                                    overflowY: 'auto',
+                                                    padding: '10px',
+                                                    background: theme.colors.inputBackground,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                }}>
                                                     {NNS_TOPICS.map(topic => (
-                                                        <option key={topic.id} value={topic.id}>
-                                                            {topic.isCritical ? '⚠️ ' : ''}{topic.name}
-                                                        </option>
+                                                        <label 
+                                                            key={topic.id}
+                                                            style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'flex-start', 
+                                                                gap: '8px',
+                                                                cursor: 'pointer',
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                background: selectedTopics.includes(topic.id) ? `${theme.colors.accent}15` : 'transparent',
+                                                                border: `1px solid ${selectedTopics.includes(topic.id) ? theme.colors.accent : 'transparent'}`,
+                                                                transition: 'all 0.15s',
+                                                            }}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedTopics.includes(topic.id)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setSelectedTopics([...selectedTopics, topic.id]);
+                                                                    } else {
+                                                                        setSelectedTopics(selectedTopics.filter(id => id !== topic.id));
+                                                                    }
+                                                                }}
+                                                                style={{ 
+                                                                    marginTop: '2px',
+                                                                    accentColor: theme.colors.accent,
+                                                                }}
+                                                            />
+                                                            <div style={{ flex: 1 }}>
+                                                                <div style={{ 
+                                                                    fontSize: '13px', 
+                                                                    color: topic.isCritical ? (theme.colors.warning || '#f59e0b') : theme.colors.primaryText,
+                                                                    fontWeight: selectedTopics.includes(topic.id) ? 500 : 400,
+                                                                }}>
+                                                                    {topic.isCritical ? '⚠️ ' : ''}{topic.name}
+                                                                </div>
+                                                                <div style={{ 
+                                                                    fontSize: '10px', 
+                                                                    color: theme.colors.mutedText,
+                                                                    marginTop: '2px',
+                                                                }}>
+                                                                    {topic.description}
+                                                                </div>
+                                                            </div>
+                                                        </label>
                                                     ))}
-                                                </select>
-                                                {(() => {
-                                                    const topic = NNS_TOPICS.find(t => t.id === selectedTopic);
-                                                    return (
-                                                        <p style={{ 
-                                                            color: topic?.isCritical ? (theme.colors.warning || '#f59e0b') : theme.colors.mutedText, 
-                                                            fontSize: '11px', 
-                                                            marginTop: '4px' 
-                                                        }}>
-                                                            {topic?.isCritical && '⚠️ Critical topic - following is NOT inherited from "All Topics". '}
-                                                            {topic?.description}
-                                                        </p>
-                                                    );
-                                                })()}
+                                                </div>
+                                                
+                                                {selectedTopics.some(id => NNS_TOPICS.find(t => t.id === id)?.isCritical) && (
+                                                    <p style={{ 
+                                                        color: theme.colors.warning || '#f59e0b', 
+                                                        fontSize: '11px', 
+                                                        marginTop: '8px',
+                                                        padding: '8px',
+                                                        background: `${theme.colors.warning || '#f59e0b'}15`,
+                                                        borderRadius: '6px',
+                                                    }}>
+                                                        ⚠️ You have selected critical topics. Following for critical topics is NOT inherited from "All Topics" and must be set explicitly.
+                                                    </p>
+                                                )}
                                             </div>
                                             <div>
                                                 <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
@@ -4182,7 +4301,7 @@ function IcpNeuronManager() {
                                                     value={followeeIds}
                                                     onChange={(e) => setFolloweeIds(e.target.value)}
                                                     style={inputStyle}
-                                                    placeholder="Leave empty to clear following for this topic"
+                                                    placeholder="Leave empty to clear following for selected topics"
                                                 />
                                                 
                                                 {/* Show selected as pills */}
@@ -4227,20 +4346,29 @@ function IcpNeuronManager() {
                                                 )}
                                                 
                                                 <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
-                                                    {followeeIds ? '🔄 Setting these neurons as followees will replace any existing followees for this topic.' : '🗑️ Submitting with no neurons selected will clear following for this topic.'}
+                                                    {followeeIds 
+                                                        ? `🔄 Setting these neurons as followees will replace existing followees for ${selectedTopics.length} selected topic(s).` 
+                                                        : `🗑️ Submitting with no neurons selected will clear following for ${selectedTopics.length} selected topic(s).`
+                                                    }
                                                 </p>
                                             </div>
                                             <button
                                                 onClick={handleSetFollowing}
-                                                disabled={actionLoading === 'following'}
+                                                disabled={actionLoading === 'following' || selectedTopics.length === 0}
                                                 style={{ 
                                                     ...buttonStyle, 
-                                                    opacity: actionLoading === 'following' ? 0.6 : 1,
+                                                    opacity: (actionLoading === 'following' || selectedTopics.length === 0) ? 0.6 : 1,
                                                     alignSelf: 'flex-start',
                                                     background: followeeIds ? theme.colors.accent : (theme.colors.error || '#ef4444'),
                                                 }}
                                             >
-                                                {actionLoading === 'following' ? '⏳...' : (followeeIds ? '✅ Set Following' : '🗑️ Clear Following')}
+                                                {actionLoading === 'following' 
+                                                    ? `⏳ Setting for ${selectedTopics.length} topics...` 
+                                                    : (followeeIds 
+                                                        ? `✅ Set Following for ${selectedTopics.length} Topic(s)` 
+                                                        : `🗑️ Clear Following for ${selectedTopics.length} Topic(s)`
+                                                    )
+                                                }
                                             </button>
                                         </div>
                                     </div>
