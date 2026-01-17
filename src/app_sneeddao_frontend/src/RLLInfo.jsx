@@ -1818,10 +1818,10 @@ function RLLInfo() {
                     acc.tokensOwed1 += BigInt(pos.tokensOwed1 || 0);
                     return acc;
                 }, {
-                    token0Amount: BigInt(0),  // ICP
-                    token1Amount: BigInt(0),  // SNEED
-                    tokensOwed0: BigInt(0),   // Unclaimed ICP
-                    tokensOwed1: BigInt(0)    // Unclaimed SNEED
+                    token0Amount: BigInt(0),  // SNEED
+                    token1Amount: BigInt(0),  // ICP
+                    tokensOwed0: BigInt(0),   // Unclaimed SNEED
+                    tokensOwed1: BigInt(0)    // Unclaimed ICP
                 });
 
                 setLpPositions({
@@ -2846,7 +2846,8 @@ function RLLInfo() {
             getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
             getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
             getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-            getUSDValue(defiBalances.icp, 8, 'ICP');
+            getUSDValue(defiBalances.icp, 8, 'ICP') +
+            getUSDValue(rllBalances.icp, 8, 'ICP');  // RLL Distribution ICP
 
         // Add ICP from Other Positions
         if (otherLpPositions['ICP/CLOWN'].position) {
@@ -2877,15 +2878,17 @@ function RLLInfo() {
         return getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
                getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
                getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-               getUSDValue(defiBalances.sneed, 8, 'SNEED');
+               getUSDValue(defiBalances.sneed, 8, 'SNEED') +
+               getUSDValue(rllBalances.sneed, 8, 'SNEED');  // RLL Distribution SNEED
     };
 
     // Calculate NAV (excluding treasury SNEED)
     const getNAVUSDValue = () => {
-        return getTotalIcpUSDValue() +      // All ICP including Other Positions
+        return getTotalIcpUSDValue() +      // All ICP including Other Positions and RLL
                getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +  // LP SNEED
                getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +   // Unclaimed LP SNEED
                getUSDValue(defiBalances.sneed, 8, 'SNEED') +               // DeFi SNEED
+               getUSDValue(rllBalances.sneed, 8, 'SNEED') +                // RLL Distribution SNEED
                getOtherPositionsNonIcpUSDTotal() +  // Non-ICP values from Other Positions
                getOtherTokensUSDTotal();     // Other tokens
     };
