@@ -1237,15 +1237,6 @@ function Wallet() {
         const amountE8s = BigInt(Math.floor(icpAmount * E8S_ICP));
         const totalNeeded = amountE8s + BigInt(ICP_FEE);
         
-        // Check user's ICP balance
-        const icpToken = tokens.find(t => t.ledger?.toText?.() === ICP_LEDGER_CANISTER_ID || t.ledger === ICP_LEDGER_CANISTER_ID);
-        const userIcpBalance = icpToken ? BigInt(icpToken.available || 0) + BigInt(icpToken.available_backend || 0) : 0n;
-        
-        if (userIcpBalance < totalNeeded) {
-            setTopUpError(`Insufficient ICP balance. Need ${(Number(totalNeeded) / E8S_ICP).toFixed(4)} ICP (including fee)`);
-            return;
-        }
-        
         setToppingUp(true);
         setTopUpError('');
         setTopUpSuccess('');
@@ -1260,11 +1251,23 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             
+            // Fetch user's ICP balance directly from ledger
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const userIcpBalance = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            
+            if (BigInt(userIcpBalance) < totalNeeded) {
+                setTopUpError(`Insufficient ICP balance. You have ${(Number(userIcpBalance) / E8S_ICP).toFixed(4)} ICP, need ${(Number(totalNeeded) / E8S_ICP).toFixed(4)} ICP (including fee)`);
+                setToppingUp(false);
+                return;
+            }
+            
             const canisterPrincipal = Principal.fromText(managerCanisterId);
             const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
             
             // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
-            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             const subaccount = principalToSubAccount(canisterPrincipal);
             
             console.log('Transferring ICP to CMC for cycles top-up...');
