@@ -23,7 +23,7 @@ const ICP_FEE = 10_000;
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
 // Beta end date - feature becomes available to everyone after this date
-const BETA_END_DATE = new Date('2025-01-24T00:00:00Z');
+const BETA_END_DATE = new Date('2026-01-24T00:00:00Z');
 
 // Management canister IDL factory for canister_status
 const managementCanisterIdlFactory = ({ IDL }) => {
@@ -699,7 +699,7 @@ function CreateIcpNeuron() {
                                     fontSize: '13px', 
                                     color: theme.colors.mutedText 
                                 }}>
-                                    📅 January 24th, 2025
+                                    📅 January 24th, 2026
                                 </div>
                             </div>
                         )}
