@@ -466,22 +466,30 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     func refreshStakeInternal(nid: T.NeuronId): async T.OperationResult {
-        // Use NeuronIdOrSubaccount method - works for all neurons
+        // Use neuron_id_or_subaccount approach - only set this field, not id
         let request: T.ManageNeuronRequest = {
-            id = ?nid;
+            id = null;
             command = ?#ClaimOrRefresh({
-                by = ?#NeuronIdOrSubaccount;
+                by = ?#NeuronIdOrSubaccount({});
             });
-            neuron_id_or_subaccount = null;
+            neuron_id_or_subaccount = ?#NeuronId(nid);
         };
         
         let result = await governance.manage_neuron(request);
         
         switch (result.command) {
-            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-            case (?#Error(e)) { #Err(#GovernanceError(e)) };
-            case (?#ClaimOrRefresh(_)) { #Ok };
-            case (_) { #Err(#InvalidOperation("Unexpected response")) };
+            case null { 
+                #Err(#GovernanceError({ error_message = "No response from refresh"; error_type = 0 })) 
+            };
+            case (?#Error(e)) { 
+                #Err(#GovernanceError(e)) 
+            };
+            case (?#ClaimOrRefresh(_)) { 
+                #Ok 
+            };
+            case (_) { 
+                #Err(#InvalidOperation("Unexpected response")) 
+            };
         };
     };
 

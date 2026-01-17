@@ -227,7 +227,7 @@ module {
     };
 
     public type ClaimOrRefreshBy = {
-        #NeuronIdOrSubaccount;
+        #NeuronIdOrSubaccount: {};
         #MemoAndController: { controller: ?Principal; memo: Nat64 };
         #Memo: Nat64;
     };

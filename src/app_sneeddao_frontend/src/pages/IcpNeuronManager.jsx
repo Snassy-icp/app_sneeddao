@@ -1461,19 +1461,65 @@ function IcpNeuronManager() {
             }
             
             // Step 3: Refresh the neuron stake
-            setSuccess('🔄 Refreshing neuron stake...');
+            setSuccess('🔄 Refreshing neuron stake... (this may take a moment)');
+            console.log('Calling refreshStakeFromDeposit for neuron:', selectedNeuronId);
             const result = await manager.refreshStakeFromDeposit(selectedNeuronId);
+            console.log('refreshStakeFromDeposit result:', result);
             
             if ('Ok' in result) {
-                setSuccess(`✅ Added ${increaseStakeAmount} ICP to neuron stake`);
+                setSuccess(`✅ Added ${increaseStakeAmount} ICP to neuron stake! Refreshing data...`);
                 setIncreaseStakeAmount('');
-                fetchManagerData();
+                // Give NNS a moment to update, then refresh
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await fetchManagerData();
                 fetchUserBalance(agent); // Refresh user balance
+                setSuccess(`✅ Successfully added ${increaseStakeAmount} ICP to neuron stake`);
             } else {
+                console.error('refreshStakeFromDeposit error:', result.Err);
                 handleOperationError(result.Err);
             }
         } catch (err) {
             console.error('Error increasing stake:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    // Manual refresh stake - useful if user sent ICP externally or automatic refresh didn't work
+    const handleManualRefreshStake = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
+        setActionLoading('refreshStake');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            setSuccess('🔄 Refreshing neuron stake from NNS...');
+            console.log('Calling refreshStake for neuron:', selectedNeuronId);
+            const result = await manager.refreshStake(selectedNeuronId);
+            console.log('refreshStake result:', result);
+            
+            if ('Ok' in result) {
+                setSuccess('✅ Neuron stake refreshed! Fetching updated data...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await fetchManagerData();
+                setSuccess('✅ Neuron data refreshed successfully');
+            } else {
+                console.error('refreshStake error:', result.Err);
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error refreshing stake:', err);
             setError(`Error: ${err.message}`);
         } finally {
             setActionLoading('');
@@ -3894,6 +3940,29 @@ function IcpNeuronManager() {
                                             <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
                                                 Your wallet: {formatIcp(userIcpBalance)} ICP available
                                             </p>
+                                            
+                                            {/* Manual Refresh Button */}
+                                            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px dashed ${theme.colors.border}` }}>
+                                                <button
+                                                    onClick={handleManualRefreshStake}
+                                                    disabled={actionLoading === 'refreshStake'}
+                                                    style={{ 
+                                                        background: 'transparent',
+                                                        color: theme.colors.accent,
+                                                        border: `1px solid ${theme.colors.accent}`,
+                                                        borderRadius: '6px',
+                                                        padding: '6px 12px',
+                                                        fontSize: '12px',
+                                                        cursor: actionLoading === 'refreshStake' ? 'not-allowed' : 'pointer',
+                                                        opacity: actionLoading === 'refreshStake' ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'refreshStake' ? '⏳ Refreshing...' : '🔄 Refresh Stake from NNS'}
+                                                </button>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '10px', marginTop: '5px', marginBottom: 0 }}>
+                                                    Use this if you sent ICP to the neuron externally or if stake doesn't update automatically
+                                                </p>
+                                            </div>
                                         </div>
 
                                         {/* Auto-stake Maturity */}
