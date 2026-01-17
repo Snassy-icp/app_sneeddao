@@ -19,7 +19,8 @@ export const GATE_TYPES = {
 export function SneedMemberGateMessage({ 
     gateType = GATE_TYPES.PREMIUM,
     featureName = 'This feature',
-    customMessage = null 
+    customMessage = null,
+    children = null  // Optional content to render after "Coming Soon" message
 }) {
     const { theme } = useTheme();
     
@@ -81,6 +82,9 @@ export function SneedMemberGateMessage({
                         🎉 <strong>Coming Soon:</strong> This feature will be open to everyone after the beta period!
                     </div>
                 )}
+
+                {/* Optional content like countdown timer */}
+                {children}
                 
                 <div style={{ 
                     background: `${theme.colors.warning || '#f59e0b'}15`,

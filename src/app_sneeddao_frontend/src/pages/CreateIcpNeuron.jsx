@@ -612,98 +612,87 @@ function CreateIcpNeuron() {
 
                 {/* Gate message with countdown for non-members during beta */}
                 {isAuthenticated && !loadingSneedVP && !hasAccess && (
-                    <>
-                        <SneedMemberGateMessage 
-                            gateType={GATE_TYPES.BETA}
-                            featureName="The ICP Neuron Manager"
-                        />
-                        
-                        {/* Countdown Timer */}
+                    <SneedMemberGateMessage 
+                        gateType={GATE_TYPES.BETA}
+                        featureName="The ICP Neuron Manager"
+                    >
+                        {/* Countdown Timer - rendered inside gate message after "Coming Soon" */}
                         {timeUntilPublic && (
                             <div style={{ 
-                                ...cardStyle,
-                                marginTop: '-10px',
-                                padding: '24px',
-                                background: `linear-gradient(135deg, ${theme.colors.accent}15 0%, ${theme.colors.accent}05 100%)`,
-                                border: `2px solid ${theme.colors.accent}40`,
+                                padding: '16px',
+                                marginBottom: '20px',
+                                background: `linear-gradient(135deg, ${theme.colors.accent}10 0%, ${theme.colors.accent}05 100%)`,
+                                borderRadius: '10px',
+                                border: `1px solid ${theme.colors.accent}30`,
                                 textAlign: 'center'
                             }}>
                                 <div style={{ 
-                                    color: theme.colors.primaryText, 
-                                    fontSize: '16px', 
-                                    marginBottom: '16px',
-                                    fontWeight: '600'
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '12px', 
+                                    marginBottom: '10px',
+                                    fontWeight: '500',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
                                 }}>
-                                    ⏰ Feature opens to everyone in:
+                                    ⏰ Opens to everyone in
                                 </div>
                                 <div style={{ 
                                     display: 'flex', 
                                     justifyContent: 'center', 
-                                    gap: '20px',
+                                    alignItems: 'baseline',
+                                    gap: '4px',
                                     flexWrap: 'wrap'
                                 }}>
-                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                                        <div style={{ 
-                                            fontSize: '36px', 
-                                            fontWeight: '700', 
-                                            color: theme.colors.accent,
-                                            fontFamily: 'monospace',
-                                            lineHeight: 1
-                                        }}>
-                                            {timeUntilPublic.days}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Days</div>
-                                    </div>
-                                    <div style={{ color: theme.colors.accent, fontSize: '36px', fontWeight: '300', lineHeight: 1 }}>:</div>
-                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                                        <div style={{ 
-                                            fontSize: '36px', 
-                                            fontWeight: '700', 
-                                            color: theme.colors.accent,
-                                            fontFamily: 'monospace',
-                                            lineHeight: 1
-                                        }}>
-                                            {String(timeUntilPublic.hours).padStart(2, '0')}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Hours</div>
-                                    </div>
-                                    <div style={{ color: theme.colors.accent, fontSize: '36px', fontWeight: '300', lineHeight: 1 }}>:</div>
-                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                                        <div style={{ 
-                                            fontSize: '36px', 
-                                            fontWeight: '700', 
-                                            color: theme.colors.accent,
-                                            fontFamily: 'monospace',
-                                            lineHeight: 1
-                                        }}>
-                                            {String(timeUntilPublic.minutes).padStart(2, '0')}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Minutes</div>
-                                    </div>
-                                    <div style={{ color: theme.colors.accent, fontSize: '36px', fontWeight: '300', lineHeight: 1 }}>:</div>
-                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                                        <div style={{ 
-                                            fontSize: '36px', 
-                                            fontWeight: '700', 
-                                            color: theme.colors.accent,
-                                            fontFamily: 'monospace',
-                                            lineHeight: 1
-                                        }}>
-                                            {String(timeUntilPublic.seconds).padStart(2, '0')}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Seconds</div>
-                                    </div>
+                                    <span style={{ 
+                                        fontSize: '28px', 
+                                        fontWeight: '700', 
+                                        color: theme.colors.accent,
+                                        fontFamily: 'monospace'
+                                    }}>
+                                        {timeUntilPublic.days}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: theme.colors.mutedText, marginRight: '8px' }}>d</span>
+                                    
+                                    <span style={{ 
+                                        fontSize: '28px', 
+                                        fontWeight: '700', 
+                                        color: theme.colors.accent,
+                                        fontFamily: 'monospace'
+                                    }}>
+                                        {String(timeUntilPublic.hours).padStart(2, '0')}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: theme.colors.mutedText, marginRight: '8px' }}>h</span>
+                                    
+                                    <span style={{ 
+                                        fontSize: '28px', 
+                                        fontWeight: '700', 
+                                        color: theme.colors.accent,
+                                        fontFamily: 'monospace'
+                                    }}>
+                                        {String(timeUntilPublic.minutes).padStart(2, '0')}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: theme.colors.mutedText, marginRight: '8px' }}>m</span>
+                                    
+                                    <span style={{ 
+                                        fontSize: '28px', 
+                                        fontWeight: '700', 
+                                        color: theme.colors.accent,
+                                        fontFamily: 'monospace'
+                                    }}>
+                                        {String(timeUntilPublic.seconds).padStart(2, '0')}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: theme.colors.mutedText }}>s</span>
                                 </div>
                                 <div style={{ 
-                                    marginTop: '16px', 
-                                    fontSize: '13px', 
+                                    marginTop: '8px', 
+                                    fontSize: '11px', 
                                     color: theme.colors.mutedText 
                                 }}>
                                     📅 January 24th, 2026
                                 </div>
                             </div>
                         )}
-                    </>
+                    </SneedMemberGateMessage>
                 )}
 
                 {/* Sneed Member Badge - show during beta for members */}
