@@ -1023,28 +1023,73 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // Get merged log (combines creation and financial logs) - admin only
-    public query ({ caller }) func getMergedLog(startIndex: ?Nat, limit: ?Nat): async T.MergedLogResult {
+    // Supports full filtering like getCreationLog
+    public query ({ caller }) func getMergedLog(params: T.MergedLogQuery): async T.MergedLogResult {
         assert(isAdmin(caller));
         
-        let actualStartIndex = switch (startIndex) {
+        let startIndex = switch (params.startIndex) {
             case (?idx) { idx };
             case null { 0 };
         };
         
-        let actualLimit = switch (limit) {
+        let limit = switch (params.limit) {
             case (?l) { if (l > 100) { 100 } else { l } };
             case null { 50 };
         };
         
-        let totalCount = creationLog.size();
+        // First, filter the creation log entries
+        let filtered = Array.filter<T.CreationLogEntry>(creationLog, func(entry) {
+            // Filter by caller
+            switch (params.callerFilter) {
+                case (?callerFilter) {
+                    if (entry.caller != callerFilter) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            // Filter by canister
+            switch (params.canisterFilter) {
+                case (?canister) {
+                    if (entry.canisterId != canister) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            // Filter by time range
+            switch (params.fromTime) {
+                case (?from) {
+                    if (entry.createdAt < from) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            switch (params.toTime) {
+                case (?to) {
+                    if (entry.createdAt > to) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            true;
+        });
         
-        // Build merged entries
-        let buf = Buffer.Buffer<T.MergedLogEntry>(actualLimit);
+        let totalCount = filtered.size();
+        
+        // Build merged entries with paging
+        let buf = Buffer.Buffer<T.MergedLogEntry>(limit);
         var idx: Nat = 0;
         var count: Nat = 0;
         
-        for (creationEntry in creationLog.vals()) {
-            if (idx >= actualStartIndex and count < actualLimit) {
+        for (creationEntry in filtered.vals()) {
+            if (idx >= startIndex and count < limit) {
                 // Find matching financial entry by canisterId
                 var financialData: ?{
                     icpPaidE8s: Nat64;
@@ -1087,7 +1132,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         {
             entries = Buffer.toArray(buf);
             totalCount = totalCount;
-            hasMore = (actualStartIndex + count) < totalCount;
+            hasMore = (startIndex + count) < totalCount;
         };
     };
 

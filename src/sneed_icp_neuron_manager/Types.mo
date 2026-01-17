@@ -571,6 +571,16 @@ module {
         };
     };
 
+    // Query parameters for merged log (same as CreationLogQuery for compatibility)
+    public type MergedLogQuery = {
+        startIndex: ?Nat;           // Start from this index (for paging)
+        limit: ?Nat;                // Max entries to return
+        callerFilter: ?Principal;   // Filter by caller
+        canisterFilter: ?Principal; // Filter by canister ID
+        fromTime: ?Int;             // Filter: created after this time
+        toTime: ?Int;               // Filter: created before this time
+    };
+
     // Result for merged log query
     public type MergedLogResult = {
         entries: [MergedLogEntry];
