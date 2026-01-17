@@ -9,7 +9,7 @@ import { IDL } from '@dfinity/candid';
 import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown } from 'react-icons/fa';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
@@ -171,6 +171,7 @@ export default function CanistersPage() {
                         // Need to create actor with effectiveCanisterId for management canister
                         let cycles = null;
                         let memory = null;
+                        let isController = false;
                         try {
                             const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
                                 agent,
@@ -183,6 +184,7 @@ export default function CanistersPage() {
                             const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                             cycles = Number(status.cycles);
                             memory = Number(status.memory_size);
+                            isController = true;
                         } catch (cyclesErr) {
                             // Not a controller, can't get status
                             console.log(`Cannot fetch status for ${canisterId} (not a controller)`);
@@ -194,10 +196,11 @@ export default function CanistersPage() {
                             neuronCount: neuronIds?.length || 0,
                             cycles,
                             memory,
+                            isController,
                         };
                     } catch (err) {
                         console.error(`Error fetching info for ${canisterId}:`, err);
-                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, cycles: null, memory: null };
+                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, cycles: null, memory: null, isController: false };
                     }
                 })
             );
@@ -238,11 +241,11 @@ export default function CanistersPage() {
             const cycles = Number(status.cycles);
             const memory = Number(status.memory_size);
             
-            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory } }));
+            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory, isController: true } }));
         } catch (err) {
-            // Not a controller or other error - mark as null (won't show status)
+            // Not a controller or other error - mark isController as false
             console.log(`Cannot fetch status for ${canisterId}:`, err.message || err);
-            setCanisterStatus(prev => ({ ...prev, [canisterId]: null }));
+            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles: null, memory: null, isController: false } }));
         }
     }, [identity]);
 
@@ -1079,6 +1082,7 @@ export default function CanistersPage() {
         const status = canisterStatus[canisterId];
         const cycles = status?.cycles;
         const memory = status?.memory;
+        const isController = status?.isController;
         const isConfirming = confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === groupId;
 
         // Collect all groups for the move dropdown
@@ -1098,8 +1102,20 @@ export default function CanistersPage() {
         return (
             <div style={styles.canisterCard}>
                 <div style={styles.canisterInfo}>
-                    <div style={styles.canisterIcon}>
+                    <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                         <FaCube size={18} />
+                        {isController && (
+                            <FaCrown 
+                                size={10} 
+                                style={{ 
+                                    position: 'absolute', 
+                                    top: -4, 
+                                    right: -4, 
+                                    color: '#f59e0b',
+                                }} 
+                                title="You are a controller"
+                            />
+                        )}
                     </div>
                     <PrincipalDisplay
                         principal={canisterId}
@@ -1808,8 +1824,20 @@ export default function CanistersPage() {
                                                     style={styles.managerCard}
                                                 >
                                                     <div style={styles.managerInfo}>
-                                                        <div style={styles.managerIcon}>
+                                                        <div style={{ ...styles.managerIcon, position: 'relative' }}>
                                                             <FaBrain size={18} />
+                                                            {manager.isController && (
+                                                                <FaCrown 
+                                                                    size={10} 
+                                                                    style={{ 
+                                                                        position: 'absolute', 
+                                                                        top: -4, 
+                                                                        right: -4, 
+                                                                        color: '#f59e0b',
+                                                                    }} 
+                                                                    title="You are a controller"
+                                                                />
+                                                            )}
                                                         </div>
                                                         <div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
