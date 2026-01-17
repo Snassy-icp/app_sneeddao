@@ -966,39 +966,69 @@ function IcpNeuronManager() {
         setError('');
         setSuccess('');
         
+        const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * E8S));
+        const fee = BigInt(10000); // 0.0001 ICP fee
+        
+        // Check user has enough balance
+        if (userIcpBalance === null || BigInt(userIcpBalance) < amountE8s + fee) {
+            setError(`Insufficient balance. You have ${formatIcp(userIcpBalance)} ICP, need ${parseFloat(stakeAmount) + 0.0001} ICP (including fee)`);
+            setActionLoading('');
+            return;
+        }
+        
         try {
             const agent = getAgent();
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
                 await agent.fetchRootKey();
             }
             const manager = createManagerActor(canisterId, { agent });
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             
-            const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * E8S));
-            // NNS governance adds ~7 days to dissolve delay, so we subtract 7 days to compensate
-            //const adjustedDelayDays = Math.max(183, delayDays - 7);
-            //const adjustedDelayDays = delayDays - 7;
+            // Step 1: Generate memo and get stake account
+            const memo = await manager.generateMemo();
+            const stakeInfo = await manager.getStakeAccount(memo);
+            
+            // Step 2: Transfer ICP directly to governance canister's neuron subaccount
+            setSuccess('📤 Sending ICP to NNS Governance...');
+            const transferResult = await ledger.icrc1_transfer({
+                to: {
+                    owner: stakeInfo.account.owner,
+                    subaccount: stakeInfo.account.subaccount,
+                },
+                amount: amountE8s,
+                fee: [fee],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            // Step 3: Claim the neuron from the deposit
+            setSuccess('🧠 Claiming neuron from deposit...');
             const dissolveDelaySeconds = BigInt(delayDays * 24 * 60 * 60);
-            const result = await manager.stakeNeuron(amountE8s, dissolveDelaySeconds);
+            const result = await manager.claimNeuronFromDeposit(memo, dissolveDelaySeconds);
             
             if ('Ok' in result) {
                 setSuccess(`🎉 Neuron created! ID: ${result.Ok.id.toString()}`);
                 setSelectedNeuronId(result.Ok);
                 fetchManagerData();
+                fetchUserBalance(agent); // Refresh user balance
             } else {
                 const err = result.Err;
-                if ('InsufficientFunds' in err) {
-                    setError(`Insufficient funds: have ${Number(err.InsufficientFunds.balance) / E8S} ICP, need ${Number(err.InsufficientFunds.required) / E8S} ICP`);
-                } else if ('TransferFailed' in err) {
-                    setError(`Transfer failed: ${err.TransferFailed}`);
-                } else if ('NeuronAlreadyExists' in err) {
-                    setError('A neuron already exists for this manager');
+                if ('GovernanceError' in err) {
+                    setError(`Governance error: ${err.GovernanceError.error_message}`);
                 } else if ('InvalidDissolveDelay' in err) {
                     const d = err.InvalidDissolveDelay;
-                    setError(`Invalid dissolve delay: min ${Math.floor(Number(d.min) / 86400)} days, max ${Math.floor(Number(d.max) / 86400)} days, you provided ${Math.floor(Number(d.provided) / 86400)} days`);
-                } else if ('GovernanceError' in err) {
-                    setError(`Governance error: ${err.GovernanceError.error_message}`);
+                    setError(`Invalid dissolve delay: min ${Math.floor(Number(d.min) / 86400)} days, max ${Math.floor(Number(d.max) / 86400)} days`);
                 } else {
-                    setError('Failed to create neuron');
+                    setError('Failed to claim neuron');
                 }
             }
         } catch (err) {
@@ -1380,6 +1410,15 @@ function IcpNeuronManager() {
             return;
         }
         
+        const amountE8s = BigInt(Math.floor(parseFloat(increaseStakeAmount) * E8S));
+        const fee = BigInt(10000); // 0.0001 ICP fee
+        
+        // Check user has enough balance
+        if (userIcpBalance === null || BigInt(userIcpBalance) < amountE8s + fee) {
+            setError(`Insufficient balance. You have ${formatIcp(userIcpBalance)} ICP, need ${parseFloat(increaseStakeAmount) + 0.0001} ICP (including fee)`);
+            return;
+        }
+        
         setActionLoading('increaseStake');
         setError('');
         setSuccess('');
@@ -1390,14 +1429,46 @@ function IcpNeuronManager() {
                 await agent.fetchRootKey();
             }
             const manager = createManagerActor(canisterId, { agent });
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             
-            const amountE8s = BigInt(Math.floor(parseFloat(increaseStakeAmount) * E8S));
-            const result = await manager.increaseStake(selectedNeuronId, amountE8s);
+            // Step 1: Get the neuron's account
+            const neuronAccount = await manager.getNeuronAccount(selectedNeuronId);
+            if (!neuronAccount || neuronAccount.length === 0) {
+                throw new Error('Could not get neuron account');
+            }
+            const account = neuronAccount[0];
+            
+            // Step 2: Transfer ICP directly to the neuron's account
+            setSuccess('📤 Sending ICP to neuron...');
+            const transferResult = await ledger.icrc1_transfer({
+                to: {
+                    owner: account.owner,
+                    subaccount: account.subaccount,
+                },
+                amount: amountE8s,
+                fee: [fee],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            // Step 3: Refresh the neuron stake
+            setSuccess('🔄 Refreshing neuron stake...');
+            const result = await manager.refreshStakeFromDeposit(selectedNeuronId);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Added ${increaseStakeAmount} ICP to neuron stake`);
                 setIncreaseStakeAmount('');
                 fetchManagerData();
+                fetchUserBalance(agent); // Refresh user balance
             } else {
                 handleOperationError(result.Err);
             }

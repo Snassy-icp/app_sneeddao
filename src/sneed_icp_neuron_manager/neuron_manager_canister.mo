@@ -143,11 +143,98 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         }
     };
 
+    // Get the account where users should send ICP to create a new neuron
+    // Returns (governance canister, neuron subaccount, memo to use)
+    // User sends ICP to this account, then calls claimNeuronFromDeposit with the memo
+    public query func getStakeAccount(memo: Nat64): async { account: T.Account; memo: Nat64 } {
+        let selfPrincipal = Principal.fromActor(this);
+        let neuronSubaccount = computeNeuronSubaccount(selfPrincipal, memo);
+        {
+            account = {
+                owner = Principal.fromText(T.GOVERNANCE_CANISTER_ID);
+                subaccount = ?neuronSubaccount;
+            };
+            memo = memo;
+        }
+    };
+
+    // Generate a memo based on current timestamp (convenience function)
+    public query func generateMemo(): async Nat64 {
+        Nat64.fromNat(Int.abs(Time.now()))
+    };
+
 
     // ============================================
     // NEURON CREATION
     // ============================================
 
+    // Claim a neuron from a direct deposit to governance
+    // User sends ICP to the account returned by getStakeAccount(memo), then calls this
+    public shared ({ caller }) func claimNeuronFromDeposit(
+        memo: Nat64,
+        dissolve_delay_seconds: Nat64
+    ): async T.StakeNeuronResult {
+        assertController(caller);
+        
+        let selfPrincipal = Principal.fromActor(this);
+
+        // Claim the neuron using the memo
+        let claimRequest: T.ClaimOrRefreshNeuronFromAccount = {
+            controller = ?selfPrincipal;
+            memo = memo;
+        };
+        
+        let claimResult = await governance.claim_or_refresh_neuron_from_account(claimRequest);
+        
+        switch (claimResult.result) {
+            case null {
+                return #Err(#GovernanceError({ error_message = "No result from claim - no ICP deposited?"; error_type = 0 }));
+            };
+            case (?#Error(e)) {
+                return #Err(#GovernanceError(e));
+            };
+            case (?#NeuronId(nid)) {
+                // Neuron claimed - set dissolve delay
+                let nowSeconds: Nat64 = Nat64.fromNat(Int.abs(Time.now() / 1_000_000_000));
+                let dissolveTimestamp: Nat64 = nowSeconds + dissolve_delay_seconds;
+                
+                let configResult = await configureNeuron(nid, #SetDissolveTimestamp({
+                    dissolve_timestamp_seconds = dissolveTimestamp;
+                }));
+                
+                switch (configResult) {
+                    case (#Err(#GovernanceError(ge))) {
+                        // Neuron was claimed but dissolve delay failed
+                        return #Err(#GovernanceError(ge));
+                    };
+                    case (#Err(_)) {
+                        // Other errors - neuron was still claimed
+                        return #Ok(nid);
+                    };
+                    case (#Ok) {
+                        return #Ok(nid);
+                    };
+                };
+            };
+        };
+    };
+
+    // Increase stake on existing neuron by sending ICP directly to the neuron's account
+    // User sends ICP to the neuron account (from getNeuronAccount), then calls this
+    public shared ({ caller }) func refreshStakeFromDeposit(neuronId: T.NeuronId): async T.OperationResult {
+        assertController(caller);
+        
+        // Verify this canister controls the neuron
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
+            return #Err(#NoNeuron);
+        };
+        
+        // Refresh the neuron to pick up the new deposit
+        await refreshStakeInternal(neuronId);
+    };
+
+    // Legacy method - stakes from canister's ICP balance
     public shared ({ caller }) func stakeNeuron(
         amount_e8s: Nat64,
         dissolve_delay_seconds: Nat64

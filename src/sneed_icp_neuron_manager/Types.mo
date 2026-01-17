@@ -718,7 +718,7 @@ module {
     public let CURRENT_VERSION: Version = {
         major = 1;
         minor = 0;
-        patch = 4;
+        patch = 5;
     };
 
 };
