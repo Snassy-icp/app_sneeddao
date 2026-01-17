@@ -22,6 +22,9 @@ const E8S = 100_000_000;
 const ICP_FEE = 10_000;
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
+// Beta end date - feature becomes available to everyone after this date
+const BETA_END_DATE = new Date('2025-01-24T00:00:00Z');
+
 // Management canister IDL factory for canister_status
 const managementCanisterIdlFactory = ({ IDL }) => {
     const definite_canister_settings = IDL.Record({
@@ -99,6 +102,41 @@ function CreateIcpNeuron() {
     
     // Creation step: 'idle' | 'payment' | 'creating' | 'done'
     const [creationStep, setCreationStep] = useState('idle');
+    
+    // Beta countdown state
+    const [timeUntilPublic, setTimeUntilPublic] = useState(null);
+    const [isBetaEnded, setIsBetaEnded] = useState(false);
+
+    // Check if beta has ended and update countdown
+    useEffect(() => {
+        const updateCountdown = () => {
+            const now = new Date();
+            const diff = BETA_END_DATE - now;
+            
+            if (diff <= 0) {
+                setIsBetaEnded(true);
+                setTimeUntilPublic(null);
+            } else {
+                setIsBetaEnded(false);
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                setTimeUntilPublic({ days, hours, minutes, seconds });
+            }
+        };
+
+        // Initial update
+        updateCountdown();
+        
+        // Update every second
+        const interval = setInterval(updateCountdown, 1000);
+        
+        return () => clearInterval(interval);
+    }, []);
+
+    // User has access if they're a Sneed member OR if beta has ended
+    const hasAccess = isSneedMember || isBetaEnded;
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -568,32 +606,121 @@ function CreateIcpNeuron() {
                 )}
 
                 {/* Sneed DAO Membership Gating */}
-                {isAuthenticated && loadingSneedVP && (
+                {isAuthenticated && loadingSneedVP && !isBetaEnded && (
                     <SneedMemberGateLoading />
                 )}
 
-                {isAuthenticated && !loadingSneedVP && !isSneedMember && (
-                    <SneedMemberGateMessage 
-                        gateType={GATE_TYPES.BETA}
-                        featureName="The ICP Neuron Manager"
-                    />
+                {/* Gate message with countdown for non-members during beta */}
+                {isAuthenticated && !loadingSneedVP && !hasAccess && (
+                    <>
+                        <SneedMemberGateMessage 
+                            gateType={GATE_TYPES.BETA}
+                            featureName="The ICP Neuron Manager"
+                        />
+                        
+                        {/* Countdown Timer */}
+                        {timeUntilPublic && (
+                            <div style={{ 
+                                ...cardStyle,
+                                marginTop: '-10px',
+                                padding: '24px',
+                                background: `linear-gradient(135deg, ${theme.colors.accent}15 0%, ${theme.colors.accent}05 100%)`,
+                                border: `2px solid ${theme.colors.accent}40`,
+                                textAlign: 'center'
+                            }}>
+                                <div style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '16px', 
+                                    marginBottom: '16px',
+                                    fontWeight: '600'
+                                }}>
+                                    ⏰ Feature opens to everyone in:
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'center', 
+                                    gap: '20px',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                                        <div style={{ 
+                                            fontSize: '36px', 
+                                            fontWeight: '700', 
+                                            color: theme.colors.accent,
+                                            fontFamily: 'monospace',
+                                            lineHeight: 1
+                                        }}>
+                                            {timeUntilPublic.days}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Days</div>
+                                    </div>
+                                    <div style={{ color: theme.colors.accent, fontSize: '36px', fontWeight: '300', lineHeight: 1 }}>:</div>
+                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                                        <div style={{ 
+                                            fontSize: '36px', 
+                                            fontWeight: '700', 
+                                            color: theme.colors.accent,
+                                            fontFamily: 'monospace',
+                                            lineHeight: 1
+                                        }}>
+                                            {String(timeUntilPublic.hours).padStart(2, '0')}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Hours</div>
+                                    </div>
+                                    <div style={{ color: theme.colors.accent, fontSize: '36px', fontWeight: '300', lineHeight: 1 }}>:</div>
+                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                                        <div style={{ 
+                                            fontSize: '36px', 
+                                            fontWeight: '700', 
+                                            color: theme.colors.accent,
+                                            fontFamily: 'monospace',
+                                            lineHeight: 1
+                                        }}>
+                                            {String(timeUntilPublic.minutes).padStart(2, '0')}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Minutes</div>
+                                    </div>
+                                    <div style={{ color: theme.colors.accent, fontSize: '36px', fontWeight: '300', lineHeight: 1 }}>:</div>
+                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                                        <div style={{ 
+                                            fontSize: '36px', 
+                                            fontWeight: '700', 
+                                            color: theme.colors.accent,
+                                            fontFamily: 'monospace',
+                                            lineHeight: 1
+                                        }}>
+                                            {String(timeUntilPublic.seconds).padStart(2, '0')}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: theme.colors.mutedText, textTransform: 'uppercase', marginTop: '4px' }}>Seconds</div>
+                                    </div>
+                                </div>
+                                <div style={{ 
+                                    marginTop: '16px', 
+                                    fontSize: '13px', 
+                                    color: theme.colors.mutedText 
+                                }}>
+                                    📅 January 24th, 2025
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
 
-                {/* Sneed Member Badge */}
-                {isAuthenticated && !loadingSneedVP && isSneedMember && (
+                {/* Sneed Member Badge - show during beta for members */}
+                {isAuthenticated && !loadingSneedVP && isSneedMember && !isBetaEnded && (
                     <SneedMemberBadge 
                         sneedNeurons={sneedNeurons}
                         sneedVotingPower={sneedVotingPower}
                     />
                 )}
 
-                {/* Beta Warning Banner */}
-                {isAuthenticated && !loadingSneedVP && isSneedMember && (
+                {/* Beta Warning Banner - only show during beta for members */}
+                {isAuthenticated && !loadingSneedVP && isSneedMember && !isBetaEnded && (
                     <BetaWarningBanner featureName="The ICP Neuron Manager" />
                 )}
 
                 {/* Create Manager Section with Payment Flow */}
-                {isAuthenticated && paymentConfig && isSneedMember && (
+                {isAuthenticated && paymentConfig && hasAccess && (
                     <div style={{ ...cardStyle, marginBottom: '30px' }}>
                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '20px', textAlign: 'center' }}>
                             ➕ Create New Neuron Manager
