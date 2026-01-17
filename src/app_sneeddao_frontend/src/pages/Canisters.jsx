@@ -78,6 +78,10 @@ export default function CanistersPage() {
     const [editingGroupName, setEditingGroupName] = useState('');
     const [newGroupName, setNewGroupName] = useState('');
     const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+    const [newSubgroupParent, setNewSubgroupParent] = useState(null); // group id to add subgroup to
+    const [newSubgroupName, setNewSubgroupName] = useState('');
+    const [addingCanisterToGroupId, setAddingCanisterToGroupId] = useState(null); // group id to add canister to
+    const [newCanisterForGroup, setNewCanisterForGroup] = useState('');
     const [confirmRemoveCanister, setConfirmRemoveCanister] = useState(null); // { canisterId, groupId or 'ungrouped' }
     
     // Neuron Managers state
@@ -548,6 +552,69 @@ export default function CanistersPage() {
         }
     };
 
+    // Add canister directly to a specific group
+    const handleAddCanisterToGroup = async (groupId) => {
+        if (!newCanisterForGroup.trim()) return;
+
+        let canisterPrincipal;
+        try {
+            canisterPrincipal = Principal.fromText(newCanisterForGroup.trim());
+        } catch (err) {
+            setError('Invalid canister ID format');
+            return;
+        }
+
+        const canisterIdStr = canisterPrincipal.toString();
+
+        if (canisterExistsInGroups(canisterIdStr, canisterGroups)) {
+            setError('This canister is already being tracked');
+            return;
+        }
+
+        try {
+            const newGroups = addCanisterToGroup(canisterGroups, canisterIdStr, groupId);
+            await saveCanisterGroups(newGroups);
+            setNewCanisterForGroup('');
+            setAddingCanisterToGroupId(null);
+            setSuccessMessage('Canister added to group');
+            fetchCanisterCycles(canisterIdStr);
+        } catch (err) {
+            console.error('Error adding canister to group:', err);
+            setError('Failed to add canister');
+        }
+    };
+
+    // Create a subgroup inside an existing group
+    const handleCreateSubgroup = async (parentGroupId) => {
+        if (!newSubgroupName.trim()) return;
+
+        const newGroup = {
+            id: generateGroupId(),
+            name: newSubgroupName.trim(),
+            canisters: [],
+            subgroups: [],
+        };
+
+        try {
+            const addSubgroup = (groups) => groups.map(group => {
+                if (group.id === parentGroupId) {
+                    return { ...group, subgroups: [...group.subgroups, newGroup] };
+                }
+                return { ...group, subgroups: addSubgroup(group.subgroups) };
+            });
+            const newGroups = { ...canisterGroups, groups: addSubgroup(canisterGroups.groups) };
+            
+            await saveCanisterGroups(newGroups);
+            setNewSubgroupName('');
+            setNewSubgroupParent(null);
+            setSuccessMessage('Subgroup created');
+            setExpandedGroups(prev => ({ ...prev, [newGroup.id]: true }));
+        } catch (err) {
+            console.error('Error creating subgroup:', err);
+            setError('Failed to create subgroup');
+        }
+    };
+
     // Move canister to a different group (or ungrouped)
     const handleMoveCanister = async (canisterId, fromGroupId, toGroupId) => {
         try {
@@ -659,10 +726,16 @@ export default function CanistersPage() {
         handleRenameGroup, handleDeleteGroup, canisterCycles, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
         confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
-        canisterGroups, handleMoveCanister
+        canisterGroups, handleMoveCanister,
+        // New props for subgroups and adding canisters
+        newSubgroupParent, setNewSubgroupParent, newSubgroupName, setNewSubgroupName,
+        handleCreateSubgroup, addingCanisterToGroupId, setAddingCanisterToGroupId,
+        newCanisterForGroup, setNewCanisterForGroup, handleAddCanisterToGroup
     }) => {
         const isExpanded = expandedGroups[group.id] ?? true;
         const isEditing = editingGroup === group.id;
+        const isAddingSubgroup = newSubgroupParent === group.id;
+        const isAddingCanister = addingCanisterToGroupId === group.id;
         const totalCanisters = group.canisters.length + 
             group.subgroups.reduce((sum, sg) => sum + sg.canisters.length, 0);
 
@@ -740,6 +813,20 @@ export default function CanistersPage() {
                         ) : (
                             <>
                                 <button
+                                    onClick={() => { setAddingCanisterToGroupId(group.id); setNewCanisterForGroup(''); }}
+                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.primary || '#3b82f6', border: 'none', cursor: 'pointer' }}
+                                    title="Add canister to this group"
+                                >
+                                    <FaCube size={12} />
+                                </button>
+                                <button
+                                    onClick={() => { setNewSubgroupParent(group.id); setNewSubgroupName(''); }}
+                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: '#f59e0b', border: 'none', cursor: 'pointer' }}
+                                    title="Add subgroup"
+                                >
+                                    <FaFolder size={12} />
+                                </button>
+                                <button
                                     onClick={() => { setEditingGroup(group.id); setEditingGroupName(group.name); }}
                                     style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.textSecondary, border: 'none', cursor: 'pointer' }}
                                     title="Rename group"
@@ -765,6 +852,119 @@ export default function CanistersPage() {
                 {/* Group Contents */}
                 {isExpanded && (
                     <div style={{ marginTop: '8px', marginLeft: '12px' }}>
+                        {/* Add Canister to Group Input */}
+                        {isAddingCanister && (
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '8px', 
+                                alignItems: 'center', 
+                                marginBottom: '8px',
+                                padding: '10px',
+                                backgroundColor: theme.colors.inputBackground,
+                                borderRadius: '6px',
+                            }}>
+                                <FaCube size={14} style={{ color: theme.colors.primary || '#3b82f6' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Canister ID"
+                                    value={newCanisterForGroup}
+                                    onChange={(e) => setNewCanisterForGroup(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleAddCanisterToGroup(group.id);
+                                        if (e.key === 'Escape') { setAddingCanisterToGroupId(null); setNewCanisterForGroup(''); }
+                                    }}
+                                    style={{ 
+                                        flex: 1,
+                                        padding: '6px 10px', 
+                                        fontSize: '12px',
+                                        fontFamily: 'monospace',
+                                        backgroundColor: theme.colors.card,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '4px',
+                                        color: theme.colors.text,
+                                    }}
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={() => handleAddCanisterToGroup(group.id)}
+                                    disabled={!newCanisterForGroup.trim()}
+                                    style={{ 
+                                        padding: '6px 10px', 
+                                        backgroundColor: !newCanisterForGroup.trim() ? '#6c757d' : '#28a745', 
+                                        color: '#fff', 
+                                        border: 'none', 
+                                        borderRadius: '4px', 
+                                        cursor: !newCanisterForGroup.trim() ? 'not-allowed' : 'pointer',
+                                        opacity: !newCanisterForGroup.trim() ? 0.6 : 1,
+                                    }}
+                                >
+                                    <FaCheck size={10} />
+                                </button>
+                                <button
+                                    onClick={() => { setAddingCanisterToGroupId(null); setNewCanisterForGroup(''); }}
+                                    style={{ padding: '6px 10px', backgroundColor: theme.colors.card, color: theme.colors.textSecondary, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                    <FaTimes size={10} />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Add Subgroup Input */}
+                        {isAddingSubgroup && (
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '8px', 
+                                alignItems: 'center', 
+                                marginBottom: '8px',
+                                padding: '10px',
+                                backgroundColor: theme.colors.inputBackground,
+                                borderRadius: '6px',
+                            }}>
+                                <FaFolder size={14} style={{ color: '#f59e0b' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Subgroup name"
+                                    value={newSubgroupName}
+                                    onChange={(e) => setNewSubgroupName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleCreateSubgroup(group.id);
+                                        if (e.key === 'Escape') { setNewSubgroupParent(null); setNewSubgroupName(''); }
+                                    }}
+                                    style={{ 
+                                        flex: 1,
+                                        padding: '6px 10px', 
+                                        fontSize: '12px',
+                                        backgroundColor: theme.colors.card,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '4px',
+                                        color: theme.colors.text,
+                                    }}
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={() => handleCreateSubgroup(group.id)}
+                                    disabled={!newSubgroupName.trim()}
+                                    style={{ 
+                                        padding: '6px 10px', 
+                                        backgroundColor: !newSubgroupName.trim() ? '#6c757d' : '#28a745', 
+                                        color: '#fff', 
+                                        border: 'none', 
+                                        borderRadius: '4px', 
+                                        cursor: !newSubgroupName.trim() ? 'not-allowed' : 'pointer',
+                                        opacity: !newSubgroupName.trim() ? 0.6 : 1,
+                                    }}
+                                >
+                                    <FaCheck size={10} />
+                                </button>
+                                <button
+                                    onClick={() => { setNewSubgroupParent(null); setNewSubgroupName(''); }}
+                                    style={{ padding: '6px 10px', backgroundColor: theme.colors.card, color: theme.colors.textSecondary, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                    <FaTimes size={10} />
+                                </button>
+                            </div>
+                        )}
+
                         {/* Subgroups */}
                         {group.subgroups.map((subgroup) => (
                             <GroupComponent
@@ -791,6 +991,16 @@ export default function CanistersPage() {
                                 handleRemoveCanister={handleRemoveCanister}
                                 canisterGroups={canisterGroups}
                                 handleMoveCanister={handleMoveCanister}
+                                newSubgroupParent={newSubgroupParent}
+                                setNewSubgroupParent={setNewSubgroupParent}
+                                newSubgroupName={newSubgroupName}
+                                setNewSubgroupName={setNewSubgroupName}
+                                handleCreateSubgroup={handleCreateSubgroup}
+                                addingCanisterToGroupId={addingCanisterToGroupId}
+                                setAddingCanisterToGroupId={setAddingCanisterToGroupId}
+                                newCanisterForGroup={newCanisterForGroup}
+                                setNewCanisterForGroup={setNewCanisterForGroup}
+                                handleAddCanisterToGroup={handleAddCanisterToGroup}
                             />
                         ))}
                         
@@ -1323,7 +1533,14 @@ export default function CanistersPage() {
                                         <button
                                             onClick={() => handleCreateGroup()}
                                             disabled={!newGroupName.trim()}
-                                            style={{ ...styles.addButton, padding: '6px 10px', fontSize: '12px' }}
+                                            style={{ 
+                                                ...styles.addButton, 
+                                                padding: '6px 10px', 
+                                                fontSize: '12px',
+                                                cursor: !newGroupName.trim() ? 'not-allowed' : 'pointer',
+                                                backgroundColor: !newGroupName.trim() ? '#6c757d' : '#28a745',
+                                                opacity: !newGroupName.trim() ? 0.6 : 1,
+                                            }}
                                         >
                                             <FaCheck size={10} />
                                         </button>
@@ -1399,6 +1616,16 @@ export default function CanistersPage() {
                                                 handleRemoveCanister={handleRemoveCanister}
                                                 canisterGroups={canisterGroups}
                                                 handleMoveCanister={handleMoveCanister}
+                                                newSubgroupParent={newSubgroupParent}
+                                                setNewSubgroupParent={setNewSubgroupParent}
+                                                newSubgroupName={newSubgroupName}
+                                                setNewSubgroupName={setNewSubgroupName}
+                                                handleCreateSubgroup={handleCreateSubgroup}
+                                                addingCanisterToGroupId={addingCanisterToGroupId}
+                                                setAddingCanisterToGroupId={setAddingCanisterToGroupId}
+                                                newCanisterForGroup={newCanisterForGroup}
+                                                setNewCanisterForGroup={setNewCanisterForGroup}
+                                                handleAddCanisterToGroup={handleAddCanisterToGroup}
                                             />
                                         ))}
                                         

@@ -1801,9 +1801,10 @@ function RLL() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            background: theme.colors.cardGradient, 
+                                            boxShadow: theme.colors.cardShadow,
                                             color: theme.colors.primaryBg,
-                                            border: '1px solid #4a4a4a',
+                                            border: `1px solid ${theme.colors.border}`,
                                             borderRadius: '4px',
                                             marginBottom: '10px'
                                         }}
@@ -1827,9 +1828,10 @@ function RLL() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            background: theme.colors.cardGradient, 
+                                            boxShadow: theme.colors.cardShadow,
                                             color: theme.colors.primaryBg,
-                                            border: '1px solid #4a4a4a',
+                                            border: `1px solid ${theme.colors.border}`,
                                             borderRadius: '4px'
                                         }}
                                     />
@@ -1845,9 +1847,10 @@ function RLL() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            background: theme.colors.cardGradient, 
+                                            boxShadow: theme.colors.cardShadow,
                                             color: theme.colors.primaryBg,
-                                            border: '1px solid #4a4a4a',
+                                            border: `1px solid ${theme.colors.border}`,
                                             borderRadius: '4px'
                                         }}
                                     />

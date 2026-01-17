@@ -3189,7 +3189,8 @@ function RLLInfo() {
                         }}>
                             {/* Grand Total in USD */}
                             <div style={{
-                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                background: theme.colors.secondaryBg, 
+                                boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.warning}`,
@@ -3216,13 +3217,13 @@ function RLLInfo() {
                                         </span>
                                     </div>
                                     <div style={{ fontSize: '1.2em' }}>
-                                        ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal())}
+                                        ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal())}
                                         <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
-                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                         <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <span>FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x</span>
+                                                <span>FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1)).toFixed(2)}x</span>
                                                 <span 
                                                     style={styles.infoIcon} 
                                                     title="FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means the market values all tokens (including future unlocks) above the DAO's total treasury size—warning of dilution risk and potential sell-pressure when vesting begins. < 1 indicates a discount to on-chain assets, hinting at latent upside in self-held token reserves."
@@ -3276,7 +3277,7 @@ function RLLInfo() {
                                     </div>
                                     <div style={{ fontSize: '1.2em' }}>
                                         {((getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)) / 
-                                          (getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1))).toFixed(2)}x
+                                          (getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1))).toFixed(2)}x
                                     </div>
                                 </div>
                             </div>
