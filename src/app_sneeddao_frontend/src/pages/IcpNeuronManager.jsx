@@ -2792,8 +2792,60 @@ function IcpNeuronManager() {
                                         </div>
                                         );
                                     })()}
+                                    
                                 </div>
                             )}
+                            
+                            {/* Non-Controller Upgrade Notice - shown when user is not a controller but there's an issue that could be fixed by upgrading */}
+                            {(() => {
+                                // For invalid managers, we show this even if canisterStatus failed to load
+                                // Since non-controllers can't fetch canister_status, we can't check moduleHash
+                                const isUnverifiedWasm = canisterStatus?.moduleHash && !matchedOfficialVersion;
+                                const hasVersionMismatch = matchedOfficialVersion && managerInfo?.version && 
+                                    `${Number(matchedOfficialVersion.major)}.${Number(matchedOfficialVersion.minor)}.${Number(matchedOfficialVersion.patch)}` !== managerInfo.version;
+                                const hasIssue = isInvalidManager || isUnverifiedWasm || hasVersionMismatch;
+                                
+                                // Show if user is not a controller AND there's an issue (or we're an invalid manager)
+                                // Note: isController might be false simply because we couldn't fetch controllers (not a controller)
+                                const userIsNotController = !isController;
+                                
+                                if (!userIsNotController || !hasIssue) return null;
+                                
+                                return (
+                                    <div style={{
+                                        marginTop: '15px',
+                                        padding: '12px',
+                                        background: `${theme.colors.mutedText}10`,
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontWeight: '600',
+                                            fontSize: '13px',
+                                            marginBottom: '6px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                        }}>
+                                            <span>🔒</span>
+                                            <span>Upgrade/Reinstall Not Available</span>
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '12px',
+                                            lineHeight: '1.5',
+                                        }}>
+                                            You are not a controller of this canister. Only controllers can upgrade or reinstall the canister.
+                                            {latestOfficialVersion && (
+                                                <span style={{ display: 'block', marginTop: '8px' }}>
+                                                    Latest official version: <strong style={{ color: theme.colors.primaryText }}>v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}</strong>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Controllers Section */}
                             {controllers.length > 0 && (
