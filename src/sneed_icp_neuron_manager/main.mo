@@ -555,10 +555,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
         // Now create the canister using management canister
         try {
-            // Step 1: Create a new empty canister with controllers set
+            let factoryPrincipal = Principal.fromActor(this);
+            
+            // Step 1: Create a new empty canister with factory + user as controllers
+            // Factory needs to be a controller to install the WASM
             let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
                 settings = ?{
-                    controllers = ?[caller];
+                    controllers = ?[caller, factoryPrincipal];
                     compute_allocation = null;
                     memory_allocation = null;
                     freezing_threshold = null;
@@ -574,6 +577,17 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 canister_id = canisterId;
                 wasm_module = wasm;
                 arg = emptyArgs;
+            });
+            
+            // Step 3: Remove factory from controllers, leaving only the user
+            await ic.update_settings({
+                canister_id = canisterId;
+                settings = {
+                    controllers = ?[caller];
+                    compute_allocation = null;
+                    memory_allocation = null;
+                    freezing_threshold = null;
+                };
             });
 
             // Compute the account ID for the new canister
