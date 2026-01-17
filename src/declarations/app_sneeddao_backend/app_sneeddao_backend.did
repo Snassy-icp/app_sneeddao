@@ -152,6 +152,18 @@ type Neuron =
                       vec int32;
                     };
  };
+type CanisterGroupsRoot = 
+ record {
+   groups: vec CanisterGroup;
+   ungrouped: vec principal;
+ };
+type CanisterGroup = 
+ record {
+   canisters: vec principal;
+   id: text;
+   name: text;
+   subgroups: vec CanisterGroup;
+ };
 type BanLogEntry = 
  record {
    admin: principal;
@@ -175,6 +187,7 @@ type AppSneedDaoBackend =
     (Result_1);
    caller_is_admin: () -> (bool) query;
    check_ban_status: (user: principal) -> (Result_1) query;
+   delete_canister_groups: () -> ();
    get_admins: () -> (vec principal) query;
    get_all_neuron_names: () ->
     (vec record {
@@ -205,6 +218,7 @@ type AppSneedDaoBackend =
    get_blacklisted_words: () -> (vec text) query;
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
+   get_canister_groups: () -> (opt CanisterGroupsRoot) query;
    get_canister_info: (canister_id: principal) -> (Result_4);
    get_ledger_canister_ids: () -> (vec principal) query;
    get_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId) ->
@@ -243,6 +257,7 @@ type AppSneedDaoBackend =
     principal) -> (TransferResult);
    set_cached_token_meta: (swap_canister_id: principal, new_token_meta:
     TokenMeta) -> ();
+   set_canister_groups: (groups: CanisterGroupsRoot) -> ();
    set_canister_name: (canister_id: principal, name: text) -> (Result);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
     name: text) -> (Result);

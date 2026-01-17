@@ -11,6 +11,24 @@ module {
     public type StablePrincipalLedgerCanisters = [(Principal, [Principal])];
     public type StablePrincipalTrackedCanisters = [(Principal, [Principal])];
 
+    // Canister Groups - hierarchical grouping of canisters
+    // A group can contain canister IDs and nested subgroups
+    public type CanisterGroup = {
+        id: Text;           // Unique identifier for the group
+        name: Text;         // Display name
+        canisters: [Principal];  // Canister IDs in this group
+        subgroups: [CanisterGroup];  // Nested groups
+    };
+    
+    // Root structure for a user's canister groups
+    public type CanisterGroupsRoot = {
+        groups: [CanisterGroup];  // Top-level groups
+        ungrouped: [Principal];   // Canisters not in any group
+    };
+    
+    public type PrincipalCanisterGroupsMap = HashMap.HashMap<Principal, CanisterGroupsRoot>;
+    public type StablePrincipalCanisterGroups = [(Principal, CanisterGroupsRoot)];
+
     public type State = object {
         principal_swap_canisters: PrincipalSwapCanisterMap;
         principal_ledger_canisters: PrincipalLedgerCanisterMap;

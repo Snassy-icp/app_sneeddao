@@ -28,6 +28,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type StablePrincipalSwapCanisters = T.StablePrincipalSwapCanisters;
   type StablePrincipalLedgerCanisters = T.StablePrincipalLedgerCanisters;
   type StablePrincipalTrackedCanisters = T.StablePrincipalTrackedCanisters;
+  type CanisterGroup = T.CanisterGroup;
+  type CanisterGroupsRoot = T.CanisterGroupsRoot;
+  type StablePrincipalCanisterGroups = T.StablePrincipalCanisterGroups;
   type SwapRunnerTokenMetadata = T.SwapRunnerTokenMetadata;
   type NeuronId = T.NeuronId;
   type NeuronName = T.NeuronName;
@@ -70,6 +73,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
   stable var stable_principal_tracked_canisters : StablePrincipalTrackedCanisters = [];
+  stable var stable_principal_canister_groups : StablePrincipalCanisterGroups = [];
   stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
   stable var stable_admins : [Principal] = [deployer.caller];
   stable var stable_blacklisted_words : [(Text, Bool)] = [];
@@ -138,6 +142,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     public let principal_ledger_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
     public let principal_tracked_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
   };
+  
+  // Canister groups storage (separate from state object for simpler management)
+  private let principal_canister_groups: HashMap.HashMap<Principal, CanisterGroupsRoot> = HashMap.HashMap<Principal, CanisterGroupsRoot>(100, Principal.equal, Principal.hash);
 
   // SwapRunner actor
   let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
@@ -335,6 +342,19 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?existingTrackedCanisters) List.toArray<Principal>(existingTrackedCanisters);
       case _ [] : [Principal];
     };
+  };
+
+  // Canister Groups - hierarchical grouping of canisters
+  public query ({ caller }) func get_canister_groups() : async ?CanisterGroupsRoot {
+    principal_canister_groups.get(caller);
+  };
+
+  public shared ({ caller }) func set_canister_groups(groups: CanisterGroupsRoot) : async () {
+    principal_canister_groups.put(caller, groups);
+  };
+
+  public shared ({ caller }) func delete_canister_groups() : async () {
+    principal_canister_groups.delete(caller);
   };
 
   public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
@@ -1770,6 +1790,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
     stable_principal_tracked_canisters := List.toArray<(Principal, [Principal])>(list_stable_principal_tracked_canisters);
 
+    /// stable_principal_canister_groups
+    var list_stable_principal_canister_groups = List.nil<(Principal, CanisterGroupsRoot)>();
+    for (principal in principal_canister_groups.keys()) {
+      switch (principal_canister_groups.get(principal)) {
+        case (?groups) {
+          list_stable_principal_canister_groups := List.push<(Principal, CanisterGroupsRoot)>((principal, groups), list_stable_principal_canister_groups);
+        };
+        case _ {};
+      };
+    };
+    stable_principal_canister_groups := List.toArray<(Principal, CanisterGroupsRoot)>(list_stable_principal_canister_groups);
+
     // Save whitelisted tokens to stable storage
     stable_whitelisted_tokens := Iter.toArray(whitelisted_tokens.vals());
 
@@ -1831,6 +1863,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         state.principal_tracked_canisters.put(principalTrackedCanisters.0, List.fromArray<Principal>(principalTrackedCanisters.1));
       };
       stable_principal_tracked_canisters := [];
+
+      /// stable_principal_canister_groups
+      for ((principal, groups) in stable_principal_canister_groups.vals()) {
+        principal_canister_groups.put(principal, groups);
+      };
+      stable_principal_canister_groups := [];
 
       // Restore whitelisted tokens from stable storage
       for (token in stable_whitelisted_tokens.vals()) {

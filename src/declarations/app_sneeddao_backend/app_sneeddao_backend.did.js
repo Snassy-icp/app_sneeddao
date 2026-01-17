@@ -1,4 +1,5 @@
 export const idlFactory = ({ IDL }) => {
+  const CanisterGroup = IDL.Rec();
   const Result_1 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const PartnerLink = IDL.Record({ 'url' : IDL.Text, 'title' : IDL.Text });
   const Result_6 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
@@ -45,6 +46,18 @@ export const idlFactory = ({ IDL }) => {
   const TokenMeta = IDL.Record({
     'token0' : IDL.Vec(IDL.Tuple(IDL.Text, TokenMetaValue)),
     'token1' : IDL.Vec(IDL.Tuple(IDL.Text, TokenMetaValue)),
+  });
+  CanisterGroup.fill(
+    IDL.Record({
+      'id' : IDL.Text,
+      'name' : IDL.Text,
+      'canisters' : IDL.Vec(IDL.Principal),
+      'subgroups' : IDL.Vec(CanisterGroup),
+    })
+  );
+  const CanisterGroupsRoot = IDL.Record({
+    'groups' : IDL.Vec(CanisterGroup),
+    'ungrouped' : IDL.Vec(IDL.Principal),
   });
   const Result_4 = IDL.Variant({
     'ok' : IDL.Record({
@@ -131,6 +144,7 @@ export const idlFactory = ({ IDL }) => {
     'ban_user' : IDL.Func([IDL.Principal, IDL.Nat, IDL.Text], [Result_1], []),
     'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
     'check_ban_status' : IDL.Func([IDL.Principal], [Result_1], ['query']),
+    'delete_canister_groups' : IDL.Func([], [], []),
     'get_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_all_neuron_names' : IDL.Func(
         [],
@@ -158,6 +172,11 @@ export const idlFactory = ({ IDL }) => {
     'get_cached_token_meta' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(TokenMeta)],
+        ['query'],
+      ),
+    'get_canister_groups' : IDL.Func(
+        [],
+        [IDL.Opt(CanisterGroupsRoot)],
         ['query'],
       ),
     'get_canister_info' : IDL.Func([IDL.Principal], [Result_4], []),
@@ -215,6 +234,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'set_cached_token_meta' : IDL.Func([IDL.Principal, TokenMeta], [], []),
+    'set_canister_groups' : IDL.Func([CanisterGroupsRoot], [], []),
     'set_canister_name' : IDL.Func([IDL.Principal, IDL.Text], [Result], []),
     'set_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],

@@ -24,6 +24,7 @@ export interface AppSneedDaoBackend {
   'ban_user' : ActorMethod<[Principal, bigint, string], Result_1>,
   'caller_is_admin' : ActorMethod<[], boolean>,
   'check_ban_status' : ActorMethod<[Principal], Result_1>,
+  'delete_canister_groups' : ActorMethod<[], undefined>,
   'get_admins' : ActorMethod<[], Array<Principal>>,
   'get_all_neuron_names' : ActorMethod<
     [],
@@ -39,6 +40,7 @@ export interface AppSneedDaoBackend {
   'get_banned_users' : ActorMethod<[], Result_5>,
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
   'get_cached_token_meta' : ActorMethod<[Principal], [] | [TokenMeta]>,
+  'get_canister_groups' : ActorMethod<[], [] | [CanisterGroupsRoot]>,
   'get_canister_info' : ActorMethod<[Principal], Result_4>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_neuron_name' : ActorMethod<
@@ -69,6 +71,7 @@ export interface AppSneedDaoBackend {
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
+  'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], undefined>,
   'set_canister_name' : ActorMethod<[Principal, string], Result>,
   'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result>,
@@ -115,6 +118,16 @@ export interface BanLogEntry {
   'expiry_timestamp' : bigint,
   'reason' : string,
   'ban_timestamp' : bigint,
+}
+export interface CanisterGroup {
+  'id' : string,
+  'name' : string,
+  'canisters' : Array<Principal>,
+  'subgroups' : Array<CanisterGroup>,
+}
+export interface CanisterGroupsRoot {
+  'groups' : Array<CanisterGroup>,
+  'ungrouped' : Array<Principal>,
 }
 export interface Neuron {
   'id' : [] | [NeuronId],

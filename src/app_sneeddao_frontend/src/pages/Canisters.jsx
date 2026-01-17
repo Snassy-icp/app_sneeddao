@@ -6,10 +6,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
+import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes } from 'react-icons/fa';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
@@ -62,15 +62,23 @@ export default function CanistersPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
-    const [canisters, setCanisters] = useState([]);
+    // Canister Groups state
+    const [canisterGroups, setCanisterGroupsState] = useState({ groups: [], ungrouped: [] });
     const [canisterCycles, setCanisterCycles] = useState({}); // canisterId -> cycles (or null if can't fetch)
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [newCanisterId, setNewCanisterId] = useState('');
     const [addingCanister, setAddingCanister] = useState(false);
-    const [removingCanister, setRemovingCanister] = useState(null);
-    const [confirmRemoveCanister, setConfirmRemoveCanister] = useState(null);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
+    
+    // Group management state
+    const [expandedGroups, setExpandedGroups] = useState({}); // groupId -> boolean
+    const [editingGroup, setEditingGroup] = useState(null); // group id being edited
+    const [editingGroupName, setEditingGroupName] = useState('');
+    const [newGroupName, setNewGroupName] = useState('');
+    const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+    const [confirmRemoveCanister, setConfirmRemoveCanister] = useState(null); // { canisterId, groupId or 'ungrouped' }
     
     // Neuron Managers state
     const [neuronManagers, setNeuronManagers] = useState([]);
@@ -230,11 +238,24 @@ export default function CanistersPage() {
         }
     }, [identity]);
 
-    // Load tracked canisters on mount and when identity changes
+    // Helper to get all canister IDs from groups (for cycles fetching)
+    const getAllCanisterIds = useCallback((groupsRoot) => {
+        const ids = [...groupsRoot.ungrouped];
+        const collectFromGroups = (groups) => {
+            for (const group of groups) {
+                ids.push(...group.canisters);
+                collectFromGroups(group.subgroups);
+            }
+        };
+        collectFromGroups(groupsRoot.groups);
+        return ids;
+    }, []);
+
+    // Load canister groups on mount and when identity changes
     useEffect(() => {
-        const loadCanisters = async () => {
+        const loadCanisterGroups = async () => {
             if (!identity) {
-                setCanisters([]);
+                setCanisterGroupsState({ groups: [], ungrouped: [] });
                 setCanisterCycles({});
                 setLoading(false);
                 return;
@@ -242,25 +263,42 @@ export default function CanistersPage() {
 
             setLoading(true);
             try {
-                const result = await getTrackedCanisters(identity);
-                const canisterIds = result.map(p => p.toString());
-                setCanisters(canisterIds);
+                const result = await getCanisterGroups(identity);
+                const groups = convertGroupsFromBackend(result) || { groups: [], ungrouped: [] };
+                setCanisterGroupsState(groups);
                 
-                // Fetch cycles for each canister asynchronously (don't await - let them update as they complete)
-                canisterIds.forEach(canisterId => {
+                // Fetch cycles for all canisters asynchronously
+                const allCanisterIds = getAllCanisterIds(groups);
+                allCanisterIds.forEach(canisterId => {
                     fetchCanisterCycles(canisterId);
                 });
             } catch (err) {
-                console.error('Error loading tracked canisters:', err);
-                setError('Failed to load tracked canisters');
+                console.error('Error loading canister groups:', err);
+                setError('Failed to load canister groups');
             } finally {
                 setLoading(false);
             }
         };
 
-        loadCanisters();
+        loadCanisterGroups();
         fetchNeuronManagers();
-    }, [identity, fetchNeuronManagers, fetchCanisterCycles]);
+    }, [identity, fetchNeuronManagers, fetchCanisterCycles, getAllCanisterIds]);
+    
+    // Save canister groups to backend
+    const saveCanisterGroups = useCallback(async (newGroups) => {
+        if (!identity) return;
+        
+        setSaving(true);
+        try {
+            await setCanisterGroups(identity, newGroups);
+            setCanisterGroupsState(newGroups);
+        } catch (err) {
+            console.error('Error saving canister groups:', err);
+            setError('Failed to save changes');
+        } finally {
+            setSaving(false);
+        }
+    }, [identity]);
     
     // Persist collapsible states
     useEffect(() => {
@@ -286,7 +324,24 @@ export default function CanistersPage() {
         }
     }, [successMessage]);
 
-    const handleAddCanister = async () => {
+    // Generate unique ID for new groups
+    const generateGroupId = () => `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Check if canister exists in groups
+    const canisterExistsInGroups = useCallback((canisterId, groupsRoot) => {
+        if (groupsRoot.ungrouped.includes(canisterId)) return true;
+        const checkGroups = (groups) => {
+            for (const group of groups) {
+                if (group.canisters.includes(canisterId)) return true;
+                if (checkGroups(group.subgroups)) return true;
+            }
+            return false;
+        };
+        return checkGroups(groupsRoot.groups);
+    }, []);
+
+    // Add canister to ungrouped
+    const handleAddCanister = async (targetGroupId = null) => {
         if (!newCanisterId.trim()) return;
 
         // Validate principal format
@@ -298,8 +353,10 @@ export default function CanistersPage() {
             return;
         }
 
+        const canisterIdStr = canisterPrincipal.toString();
+
         // Check if already tracked
-        if (canisters.includes(canisterPrincipal.toString())) {
+        if (canisterExistsInGroups(canisterIdStr, canisterGroups)) {
             setError('This canister is already being tracked');
             return;
         }
@@ -308,11 +365,21 @@ export default function CanistersPage() {
         setError(null);
 
         try {
-            await registerTrackedCanister(identity, canisterPrincipal);
-            const canisterIdStr = canisterPrincipal.toString();
-            setCanisters(prev => [canisterIdStr, ...prev]);
+            let newGroups;
+            if (targetGroupId) {
+                // Add to specific group
+                newGroups = addCanisterToGroup(canisterGroups, canisterIdStr, targetGroupId);
+            } else {
+                // Add to ungrouped
+                newGroups = {
+                    ...canisterGroups,
+                    ungrouped: [canisterIdStr, ...canisterGroups.ungrouped],
+                };
+            }
+            
+            await saveCanisterGroups(newGroups);
             setNewCanisterId('');
-            setSuccessMessage('Canister added to tracking list');
+            setSuccessMessage('Canister added');
             // Fetch cycles for the new canister asynchronously
             fetchCanisterCycles(canisterIdStr);
         } catch (err) {
@@ -323,19 +390,194 @@ export default function CanistersPage() {
         }
     };
 
-    const handleRemoveCanister = async (canisterId) => {
-        setRemovingCanister(canisterId);
+    // Helper to add canister to a specific group
+    const addCanisterToGroup = (groupsRoot, canisterId, targetGroupId) => {
+        const updateGroups = (groups) => groups.map(group => {
+            if (group.id === targetGroupId) {
+                return { ...group, canisters: [canisterId, ...group.canisters] };
+            }
+            return { ...group, subgroups: updateGroups(group.subgroups) };
+        });
+        
+        return {
+            ...groupsRoot,
+            groups: updateGroups(groupsRoot.groups),
+        };
+    };
+
+    // Remove canister from wherever it is
+    const handleRemoveCanister = async (canisterId, fromGroupId = null) => {
         setError(null);
 
         try {
-            await unregisterTrackedCanister(identity, canisterId);
-            setCanisters(prev => prev.filter(c => c !== canisterId));
-            setSuccessMessage('Canister removed from tracking list');
+            let newGroups;
+            if (fromGroupId === 'ungrouped' || fromGroupId === null) {
+                newGroups = {
+                    ...canisterGroups,
+                    ungrouped: canisterGroups.ungrouped.filter(c => c !== canisterId),
+                };
+            } else {
+                newGroups = removeCanisterFromGroup(canisterGroups, canisterId, fromGroupId);
+            }
+            
+            await saveCanisterGroups(newGroups);
+            setSuccessMessage('Canister removed');
+            setConfirmRemoveCanister(null);
         } catch (err) {
             console.error('Error removing canister:', err);
             setError('Failed to remove canister');
-        } finally {
-            setRemovingCanister(null);
+        }
+    };
+
+    // Helper to remove canister from a specific group
+    const removeCanisterFromGroup = (groupsRoot, canisterId, groupId) => {
+        const updateGroups = (groups) => groups.map(group => {
+            if (group.id === groupId) {
+                return { ...group, canisters: group.canisters.filter(c => c !== canisterId) };
+            }
+            return { ...group, subgroups: updateGroups(group.subgroups) };
+        });
+        
+        return {
+            ...groupsRoot,
+            groups: updateGroups(groupsRoot.groups),
+        };
+    };
+
+    // Create a new group
+    const handleCreateGroup = async (parentGroupId = null) => {
+        if (!newGroupName.trim()) return;
+
+        const newGroup = {
+            id: generateGroupId(),
+            name: newGroupName.trim(),
+            canisters: [],
+            subgroups: [],
+        };
+
+        try {
+            let newGroups;
+            if (parentGroupId) {
+                // Add as subgroup
+                const addSubgroup = (groups) => groups.map(group => {
+                    if (group.id === parentGroupId) {
+                        return { ...group, subgroups: [...group.subgroups, newGroup] };
+                    }
+                    return { ...group, subgroups: addSubgroup(group.subgroups) };
+                });
+                newGroups = { ...canisterGroups, groups: addSubgroup(canisterGroups.groups) };
+            } else {
+                // Add as top-level group
+                newGroups = { ...canisterGroups, groups: [...canisterGroups.groups, newGroup] };
+            }
+            
+            await saveCanisterGroups(newGroups);
+            setNewGroupName('');
+            setShowNewGroupInput(false);
+            setSuccessMessage('Group created');
+            // Auto-expand the new group
+            setExpandedGroups(prev => ({ ...prev, [newGroup.id]: true }));
+        } catch (err) {
+            console.error('Error creating group:', err);
+            setError('Failed to create group');
+        }
+    };
+
+    // Rename a group
+    const handleRenameGroup = async (groupId) => {
+        if (!editingGroupName.trim()) return;
+
+        const updateGroupName = (groups) => groups.map(group => {
+            if (group.id === groupId) {
+                return { ...group, name: editingGroupName.trim() };
+            }
+            return { ...group, subgroups: updateGroupName(group.subgroups) };
+        });
+
+        try {
+            const newGroups = { ...canisterGroups, groups: updateGroupName(canisterGroups.groups) };
+            await saveCanisterGroups(newGroups);
+            setEditingGroup(null);
+            setEditingGroupName('');
+            setSuccessMessage('Group renamed');
+        } catch (err) {
+            console.error('Error renaming group:', err);
+            setError('Failed to rename group');
+        }
+    };
+
+    // Delete a group (moves canisters to ungrouped)
+    const handleDeleteGroup = async (groupId) => {
+        // Collect all canisters from the group and its subgroups
+        const collectCanisters = (group) => {
+            let canisters = [...group.canisters];
+            for (const subgroup of group.subgroups) {
+                canisters = [...canisters, ...collectCanisters(subgroup)];
+            }
+            return canisters;
+        };
+
+        const findAndCollect = (groups) => {
+            for (const group of groups) {
+                if (group.id === groupId) {
+                    return collectCanisters(group);
+                }
+                const fromSubgroups = findAndCollect(group.subgroups);
+                if (fromSubgroups.length > 0) return fromSubgroups;
+            }
+            return [];
+        };
+
+        const canistersToMove = findAndCollect(canisterGroups.groups);
+
+        // Remove the group
+        const removeGroup = (groups) => groups
+            .filter(g => g.id !== groupId)
+            .map(g => ({ ...g, subgroups: removeGroup(g.subgroups) }));
+
+        try {
+            const newGroups = {
+                groups: removeGroup(canisterGroups.groups),
+                ungrouped: [...canisterGroups.ungrouped, ...canistersToMove],
+            };
+            await saveCanisterGroups(newGroups);
+            setSuccessMessage('Group deleted');
+        } catch (err) {
+            console.error('Error deleting group:', err);
+            setError('Failed to delete group');
+        }
+    };
+
+    // Move canister to a different group (or ungrouped)
+    const handleMoveCanister = async (canisterId, fromGroupId, toGroupId) => {
+        try {
+            // First remove from current location
+            let newGroups = canisterGroups;
+            
+            if (fromGroupId === 'ungrouped') {
+                newGroups = {
+                    ...newGroups,
+                    ungrouped: newGroups.ungrouped.filter(c => c !== canisterId),
+                };
+            } else {
+                newGroups = removeCanisterFromGroup(newGroups, canisterId, fromGroupId);
+            }
+            
+            // Then add to new location
+            if (toGroupId === 'ungrouped') {
+                newGroups = {
+                    ...newGroups,
+                    ungrouped: [canisterId, ...newGroups.ungrouped],
+                };
+            } else {
+                newGroups = addCanisterToGroup(newGroups, canisterId, toGroupId);
+            }
+            
+            await saveCanisterGroups(newGroups);
+            setSuccessMessage('Canister moved');
+        } catch (err) {
+            console.error('Error moving canister:', err);
+            setError('Failed to move canister');
         }
     };
 
@@ -408,6 +650,338 @@ export default function CanistersPage() {
         } finally {
             setRemovingManager(null);
         }
+    };
+
+    // Recursive component for rendering a group
+    const GroupComponent = ({ 
+        group, depth, styles, theme, expandedGroups, setExpandedGroups,
+        editingGroup, setEditingGroup, editingGroupName, setEditingGroupName,
+        handleRenameGroup, handleDeleteGroup, canisterCycles, cycleSettings,
+        principalNames, principalNicknames, isAuthenticated,
+        confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
+        canisterGroups, handleMoveCanister
+    }) => {
+        const isExpanded = expandedGroups[group.id] ?? true;
+        const isEditing = editingGroup === group.id;
+        const totalCanisters = group.canisters.length + 
+            group.subgroups.reduce((sum, sg) => sum + sg.canisters.length, 0);
+
+        return (
+            <div style={{ 
+                marginBottom: '8px',
+                marginLeft: depth > 0 ? '20px' : '0',
+            }}>
+                {/* Group Header */}
+                <div 
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        backgroundColor: theme.colors.card,
+                        borderRadius: '8px',
+                        border: `1px solid ${theme.colors.border}`,
+                        cursor: 'pointer',
+                    }}
+                    onClick={() => setExpandedGroups(prev => ({ ...prev, [group.id]: !isExpanded }))}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {isExpanded ? <FaFolderOpen style={{ color: '#f59e0b' }} /> : <FaFolder style={{ color: '#f59e0b' }} />}
+                        {isEditing ? (
+                            <input
+                                type="text"
+                                value={editingGroupName}
+                                onChange={(e) => setEditingGroupName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    e.stopPropagation();
+                                    if (e.key === 'Enter') handleRenameGroup(group.id);
+                                    if (e.key === 'Escape') { setEditingGroup(null); setEditingGroupName(''); }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ 
+                                    padding: '4px 8px', 
+                                    fontSize: '14px',
+                                    backgroundColor: theme.colors.inputBackground,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '4px',
+                                    color: theme.colors.text,
+                                }}
+                                autoFocus
+                            />
+                        ) : (
+                            <span style={{ fontWeight: 500, color: theme.colors.text }}>{group.name}</span>
+                        )}
+                        <span style={{ 
+                            fontSize: '11px', 
+                            color: theme.colors.textSecondary,
+                            backgroundColor: theme.colors.inputBackground,
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                        }}>
+                            {totalCanisters}
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                        {isEditing ? (
+                            <>
+                                <button
+                                    onClick={() => handleRenameGroup(group.id)}
+                                    style={{ padding: '4px 8px', backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                    <FaCheck size={10} />
+                                </button>
+                                <button
+                                    onClick={() => { setEditingGroup(null); setEditingGroupName(''); }}
+                                    style={{ padding: '4px 8px', backgroundColor: theme.colors.card, color: theme.colors.textSecondary, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                    <FaTimes size={10} />
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={() => { setEditingGroup(group.id); setEditingGroupName(group.name); }}
+                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.textSecondary, border: 'none', cursor: 'pointer' }}
+                                    title="Rename group"
+                                >
+                                    <FaEdit size={12} />
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm(`Delete group "${group.name}"? Canisters will be moved to ungrouped.`)) {
+                                            handleDeleteGroup(group.id);
+                                        }
+                                    }}
+                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', cursor: 'pointer' }}
+                                    title="Delete group"
+                                >
+                                    <FaTrash size={12} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* Group Contents */}
+                {isExpanded && (
+                    <div style={{ marginTop: '8px', marginLeft: '12px' }}>
+                        {/* Subgroups */}
+                        {group.subgroups.map((subgroup) => (
+                            <GroupComponent
+                                key={subgroup.id}
+                                group={subgroup}
+                                depth={depth + 1}
+                                styles={styles}
+                                theme={theme}
+                                expandedGroups={expandedGroups}
+                                setExpandedGroups={setExpandedGroups}
+                                editingGroup={editingGroup}
+                                setEditingGroup={setEditingGroup}
+                                editingGroupName={editingGroupName}
+                                setEditingGroupName={setEditingGroupName}
+                                handleRenameGroup={handleRenameGroup}
+                                handleDeleteGroup={handleDeleteGroup}
+                                canisterCycles={canisterCycles}
+                                cycleSettings={cycleSettings}
+                                principalNames={principalNames}
+                                principalNicknames={principalNicknames}
+                                isAuthenticated={isAuthenticated}
+                                confirmRemoveCanister={confirmRemoveCanister}
+                                setConfirmRemoveCanister={setConfirmRemoveCanister}
+                                handleRemoveCanister={handleRemoveCanister}
+                                canisterGroups={canisterGroups}
+                                handleMoveCanister={handleMoveCanister}
+                            />
+                        ))}
+                        
+                        {/* Canisters in this group */}
+                        {group.canisters.length > 0 && (
+                            <div style={styles.canisterList}>
+                                {group.canisters.map((canisterId) => (
+                                    <CanisterCard
+                                        key={canisterId}
+                                        canisterId={canisterId}
+                                        groupId={group.id}
+                                        styles={styles}
+                                        theme={theme}
+                                        canisterCycles={canisterCycles}
+                                        cycleSettings={cycleSettings}
+                                        principalNames={principalNames}
+                                        principalNicknames={principalNicknames}
+                                        isAuthenticated={isAuthenticated}
+                                        confirmRemoveCanister={confirmRemoveCanister}
+                                        setConfirmRemoveCanister={setConfirmRemoveCanister}
+                                        handleRemoveCanister={handleRemoveCanister}
+                                        canisterGroups={canisterGroups}
+                                        handleMoveCanister={handleMoveCanister}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                        
+                        {/* Empty group message */}
+                        {group.canisters.length === 0 && group.subgroups.length === 0 && (
+                            <div style={{ 
+                                padding: '16px', 
+                                textAlign: 'center', 
+                                color: theme.colors.textSecondary,
+                                fontSize: '13px',
+                                fontStyle: 'italic',
+                            }}>
+                                Empty group
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Component for rendering a single canister card
+    const CanisterCard = ({ 
+        canisterId, groupId, styles, theme, canisterCycles, cycleSettings,
+        principalNames, principalNicknames, isAuthenticated,
+        confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
+        canisterGroups, handleMoveCanister
+    }) => {
+        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+        const cycles = canisterCycles[canisterId];
+        const isConfirming = confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === groupId;
+
+        // Collect all groups for the move dropdown
+        const collectGroups = (groups, prefix = '') => {
+            let result = [];
+            for (const g of groups) {
+                result.push({ id: g.id, name: prefix + g.name });
+                result = result.concat(collectGroups(g.subgroups, prefix + g.name + ' / '));
+            }
+            return result;
+        };
+        const allGroups = [
+            { id: 'ungrouped', name: 'Ungrouped' },
+            ...collectGroups(canisterGroups.groups)
+        ].filter(g => g.id !== groupId);
+
+        return (
+            <div style={styles.canisterCard}>
+                <div style={styles.canisterInfo}>
+                    <div style={styles.canisterIcon}>
+                        <FaCube size={18} />
+                    </div>
+                    <PrincipalDisplay
+                        principal={canisterId}
+                        displayInfo={displayInfo}
+                        showCopyButton={true}
+                        isAuthenticated={isAuthenticated}
+                        noLink={true}
+                        style={{ fontSize: '14px' }}
+                        showSendMessage={false}
+                        showViewProfile={false}
+                    />
+                    {/* Cycles badge */}
+                    {cycles !== undefined && cycles !== null && (
+                        <span 
+                            style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${getCyclesColor(cycles, cycleSettings)}20`,
+                                color: getCyclesColor(cycles, cycleSettings),
+                                marginLeft: '8px',
+                            }}
+                            title={`${cycles.toLocaleString()} cycles`}
+                        >
+                            ⚡ {formatCyclesCompact(cycles)}
+                        </span>
+                    )}
+                    {cycles === undefined && (
+                        <span 
+                            style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${theme.colors.mutedText || theme.colors.textSecondary}20`,
+                                color: theme.colors.mutedText || theme.colors.textSecondary,
+                                marginLeft: '8px',
+                            }}
+                        >
+                            ⚡ ...
+                        </span>
+                    )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {/* Move to group dropdown */}
+                    {allGroups.length > 0 && (
+                        <select
+                            onChange={(e) => {
+                                if (e.target.value) {
+                                    handleMoveCanister(canisterId, groupId, e.target.value);
+                                    e.target.value = '';
+                                }
+                            }}
+                            style={{
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${theme.colors.border}`,
+                                backgroundColor: theme.colors.card,
+                                color: theme.colors.textSecondary,
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                            }}
+                            defaultValue=""
+                        >
+                            <option value="" disabled>Move to...</option>
+                            {allGroups.map(g => (
+                                <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                        </select>
+                    )}
+                    <Link
+                        to={`/canister?id=${canisterId}`}
+                        style={styles.viewLink}
+                    >
+                        View
+                    </Link>
+                    {isConfirming ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: '#888', fontSize: '11px' }}>Remove?</span>
+                            <button
+                                onClick={() => handleRemoveCanister(canisterId, groupId)}
+                                style={{
+                                    backgroundColor: '#ef4444',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '4px 10px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                }}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={() => setConfirmRemoveCanister(null)}
+                                style={{
+                                    backgroundColor: theme.colors.card,
+                                    color: theme.colors.text,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '4px',
+                                    padding: '4px 10px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                }}
+                            >
+                                No
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setConfirmRemoveCanister({ canisterId, groupId })}
+                            style={styles.removeButton}
+                            title="Remove from tracking"
+                        >
+                            <FaTrash />
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     const styles = {
@@ -720,7 +1294,7 @@ export default function CanistersPage() {
                             </div>
                         </div>
 
-                        {/* Custom Canisters Section */}
+                        {/* Custom Canisters Section with Groups */}
                         <div 
                             style={styles.sectionHeader}
                             onClick={() => setCustomExpanded(!customExpanded)}
@@ -728,9 +1302,57 @@ export default function CanistersPage() {
                             <div style={styles.sectionTitle}>
                                 {customExpanded ? <FaChevronDown /> : <FaChevronRight />}
                                 <FaCube />
-                                Custom
-                                {canisters.length > 0 && (
-                                    <span style={styles.sectionCount}>{canisters.length}</span>
+                                Custom Canisters
+                                {getAllCanisterIds(canisterGroups).length > 0 && (
+                                    <span style={styles.sectionCount}>{getAllCanisterIds(canisterGroups).length}</span>
+                                )}
+                                {saving && <FaSpinner className="spin" size={12} style={{ marginLeft: '8px', color: theme.colors.textSecondary }} />}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                                {showNewGroupInput ? (
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Group name"
+                                            value={newGroupName}
+                                            onChange={(e) => setNewGroupName(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()}
+                                            style={{ ...styles.input, padding: '6px 10px', fontSize: '12px', width: '150px' }}
+                                            autoFocus
+                                        />
+                                        <button
+                                            onClick={() => handleCreateGroup()}
+                                            disabled={!newGroupName.trim()}
+                                            style={{ ...styles.addButton, padding: '6px 10px', fontSize: '12px' }}
+                                        >
+                                            <FaCheck size={10} />
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowNewGroupInput(false); setNewGroupName(''); }}
+                                            style={{ ...styles.removeButton, padding: '6px 10px' }}
+                                        >
+                                            <FaTimes size={10} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowNewGroupInput(true)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            backgroundColor: 'transparent',
+                                            color: theme.colors.textSecondary,
+                                            fontSize: '12px',
+                                            fontWeight: 500,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                        }}
+                                    >
+                                        <FaFolder size={10} /> New Group
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -741,143 +1363,79 @@ export default function CanistersPage() {
                                     <div style={styles.loadingSpinner}>
                                         <FaSpinner className="spin" size={24} />
                                     </div>
-                                ) : canisters.length === 0 ? (
+                                ) : getAllCanisterIds(canisterGroups).length === 0 && canisterGroups.groups.length === 0 ? (
                                     <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
                                         <div style={styles.emptyIcon}>📦</div>
                                         <div style={styles.emptyText}>No custom canisters being tracked</div>
                                         <div style={styles.emptySubtext}>
-                                            Add a canister ID above to start tracking it.
+                                            Add a canister ID above to start tracking it, or create a group to organize your canisters.
                                         </div>
                                     </div>
                                 ) : (
-                                    <div style={{ ...styles.canisterList, marginBottom: '24px' }}>
-                                        {canisters.map((canisterId) => {
-                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
-                                            const cycles = canisterCycles[canisterId];
-                                            
-                                            return (
-                                            <div 
-                                                key={canisterId} 
-                                                style={styles.canisterCard}
-                                            >
-                                                <div style={styles.canisterInfo}>
-                                                    <div style={styles.canisterIcon}>
-                                                        <FaCube size={18} />
-                                                    </div>
-                                                    <PrincipalDisplay
-                                                        principal={canisterId}
-                                                        displayInfo={displayInfo}
-                                                        showCopyButton={true}
-                                                        isAuthenticated={isAuthenticated}
-                                                        noLink={true}
-                                                        style={{ fontSize: '14px' }}
-                                                        showSendMessage={false}
-                                                        showViewProfile={false}
-                                                    />
-                                                    {/* Cycles badge - shows when cycles are loaded */}
-                                                    {cycles !== undefined && cycles !== null && (
-                                                        <span 
-                                                            style={{
-                                                                ...styles.managerVersion,
-                                                                backgroundColor: `${getCyclesColor(cycles, cycleSettings)}20`,
-                                                                color: getCyclesColor(cycles, cycleSettings),
-                                                                marginLeft: '8px',
-                                                            }}
-                                                            title={`${cycles.toLocaleString()} cycles`}
-                                                        >
-                                                            ⚡ {formatCyclesCompact(cycles)}
-                                                        </span>
-                                                    )}
-                                                    {/* Loading indicator while fetching cycles */}
-                                                    {cycles === undefined && (
-                                                        <span 
-                                                            style={{
-                                                                ...styles.managerVersion,
-                                                                backgroundColor: `${theme.colors.mutedText}20`,
-                                                                color: theme.colors.mutedText,
-                                                                marginLeft: '8px',
-                                                            }}
-                                                        >
-                                                            ⚡ ...
-                                                        </span>
-                                                    )}
+                                    <div style={{ marginBottom: '24px' }}>
+                                        {/* Render Groups */}
+                                        {canisterGroups.groups.map((group) => (
+                                            <GroupComponent
+                                                key={group.id}
+                                                group={group}
+                                                depth={0}
+                                                styles={styles}
+                                                theme={theme}
+                                                expandedGroups={expandedGroups}
+                                                setExpandedGroups={setExpandedGroups}
+                                                editingGroup={editingGroup}
+                                                setEditingGroup={setEditingGroup}
+                                                editingGroupName={editingGroupName}
+                                                setEditingGroupName={setEditingGroupName}
+                                                handleRenameGroup={handleRenameGroup}
+                                                handleDeleteGroup={handleDeleteGroup}
+                                                canisterCycles={canisterCycles}
+                                                cycleSettings={cycleSettings}
+                                                principalNames={principalNames}
+                                                principalNicknames={principalNicknames}
+                                                isAuthenticated={isAuthenticated}
+                                                confirmRemoveCanister={confirmRemoveCanister}
+                                                setConfirmRemoveCanister={setConfirmRemoveCanister}
+                                                handleRemoveCanister={handleRemoveCanister}
+                                                canisterGroups={canisterGroups}
+                                                handleMoveCanister={handleMoveCanister}
+                                            />
+                                        ))}
+                                        
+                                        {/* Render Ungrouped Canisters */}
+                                        {canisterGroups.ungrouped.length > 0 && (
+                                            <div style={{ marginTop: canisterGroups.groups.length > 0 ? '16px' : '0' }}>
+                                                <div style={{ 
+                                                    fontSize: '12px', 
+                                                    color: theme.colors.textSecondary, 
+                                                    marginBottom: '8px',
+                                                    fontWeight: 500,
+                                                }}>
+                                                    Ungrouped ({canisterGroups.ungrouped.length})
                                                 </div>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                    <Link
-                                                        to={`/canister?id=${canisterId}`}
-                                                        style={styles.viewLink}
-                                                    >
-                                                        View Details
-                                                    </Link>
-                                                    {confirmRemoveCanister === canisterId ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
-                                                            <span style={{ 
-                                                                color: '#888', 
-                                                                fontSize: '11px',
-                                                                whiteSpace: 'nowrap'
-                                                            }}>
-                                                                Remove?
-                                                            </span>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setConfirmRemoveCanister(null);
-                                                                    handleRemoveCanister(canisterId);
-                                                                }}
-                                                                disabled={removingCanister === canisterId}
-                                                                style={{
-                                                                    backgroundColor: '#ef4444',
-                                                                    color: '#fff',
-                                                                    border: 'none',
-                                                                    borderRadius: '4px',
-                                                                    padding: '4px 10px',
-                                                                    cursor: removingCanister === canisterId ? 'not-allowed' : 'pointer',
-                                                                    fontSize: '12px',
-                                                                    fontWeight: '500',
-                                                                    opacity: removingCanister === canisterId ? 0.7 : 1,
-                                                                }}
-                                                            >
-                                                                {removingCanister === canisterId ? '...' : 'Yes'}
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setConfirmRemoveCanister(null);
-                                                                }}
-                                                                style={{
-                                                                    backgroundColor: '#2a2a2a',
-                                                                    color: '#fff',
-                                                                    border: '1px solid #3a3a3a',
-                                                                    borderRadius: '4px',
-                                                                    padding: '4px 10px',
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '12px',
-                                                                }}
-                                                            >
-                                                                No
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            onClick={(e) => { 
-                                                                e.stopPropagation(); 
-                                                                setConfirmRemoveCanister(canisterId);
-                                                            }}
-                                                            style={styles.removeButton}
-                                                            disabled={removingCanister === canisterId}
-                                                            title="Remove from tracking"
-                                                        >
-                                                            {removingCanister === canisterId ? (
-                                                                <FaSpinner className="spin" />
-                                                            ) : (
-                                                                <FaTrash />
-                                                            )}
-                                                        </button>
-                                                    )}
+                                                <div style={styles.canisterList}>
+                                                    {canisterGroups.ungrouped.map((canisterId) => (
+                                                        <CanisterCard
+                                                            key={canisterId}
+                                                            canisterId={canisterId}
+                                                            groupId="ungrouped"
+                                                            styles={styles}
+                                                            theme={theme}
+                                                            canisterCycles={canisterCycles}
+                                                            cycleSettings={cycleSettings}
+                                                            principalNames={principalNames}
+                                                            principalNicknames={principalNicknames}
+                                                            isAuthenticated={isAuthenticated}
+                                                            confirmRemoveCanister={confirmRemoveCanister}
+                                                            setConfirmRemoveCanister={setConfirmRemoveCanister}
+                                                            handleRemoveCanister={handleRemoveCanister}
+                                                            canisterGroups={canisterGroups}
+                                                            handleMoveCanister={handleMoveCanister}
+                                                        />
+                                                    ))}
                                                 </div>
                                             </div>
-                                            );
-                                        })}
+                                        )}
                                     </div>
                                 )}
                             </>

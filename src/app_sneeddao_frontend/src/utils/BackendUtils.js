@@ -781,6 +781,85 @@ export const unregisterTrackedCanister = async (identity, canisterId) => {
     }
 };
 
+// Canister Groups - hierarchical grouping of canisters
+export const getCanisterGroups = async (identity) => {
+    if (!identity) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const result = await actor.get_canister_groups();
+        // Result is an optional, so it's an array with 0 or 1 elements
+        return result.length > 0 ? result[0] : null;
+    } catch (error) {
+        console.error('Error getting canister groups:', error);
+        return null;
+    }
+};
+
+export const setCanisterGroups = async (identity, groupsRoot) => {
+    if (!identity) return false;
+    
+    try {
+        const actor = createBackendActor(identity);
+        // Convert canister IDs to Principal objects if they're strings
+        const convertedGroups = convertGroupsForBackend(groupsRoot);
+        await actor.set_canister_groups(convertedGroups);
+        return true;
+    } catch (error) {
+        console.error('Error setting canister groups:', error);
+        throw error;
+    }
+};
+
+export const deleteCanisterGroups = async (identity) => {
+    if (!identity) return false;
+    
+    try {
+        const actor = createBackendActor(identity);
+        await actor.delete_canister_groups();
+        return true;
+    } catch (error) {
+        console.error('Error deleting canister groups:', error);
+        throw error;
+    }
+};
+
+// Helper to convert groups structure for backend (strings to Principals)
+const convertGroupsForBackend = (groupsRoot) => {
+    const convertGroup = (group) => ({
+        id: group.id,
+        name: group.name,
+        canisters: group.canisters.map(c => 
+            typeof c === 'string' ? Principal.fromText(c) : c
+        ),
+        subgroups: group.subgroups.map(convertGroup),
+    });
+    
+    return {
+        groups: groupsRoot.groups.map(convertGroup),
+        ungrouped: groupsRoot.ungrouped.map(c => 
+            typeof c === 'string' ? Principal.fromText(c) : c
+        ),
+    };
+};
+
+// Helper to convert groups from backend (Principals to strings for easier use)
+export const convertGroupsFromBackend = (groupsRoot) => {
+    if (!groupsRoot) return null;
+    
+    const convertGroup = (group) => ({
+        id: group.id,
+        name: group.name,
+        canisters: group.canisters.map(c => c.toString()),
+        subgroups: group.subgroups.map(convertGroup),
+    });
+    
+    return {
+        groups: groupsRoot.groups.map(convertGroup),
+        ungrouped: groupsRoot.ungrouped.map(c => c.toString()),
+    };
+};
+
 // Set a public name for a canister (caller must be a controller)
 export const setCanisterName = async (identity, canisterId, name) => {
     if (!identity || !canisterId) return null;
