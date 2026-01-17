@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -327,9 +326,8 @@ function CreateIcpNeuron() {
             const result = await factory.createNeuronManager();
             
             if ('Ok' in result) {
-                const { canisterId, accountId } = result.Ok;
-                const accountIdHex = Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
-                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}\n(use to send ICP from wallet/DEX)\n\nAccount ID: ${accountIdHex}\n(use to send ICP from CEX)`);
+                const { canisterId } = result.Ok;
+                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}`);
                 setCreationStep('done');
                 fetchMyManagers();
                 fetchFactoryInfo();
@@ -379,52 +377,6 @@ function CreateIcpNeuron() {
 
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
-    };
-
-    // Compute account ID from principal
-    const computeAccountId = (principal) => {
-        try {
-            const principalBytes = principal.toUint8Array();
-            const domainSeparator = new Uint8Array([0x0a, ...new TextEncoder().encode('account-id')]);
-            const subaccount = new Uint8Array(32);
-            const preimage = new Uint8Array(domainSeparator.length + principalBytes.length + subaccount.length);
-            preimage.set(domainSeparator, 0);
-            preimage.set(principalBytes, domainSeparator.length);
-            preimage.set(subaccount, domainSeparator.length + principalBytes.length);
-            const hash = sha224(preimage);
-            const crc = crc32(hash);
-            const accountId = new Uint8Array(32);
-            accountId[0] = (crc >> 24) & 0xff;
-            accountId[1] = (crc >> 16) & 0xff;
-            accountId[2] = (crc >> 8) & 0xff;
-            accountId[3] = crc & 0xff;
-            accountId.set(hash, 4);
-            return Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
-        } catch (err) {
-            console.error('Error computing account ID:', err);
-            return null;
-        }
-    };
-
-    const crc32 = (data) => {
-        let crc = 0xffffffff;
-        const table = getCrc32Table();
-        for (let i = 0; i < data.length; i++) {
-            crc = (crc >>> 8) ^ table[(crc ^ data[i]) & 0xff];
-        }
-        return (crc ^ 0xffffffff) >>> 0;
-    };
-
-    const getCrc32Table = () => {
-        const table = new Uint32Array(256);
-        for (let i = 0; i < 256; i++) {
-            let c = i;
-            for (let j = 0; j < 8; j++) {
-                c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-            }
-            table[i] = c;
-        }
-        return table;
     };
 
     // Check if user has enough payment balance
@@ -763,7 +715,6 @@ function CreateIcpNeuron() {
                         ) : (
                             <div>
                                 {managers.map((manager) => {
-                                    const accountId = computeAccountId(manager.canisterId);
                                     const canisterIdText = manager.canisterId.toText();
                                     const balance = balances[canisterIdText];
                                     const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames);
@@ -781,9 +732,6 @@ function CreateIcpNeuron() {
                                                             noLink={true}
                                                         />
                                                     </div>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
-                                                        <span style={{ color: theme.colors.accent }}>(send ICP from wallet/DEX)</span>
-                                                    </div>
                                                 </div>
                                                 <div style={{ textAlign: 'right' }}>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
@@ -799,30 +747,6 @@ function CreateIcpNeuron() {
                                                 </div>
                                             </div>
 
-                                            {accountId && (
-                                                <div style={{ marginTop: '12px' }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
-                                                        Account ID <span style={{ color: theme.colors.accent, fontSize: '11px' }}>(send ICP from CEX)</span>
-                                                    </div>
-                                                    <div style={{ 
-                                                        color: theme.colors.accent, 
-                                                        fontFamily: 'monospace', 
-                                                        fontSize: '12px',
-                                                        wordBreak: 'break-all',
-                                                        background: `${theme.colors.accent}10`,
-                                                        padding: '8px',
-                                                        borderRadius: '4px',
-                                                    }}>
-                                                        {accountId}
-                                                        <button 
-                                                            style={{ ...smallButtonStyle, marginTop: '4px' }}
-                                                            onClick={() => copyToClipboard(accountId)}
-                                                        >
-                                                            Copy
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
                                             
                                             <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -888,7 +812,7 @@ function CreateIcpNeuron() {
                     <ol style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px' }}>
                         <li><strong>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
                         <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that can control multiple ICP neurons.</li>
-                        <li><strong>Fund the Manager:</strong> Send ICP to your manager — you can send directly from your Sneed wallet, use the <em>Canister ID</em> when sending from another wallet or DEX (ICRC1), or use the <em>Account ID</em> when sending from a CEX.</li>
+                        <li><strong>Fund the Manager:</strong> Send ICP to your manager's Canister ID from your wallet or DEX.</li>
                         <li><strong>Stake Neurons:</strong> Use the manager to stake ICP and create NNS neurons.</li>
                         <li><strong>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
                         <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
