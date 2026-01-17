@@ -200,6 +200,8 @@ function IcpNeuronManager() {
     // Canister status state
     const [canisterStatus, setCanisterStatus] = useState(null);
     const [controllers, setControllers] = useState([]);
+    const [isInvalidManager, setIsInvalidManager] = useState(false); // True if canister doesn't have expected methods
+    const [invalidManagerReason, setInvalidManagerReason] = useState(''); // Why it's invalid
     
     // Official version verification
     const [officialVersions, setOfficialVersions] = useState([]);
@@ -322,6 +324,8 @@ function IcpNeuronManager() {
         
         setLoading(true);
         setError('');
+        setIsInvalidManager(false);
+        setInvalidManagerReason('');
         
         try {
             const agent = getAgent();
@@ -331,31 +335,71 @@ function IcpNeuronManager() {
             
             const manager = createManagerActor(canisterId, { agent });
             
-            // Fetch basic info
-            const [version, neuronIdsResult] = await Promise.all([
-                manager.getVersion(),
-                manager.getNeuronIds(),
-            ]);
+            // Try to fetch basic info - handle failures gracefully
+            let version = null;
+            let neuronIdsResult = [];
+            let managerMethodsFailed = false;
+            let failureReason = '';
             
-            setManagerInfo({
-                canisterId,
-                version: `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`,
-            });
+            try {
+                version = await manager.getVersion();
+            } catch (versionErr) {
+                console.warn('getVersion failed:', versionErr.message);
+                managerMethodsFailed = true;
+                if (versionErr.message?.includes('has no query method')) {
+                    failureReason = 'This canister does not appear to be an ICP Neuron Manager (missing getVersion method).';
+                } else {
+                    failureReason = `Could not get version: ${versionErr.message || 'Unknown error'}`;
+                }
+            }
             
-            // Set neuron IDs
-            const neurons = neuronIdsResult || [];
-            setNeuronIds(neurons);
+            try {
+                neuronIdsResult = await manager.getNeuronIds();
+            } catch (neuronsErr) {
+                console.warn('getNeuronIds failed:', neuronsErr.message);
+                if (!managerMethodsFailed) {
+                    managerMethodsFailed = true;
+                    if (neuronsErr.message?.includes('has no query method')) {
+                        failureReason = 'This canister does not appear to be an ICP Neuron Manager (missing getNeuronIds method).';
+                    } else {
+                        failureReason = `Could not get neurons: ${neuronsErr.message || 'Unknown error'}`;
+                    }
+                }
+            }
             
-            // Select first neuron if exists and none selected
-            if (neurons.length > 0) {
-                const firstNeuron = neurons[0];
-                setSelectedNeuronId(prev => prev || firstNeuron);
-                // Fetch info for selected neuron
-                fetchNeuronInfo(manager, firstNeuron);
-            } else {
+            if (managerMethodsFailed) {
+                setIsInvalidManager(true);
+                setInvalidManagerReason(failureReason);
+                // Still set basic manager info so we can show the canister section
+                setManagerInfo({
+                    canisterId,
+                    version: version ? `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}` : null,
+                });
+                setNeuronIds([]);
                 setSelectedNeuronId(null);
                 setNeuronInfo(null);
                 setFullNeuron(null);
+            } else {
+                setManagerInfo({
+                    canisterId,
+                    version: `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`,
+                });
+                
+                // Set neuron IDs
+                const neurons = neuronIdsResult || [];
+                setNeuronIds(neurons);
+                
+                // Select first neuron if exists and none selected
+                if (neurons.length > 0) {
+                    const firstNeuron = neurons[0];
+                    setSelectedNeuronId(prev => prev || firstNeuron);
+                    // Fetch info for selected neuron
+                    fetchNeuronInfo(manager, firstNeuron);
+                } else {
+                    setSelectedNeuronId(null);
+                    setNeuronInfo(null);
+                    setFullNeuron(null);
+                }
             }
             
             // Fetch user ICP balance
@@ -364,6 +408,10 @@ function IcpNeuronManager() {
         } catch (err) {
             console.error('Error fetching manager data:', err);
             setError(`Failed to load manager: ${err.message || 'Unknown error'}`);
+            // Still set basic info so canister section can be shown
+            setManagerInfo({ canisterId, version: null });
+            setIsInvalidManager(true);
+            setInvalidManagerReason(err.message || 'Unknown error');
         } finally {
             setLoading(false);
         }
@@ -928,6 +976,13 @@ function IcpNeuronManager() {
         // Fetch official versions regardless of auth (public data)
         fetchOfficialVersions();
     }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions]);
+
+    // Auto-expand canister section when manager is invalid (for easy access to upgrade/reinstall)
+    useEffect(() => {
+        if (isInvalidManager) {
+            setCanisterSectionExpanded(true);
+        }
+    }, [isInvalidManager]);
 
     // Action handlers
     const handleStakeNeuron = async () => {
@@ -2257,6 +2312,35 @@ function IcpNeuronManager() {
                     </div>
                 ) : managerInfo && (
                     <>
+                        {/* Invalid Manager Warning */}
+                        {isInvalidManager && (
+                            <div style={{ 
+                                backgroundColor: `${theme.colors.warning || '#f59e0b'}20`, 
+                                border: `1px solid ${theme.colors.warning || '#f59e0b'}`,
+                                color: theme.colors.warning || '#f59e0b',
+                                padding: '16px 20px',
+                                borderRadius: '12px',
+                                marginBottom: '20px',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                                    <span style={{ fontSize: '24px' }}>⚠️</span>
+                                    <div>
+                                        <div style={{ fontWeight: '600', marginBottom: '8px', color: theme.colors.primaryText }}>
+                                            Canister Not Recognized as ICP Neuron Manager
+                                        </div>
+                                        <div style={{ fontSize: '13px', marginBottom: '12px' }}>
+                                            {invalidManagerReason || 'This canister does not respond to expected Neuron Manager methods.'}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: theme.colors.mutedText }}>
+                                            💡 If you are a controller of this canister, you can try to <strong style={{ color: theme.colors.primaryText }}>reinstall</strong> it 
+                                            with the latest official Neuron Manager WASM using the Canister section below. 
+                                            This will overwrite the existing code but preserve data (if compatible).
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
                         {/* ============================================ */}
                         {/* CANISTER SECTION */}
                         {/* ============================================ */}
@@ -3239,6 +3323,9 @@ function IcpNeuronManager() {
                             )}
                         </div>
 
+                        {/* Only show neuron management sections if canister is a valid manager */}
+                        {!isInvalidManager && (
+                        <>
                         {/* ============================================ */}
                         {/* NEURONS SECTION */}
                         {/* ============================================ */}
@@ -4696,6 +4783,8 @@ function IcpNeuronManager() {
                                 </div>
                             )}
                         </div>
+                        </>
+                        )}
                     </>
                 )}
             </main>
