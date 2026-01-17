@@ -60,6 +60,18 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var creationLog: [T.CreationLogEntry] = [];
     var creationLogNextIndex: Nat = 0;
     
+    // Financial log (correlates with creationLog via canisterId, tracks ICP and cycles)
+    var financialLog: [T.FinancialLogEntry] = [];
+    var financialLogNextIndex: Nat = 0;
+    
+    // Aggregate statistics for all creations
+    var totalIcpPaidE8s: Nat = 0;
+    var totalIcpForCyclesE8s: Nat = 0;
+    var totalIcpProfitE8s: Nat = 0;
+    var totalIcpTransferFeesE8s: Nat = 0;
+    var totalCyclesReceivedFromCmc: Nat = 0;
+    var totalCyclesSpentOnCreation: Nat = 0;
+    
     // Payment configuration
     var creationFeeE8s: Nat64 = 100_000_000; // 1 ICP default
     var icpForCyclesE8s: Nat64 = 2_000_000;  // 0.02 ICP default (~2T cycles) DEPRECATED
@@ -461,6 +473,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             return #Err(#InsufficientCycles);
         };
 
+        // Track financial metrics for this creation
+        var trackedIcpPaidE8s: Nat64 = 0;
+        var trackedIcpForCyclesE8s: Nat64 = 0;
+        var trackedIcpProfitE8s: Nat64 = 0;
+        var trackedIcpTransferFeesE8s: Nat64 = 0;
+        var trackedCyclesReceivedFromCmc: Nat = 0;
+        let cyclesBalanceBefore = Cycles.balance();
+
         // Process payment if required
         if (paymentRequired) {
             let userSubaccount = principalToSubaccount(caller);
@@ -478,6 +498,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 }));
             };
             
+            // Track: Total ICP paid by user
+            trackedIcpPaidE8s := creationFeeE8s;
+            
             // Calculate ICP needed for target cycles based on current CMC rate
             let icpForCyclesE8s = await calculateIcpForCycles(targetCyclesAmount);
             
@@ -488,12 +511,21 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 2_000_000; // 0.02 ICP fallback
             };
             
+            // Track: ICP used for cycles
+            trackedIcpForCyclesE8s := actualIcpForCycles;
+            
             // Calculate amount for fee destination (total - cycles portion - 2 transfer fees)
             let feeAmount: Nat64 = if (creationFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
                 creationFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
             } else {
                 0;
             };
+            
+            // Track: Profit (ICP to fee destination)
+            trackedIcpProfitE8s := feeAmount;
+            
+            // Track: Transfer fees (2 transfers)
+            trackedIcpTransferFeesE8s := T.ICP_FEE * 2;
             
             // Step 1: Transfer ICP for cycles to factory's main account (for later CMC top-up)
             if (actualIcpForCycles > 0) {
@@ -528,6 +560,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 switch (feeTransfer) {
                     case (#Err(_)) {
                         // Log but don't fail - cycles portion already transferred
+                        // Note: profit tracking may be inaccurate if this fails
                     };
                     case (#Ok(_)) {};
                 };
@@ -540,7 +573,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     case (#Err(_)) {
                         // Log but don't fail canister creation - we still have cycles from the fee
                     };
-                    case (#Ok(_)) {};
+                    case (#Ok(cyclesReceived)) {
+                        // Track: Cycles received from CMC
+                        trackedCyclesReceivedFromCmc := cyclesReceived;
+                    };
                 };
             };
         };
@@ -552,6 +588,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
             case (?w) { w };
         };
+
+        // Track cycles spent on creation
+        let trackedCyclesSpentOnCreation = canisterCreationCycles;
 
         // Now create the canister using management canister
         try {
@@ -590,6 +629,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 };
             });
 
+            // Track cycles balance after creation
+            let cyclesBalanceAfter = Cycles.balance();
+
             // Compute the account ID for the new canister
             let accountId = computeAccountId(canisterId, null);
 
@@ -613,6 +655,31 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
             creationLog := Array.append(creationLog, [logEntry]);
             creationLogNextIndex += 1;
+            
+            // Add to financial log
+            let financialEntry: T.FinancialLogEntry = {
+                canisterId = canisterId;
+                index = financialLogNextIndex;
+                createdAt = createdAt;
+                icpPaidE8s = trackedIcpPaidE8s;
+                icpForCyclesE8s = trackedIcpForCyclesE8s;
+                icpProfitE8s = trackedIcpProfitE8s;
+                icpTransferFeesE8s = trackedIcpTransferFeesE8s;
+                cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
+                cyclesSpentOnCreation = trackedCyclesSpentOnCreation;
+                cyclesBalanceBefore = cyclesBalanceBefore;
+                cyclesBalanceAfter = cyclesBalanceAfter;
+            };
+            financialLog := Array.append(financialLog, [financialEntry]);
+            financialLogNextIndex += 1;
+            
+            // Update aggregate statistics
+            totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
+            totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
+            totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
+            totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
+            totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
+            totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
 
             #Ok({
                 canisterId = canisterId;
@@ -879,6 +946,169 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 creationLog[size - 1 - i];
             });
         };
+    };
+
+    // ============================================
+    // FINANCIAL LOG QUERIES (admin only)
+    // ============================================
+
+    // Query financial log with filtering and paging (admin only)
+    public query ({ caller }) func getFinancialLog(params: T.FinancialLogQuery): async T.FinancialLogResult {
+        assert(isAdmin(caller));
+        
+        let startIndex = switch (params.startIndex) {
+            case (?idx) { idx };
+            case null { 0 };
+        };
+        
+        let limit = switch (params.limit) {
+            case (?l) { if (l > 100) { 100 } else { l } };
+            case null { 50 };
+        };
+        
+        // Apply filters
+        let filtered = Array.filter<T.FinancialLogEntry>(financialLog, func(entry) {
+            // Filter by canister
+            switch (params.canisterFilter) {
+                case (?canister) {
+                    if (entry.canisterId != canister) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            // Filter by time range
+            switch (params.fromTime) {
+                case (?from) {
+                    if (entry.createdAt < from) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            switch (params.toTime) {
+                case (?to) {
+                    if (entry.createdAt > to) {
+                        return false;
+                    };
+                };
+                case null {};
+            };
+            
+            true;
+        });
+        
+        let totalCount = filtered.size();
+        
+        // Apply paging
+        let buf = Buffer.Buffer<T.FinancialLogEntry>(limit);
+        var idx: Nat = 0;
+        var count: Nat = 0;
+        
+        for (entry in filtered.vals()) {
+            if (idx >= startIndex and count < limit) {
+                buf.add(entry);
+                count += 1;
+            };
+            idx += 1;
+        };
+        
+        {
+            entries = Buffer.toArray(buf);
+            totalCount = totalCount;
+            hasMore = (startIndex + count) < totalCount;
+        };
+    };
+
+    // Get merged log (combines creation and financial logs) - admin only
+    public query ({ caller }) func getMergedLog(startIndex: ?Nat, limit: ?Nat): async T.MergedLogResult {
+        assert(isAdmin(caller));
+        
+        let actualStartIndex = switch (startIndex) {
+            case (?idx) { idx };
+            case null { 0 };
+        };
+        
+        let actualLimit = switch (limit) {
+            case (?l) { if (l > 100) { 100 } else { l } };
+            case null { 50 };
+        };
+        
+        let totalCount = creationLog.size();
+        
+        // Build merged entries
+        let buf = Buffer.Buffer<T.MergedLogEntry>(actualLimit);
+        var idx: Nat = 0;
+        var count: Nat = 0;
+        
+        for (creationEntry in creationLog.vals()) {
+            if (idx >= actualStartIndex and count < actualLimit) {
+                // Find matching financial entry by canisterId
+                var financialData: ?{
+                    icpPaidE8s: Nat64;
+                    icpForCyclesE8s: Nat64;
+                    icpProfitE8s: Nat64;
+                    icpTransferFeesE8s: Nat64;
+                    cyclesReceivedFromCmc: Nat;
+                    cyclesSpentOnCreation: Nat;
+                    cyclesBalanceBefore: Nat;
+                    cyclesBalanceAfter: Nat;
+                } = null;
+                
+                for (finEntry in financialLog.vals()) {
+                    if (finEntry.canisterId == creationEntry.canisterId) {
+                        financialData := ?{
+                            icpPaidE8s = finEntry.icpPaidE8s;
+                            icpForCyclesE8s = finEntry.icpForCyclesE8s;
+                            icpProfitE8s = finEntry.icpProfitE8s;
+                            icpTransferFeesE8s = finEntry.icpTransferFeesE8s;
+                            cyclesReceivedFromCmc = finEntry.cyclesReceivedFromCmc;
+                            cyclesSpentOnCreation = finEntry.cyclesSpentOnCreation;
+                            cyclesBalanceBefore = finEntry.cyclesBalanceBefore;
+                            cyclesBalanceAfter = finEntry.cyclesBalanceAfter;
+                        };
+                    };
+                };
+                
+                buf.add({
+                    canisterId = creationEntry.canisterId;
+                    caller = creationEntry.caller;
+                    createdAt = creationEntry.createdAt;
+                    index = creationEntry.index;
+                    financialData = financialData;
+                });
+                count += 1;
+            };
+            idx += 1;
+        };
+        
+        {
+            entries = Buffer.toArray(buf);
+            totalCount = totalCount;
+            hasMore = (actualStartIndex + count) < totalCount;
+        };
+    };
+
+    // Get factory aggregate statistics (admin only)
+    public query ({ caller }) func getFactoryAggregates(): async T.FactoryAggregates {
+        assert(isAdmin(caller));
+        {
+            totalCanistersCreated = creationLog.size();
+            totalIcpPaidE8s = totalIcpPaidE8s;
+            totalIcpForCyclesE8s = totalIcpForCyclesE8s;
+            totalIcpProfitE8s = totalIcpProfitE8s;
+            totalIcpTransferFeesE8s = totalIcpTransferFeesE8s;
+            totalCyclesReceivedFromCmc = totalCyclesReceivedFromCmc;
+            totalCyclesSpentOnCreation = totalCyclesSpentOnCreation;
+        };
+    };
+
+    // Get financial log count (admin only)
+    public query ({ caller }) func getFinancialLogCount(): async Nat {
+        assert(isAdmin(caller));
+        financialLog.size();
     };
 
     // ============================================

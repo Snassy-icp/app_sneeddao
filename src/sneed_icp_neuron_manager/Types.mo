@@ -512,6 +512,89 @@ module {
     };
 
     // ============================================
+    // FINANCIAL METRICS LOG (correlates with CreationLog)
+    // ============================================
+
+    // Financial log entry - tracks ICP and cycles for each canister creation
+    public type FinancialLogEntry = {
+        canisterId: Principal;          // Correlates with CreationLogEntry
+        index: Nat;                     // Sequential index (matches creationLog index)
+        createdAt: Int;                 // Timestamp
+        
+        // ICP metrics (all in e8s)
+        icpPaidE8s: Nat64;              // Total ICP paid by user
+        icpForCyclesE8s: Nat64;         // ICP used to buy cycles
+        icpProfitE8s: Nat64;            // ICP sent to fee destination (profit)
+        icpTransferFeesE8s: Nat64;      // ICP spent on transfer fees (gas)
+        
+        // Cycles metrics
+        cyclesReceivedFromCmc: Nat;     // Cycles factory received from CMC top-up
+        cyclesSpentOnCreation: Nat;     // Cycles spent to create the canister
+        cyclesBalanceBefore: Nat;       // Factory cycles balance before creation
+        cyclesBalanceAfter: Nat;        // Factory cycles balance after creation
+    };
+
+    // Query parameters for financial log
+    public type FinancialLogQuery = {
+        startIndex: ?Nat;               // Start from this index (for paging)
+        limit: ?Nat;                    // Max entries to return
+        canisterFilter: ?Principal;     // Filter by canister ID
+        fromTime: ?Int;                 // Filter: created after this time
+        toTime: ?Int;                   // Filter: created before this time
+    };
+
+    // Result for financial log query
+    public type FinancialLogResult = {
+        entries: [FinancialLogEntry];
+        totalCount: Nat;
+        hasMore: Bool;
+    };
+
+    // Merged log entry - combines creation and financial info
+    public type MergedLogEntry = {
+        // From CreationLogEntry
+        canisterId: Principal;
+        caller: Principal;
+        createdAt: Int;
+        index: Nat;
+        
+        // From FinancialLogEntry (optional - may not exist for old entries)
+        financialData: ?{
+            icpPaidE8s: Nat64;
+            icpForCyclesE8s: Nat64;
+            icpProfitE8s: Nat64;
+            icpTransferFeesE8s: Nat64;
+            cyclesReceivedFromCmc: Nat;
+            cyclesSpentOnCreation: Nat;
+            cyclesBalanceBefore: Nat;
+            cyclesBalanceAfter: Nat;
+        };
+    };
+
+    // Result for merged log query
+    public type MergedLogResult = {
+        entries: [MergedLogEntry];
+        totalCount: Nat;
+        hasMore: Bool;
+    };
+
+    // Factory aggregate statistics
+    public type FactoryAggregates = {
+        // Counts
+        totalCanistersCreated: Nat;
+        
+        // ICP totals (in e8s)
+        totalIcpPaidE8s: Nat;           // Total ICP received from users
+        totalIcpForCyclesE8s: Nat;      // Total ICP used to buy cycles
+        totalIcpProfitE8s: Nat;         // Total ICP profit (sent to fee destination)
+        totalIcpTransferFeesE8s: Nat;   // Total ICP spent on transfer fees
+        
+        // Cycles totals
+        totalCyclesReceivedFromCmc: Nat; // Total cycles received from CMC
+        totalCyclesSpentOnCreation: Nat; // Total cycles spent creating canisters
+    };
+
+    // ============================================
     // TOPIC ENUM (for following)
     // ============================================
 
