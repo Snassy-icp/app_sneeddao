@@ -357,6 +357,7 @@ function Wallet() {
     // ICP Neuron Manager state
     const [neuronManagers, setNeuronManagers] = useState([]);
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
+    const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('neuronManagersExpanded');
@@ -1036,6 +1037,21 @@ function Wallet() {
         }
     }
 
+    // Helper to compare versions
+    const compareVersions = (a, b) => {
+        const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
+        const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
+        if (aMajor !== bMajor) return aMajor - bMajor;
+        if (aMinor !== bMinor) return aMinor - bMinor;
+        return aPatch - bPatch;
+    };
+
+    // Check if a version is outdated compared to latest
+    const isVersionOutdated = (version) => {
+        if (!latestOfficialVersion || !version) return false;
+        return compareVersions(version, latestOfficialVersion) < 0;
+    };
+
     // Fetch ICP Neuron Managers
     async function fetchNeuronManagers() {
         if (!identity) return;
@@ -1051,7 +1067,18 @@ function Wallet() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
+            
+            // Fetch managers and official versions in parallel
+            const [canisterIds, officialVersions] = await Promise.all([
+                factory.getMyManagers(),
+                factory.getOfficialVersions(),
+            ]);
+            
+            // Find latest official version
+            if (officialVersions && officialVersions.length > 0) {
+                const sorted = [...officialVersions].sort((a, b) => compareVersions(b, a));
+                setLatestOfficialVersion(sorted[0]);
+            }
             
             // Fetch neuron counts and current versions for all managers
             if (canisterIds.length > 0) {
@@ -4545,14 +4572,21 @@ function Wallet() {
                                                     </div>
                                                     {/* Row 3: Version and icons */}
                                                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <span style={{
-                                                            background: theme.colors.tertiaryBg || theme.colors.primaryBg,
-                                                            color: theme.colors.mutedText,
-                                                            padding: '2px 8px',
-                                                            borderRadius: '12px',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: '500',
-                                                        }}>
+                                                        <span 
+                                                            style={{
+                                                                background: isVersionOutdated(manager.version) ? '#f59e0b20' : (theme.colors.tertiaryBg || theme.colors.primaryBg),
+                                                                color: isVersionOutdated(manager.version) ? '#f59e0b' : theme.colors.mutedText,
+                                                                padding: '2px 8px',
+                                                                borderRadius: '12px',
+                                                                fontSize: '0.7rem',
+                                                                fontWeight: '500',
+                                                            }}
+                                                            title={isVersionOutdated(manager.version) 
+                                                                ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                                : undefined
+                                                            }
+                                                        >
+                                                            {isVersionOutdated(manager.version) && '⚠️ '}
                                                             v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                         </span>
                                                         {/* Neurons icon */}

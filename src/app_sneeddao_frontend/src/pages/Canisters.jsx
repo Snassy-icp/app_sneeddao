@@ -33,6 +33,7 @@ export default function CanistersPage() {
     const [removingManager, setRemovingManager] = useState(null);
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     const [managerError, setManagerError] = useState(null);
+    const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     
     // Collapsible section states
     const [customExpanded, setCustomExpanded] = useState(() => {
@@ -47,6 +48,21 @@ export default function CanistersPage() {
             return saved !== null ? JSON.parse(saved) : true;
         } catch { return true; }
     });
+
+    // Helper to compare versions
+    const compareVersions = (a, b) => {
+        const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
+        const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
+        if (aMajor !== bMajor) return aMajor - bMajor;
+        if (aMinor !== bMinor) return aMinor - bMinor;
+        return aPatch - bPatch;
+    };
+
+    // Check if a version is outdated compared to latest
+    const isVersionOutdated = (version) => {
+        if (!latestOfficialVersion || !version) return false;
+        return compareVersions(version, latestOfficialVersion) < 0;
+    };
 
     // Fetch neuron managers
     const fetchNeuronManagers = useCallback(async () => {
@@ -67,7 +83,18 @@ export default function CanistersPage() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
+            
+            // Fetch managers and official versions in parallel
+            const [canisterIds, officialVersions] = await Promise.all([
+                factory.getMyManagers(),
+                factory.getOfficialVersions(),
+            ]);
+            
+            // Find latest official version
+            if (officialVersions && officialVersions.length > 0) {
+                const sorted = [...officialVersions].sort((a, b) => compareVersions(b, a));
+                setLatestOfficialVersion(sorted[0]);
+            }
             
             // Fetch current version and neuron count from each canister
             const managersWithInfo = await Promise.all(
@@ -835,7 +862,20 @@ export default function CanistersPage() {
                                                                 />
                                                             </div>
                                                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                                <span style={styles.managerVersion}>
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        ...(isVersionOutdated(manager.version) ? {
+                                                                            backgroundColor: '#f59e0b20',
+                                                                            color: '#f59e0b',
+                                                                        } : {}),
+                                                                    }}
+                                                                    title={isVersionOutdated(manager.version) 
+                                                                        ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                                        : undefined
+                                                                    }
+                                                                >
+                                                                    {isVersionOutdated(manager.version) && '⚠️ '}
                                                                     v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                                 </span>
                                                                 <span style={{

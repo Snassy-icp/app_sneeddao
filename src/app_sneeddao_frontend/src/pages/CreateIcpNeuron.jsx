@@ -24,6 +24,7 @@ function CreateIcpNeuron() {
     const [managers, setManagers] = useState([]);
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
     const [managerVersions, setManagerVersions] = useState({}); // canisterId -> version object
+    const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -133,6 +134,21 @@ function CreateIcpNeuron() {
         }
     }, []);
 
+    // Helper to compare versions
+    const compareVersions = (a, b) => {
+        const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
+        const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
+        if (aMajor !== bMajor) return aMajor - bMajor;
+        if (aMinor !== bMinor) return aMinor - bMinor;
+        return aPatch - bPatch;
+    };
+
+    // Check if a version is outdated compared to latest
+    const isVersionOutdated = (version) => {
+        if (!latestOfficialVersion || !version) return false;
+        return compareVersions(version, latestOfficialVersion) < 0;
+    };
+
     const fetchMyManagers = useCallback(async () => {
         setLoading(true);
         try {
@@ -141,7 +157,18 @@ function CreateIcpNeuron() {
                 await agent.fetchRootKey();
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const canisterIds = await factory.getMyManagers(); // Now returns [Principal]
+            
+            // Fetch managers and official versions in parallel
+            const [canisterIds, officialVersions] = await Promise.all([
+                factory.getMyManagers(),
+                factory.getOfficialVersions(),
+            ]);
+            
+            // Find latest official version
+            if (officialVersions && officialVersions.length > 0) {
+                const sorted = [...officialVersions].sort((a, b) => compareVersions(b, a));
+                setLatestOfficialVersion(sorted[0]);
+            }
             
             // Convert to manager objects with canisterId field
             const managerList = canisterIds.map(canisterIdPrincipal => ({
@@ -721,7 +748,21 @@ function CreateIcpNeuron() {
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                                         {managerVersions[canisterIdText] && (
-                                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px', flexShrink: 0 }}>
+                                                            <span 
+                                                                style={{ 
+                                                                    color: isVersionOutdated(managerVersions[canisterIdText]) ? '#f59e0b' : theme.colors.mutedText, 
+                                                                    fontSize: '12px', 
+                                                                    flexShrink: 0,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                }}
+                                                                title={isVersionOutdated(managerVersions[canisterIdText]) 
+                                                                    ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                                    : undefined
+                                                                }
+                                                            >
+                                                                {isVersionOutdated(managerVersions[canisterIdText]) && '⚠️ '}
                                                                 Version {Number(managerVersions[canisterIdText].major)}.{Number(managerVersions[canisterIdText].minor)}.{Number(managerVersions[canisterIdText].patch)}
                                                             </span>
                                                         )}
