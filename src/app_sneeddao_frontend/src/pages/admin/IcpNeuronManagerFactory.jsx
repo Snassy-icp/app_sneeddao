@@ -646,7 +646,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
     }
   };
 
-  // Creation log handlers
+  // Creation log handlers - uses getMergedLog to include financial data
   const fetchCreationLog = async (page = 0, resetFilters = false) => {
     try {
       setCreationLogLoading(true);
@@ -695,7 +695,15 @@ export default function IcpNeuronManagerFactoryAdmin() {
         }
       }
 
-      const result = await actor.getCreationLog(query);
+      // Try getMergedLog first (includes financial data), fallback to getCreationLog
+      let result;
+      try {
+        result = await actor.getMergedLog(query);
+      } catch (mergedErr) {
+        // Fallback to getCreationLog if getMergedLog not available
+        console.log('getMergedLog not available, falling back to getCreationLog');
+        result = await actor.getCreationLog(query);
+      }
       
       setCreationLog(result.entries);
       setCreationLogTotalCount(Number(result.totalCount));
@@ -2089,35 +2097,50 @@ export default function IcpNeuronManagerFactoryAdmin() {
                     <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>Canister ID</th>
                     <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>Creator</th>
                     <th style={{ color: '#888', textAlign: 'left', padding: '10px', fontWeight: '500' }}>Created At</th>
+                    <th style={{ color: '#888', textAlign: 'right', padding: '10px', fontWeight: '500' }}>ICP Paid</th>
+                    <th style={{ color: '#888', textAlign: 'right', padding: '10px', fontWeight: '500' }}>Profit</th>
+                    <th style={{ color: '#888', textAlign: 'right', padding: '10px', fontWeight: '500' }}>Cycles</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {creationLog.map((entry, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                      <td style={{ color: '#666', padding: '10px' }}>{Number(entry.index)}</td>
-                      <td style={{ padding: '10px' }}>
-                        <span style={{ 
-                          color: '#3498db', 
-                          fontFamily: 'monospace',
-                          fontSize: '12px'
-                        }}>
-                          {entry.canisterId.toString()}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <span style={{ 
-                          color: '#9b59b6', 
-                          fontFamily: 'monospace',
-                          fontSize: '12px'
-                        }}>
-                          {formatPrincipal(entry.caller)}
-                        </span>
-                      </td>
-                      <td style={{ color: '#ffffff', padding: '10px' }}>
-                        {formatTimestamp(entry.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
+                  {creationLog.map((entry, idx) => {
+                    const fin = entry.financialData?.[0] || entry.financialData; // Handle optional array or direct value
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                        <td style={{ color: '#666', padding: '10px' }}>{Number(entry.index)}</td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ 
+                            color: '#3498db', 
+                            fontFamily: 'monospace',
+                            fontSize: '12px'
+                          }}>
+                            {entry.canisterId.toString()}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ 
+                            color: '#9b59b6', 
+                            fontFamily: 'monospace',
+                            fontSize: '12px'
+                          }}>
+                            {formatPrincipal(entry.caller)}
+                          </span>
+                        </td>
+                        <td style={{ color: '#ffffff', padding: '10px' }}>
+                          {formatTimestamp(entry.createdAt)}
+                        </td>
+                        <td style={{ color: fin ? '#2ecc71' : '#555', padding: '10px', textAlign: 'right', fontFamily: 'monospace' }}>
+                          {fin ? formatIcp(fin.icpPaidE8s) : '—'}
+                        </td>
+                        <td style={{ color: fin ? '#f39c12' : '#555', padding: '10px', textAlign: 'right', fontFamily: 'monospace' }}>
+                          {fin ? formatIcp(fin.icpProfitE8s) : '—'}
+                        </td>
+                        <td style={{ color: fin ? '#3498db' : '#555', padding: '10px', textAlign: 'right', fontFamily: 'monospace', fontSize: '11px' }}>
+                          {fin ? formatCycles(fin.cyclesSpentOnCreation) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
