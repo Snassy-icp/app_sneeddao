@@ -26,6 +26,7 @@ function SneedlockInfo() {
     const [conversionRates, setConversionRates] = useState({});  // Cache for conversion rates
     const [ownerFilter, setOwnerFilter] = useState('');
     const [ledgerFilter, setLedgerFilter] = useState('');
+    const [hideExpired, setHideExpired] = useState(true);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
 
     // Cache for swap canister data
@@ -36,12 +37,17 @@ function SneedlockInfo() {
         const params = new URLSearchParams(location.search);
         const ownerParam = params.get('owner');
         const ledgerParam = params.get('ledger');
+        const hideExpiredParam = params.get('hideExpired');
         if (ownerParam) setOwnerFilter(ownerParam);
         if (ledgerParam) setLedgerFilter(ledgerParam);
+        // Default to true if not specified, false only if explicitly set to 'false'
+        if (hideExpiredParam !== null) {
+            setHideExpired(hideExpiredParam !== 'false');
+        }
     }, [location]);
 
     // Update URL when filters change
-    const updateFilters = (newOwner, newLedger) => {
+    const updateFilters = (newOwner, newLedger, newHideExpired) => {
         const params = new URLSearchParams(location.search);
         
         if (newOwner) {
@@ -56,22 +62,49 @@ function SneedlockInfo() {
             params.delete('ledger');
         }
         
+        // Only add to URL if false (true is the default)
+        if (newHideExpired === false) {
+            params.set('hideExpired', 'false');
+        } else {
+            params.delete('hideExpired');
+        }
+        
         navigate('?' + params.toString(), { replace: true });
     };
 
     const handleOwnerFilterChange = (value) => {
         setOwnerFilter(value);
-        updateFilters(value, ledgerFilter);
+        updateFilters(value, ledgerFilter, hideExpired);
     };
 
     const handleLedgerFilterChange = (value) => {
         setLedgerFilter(value);
-        updateFilters(ownerFilter, value);
+        updateFilters(ownerFilter, value, hideExpired);
     };
 
-    // Filter data by owner and ledger
+    const handleHideExpiredChange = (value) => {
+        setHideExpired(value);
+        updateFilters(ownerFilter, ledgerFilter, value);
+    };
+
+    // Helper to check if a lock is expired
+    const isLockExpired = (expiry) => {
+        if (!expiry) return false;
+        try {
+            const actualTimestamp = typeof expiry === 'object' && expiry.expiry ? expiry.expiry : expiry;
+            const timestampStr = actualTimestamp.toString();
+            const milliseconds = Number(timestampStr) / 1_000_000;
+            const date = new Date(milliseconds);
+            if (isNaN(date.getTime()) || date.getFullYear() > 2100) return false;
+            return date <= new Date();
+        } catch {
+            return false;
+        }
+    };
+
+    // Filter data by owner, ledger, and expired status
     const getFilteredData = () => {
-        if (!ownerFilter && !ledgerFilter) return tokenData;
+        if (!ownerFilter && !ledgerFilter && !hideExpired) return tokenData;
 
         const filteredData = {};
         Object.entries(tokenData).forEach(([tokenKey, data]) => {
@@ -83,9 +116,19 @@ function SneedlockInfo() {
                 return;
             }
 
-            // Filter locks by owner if needed
-            const filteredTokenLocks = ownerFilter && data.tokenLocks 
-                ? data.tokenLocks.filter(lock => {
+            // Filter locks by owner and expired status
+            let filteredTokenLocks = data.tokenLocks || [];
+            let filteredPositionLocks = data.positionLocks || [];
+            
+            // Filter by expired status
+            if (hideExpired) {
+                filteredTokenLocks = filteredTokenLocks.filter(lock => !isLockExpired(lock.expiry));
+                filteredPositionLocks = filteredPositionLocks.filter(lock => !isLockExpired(lock.expiry));
+            }
+            
+            // Filter by owner
+            if (ownerFilter) {
+                filteredTokenLocks = filteredTokenLocks.filter(lock => {
                     if (!lock || !lock.owner) return false;
                     const ownerStr = lock.owner.toString().toLowerCase();
                     const filterStr = ownerFilter.toLowerCase();
@@ -104,11 +147,9 @@ function SneedlockInfo() {
                     if (nickname && nickname.toLowerCase().includes(filterStr)) return true;
                     
                     return false;
-                })
-                : data.tokenLocks || [];
+                });
                 
-            const filteredPositionLocks = ownerFilter && data.positionLocks
-                ? data.positionLocks.filter(lock => {
+                filteredPositionLocks = filteredPositionLocks.filter(lock => {
                     if (!lock || !lock.owner) return false;
                     const ownerStr = lock.owner.toString().toLowerCase();
                     const filterStr = ownerFilter.toLowerCase();
@@ -127,8 +168,8 @@ function SneedlockInfo() {
                     if (nickname && nickname.toLowerCase().includes(filterStr)) return true;
                     
                     return false;
-                })
-                : data.positionLocks || [];
+                });
+            }
 
             // Only include tokens that have matching locks
             if (filteredTokenLocks.length > 0 || filteredPositionLocks.length > 0) {
@@ -819,6 +860,35 @@ function SneedlockInfo() {
                                     Clear
                                 </button>
                             )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                            <label 
+                                style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    color: theme.colors.primaryText,
+                                    padding: '8px 12px',
+                                    borderRadius: '4px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: hideExpired ? theme.colors.accentGradient : theme.colors.secondaryBg,
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={hideExpired}
+                                    onChange={(e) => handleHideExpiredChange(e.target.checked)}
+                                    style={{
+                                        width: '16px',
+                                        height: '16px',
+                                        cursor: 'pointer',
+                                        accentColor: theme.colors.accent
+                                    }}
+                                />
+                                Hide Expired
+                            </label>
                         </div>
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
