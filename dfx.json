@@ -20,6 +20,10 @@
       "main": "src/sneed_icp_neuron_manager/neuron_manager_canister.mo",
       "type": "motoko"
     },
+    "sneedex": {
+      "main": "src/sneedex/main.mo",
+      "type": "motoko"
+    },
     "app_sneeddao_frontend": {
       "dependencies": [
         "app_sneeddao_backend",
