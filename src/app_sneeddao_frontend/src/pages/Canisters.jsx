@@ -1159,6 +1159,52 @@ export default function CanistersPage() {
         }
     };
 
+    // Helper to calculate overall health statistics for all canisters
+    const getOverallHealthStats = useCallback((groupsRoot, canisterStatus, cycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        
+        // Collect all canister IDs
+        const allCanisterIds = [];
+        const collectFromGroups = (groups) => {
+            for (const group of groups) {
+                allCanisterIds.push(...group.canisters);
+                collectFromGroups(group.subgroups);
+            }
+        };
+        collectFromGroups(groupsRoot.groups);
+        allCanisterIds.push(...groupsRoot.ungrouped);
+        
+        // Count by status
+        let red = 0, orange = 0, green = 0, unknown = 0;
+        
+        for (const canisterId of allCanisterIds) {
+            const status = canisterStatus[canisterId];
+            if (!status || status.cycles === null || status.cycles === undefined) {
+                unknown++;
+            } else {
+                const cycles = status.cycles;
+                if (cycles < cycleThresholdRed) red++;
+                else if (cycles < cycleThresholdOrange) orange++;
+                else green++;
+            }
+        }
+        
+        // Determine overall status (worst wins)
+        let overallStatus = 'unknown';
+        if (red > 0) overallStatus = 'red';
+        else if (orange > 0) overallStatus = 'orange';
+        else if (green > 0) overallStatus = 'green';
+        
+        return {
+            red,
+            orange,
+            green,
+            unknown,
+            total: allCanisterIds.length,
+            overallStatus
+        };
+    }, []);
+
     // Component for rendering a single canister card
     const CanisterCard = ({ 
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
@@ -1751,6 +1797,113 @@ export default function CanistersPage() {
                                             </div>
                                         ) : (
                                     <div style={{ marginBottom: '24px' }}>
+                                        {/* Health Summary */}
+                                        {(() => {
+                                            const stats = getOverallHealthStats(canisterGroups, canisterStatus, cycleSettings);
+                                            const overallColor = getStatusLampColor(stats.overallStatus);
+                                            
+                                            return (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '12px 16px',
+                                                    backgroundColor: theme.colors.card,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    marginBottom: '16px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '12px',
+                                                }}>
+                                                    {/* Overall status lamp */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <span
+                                                            style={{
+                                                                width: '16px',
+                                                                height: '16px',
+                                                                borderRadius: '50%',
+                                                                backgroundColor: overallColor,
+                                                                boxShadow: stats.overallStatus !== 'unknown' ? `0 0 10px ${overallColor}` : 'none',
+                                                                flexShrink: 0,
+                                                            }}
+                                                            title={`Overall health: ${stats.overallStatus}`}
+                                                        />
+                                                        <span style={{ 
+                                                            fontWeight: 600, 
+                                                            color: theme.colors.text,
+                                                            fontSize: '14px',
+                                                        }}>
+                                                            {stats.total} {stats.total === 1 ? 'Canister' : 'Canisters'}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Status breakdown */}
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '16px',
+                                                        flexWrap: 'wrap',
+                                                    }}>
+                                                        {stats.red > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#ef4444',
+                                                                    boxShadow: '0 0 6px #ef4444',
+                                                                }} />
+                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.red} critical
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.orange > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#f59e0b',
+                                                                    boxShadow: '0 0 6px #f59e0b',
+                                                                }} />
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.orange} warning
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.green > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#22c55e',
+                                                                    boxShadow: '0 0 6px #22c55e',
+                                                                }} />
+                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.green} healthy
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.unknown > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#6b7280',
+                                                                }} />
+                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.unknown} unknown
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        
                                         {/* Render Groups */}
                                         {canisterGroups.groups.map((group) => (
                                             <GroupComponent
