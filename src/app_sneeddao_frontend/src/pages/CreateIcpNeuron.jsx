@@ -889,6 +889,46 @@ function CreateIcpNeuron() {
                                 'Creating a neuron manager is currently free!'
                             )}
                         </p>
+                        
+                        {/* Access info */}
+                        <div style={{ 
+                            marginTop: '16px', 
+                            paddingTop: '16px', 
+                            borderTop: `1px solid ${theme.colors.border}`,
+                            textAlign: 'center'
+                        }}>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '8px' }}>
+                                📍 Once created, your manager canister will be accessible from:
+                            </p>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                                <Link 
+                                    to="/wallet" 
+                                    style={{ 
+                                        color: theme.colors.accent, 
+                                        fontSize: '13px',
+                                        textDecoration: 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    🌱 Sneed Wallet
+                                </Link>
+                                <Link 
+                                    to="/canisters" 
+                                    style={{ 
+                                        color: theme.colors.accent, 
+                                        fontSize: '13px',
+                                        textDecoration: 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    📦 Canisters Page
+                                </Link>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -1062,6 +1102,34 @@ function CreateIcpNeuron() {
                         <li><strong>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
                         <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
                     </ol>
+                    
+                    {/* Access Points Info */}
+                    <div style={{ 
+                        marginTop: '20px', 
+                        paddingTop: '16px', 
+                        borderTop: `1px solid ${theme.colors.border}`,
+                        background: `${theme.colors.accent}08`,
+                        borderRadius: '8px',
+                        padding: '16px'
+                    }}>
+                        <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>
+                            📍 Where to Find Your Managers
+                        </h4>
+                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: '1.6', marginBottom: '12px' }}>
+                            Your neuron manager canisters are accessible from multiple places in the app:
+                        </p>
+                        <ul style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px', margin: 0 }}>
+                            <li>
+                                <Link to="/wallet" style={{ color: theme.colors.accent }}>Sneed Wallet</Link> – Quick access to your managers and neurons alongside your token balances
+                            </li>
+                            <li>
+                                <Link to="/canisters" style={{ color: theme.colors.accent }}>Canisters Page</Link> – Track all your canisters (including managers), monitor cycles, and organize them into groups
+                            </li>
+                            <li>
+                                This page – View and manage all your ICP Neuron Managers
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </main>
         </div>

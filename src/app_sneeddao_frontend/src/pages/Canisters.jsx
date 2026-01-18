@@ -669,6 +669,35 @@ export default function CanistersPage() {
         }
     };
 
+    // Collect all group IDs recursively
+    const getAllGroupIds = useCallback((groupsRoot) => {
+        const ids = [];
+        const collect = (groups) => {
+            for (const group of groups) {
+                ids.push(group.id);
+                collect(group.subgroups);
+            }
+        };
+        collect(groupsRoot.groups);
+        return ids;
+    }, []);
+
+    // Expand all groups
+    const handleExpandAll = useCallback(() => {
+        const allIds = getAllGroupIds(canisterGroups);
+        const expanded = {};
+        allIds.forEach(id => { expanded[id] = true; });
+        setExpandedGroups(expanded);
+    }, [canisterGroups, getAllGroupIds]);
+
+    // Collapse all groups
+    const handleCollapseAll = useCallback(() => {
+        const allIds = getAllGroupIds(canisterGroups);
+        const collapsed = {};
+        allIds.forEach(id => { collapsed[id] = false; });
+        setExpandedGroups(collapsed);
+    }, [canisterGroups, getAllGroupIds]);
+
     const handleAddManager = async () => {
         if (!newManagerId.trim()) return;
 
@@ -1897,6 +1926,55 @@ export default function CanistersPage() {
                                                                 <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
                                                                     {stats.unknown} unknown
                                                                 </span>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {/* Expand/Collapse All buttons */}
+                                                        {canisterGroups.groups.length > 0 && (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                marginLeft: '8px',
+                                                                paddingLeft: '16px',
+                                                                borderLeft: `1px solid ${theme.colors.border}`,
+                                                            }}>
+                                                                <button
+                                                                    onClick={handleExpandAll}
+                                                                    style={{
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '4px',
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        backgroundColor: 'transparent',
+                                                                        color: theme.colors.textSecondary,
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                    }}
+                                                                    title="Expand all groups"
+                                                                >
+                                                                    <FaChevronDown size={10} /> Expand
+                                                                </button>
+                                                                <button
+                                                                    onClick={handleCollapseAll}
+                                                                    style={{
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '4px',
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        backgroundColor: 'transparent',
+                                                                        color: theme.colors.textSecondary,
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                    }}
+                                                                    title="Collapse all groups"
+                                                                >
+                                                                    <FaChevronRight size={10} /> Collapse
+                                                                </button>
                                                             </div>
                                                         )}
                                                     </div>
