@@ -1234,6 +1234,71 @@ export default function CanistersPage() {
         };
     }, []);
 
+    // Helper to get individual manager health status (considers cycles AND version)
+    // Returns: 'red' | 'orange' | 'green' | 'unknown'
+    const getManagerHealthStatus = useCallback((manager, cycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        
+        // Check cycles first
+        if (manager.cycles === null || manager.cycles === undefined) {
+            // Unknown cycles - check if version is outdated (orange) or unknown (gray)
+            if (isVersionOutdated(manager.version)) {
+                return 'orange';
+            }
+            return 'unknown';
+        }
+        
+        const cycles = manager.cycles;
+        
+        // Red: critical cycles
+        if (cycles < cycleThresholdRed) {
+            return 'red';
+        }
+        
+        // Orange: warning cycles OR outdated version
+        if (cycles < cycleThresholdOrange || isVersionOutdated(manager.version)) {
+            return 'orange';
+        }
+        
+        // Green: healthy cycles and up-to-date version
+        return 'green';
+    }, [isVersionOutdated]);
+
+    // Helper to calculate overall health statistics for all neuron managers
+    const getManagersHealthStats = useCallback((managers, cycleSettings) => {
+        let red = 0, orange = 0, green = 0, unknown = 0;
+        let outdated = 0;
+        
+        for (const manager of managers) {
+            const status = getManagerHealthStatus(manager, cycleSettings);
+            switch (status) {
+                case 'red': red++; break;
+                case 'orange': orange++; break;
+                case 'green': green++; break;
+                default: unknown++; break;
+            }
+            if (isVersionOutdated(manager.version)) {
+                outdated++;
+            }
+        }
+        
+        // Determine overall status (worst wins)
+        let overallStatus = 'unknown';
+        if (red > 0) overallStatus = 'red';
+        else if (orange > 0) overallStatus = 'orange';
+        else if (green > 0) overallStatus = 'green';
+        
+        return {
+            red,
+            orange,
+            green,
+            unknown,
+            outdated,
+            total: managers.length,
+            overallStatus
+        };
+    }, [getManagerHealthStatus, isVersionOutdated]);
+
     // Component for rendering a single canister card
     const CanisterCard = ({ 
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
@@ -2167,10 +2232,128 @@ export default function CanistersPage() {
                                         </div>
                                     </div>
                                 ) : (
+                                    <>
+                                        {/* Manager Health Summary */}
+                                        {(() => {
+                                            const stats = getManagersHealthStats(neuronManagers, cycleSettings);
+                                            const overallColor = getStatusLampColor(stats.overallStatus);
+                                            
+                                            return (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '12px 16px',
+                                                    backgroundColor: theme.colors.card,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    marginBottom: '16px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '12px',
+                                                }}>
+                                                    {/* Overall status lamp */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <span
+                                                            style={{
+                                                                width: '16px',
+                                                                height: '16px',
+                                                                borderRadius: '50%',
+                                                                backgroundColor: overallColor,
+                                                                boxShadow: stats.overallStatus !== 'unknown' ? `0 0 10px ${overallColor}` : 'none',
+                                                                flexShrink: 0,
+                                                            }}
+                                                            title={`Overall health: ${stats.overallStatus}`}
+                                                        />
+                                                        <span style={{ 
+                                                            fontWeight: 600, 
+                                                            color: theme.colors.text,
+                                                            fontSize: '14px',
+                                                        }}>
+                                                            {stats.total} {stats.total === 1 ? 'Manager' : 'Managers'}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Status breakdown */}
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '16px',
+                                                        flexWrap: 'wrap',
+                                                    }}>
+                                                        {stats.red > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#ef4444',
+                                                                    boxShadow: '0 0 6px #ef4444',
+                                                                }} />
+                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.red} critical
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.orange > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#f59e0b',
+                                                                    boxShadow: '0 0 6px #f59e0b',
+                                                                }} />
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.orange} warning
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.green > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#22c55e',
+                                                                    boxShadow: '0 0 6px #22c55e',
+                                                                }} />
+                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.green} healthy
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.unknown > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#6b7280',
+                                                                }} />
+                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.unknown} unknown
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {stats.outdated > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{ fontSize: '12px' }}>⚠️</span>
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {stats.outdated} outdated
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        
                                     <div style={styles.canisterList}>
                                         {neuronManagers.map((manager) => {
                                             const canisterId = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                            const managerHealth = getManagerHealthStatus(manager, cycleSettings);
+                                            const managerLampColor = getStatusLampColor(managerHealth);
                                             
                                             return (
                                                 <div 
@@ -2178,6 +2361,18 @@ export default function CanistersPage() {
                                                     style={styles.managerCard}
                                                 >
                                                     <div style={styles.managerInfo}>
+                                                        {/* Health status lamp */}
+                                                        <span
+                                                            style={{
+                                                                width: '8px',
+                                                                height: '8px',
+                                                                borderRadius: '50%',
+                                                                backgroundColor: managerLampColor,
+                                                                boxShadow: managerHealth !== 'unknown' ? `0 0 6px ${managerLampColor}` : 'none',
+                                                                flexShrink: 0,
+                                                            }}
+                                                            title={`Health: ${managerHealth}${isVersionOutdated(manager.version) ? ' (outdated version)' : ''}`}
+                                                        />
                                                         <div style={{ ...styles.managerIcon, position: 'relative' }}>
                                                             <FaBrain size={18} />
                                                             {manager.isController && (
@@ -2344,6 +2539,7 @@ export default function CanistersPage() {
                                             );
                                         })}
                                     </div>
+                                    </>
                                 )}
                             </>
                         )}
