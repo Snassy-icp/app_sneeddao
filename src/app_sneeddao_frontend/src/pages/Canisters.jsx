@@ -751,7 +751,9 @@ export default function CanistersPage() {
         // New props for subgroups and adding canisters
         newSubgroupParent, setNewSubgroupParent, newSubgroupName, setNewSubgroupName,
         handleCreateSubgroup, addingCanisterToGroupId, setAddingCanisterToGroupId,
-        newCanisterForGroup, setNewCanisterForGroup, handleAddCanisterToGroup
+        newCanisterForGroup, setNewCanisterForGroup, handleAddCanisterToGroup,
+        // Health status props
+        getGroupHealthStatus, getStatusLampColor
     }) => {
         const isExpanded = expandedGroups[group.id] ?? true;
         const isEditing = editingGroup === group.id;
@@ -759,6 +761,10 @@ export default function CanistersPage() {
         const isAddingCanister = addingCanisterToGroupId === group.id;
         const totalCanisters = group.canisters.length + 
             group.subgroups.reduce((sum, sg) => sum + sg.canisters.length, 0);
+        
+        // Calculate health status for this group
+        const healthStatus = getGroupHealthStatus(group, canisterStatus, cycleSettings);
+        const lampColor = getStatusLampColor(healthStatus);
 
         return (
             <div style={{ 
@@ -780,6 +786,18 @@ export default function CanistersPage() {
                     onClick={() => setExpandedGroups(prev => ({ ...prev, [group.id]: !isExpanded }))}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {/* Health status lamp */}
+                        <span
+                            style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: lampColor,
+                                boxShadow: healthStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                flexShrink: 0,
+                            }}
+                            title={`Group health: ${healthStatus}`}
+                        />
                         {isExpanded ? <FaFolderOpen style={{ color: '#f59e0b' }} /> : <FaFolder style={{ color: '#f59e0b' }} />}
                         {isEditing ? (
                             <input
@@ -1022,6 +1040,8 @@ export default function CanistersPage() {
                                 newCanisterForGroup={newCanisterForGroup}
                                 setNewCanisterForGroup={setNewCanisterForGroup}
                                 handleAddCanisterToGroup={handleAddCanisterToGroup}
+                                getGroupHealthStatus={getGroupHealthStatus}
+                                getStatusLampColor={getStatusLampColor}
                             />
                         ))}
                         
@@ -1079,6 +1099,63 @@ export default function CanistersPage() {
             return `${(bytes / MB).toFixed(1)} MB`;
         } else {
             return `${(bytes / 1024).toFixed(0)} KB`;
+        }
+    };
+
+    // Helper to get group health status (worst status of all canisters in group and subgroups)
+    // Returns: 'red' | 'orange' | 'green' | 'unknown'
+    const getGroupHealthStatus = useCallback((group, canisterStatus, cycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        
+        // Status priority: red (3) > orange (2) > green (1) > unknown (0)
+        const getCanisterStatusLevel = (canisterId) => {
+            const status = canisterStatus[canisterId];
+            if (!status || status.cycles === null || status.cycles === undefined) {
+                return 0; // unknown
+            }
+            const cycles = status.cycles;
+            if (cycles < cycleThresholdRed) return 3; // red
+            if (cycles < cycleThresholdOrange) return 2; // orange
+            return 1; // green
+        };
+        
+        // Recursively find worst status
+        const getWorstStatus = (grp) => {
+            let worst = 0;
+            
+            // Check all canisters in this group
+            for (const canisterId of grp.canisters) {
+                const level = getCanisterStatusLevel(canisterId);
+                if (level > worst) worst = level;
+                if (worst === 3) return 3; // Can't get worse than red
+            }
+            
+            // Check all subgroups
+            for (const subgroup of grp.subgroups) {
+                const subStatus = getWorstStatus(subgroup);
+                if (subStatus > worst) worst = subStatus;
+                if (worst === 3) return 3;
+            }
+            
+            return worst;
+        };
+        
+        const level = getWorstStatus(group);
+        switch (level) {
+            case 3: return 'red';
+            case 2: return 'orange';
+            case 1: return 'green';
+            default: return 'unknown';
+        }
+    }, []);
+
+    // Helper to get status lamp color
+    const getStatusLampColor = (status) => {
+        switch (status) {
+            case 'red': return '#ef4444';
+            case 'orange': return '#f59e0b';
+            case 'green': return '#22c55e';
+            default: return '#6b7280'; // gray for unknown
         }
     };
 
@@ -1710,6 +1787,8 @@ export default function CanistersPage() {
                                                 newCanisterForGroup={newCanisterForGroup}
                                                 setNewCanisterForGroup={setNewCanisterForGroup}
                                                 handleAddCanisterToGroup={handleAddCanisterToGroup}
+                                                getGroupHealthStatus={getGroupHealthStatus}
+                                                getStatusLampColor={getStatusLampColor}
                                             />
                                         ))}
                                         
