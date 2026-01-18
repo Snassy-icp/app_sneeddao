@@ -1666,8 +1666,18 @@ export default function CanistersPage() {
             <Header />
             <div style={styles.container}>
                 <h1 style={styles.title}>
-                    <FaCube /> Tracked Canisters
+                    <FaCube /> Canister Manager
                 </h1>
+                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                    <Link 
+                        to="/help/canister-manager" 
+                        style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        Learn how it works →
+                    </Link>
+                </div>
 
                 {!isAuthenticated ? (
                     <div style={styles.notLoggedIn}>
