@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
@@ -13,6 +13,10 @@ import {
     getErrorMessage,
     SNEEDEX_CANISTER_ID 
 } from '../utils/SneedexUtils';
+import TokenSelector from '../components/TokenSelector';
+import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+
+const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
@@ -25,8 +29,33 @@ function SneedexCreate() {
     const [hasExpiration, setHasExpiration] = useState(true);
     const [expirationDays, setExpirationDays] = useState('7');
     const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
-    const [priceTokenSymbol, setPriceTokenSymbol] = useState('ICP');
-    const [priceTokenDecimals, setPriceTokenDecimals] = useState(8);
+    
+    // Token metadata from backend
+    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const [loadingTokens, setLoadingTokens] = useState(true);
+    
+    // Derived token info from selected ledger
+    const selectedPriceToken = whitelistedTokens.find(t => t.ledger_id.toString() === priceTokenLedger);
+    const priceTokenSymbol = selectedPriceToken?.symbol || 'TOKEN';
+    const priceTokenDecimals = selectedPriceToken?.decimals || 8;
+    
+    // Fetch whitelisted tokens on mount
+    useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const tokens = await backendActor.get_whitelisted_tokens();
+                setWhitelistedTokens(tokens);
+            } catch (e) {
+                console.error('Failed to fetch whitelisted tokens:', e);
+            } finally {
+                setLoadingTokens(false);
+            }
+        };
+        fetchTokens();
+    }, [identity]);
     
     // Assets
     const [assets, setAssets] = useState([]);
@@ -591,22 +620,12 @@ function SneedexCreate() {
                                 Price Token
                                 <span style={styles.labelHint}> — The token buyers will pay in</span>
                             </label>
-                            <div style={styles.inputRow}>
-                                <input
-                                    type="text"
-                                    placeholder="Token ledger canister ID"
-                                    style={{ ...styles.input, flex: 2 }}
-                                    value={priceTokenLedger}
-                                    onChange={(e) => setPriceTokenLedger(e.target.value)}
-                                />
-                                <input
-                                    type="text"
-                                    placeholder="Symbol"
-                                    style={{ ...styles.input, flex: 1 }}
-                                    value={priceTokenSymbol}
-                                    onChange={(e) => setPriceTokenSymbol(e.target.value)}
-                                />
-                            </div>
+                            <TokenSelector
+                                value={priceTokenLedger}
+                                onChange={(ledgerId) => setPriceTokenLedger(ledgerId)}
+                                placeholder="Select payment token..."
+                                disabled={loadingTokens}
+                            />
                         </div>
                         
                         <div style={styles.formGroup}>
@@ -787,36 +806,34 @@ function SneedexCreate() {
                                 {newAssetType === 'token' && (
                                     <>
                                         <div style={styles.formGroup}>
-                                            <label style={styles.label}>Token Ledger Canister ID</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g., cngnf-vqaaa-aaaar-qag4q-cai"
-                                                style={styles.input}
+                                            <label style={styles.label}>Select Token</label>
+                                            <TokenSelector
                                                 value={newAssetTokenLedger}
-                                                onChange={(e) => setNewAssetTokenLedger(e.target.value)}
+                                                onChange={(ledgerId) => {
+                                                    setNewAssetTokenLedger(ledgerId);
+                                                    // Auto-populate symbol and decimals from whitelisted tokens
+                                                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                                                    if (token) {
+                                                        setNewAssetTokenSymbol(token.symbol);
+                                                        setNewAssetTokenDecimals(token.decimals.toString());
+                                                    }
+                                                }}
+                                                placeholder="Select token to sell..."
+                                                disabled={loadingTokens}
                                             />
                                         </div>
-                                        <div style={styles.inputRow}>
-                                            <div style={{ flex: 2, ...styles.formGroup }}>
-                                                <label style={styles.label}>Amount</label>
-                                                <input
-                                                    type="number"
-                                                    placeholder="e.g., 1000"
-                                                    style={styles.input}
-                                                    value={newAssetTokenAmount}
-                                                    onChange={(e) => setNewAssetTokenAmount(e.target.value)}
-                                                />
-                                            </div>
-                                            <div style={{ flex: 1, ...styles.formGroup }}>
-                                                <label style={styles.label}>Symbol</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="e.g., SNEED"
-                                                    style={styles.input}
-                                                    value={newAssetTokenSymbol}
-                                                    onChange={(e) => setNewAssetTokenSymbol(e.target.value)}
-                                                />
-                                            </div>
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>
+                                                Amount
+                                                {newAssetTokenSymbol && <span style={styles.labelHint}> in {newAssetTokenSymbol}</span>}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                placeholder="e.g., 1000"
+                                                style={styles.input}
+                                                value={newAssetTokenAmount}
+                                                onChange={(e) => setNewAssetTokenAmount(e.target.value)}
+                                            />
                                         </div>
                                     </>
                                 )}
@@ -856,7 +873,14 @@ function SneedexCreate() {
                         
                         <div style={styles.reviewSection}>
                             <div style={styles.reviewLabel}>Price Token</div>
-                            <div style={styles.reviewValue}>{priceTokenSymbol}</div>
+                            <div style={styles.reviewValue}>
+                                {priceTokenSymbol}
+                                {selectedPriceToken?.name && (
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginLeft: '8px' }}>
+                                        ({selectedPriceToken.name})
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

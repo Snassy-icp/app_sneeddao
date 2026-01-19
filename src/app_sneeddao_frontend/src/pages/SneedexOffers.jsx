@@ -10,9 +10,11 @@ import {
     formatTimeRemaining, 
     getOfferStateString,
     getAssetType,
-    getAssetDetails,
-    getTokenInfo 
+    getAssetDetails
 } from '../utils/SneedexUtils';
+import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+
+const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 function SneedexOffers() {
     const { identity, isAuthenticated } = useAuth();
@@ -26,6 +28,34 @@ function SneedexOffers() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
+    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    
+    // Fetch whitelisted tokens for metadata lookup
+    useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const tokens = await backendActor.get_whitelisted_tokens();
+                setWhitelistedTokens(tokens);
+            } catch (e) {
+                console.error('Failed to fetch whitelisted tokens:', e);
+            }
+        };
+        fetchTokens();
+    }, [identity]);
+    
+    // Helper to get token info from whitelisted tokens
+    const getTokenInfo = useCallback((ledgerId) => {
+        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        if (token) {
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
+        }
+        // Fallback for known tokens
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
+        return { symbol: 'TOKEN', decimals: 8 };
+    }, [whitelistedTokens]);
     
     const fetchOffers = useCallback(async () => {
         setLoading(true);

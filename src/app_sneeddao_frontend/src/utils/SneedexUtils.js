@@ -293,19 +293,3 @@ export const getErrorMessage = (error) => {
     return 'Unknown error';
 };
 
-// Common token info for display
-export const KNOWN_TOKENS = {
-    'ryjl3-tyaaa-aaaaa-aaaba-cai': { symbol: 'ICP', decimals: 8 },
-    'cngnf-vqaaa-aaaar-qag4q-cai': { symbol: 'SNEED', decimals: 8 },
-    // Add more tokens as needed
-};
-
-/**
- * Get token info by ledger canister ID
- * @param {string} ledgerId - Ledger canister ID
- * @returns {Object} Token info
- */
-export const getTokenInfo = (ledgerId) => {
-    return KNOWN_TOKENS[ledgerId] || { symbol: 'TOKEN', decimals: 8 };
-};
-

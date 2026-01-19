@@ -12,10 +12,12 @@ import {
     getOfferStateString,
     getBidStateString,
     getAssetType,
-    getTokenInfo,
     getErrorMessage,
     parseAmount
 } from '../utils/SneedexUtils';
+import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+
+const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 function SneedexMy() {
     const { identity, isAuthenticated } = useAuth();
@@ -30,6 +32,34 @@ function SneedexMy() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
+    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    
+    // Fetch whitelisted tokens for metadata lookup
+    useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const tokens = await backendActor.get_whitelisted_tokens();
+                setWhitelistedTokens(tokens);
+            } catch (e) {
+                console.error('Failed to fetch whitelisted tokens:', e);
+            }
+        };
+        fetchTokens();
+    }, [identity]);
+    
+    // Helper to get token info from whitelisted tokens
+    const getTokenInfo = useCallback((ledgerId) => {
+        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        if (token) {
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
+        }
+        // Fallback for known tokens
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
+        return { symbol: 'TOKEN', decimals: 8 };
+    }, [whitelistedTokens]);
     
     // Fetch escrow balances for all bids that have tokens escrowed
     const fetchBidEscrowBalances = useCallback(async (bids) => {

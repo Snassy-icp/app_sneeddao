@@ -16,11 +16,13 @@ import {
     getOfferStateString,
     getBidStateString,
     getAssetDetails,
-    getTokenInfo,
     parseAmount,
     getErrorMessage,
     SNEEDEX_CANISTER_ID 
 } from '../utils/SneedexUtils';
+import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+
+const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -87,6 +89,23 @@ function SneedexOffer() {
     const [userBalance, setUserBalance] = useState(null);
     const [canisterControllerStatus, setCanisterControllerStatus] = useState({}); // {canisterId: boolean}
     const [checkingControllers, setCheckingControllers] = useState(false);
+    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    
+    // Fetch whitelisted tokens for metadata lookup
+    useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const tokens = await backendActor.get_whitelisted_tokens();
+                setWhitelistedTokens(tokens);
+            } catch (e) {
+                console.error('Failed to fetch whitelisted tokens:', e);
+            }
+        };
+        fetchTokens();
+    }, [identity]);
     
     // Check if the user is a controller of a specific canister
     const checkCanisterController = useCallback(async (canisterId) => {
@@ -202,7 +221,18 @@ function SneedexOffer() {
         fetchOffer();
     }, [fetchOffer]);
     
-    const tokenInfo = offer ? getTokenInfo(offer.price_token_ledger.toString()) : { symbol: 'TOKEN', decimals: 8 };
+    // Get token info from whitelisted tokens
+    const tokenInfo = (() => {
+        if (!offer) return { symbol: 'TOKEN', decimals: 8 };
+        const ledgerId = offer.price_token_ledger.toString();
+        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        if (token) {
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
+        }
+        // Fallback for known tokens if not in whitelist
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
+        return { symbol: 'TOKEN', decimals: 8 };
+    })();
     
     const getMinimumBid = () => {
         if (!offer) return 0;
