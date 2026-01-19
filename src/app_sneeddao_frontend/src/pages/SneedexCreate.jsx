@@ -828,7 +828,7 @@ function SneedexCreate() {
                         await escrowNeuronAsset(asset.governance_id, asset.neuron_id, offerId, idx);
                     } else if (asset.type === 'token') {
                         // Transfer tokens then escrow
-                        await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx);
+                        await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx, identity.getPrincipal());
                     }
                 }
                 updateProgressStep(3, 'complete');
@@ -947,7 +947,7 @@ function SneedexCreate() {
     };
     
     // Auto-escrow helper for ICRC1 tokens
-    const escrowTokenAsset = async (ledgerId, amount, decimals, offerId, assetIndex) => {
+    const escrowTokenAsset = async (ledgerId, amount, decimals, offerId, assetIndex, creatorPrincipal) => {
         const host = getHost();
         const agent = HttpAgent.createSync({ host, identity });
         if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
@@ -959,18 +959,10 @@ function SneedexCreate() {
         
         // Get the escrow subaccount from the backend
         const actor = createSneedexActor(identity);
-        const offerView = await actor.getOfferView(offerId);
-        
-        if ('err' in offerView || !offerView.ok) {
-            throw new Error('Failed to get offer details');
-        }
-        
-        const assetEntry = offerView.ok.assets[assetIndex];
-        if (!assetEntry || !('ICRC1Token' in assetEntry.asset)) {
-            throw new Error('Invalid token asset');
-        }
-        
-        const escrowSubaccount = assetEntry.asset.ICRC1Token.escrow_subaccount;
+        const escrowSubaccount = await actor.getOfferEscrowSubaccount(
+            creatorPrincipal,
+            offerId
+        );
         
         // Transfer tokens to escrow
         const amountBigInt = parseAmount(amount.toString(), decimals);
