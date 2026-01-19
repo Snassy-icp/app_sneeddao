@@ -1264,8 +1264,50 @@ function SneedexOffer() {
                                     border: `2px solid ${theme.colors.accent}`,
                                     borderRadius: '12px',
                                     padding: '1.5rem',
-                                    marginTop: '1rem'
+                                    marginTop: '1rem',
+                                    position: 'relative'
                                 }}>
+                                    {/* Loading overlay during auto-pay-and-confirm */}
+                                    {(bidding || (actionLoading && buyoutProgress)) && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                            background: `${theme.colors.primaryBg}ee`,
+                                            borderRadius: '12px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: 10,
+                                            gap: '1rem'
+                                        }}>
+                                            <div style={{
+                                                width: '48px',
+                                                height: '48px',
+                                                border: `4px solid ${theme.colors.border}`,
+                                                borderTopColor: theme.colors.accent,
+                                                borderRadius: '50%',
+                                                animation: 'spin 1s linear infinite'
+                                            }} />
+                                            <div style={{
+                                                fontSize: '1.1rem',
+                                                fontWeight: '600',
+                                                color: theme.colors.accent
+                                            }}>
+                                                {bidProgress || buyoutProgress || 'Processing...'}
+                                            </div>
+                                            <div style={{
+                                                fontSize: '0.85rem',
+                                                color: theme.colors.mutedText
+                                            }}>
+                                                Please wait, do not close this page
+                                            </div>
+                                        </div>
+                                    )}
+                                    
                                     <h4 style={{ 
                                         margin: '0 0 1rem 0', 
                                         color: pendingBid.isBuyout ? theme.colors.success : theme.colors.accent,
@@ -1586,6 +1628,13 @@ function SneedexOffer() {
                     </div>
                 </div>
             </main>
+            
+            <style>{`
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </div>
     );
 }
