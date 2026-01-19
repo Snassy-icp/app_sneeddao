@@ -23,7 +23,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
-import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -284,21 +284,39 @@ function SneedexCreate() {
         }
     }, [identity]);
     
-    // Helper to convert neuron ID to hex string
-    const neuronIdToHex = useCallback((neuronId) => {
-        if (!neuronId?.id) return '';
-        const bytes = neuronId.id instanceof Uint8Array ? neuronId.id : new Uint8Array(neuronId.id);
-        return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    // Robust neuron ID extraction - handles different structures
+    const extractNeuronId = useCallback((neuron) => {
+        // Try standard structure: neuron.id[0].id (Candid opt type)
+        if (neuron.id && Array.isArray(neuron.id) && neuron.id.length > 0 && neuron.id[0]?.id) {
+            return uint8ArrayToHex(neuron.id[0].id);
+        }
+        // Try direct id structure: neuron.id.id
+        if (neuron.id && neuron.id.id && !Array.isArray(neuron.id)) {
+            return uint8ArrayToHex(neuron.id.id);
+        }
+        // Try if id is directly bytes
+        if (neuron.id && (neuron.id instanceof Uint8Array || (Array.isArray(neuron.id) && typeof neuron.id[0] === 'number'))) {
+            return uint8ArrayToHex(neuron.id);
+        }
+        // Fallback to getNeuronId utility
+        const fallback = getNeuronId(neuron);
+        if (fallback) return fallback;
+        
+        // Last resort - log for debugging
+        console.warn('Could not extract neuron ID from:', JSON.stringify(neuron.id, (key, value) => 
+            value instanceof Uint8Array ? Array.from(value) : value
+        ));
+        return null;
     }, []);
     
     // Get display name for a neuron
     const getNeuronDisplayName = useCallback((neuron) => {
-        const idHex = neuronIdToHex(neuron.id);
-        const shortId = idHex.slice(0, 8) + '...' + idHex.slice(-8);
+        const idHex = extractNeuronId(neuron) || '';
+        const shortId = idHex.length > 16 ? idHex.slice(0, 8) + '...' + idHex.slice(-8) : (idHex || '???');
         const stake = neuron.cached_neuron_stake_e8s ? 
             (Number(neuron.cached_neuron_stake_e8s) / 1e8).toFixed(2) : '0';
         return `${shortId} (${stake} tokens)`;
-    }, [neuronIdToHex]);
+    }, [extractNeuronId]);
     
     const [newAssetTokenLedger, setNewAssetTokenLedger] = useState('');
     const [newAssetTokenAmount, setNewAssetTokenAmount] = useState('');
@@ -1402,17 +1420,22 @@ function SneedexCreate() {
                                                                 cursor: 'pointer',
                                                             }}
                                                             value={newAssetNeuronId}
-                                                            onChange={(e) => setNewAssetNeuronId(e.target.value)}
+                                                            onChange={(e) => {
+                                                                console.log('Neuron selected:', e.target.value);
+                                                                setNewAssetNeuronId(e.target.value);
+                                                            }}
                                                         >
                                                             <option value="">Select a neuron...</option>
-                                                            {snsNeurons.map(neuron => {
-                                                                const hexId = neuronIdToHex(neuron.id);
-                                                                return (
-                                                                    <option key={hexId} value={hexId}>
-                                                                        {getNeuronDisplayName(neuron)}
-                                                                    </option>
-                                                                );
-                                                            })}
+                                                            {snsNeurons
+                                                                .filter(neuron => extractNeuronId(neuron))
+                                                                .map(neuron => {
+                                                                    const hexId = extractNeuronId(neuron);
+                                                                    return (
+                                                                        <option key={hexId} value={hexId}>
+                                                                            {getNeuronDisplayName(neuron)}
+                                                                        </option>
+                                                                    );
+                                                                })}
                                                         </select>
                                                         
                                                         <div style={{ 
