@@ -30,7 +30,7 @@ const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWOR
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 
-// Management canister IDL for canister_status
+// Management canister IDL for canister_status and update_settings
 const managementIdlFactory = () => {
     const definite_canister_settings = IDL.Record({
         'controllers': IDL.Vec(IDL.Principal),
@@ -63,10 +63,30 @@ const managementIdlFactory = () => {
             'response_payload_bytes_total': IDL.Nat,
         }),
     });
+    const canister_settings = IDL.Record({
+        'controllers': IDL.Opt(IDL.Vec(IDL.Principal)),
+        'compute_allocation': IDL.Opt(IDL.Nat),
+        'memory_allocation': IDL.Opt(IDL.Nat),
+        'freezing_threshold': IDL.Opt(IDL.Nat),
+        'reserved_cycles_limit': IDL.Opt(IDL.Nat),
+        'log_visibility': IDL.Opt(IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        })),
+        'wasm_memory_limit': IDL.Opt(IDL.Nat),
+    });
     return IDL.Service({
         'canister_status': IDL.Func(
             [IDL.Record({ 'canister_id': IDL.Principal })],
             [canister_status_result],
+            []
+        ),
+        'update_settings': IDL.Func(
+            [IDL.Record({ 
+                'canister_id': IDL.Principal,
+                'settings': canister_settings,
+            })],
+            [],
             []
         ),
     });
@@ -352,6 +372,16 @@ function SneedexCreate() {
     const [step, setStep] = useState(1); // 1: Configure, 2: Add Assets, 3: Review
     const [createdOfferId, setCreatedOfferId] = useState(null);
     
+    // Review step verification
+    const [reviewVerification, setReviewVerification] = useState({}); // {assetKey: {verified, checking, message}}
+    const [allAssetsReady, setAllAssetsReady] = useState(false);
+    
+    // Auto-create progress overlay
+    const [showProgressOverlay, setShowProgressOverlay] = useState(false);
+    const [progressSteps, setProgressSteps] = useState([]);
+    const [currentProgressStep, setCurrentProgressStep] = useState(0);
+    const [progressError, setProgressError] = useState(null);
+    
     // Generate unique key for an asset (for duplicate detection and verification tracking)
     const getAssetKey = useCallback((asset) => {
         if (asset.type === 'canister') return `canister:${asset.canister_id}`;
@@ -514,6 +544,56 @@ function SneedexCreate() {
         });
     }, [assets, getAssetKey, assetVerification, verifyAsset]);
     
+    // Verify all assets when entering review step
+    const verifyAllAssetsForReview = useCallback(async () => {
+        if (!identity || assets.length === 0) {
+            setAllAssetsReady(false);
+            return;
+        }
+        
+        const newVerification = {};
+        let allReady = true;
+        
+        for (const asset of assets) {
+            const key = getAssetKey(asset);
+            newVerification[key] = { checking: true, verified: undefined, message: 'Checking...' };
+        }
+        setReviewVerification(newVerification);
+        
+        for (const asset of assets) {
+            const key = getAssetKey(asset);
+            let result;
+            
+            try {
+                if (asset.type === 'canister') {
+                    result = await verifyCanister(asset.canister_id);
+                } else if (asset.type === 'token') {
+                    result = await verifyTokenBalance(asset.ledger_id, asset.amount, asset.decimals);
+                } else if (asset.type === 'neuron') {
+                    result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
+                } else {
+                    result = { verified: false, message: 'Unknown asset type' };
+                }
+            } catch (e) {
+                result = { verified: false, message: 'Verification failed' };
+            }
+            
+            newVerification[key] = { checking: false, verified: result.verified, message: result.message };
+            if (!result.verified) allReady = false;
+            
+            setReviewVerification({ ...newVerification });
+        }
+        
+        setAllAssetsReady(allReady);
+    }, [identity, assets, getAssetKey, verifyCanister, verifyTokenBalance, verifyNeuronHotkey]);
+    
+    // Trigger review verification when entering step 3
+    useEffect(() => {
+        if (step === 3) {
+            verifyAllAssetsForReview();
+        }
+    }, [step, verifyAllAssetsForReview]);
+    
     const addAsset = () => {
         setError('');
         let asset;
@@ -650,11 +730,29 @@ function SneedexCreate() {
         
         setCreating(true);
         setError('');
+        setProgressError(null);
+        
+        // Build progress steps based on what we need to do
+        const steps = [
+            { label: 'Creating offer...', status: 'pending' },
+            { label: 'Adding assets...', status: 'pending' },
+            { label: 'Finalizing offer...', status: 'pending' },
+        ];
+        
+        if (allAssetsReady) {
+            steps.push({ label: 'Escrowing assets...', status: 'pending' });
+            steps.push({ label: 'Activating offer...', status: 'pending' });
+        }
+        
+        setProgressSteps(steps);
+        setCurrentProgressStep(0);
+        setShowProgressOverlay(true);
         
         try {
             const actor = createSneedexActor(identity);
             
             // Step 1: Create the offer
+            updateProgressStep(0, 'in_progress');
             const createRequest = {
                 price_token_ledger: Principal.fromText(priceTokenLedger),
                 min_bid_price: minBidPrice ? [parseAmount(minBidPrice, priceTokenDecimals)] : [],
@@ -670,8 +768,10 @@ function SneedexCreate() {
             
             const offerId = createResult.ok;
             setCreatedOfferId(offerId);
+            updateProgressStep(0, 'complete');
             
             // Step 2: Add assets to the offer
+            updateProgressStep(1, 'in_progress');
             for (const asset of assets) {
                 const assetVariant = createAssetVariant(asset.type, asset);
                 const addResult = await actor.addAsset({
@@ -683,15 +783,198 @@ function SneedexCreate() {
                     throw new Error(`Failed to add asset: ${getErrorMessage(addResult.err)}`);
                 }
             }
+            updateProgressStep(1, 'complete');
             
-            // Show success and next steps
-            setStep(4); // Success step
+            // Step 3: Finalize assets
+            updateProgressStep(2, 'in_progress');
+            const finalizeResult = await actor.finalizeAssets(offerId);
+            if ('err' in finalizeResult) {
+                throw new Error(`Failed to finalize: ${getErrorMessage(finalizeResult.err)}`);
+            }
+            updateProgressStep(2, 'complete');
+            
+            // If all assets are ready, auto-escrow and activate
+            if (allAssetsReady) {
+                // Step 4: Escrow all assets
+                updateProgressStep(3, 'in_progress');
+                
+                for (let idx = 0; idx < assets.length; idx++) {
+                    const asset = assets[idx];
+                    
+                    if (asset.type === 'canister') {
+                        // Add Sneedex as controller then escrow
+                        await escrowCanisterAsset(asset.canister_id, offerId, idx);
+                    } else if (asset.type === 'neuron') {
+                        // Add Sneedex as hotkey then escrow
+                        await escrowNeuronAsset(asset.governance_id, asset.neuron_id, offerId, idx);
+                    } else if (asset.type === 'token') {
+                        // Transfer tokens then escrow
+                        await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx);
+                    }
+                }
+                updateProgressStep(3, 'complete');
+                
+                // Step 5: Activate the offer
+                updateProgressStep(4, 'in_progress');
+                const activateResult = await actor.activateOffer(offerId);
+                if ('err' in activateResult) {
+                    throw new Error(`Failed to activate: ${getErrorMessage(activateResult.err)}`);
+                }
+                updateProgressStep(4, 'complete');
+            }
+            
+            // Show success
+            setTimeout(() => {
+                setShowProgressOverlay(false);
+                setStep(4);
+            }, 1000);
             
         } catch (e) {
             console.error('Failed to create offer:', e);
-            setError(e.message || 'Failed to create offer');
+            setProgressError(e.message || 'Failed to create offer');
         } finally {
             setCreating(false);
+        }
+    };
+    
+    const updateProgressStep = (index, status) => {
+        setProgressSteps(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], status };
+            return updated;
+        });
+        if (status === 'in_progress') {
+            setCurrentProgressStep(index);
+        }
+    };
+    
+    // Auto-escrow helper for canisters
+    const escrowCanisterAsset = async (canisterId, offerId, assetIndex) => {
+        const canisterPrincipal = Principal.fromText(canisterId);
+        const sneedexPrincipal = Principal.fromText(SNEEDEX_CANISTER_ID);
+        const host = getHost();
+        const agent = HttpAgent.createSync({ host, identity });
+        
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+            await agent.fetchRootKey();
+        }
+        
+        const managementCanister = Actor.createActor(managementIdlFactory, {
+            agent,
+            canisterId: MANAGEMENT_CANISTER_ID,
+            callTransform: (methodName, args, callConfig) => ({
+                ...callConfig,
+                effectiveCanisterId: canisterPrincipal,
+            }),
+        });
+        
+        // Get current controllers and add Sneedex
+        const status = await managementCanister.canister_status({ canister_id: canisterPrincipal });
+        const currentControllers = status.settings.controllers;
+        
+        if (!currentControllers.some(c => c.toString() === SNEEDEX_CANISTER_ID)) {
+            const newControllers = [...currentControllers, sneedexPrincipal];
+            await managementCanister.update_settings({
+                canister_id: canisterPrincipal,
+                settings: {
+                    controllers: [newControllers],
+                    compute_allocation: [],
+                    memory_allocation: [],
+                    freezing_threshold: [],
+                    reserved_cycles_limit: [],
+                    log_visibility: [],
+                    wasm_memory_limit: [],
+                },
+            });
+        }
+        
+        // Call backend to verify and complete escrow
+        const actor = createSneedexActor(identity);
+        const result = await actor.escrowCanister(offerId, BigInt(assetIndex));
+        if ('err' in result) {
+            throw new Error(`Failed to escrow canister: ${getErrorMessage(result.err)}`);
+        }
+    };
+    
+    // Auto-escrow helper for SNS neurons
+    const escrowNeuronAsset = async (governanceId, neuronIdHex, offerId, assetIndex) => {
+        const host = getHost();
+        const agent = HttpAgent.createSync({ host, identity });
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+            await agent.fetchRootKey();
+        }
+        
+        const governanceActor = createGovernanceActor(governanceId, { agent });
+        const neuronIdBlob = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        const sneedexPrincipal = Principal.fromText(SNEEDEX_CANISTER_ID);
+        
+        // Add Sneedex as hotkey with full permissions
+        await governanceActor.manage_neuron({
+            subaccount: neuronIdBlob,
+            command: [{
+                AddNeuronPermissions: {
+                    permissions_to_add: [{ permissions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }], // All permissions
+                    principal_id: [sneedexPrincipal],
+                }
+            }]
+        });
+        
+        // Call backend to verify and complete escrow
+        const actor = createSneedexActor(identity);
+        const result = await actor.escrowSNSNeuron(offerId, BigInt(assetIndex));
+        if ('err' in result) {
+            throw new Error(`Failed to escrow neuron: ${getErrorMessage(result.err)}`);
+        }
+    };
+    
+    // Auto-escrow helper for ICRC1 tokens
+    const escrowTokenAsset = async (ledgerId, amount, decimals, offerId, assetIndex) => {
+        const host = getHost();
+        const agent = HttpAgent.createSync({ host, identity });
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+            await agent.fetchRootKey();
+        }
+        
+        const ledgerActor = createLedgerActor(ledgerId, { agent });
+        const sneedexPrincipal = Principal.fromText(SNEEDEX_CANISTER_ID);
+        
+        // Get the escrow subaccount from the backend
+        const actor = createSneedexActor(identity);
+        const offerView = await actor.getOfferView(offerId);
+        
+        if ('err' in offerView || !offerView.ok) {
+            throw new Error('Failed to get offer details');
+        }
+        
+        const assetEntry = offerView.ok.assets[assetIndex];
+        if (!assetEntry || !('ICRC1Token' in assetEntry.asset)) {
+            throw new Error('Invalid token asset');
+        }
+        
+        const escrowSubaccount = assetEntry.asset.ICRC1Token.escrow_subaccount;
+        
+        // Transfer tokens to escrow
+        const amountBigInt = parseAmount(amount.toString(), decimals);
+        const transferResult = await ledgerActor.icrc1_transfer({
+            to: {
+                owner: sneedexPrincipal,
+                subaccount: [escrowSubaccount],
+            },
+            amount: amountBigInt,
+            fee: [],
+            memo: [],
+            from_subaccount: [],
+            created_at_time: [],
+        });
+        
+        if ('Err' in transferResult) {
+            throw new Error(`Token transfer failed: ${JSON.stringify(transferResult.Err)}`);
+        }
+        
+        // Call backend to verify escrow
+        const result = await actor.escrowICRC1Tokens(offerId, BigInt(assetIndex));
+        if ('err' in result) {
+            throw new Error(`Failed to escrow tokens: ${getErrorMessage(result.err)}`);
         }
     };
     
@@ -1641,35 +1924,117 @@ function SneedexCreate() {
                         <div style={styles.reviewSection}>
                             <div style={styles.reviewLabel}>Assets ({assets.length})</div>
                             <div style={styles.assetsList}>
-                                {assets.map((asset, idx) => (
-                                    <div key={idx} style={{ ...styles.assetItem, background: theme.colors.secondaryBg }}>
-                                        <div style={styles.assetInfo}>
-                                            {getAssetIcon(asset.type)}
-                                            <div style={styles.assetDetails}>
-                                                <div style={styles.assetType}>{asset.display}</div>
+                                {assets.map((asset, idx) => {
+                                    const key = getAssetKey(asset);
+                                    const verification = reviewVerification[key];
+                                    
+                                    return (
+                                        <div key={idx} style={{ ...styles.assetItem, background: theme.colors.secondaryBg }}>
+                                            <div style={styles.assetInfo}>
+                                                {getAssetIcon(asset.type)}
+                                                <div style={styles.assetDetails}>
+                                                    <div style={styles.assetType}>{asset.display}</div>
+                                                </div>
+                                            </div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '8px',
+                                                marginLeft: 'auto',
+                                            }}>
+                                                {verification?.checking ? (
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '0.8rem',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                    }}>
+                                                        <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Checking...
+                                                    </span>
+                                                ) : verification?.verified ? (
+                                                    <span style={{ 
+                                                        color: theme.colors.success, 
+                                                        fontSize: '0.8rem',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                    }}>
+                                                        <FaCheck /> Ready to escrow
+                                                    </span>
+                                                ) : verification?.verified === false ? (
+                                                    <span style={{ 
+                                                        color: theme.colors.warning, 
+                                                        fontSize: '0.8rem',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                    }}>
+                                                        <FaExclamationTriangle /> {verification.message || 'Manual escrow needed'}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
+                            <button
+                                onClick={verifyAllAssetsForReview}
+                                disabled={Object.values(reviewVerification).some(v => v?.checking)}
+                                style={{
+                                    marginTop: '0.75rem',
+                                    background: 'transparent',
+                                    border: `1px solid ${theme.colors.accent}`,
+                                    color: theme.colors.accent,
+                                    padding: '6px 12px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.8rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                }}
+                            >
+                                <FaSync /> Recheck Assets
+                            </button>
                         </div>
                         
-                        <div style={{ 
-                            background: `${theme.colors.warning}15`, 
-                            border: `1px solid ${theme.colors.warning}`,
-                            borderRadius: '10px',
-                            padding: '1rem',
-                            marginBottom: '1.5rem',
-                            fontSize: '0.9rem',
-                            color: theme.colors.warning,
-                        }}>
-                            <strong>⚠️ Important:</strong> After creating the offer, you'll need to escrow each asset:
-                            <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
-                                <li>For canisters: Add Sneedex ({SNEEDEX_CANISTER_ID}) as a controller first</li>
-                                <li>For neurons: Add Sneedex as a hotkey with full permissions</li>
-                                <li>For tokens: Send tokens to the escrow subaccount</li>
-                            </ul>
-                        </div>
+                        {/* Show different message based on whether all assets are ready */}
+                        {allAssetsReady ? (
+                            <div style={{ 
+                                background: `${theme.colors.success}15`, 
+                                border: `1px solid ${theme.colors.success}`,
+                                borderRadius: '10px',
+                                padding: '1rem',
+                                marginBottom: '1.5rem',
+                                fontSize: '0.9rem',
+                                color: theme.colors.success,
+                            }}>
+                                <strong>✅ All assets ready!</strong> When you click "Create Offer", the system will automatically:
+                                <ol style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
+                                    <li>Create and finalize the offer</li>
+                                    <li>Escrow all assets (add Sneedex as controller/hotkey, transfer tokens)</li>
+                                    <li>Activate the offer and make it live</li>
+                                </ol>
+                            </div>
+                        ) : (
+                            <div style={{ 
+                                background: `${theme.colors.warning}15`, 
+                                border: `1px solid ${theme.colors.warning}`,
+                                borderRadius: '10px',
+                                padding: '1rem',
+                                marginBottom: '1.5rem',
+                                fontSize: '0.9rem',
+                                color: theme.colors.warning,
+                            }}>
+                                <strong>⚠️ Some assets need manual escrow.</strong> After creating the offer, you'll need to:
+                                <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
+                                    <li>For canisters: Add Sneedex ({SNEEDEX_CANISTER_ID}) as a controller</li>
+                                    <li>For neurons: Add Sneedex as a hotkey with full permissions</li>
+                                    <li>For tokens: Ensure sufficient balance (amount + fee)</li>
+                                </ul>
+                            </div>
+                        )}
                         
                         <div style={styles.buttonRow}>
                             <button style={styles.backBtn} onClick={handleBack}>
@@ -1698,25 +2063,32 @@ function SneedexCreate() {
                 {step === 4 && (
                     <div style={styles.successCard}>
                         <div style={styles.successIcon}>🎉</div>
-                        <h2 style={styles.successTitle}>Offer Created Successfully!</h2>
+                        <h2 style={styles.successTitle}>
+                            {allAssetsReady ? 'Offer Live!' : 'Offer Created Successfully!'}
+                        </h2>
                         <p style={styles.successText}>
-                            Your offer (ID: {Number(createdOfferId)}) has been created and is now in <strong>Draft</strong> state.
+                            Your offer (ID: {Number(createdOfferId)}) has been created
+                            {allAssetsReady ? ' and is now ' : ' and is in '}
+                            <strong>{allAssetsReady ? 'Active' : 'Draft'}</strong>
+                            {allAssetsReady ? '!' : ' state.'}
                         </p>
                         
-                        <div style={styles.nextStepsBox}>
-                            <h4 style={{ color: theme.colors.primaryText, marginBottom: '1rem' }}>Next Steps:</h4>
-                            <ol style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.25rem', lineHeight: '2' }}>
-                                <li><strong>Escrow your assets</strong> - For each asset in your offer:
-                                    <ul style={{ marginTop: '0.5rem' }}>
-                                        <li>Canisters: Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>{SNEEDEX_CANISTER_ID}</code> as a controller</li>
-                                        <li>Neurons: Add Sneedex as a hotkey</li>
-                                        <li>Tokens: Transfer to the escrow subaccount</li>
-                                    </ul>
-                                </li>
-                                <li><strong>Verify escrow</strong> - Call the escrow functions for each asset</li>
-                                <li><strong>Activate the offer</strong> - Once all assets are escrowed, activate to go live</li>
-                            </ol>
-                        </div>
+                        {!allAssetsReady && (
+                            <div style={styles.nextStepsBox}>
+                                <h4 style={{ color: theme.colors.primaryText, marginBottom: '1rem' }}>Next Steps:</h4>
+                                <ol style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.25rem', lineHeight: '2' }}>
+                                    <li><strong>Escrow your assets</strong> - For each asset in your offer:
+                                        <ul style={{ marginTop: '0.5rem' }}>
+                                            <li>Canisters: Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>{SNEEDEX_CANISTER_ID}</code> as a controller</li>
+                                            <li>Neurons: Add Sneedex as a hotkey</li>
+                                            <li>Tokens: Transfer to the escrow subaccount</li>
+                                        </ul>
+                                    </li>
+                                    <li><strong>Verify escrow</strong> - Call the escrow functions for each asset</li>
+                                    <li><strong>Activate the offer</strong> - Once all assets are escrowed, activate to go live</li>
+                                </ol>
+                            </div>
+                        )}
                         
                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '2rem' }}>
                             <Link
@@ -1731,6 +2103,122 @@ function SneedexCreate() {
                             >
                                 My Offers
                             </Link>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Progress Overlay */}
+                {showProgressOverlay && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                    }}>
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '2rem',
+                            maxWidth: '450px',
+                            width: '90%',
+                            boxShadow: `0 20px 60px rgba(0, 0, 0, 0.5)`,
+                        }}>
+                            <h3 style={{ 
+                                color: theme.colors.primaryText, 
+                                marginBottom: '1.5rem',
+                                textAlign: 'center',
+                                fontSize: '1.3rem',
+                            }}>
+                                {progressError ? '❌ Error' : '🚀 Creating Your Offer'}
+                            </h3>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {progressSteps.map((step, idx) => (
+                                    <div key={idx} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '12px',
+                                        padding: '0.75rem',
+                                        background: step.status === 'in_progress' ? `${theme.colors.accent}15` : 'transparent',
+                                        borderRadius: '8px',
+                                        transition: 'all 0.3s ease',
+                                    }}>
+                                        <div style={{
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            background: step.status === 'complete' ? theme.colors.success :
+                                                       step.status === 'in_progress' ? theme.colors.accent :
+                                                       theme.colors.tertiaryBg,
+                                            color: step.status === 'pending' ? theme.colors.mutedText : '#fff',
+                                        }}>
+                                            {step.status === 'complete' ? <FaCheck /> :
+                                             step.status === 'in_progress' ? <FaSync style={{ animation: 'spin 1s linear infinite' }} /> :
+                                             idx + 1}
+                                        </div>
+                                        <span style={{
+                                            color: step.status === 'complete' ? theme.colors.success :
+                                                   step.status === 'in_progress' ? theme.colors.primaryText :
+                                                   theme.colors.mutedText,
+                                            fontWeight: step.status === 'in_progress' ? '600' : '400',
+                                        }}>
+                                            {step.label}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            {progressError && (
+                                <div style={{
+                                    marginTop: '1.5rem',
+                                    padding: '1rem',
+                                    background: `${theme.colors.error}15`,
+                                    border: `1px solid ${theme.colors.error}`,
+                                    borderRadius: '8px',
+                                    color: theme.colors.error,
+                                    fontSize: '0.9rem',
+                                }}>
+                                    {progressError}
+                                </div>
+                            )}
+                            
+                            {progressError && (
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '1rem', 
+                                    justifyContent: 'center', 
+                                    marginTop: '1.5rem' 
+                                }}>
+                                    <button
+                                        style={styles.backBtn}
+                                        onClick={() => {
+                                            setShowProgressOverlay(false);
+                                            setProgressError(null);
+                                        }}
+                                    >
+                                        Close
+                                    </button>
+                                    {createdOfferId && (
+                                        <Link
+                                            to={`/sneedex_offer/${createdOfferId}`}
+                                            style={{ ...styles.nextBtn, textDecoration: 'none' }}
+                                        >
+                                            View Offer
+                                        </Link>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
