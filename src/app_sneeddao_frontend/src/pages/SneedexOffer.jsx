@@ -5,6 +5,8 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { IDL } from '@dfinity/candid';
 import { 
     createSneedexActor, 
     createLedgerActor,
@@ -19,6 +21,51 @@ import {
     getErrorMessage,
     SNEEDEX_CANISTER_ID 
 } from '../utils/SneedexUtils';
+
+const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
+const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
+
+// Management canister IDL for canister_status
+const managementIdlFactory = () => {
+    const definite_canister_settings = IDL.Record({
+        'controllers': IDL.Vec(IDL.Principal),
+        'freezing_threshold': IDL.Nat,
+        'memory_allocation': IDL.Nat,
+        'compute_allocation': IDL.Nat,
+        'reserved_cycles_limit': IDL.Nat,
+        'log_visibility': IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        }),
+        'wasm_memory_limit': IDL.Nat,
+    });
+    const canister_status_result = IDL.Record({
+        'status': IDL.Variant({
+            'running': IDL.Null,
+            'stopping': IDL.Null,
+            'stopped': IDL.Null,
+        }),
+        'settings': definite_canister_settings,
+        'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
+        'memory_size': IDL.Nat,
+        'cycles': IDL.Nat,
+        'idle_cycles_burned_per_day': IDL.Nat,
+        'reserved_cycles': IDL.Nat,
+        'query_stats': IDL.Record({
+            'num_calls_total': IDL.Nat,
+            'num_instructions_total': IDL.Nat,
+            'request_payload_bytes_total': IDL.Nat,
+            'response_payload_bytes_total': IDL.Nat,
+        }),
+    });
+    return IDL.Service({
+        'canister_status': IDL.Func(
+            [IDL.Record({ 'canister_id': IDL.Principal })],
+            [canister_status_result],
+            []
+        ),
+    });
+};
 
 function SneedexOffer() {
     const { id } = useParams();
@@ -38,6 +85,68 @@ function SneedexOffer() {
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [withdrawLoading, setWithdrawLoading] = useState(false);
     const [userBalance, setUserBalance] = useState(null);
+    const [canisterControllerStatus, setCanisterControllerStatus] = useState({}); // {canisterId: boolean}
+    const [checkingControllers, setCheckingControllers] = useState(false);
+    
+    // Check if the user is a controller of a specific canister
+    const checkCanisterController = useCallback(async (canisterId) => {
+        if (!identity) return false;
+        
+        try {
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managementCanister = Actor.createActor(managementIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            // If this call succeeds, the user is a controller
+            await managementCanister.canister_status({ canister_id: canisterPrincipal });
+            return true;
+        } catch (e) {
+            // Call failed - user is not a controller
+            console.log(`User is not a controller of ${canisterId}:`, e.message);
+            return false;
+        }
+    }, [identity]);
+    
+    // Check controller status for all canister assets when offer loads
+    const checkAllCanisterControllers = useCallback(async () => {
+        if (!offer || !identity || !('PendingEscrow' in offer.state)) return;
+        
+        setCheckingControllers(true);
+        const newStatus = {};
+        
+        for (const assetEntry of offer.assets) {
+            const details = getAssetDetails(assetEntry);
+            if (details.type === 'Canister' && !details.escrowed) {
+                const canisterId = details.details.canister_id?.toString() || details.details.canisterId?.toString();
+                if (canisterId) {
+                    newStatus[canisterId] = await checkCanisterController(canisterId);
+                }
+            }
+        }
+        
+        setCanisterControllerStatus(newStatus);
+        setCheckingControllers(false);
+    }, [offer, identity, checkCanisterController]);
+    
+    // Run controller check when offer loads
+    useEffect(() => {
+        if (offer && identity && 'PendingEscrow' in offer.state) {
+            checkAllCanisterControllers();
+        }
+    }, [offer, identity, checkAllCanisterControllers]);
     
     // Fetch user's token balance
     const fetchUserBalance = useCallback(async () => {
@@ -1082,7 +1191,20 @@ function SneedexOffer() {
                             <div style={styles.assetsList}>
                                 {offer.assets.map((assetEntry, idx) => {
                                     const details = getAssetDetails(assetEntry);
-                                    const canEscrow = isCreator && !details.escrowed && 'PendingEscrow' in offer.state;
+                                    const isPendingEscrow = 'PendingEscrow' in offer.state;
+                                    
+                                    // For canisters, check if user is a controller
+                                    let canEscrow = false;
+                                    if (isCreator && !details.escrowed && isPendingEscrow) {
+                                        if (details.type === 'Canister') {
+                                            const canisterId = details.canister_id;
+                                            canEscrow = canisterId && canisterControllerStatus[canisterId] === true;
+                                        } else {
+                                            // For other asset types, allow escrow attempt
+                                            canEscrow = true;
+                                        }
+                                    }
+                                    
                                     return (
                                         <div key={idx} style={styles.assetItem}>
                                             <div style={styles.assetHeader}>
@@ -1107,7 +1229,7 @@ function SneedexOffer() {
                                             {details.type === 'ICRC1Token' && (
                                                 <div style={styles.assetDetail}>Ledger: {details.ledger_id}</div>
                                             )}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '0.5rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                                 <span style={{
                                                     ...styles.escrowBadge,
                                                     background: details.escrowed ? `${theme.colors.success}20` : `${theme.colors.warning}20`,
@@ -1115,6 +1237,61 @@ function SneedexOffer() {
                                                 }}>
                                                     {details.escrowed ? <><FaCheck /> Escrowed</> : <><FaClock /> Pending Escrow</>}
                                                 </span>
+                                                
+                                                {/* Show controller status for canisters */}
+                                                {details.type === 'Canister' && !details.escrowed && isPendingEscrow && isCreator && (
+                                                    checkingControllers ? (
+                                                        <span style={{
+                                                            fontSize: '0.75rem',
+                                                            color: theme.colors.mutedText,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                        }}>
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Checking controller...
+                                                        </span>
+                                                    ) : canisterControllerStatus[details.canister_id] === true ? (
+                                                        <span style={{
+                                                            fontSize: '0.75rem',
+                                                            color: theme.colors.success,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                        }}>
+                                                            <FaCheck /> You are a controller
+                                                        </span>
+                                                    ) : canisterControllerStatus[details.canister_id] === false ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span style={{
+                                                                fontSize: '0.75rem',
+                                                                color: theme.colors.warning,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                            }}>
+                                                                <FaTimes /> Add Sneedex as controller first
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    checkAllCanisterControllers();
+                                                                }}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    border: `1px solid ${theme.colors.accent}`,
+                                                                    color: theme.colors.accent,
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.7rem',
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                            >
+                                                                <FaSync /> Recheck
+                                                            </button>
+                                                        </div>
+                                                    ) : null
+                                                )}
+                                                
                                                 {canEscrow && (
                                                     <button
                                                         onClick={(e) => {
