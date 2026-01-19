@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaGavel, FaHandHoldingUsd, FaClock, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus, FaCubes, FaBrain, FaCoins, FaSync } from 'react-icons/fa';
+import { FaGavel, FaHandHoldingUsd, FaClock, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus, FaCubes, FaBrain, FaCoins, FaSync, FaWallet } from 'react-icons/fa';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -13,7 +13,8 @@ import {
     getBidStateString,
     getAssetType,
     getTokenInfo,
-    getErrorMessage 
+    getErrorMessage,
+    parseAmount
 } from '../utils/SneedexUtils';
 
 function SneedexMy() {
@@ -25,9 +26,33 @@ function SneedexMy() {
     const [myOffers, setMyOffers] = useState([]);
     const [myBids, setMyBids] = useState([]);
     const [offersWithBids, setOffersWithBids] = useState({}); // Map of offerId to bid info
+    const [bidEscrowBalances, setBidEscrowBalances] = useState({}); // Map of bidId to escrow balance
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
+    
+    // Fetch escrow balances for all bids that have tokens escrowed
+    const fetchBidEscrowBalances = useCallback(async (bids) => {
+        if (!identity || !bids.length) return;
+        
+        const actor = createSneedexActor(identity);
+        const balances = {};
+        
+        for (const bid of bids) {
+            if (bid.tokens_escrowed) {
+                try {
+                    const result = await actor.getBidEscrowBalance(bid.id);
+                    if ('ok' in result) {
+                        balances[Number(bid.id)] = result.ok;
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch escrow balance for bid ${bid.id}:`, e);
+                }
+            }
+        }
+        
+        setBidEscrowBalances(balances);
+    }, [identity]);
     
     const fetchData = useCallback(async () => {
         if (!identity) return;
@@ -45,6 +70,9 @@ function SneedexMy() {
             // Fetch bids made by the user
             const bids = await actor.getBidsByBidder(principal);
             setMyBids(bids);
+            
+            // Fetch escrow balances for bids
+            fetchBidEscrowBalances(bids);
             
             // Fetch bid info for each offer
             const bidInfo = {};
@@ -182,6 +210,49 @@ function SneedexMy() {
             await fetchData();
         } catch (e) {
             console.error('Failed to refund bid:', e);
+            alert(`Error: ${e.message}`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+    
+    const handleWithdrawExcess = async (bid, escrowBalance) => {
+        if (!identity) return;
+        
+        const excess = escrowBalance - bid.amount;
+        if (excess <= 0n) {
+            alert('No excess funds to withdraw');
+            return;
+        }
+        
+        // Ask user how much to withdraw
+        const maxWithdrawable = Number(excess) / 1e8;
+        const amountStr = window.prompt(
+            `How much to withdraw?\nExcess available: ${maxWithdrawable.toFixed(8)} tokens\n(Leave some for potential fees if needed)`,
+            maxWithdrawable.toFixed(8)
+        );
+        
+        if (!amountStr) return;
+        
+        const withdrawAmount = parseAmount(parseFloat(amountStr), 8);
+        if (withdrawAmount <= 0n || withdrawAmount > excess) {
+            alert(`Invalid amount. Max: ${maxWithdrawable.toFixed(8)}`);
+            return;
+        }
+        
+        setActionLoading(`withdraw-${bid.id}`);
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.withdrawBidEscrow(bid.id, withdrawAmount);
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('Withdrawal successful!');
+            await fetchData();
+        } catch (e) {
+            console.error('Failed to withdraw:', e);
             alert(`Error: ${e.message}`);
         } finally {
             setActionLoading(null);
@@ -635,6 +706,9 @@ function SneedexMy() {
                                 const isWon = 'Won' in bid.state;
                                 const isLost = 'Lost' in bid.state;
                                 const isPending = 'Pending' in bid.state;
+                                const escrowBalance = bidEscrowBalances[Number(bid.id)];
+                                const hasExcess = escrowBalance !== undefined && escrowBalance > bid.amount;
+                                const excessAmount = hasExcess ? escrowBalance - bid.amount : 0n;
                                 
                                 return (
                                     <div
@@ -665,14 +739,56 @@ function SneedexMy() {
                                                 </div>
                                             </div>
                                             <div style={styles.infoItem}>
-                                                <div style={styles.infoLabel}>Escrowed</div>
-                                                <div style={styles.infoValue}>{bid.tokens_escrowed ? 'Yes' : 'No'}</div>
+                                                <div style={styles.infoLabel}>Escrow Balance</div>
+                                                <div style={styles.infoValue}>
+                                                    {escrowBalance !== undefined ? (
+                                                        <span style={{ color: hasExcess ? theme.colors.success : theme.colors.primaryText }}>
+                                                            {formatAmount(escrowBalance)} tokens
+                                                            {hasExcess && <span style={{ fontSize: '0.8rem' }}> (+{formatAmount(excessAmount)} excess)</span>}
+                                                        </span>
+                                                    ) : (
+                                                        bid.tokens_escrowed ? 'Loading...' : '—'
+                                                    )}
+                                                </div>
                                             </div>
                                             <div style={styles.infoItem}>
                                                 <div style={styles.infoLabel}>Placed</div>
                                                 <div style={styles.infoValue}>{formatDate(bid.created_at)}</div>
                                             </div>
                                         </div>
+                                        
+                                        {/* Excess funds warning */}
+                                        {hasExcess && (
+                                            <div style={{
+                                                marginTop: '1rem',
+                                                padding: '0.75rem',
+                                                background: `${theme.colors.success}15`,
+                                                border: `1px solid ${theme.colors.success}`,
+                                                borderRadius: '8px',
+                                                fontSize: '0.85rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                color: theme.colors.success
+                                            }} onClick={(e) => e.stopPropagation()}>
+                                                <FaWallet />
+                                                <span>You have {formatAmount(excessAmount)} excess tokens in escrow</span>
+                                                <button
+                                                    style={{
+                                                        ...styles.actionButton,
+                                                        marginLeft: 'auto',
+                                                        padding: '6px 12px',
+                                                        fontSize: '0.8rem',
+                                                        background: theme.colors.success,
+                                                        color: theme.colors.primaryBg
+                                                    }}
+                                                    onClick={() => handleWithdrawExcess(bid, escrowBalance)}
+                                                    disabled={actionLoading === `withdraw-${bid.id}`}
+                                                >
+                                                    {actionLoading === `withdraw-${bid.id}` ? 'Processing...' : 'Withdraw'}
+                                                </button>
+                                            </div>
+                                        )}
                                         
                                         {isWon && (
                                             <div style={styles.actionButtons} onClick={(e) => e.stopPropagation()}>
