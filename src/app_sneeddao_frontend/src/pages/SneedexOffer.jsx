@@ -90,6 +90,8 @@ function SneedexOffer() {
         }
     };
     
+    const [bidProgress, setBidProgress] = useState(''); // For showing progress during auto-bid
+    
     const handlePlaceBid = async () => {
         if (!identity) {
             setError('Please connect your wallet first');
@@ -111,6 +113,12 @@ function SneedexOffer() {
         }
         
         setBidding(true);
+        setBidProgress('Reserving bid...');
+        
+        let bidId = null;
+        let subaccount = null;
+        const amountE8s = parseAmount(amount, tokenInfo.decimals);
+        
         try {
             const actor = createSneedexActor(identity);
             
@@ -119,29 +127,88 @@ function SneedexOffer() {
             if ('err' in reserveResult) {
                 throw new Error(getErrorMessage(reserveResult.err));
             }
-            const bidId = reserveResult.ok;
+            bidId = reserveResult.ok;
             
             // Step 2: Get the escrow subaccount
-            const subaccount = await actor.getBidEscrowSubaccount(
+            subaccount = await actor.getBidEscrowSubaccount(
                 identity.getPrincipal(),
                 bidId
             );
             
-            // Step 3: Store pending bid info for user to complete
-            const amountE8s = parseAmount(amount, tokenInfo.decimals);
+            // Set pending bid in case auto-steps fail
             setPendingBid({
                 bidId: bidId,
                 amount: amountE8s,
                 displayAmount: amount,
-                subaccount: subaccount
+                subaccount: subaccount,
+                escrowBalance: 0n
             });
             
             setBidAmount('');
+            
+            // Step 3: Auto-pay from wallet
+            setBidProgress('Transferring from wallet...');
+            
+            const ledgerActor = await createLedgerActor(
+                offer.price_token_ledger.toString(),
+                identity
+            );
+            
+            const fee = await ledgerActor.icrc1_fee();
+            
+            const transferArg = {
+                to: {
+                    owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+                    subaccount: [Array.from(subaccount)],
+                },
+                fee: [fee],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: amountE8s,
+            };
+            
+            const transferResult = await ledgerActor.icrc1_transfer(transferArg);
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds. Balance: ${formatAmount(err.InsufficientFunds.balance, tokenInfo.decimals)} ${tokenInfo.symbol}`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            // Update pending bid with new balance
+            setPendingBid(prev => prev ? { ...prev, escrowBalance: amountE8s } : null);
+            
+            // Step 4: Auto-confirm bid
+            setBidProgress('Confirming bid...');
+            
+            const confirmResult = await actor.confirmBid(bidId, amountE8s);
+            
+            if ('err' in confirmResult) {
+                throw new Error(getErrorMessage(confirmResult.err));
+            }
+            
+            // Success! Clear pending bid and refresh
+            setPendingBid(null);
+            setBidProgress('');
+            alert('Bid placed successfully!');
+            await fetchOffer();
+            
         } catch (e) {
-            console.error('Failed to place bid:', e);
+            console.error('Failed during bid process:', e);
             setError(e.message || 'Failed to place bid');
+            setBidProgress('');
+            
+            // If we have a pending bid set, keep it so user can retry manually
+            // If reservation failed, clear everything
+            if (!bidId) {
+                setPendingBid(null);
+            }
         } finally {
             setBidding(false);
+            setBidProgress('');
         }
     };
     
@@ -299,42 +366,107 @@ function SneedexOffer() {
         }
     };
     
+    const [buyoutProgress, setBuyoutProgress] = useState('');
+    
     const handleBuyout = async () => {
         if (!identity || !offer) return;
         
         setActionLoading(true);
         setError('');
+        setBuyoutProgress('Reserving buyout...');
+        
+        let bidId = null;
+        let subaccount = null;
+        const buyoutAmountE8s = offer.buyout_price[0];
+        const buyoutDisplayAmount = Number(buyoutAmountE8s) / Math.pow(10, tokenInfo.decimals);
+        
         try {
             const actor = createSneedexActor(identity);
             
-            // Reserve a bid for the buyout amount
+            // Step 1: Reserve a bid for the buyout amount
             const reserveResult = await actor.reserveBid(BigInt(id));
             if ('err' in reserveResult) {
                 throw new Error(getErrorMessage(reserveResult.err));
             }
-            const bidId = reserveResult.ok;
+            bidId = reserveResult.ok;
             
-            const subaccount = await actor.getBidEscrowSubaccount(
+            subaccount = await actor.getBidEscrowSubaccount(
                 identity.getPrincipal(),
                 bidId
             );
             
-            const buyoutAmountE8s = offer.buyout_price[0];
-            const buyoutDisplayAmount = Number(buyoutAmountE8s) / Math.pow(10, tokenInfo.decimals);
-            
-            // Set pending bid for buyout (same UI as regular bid)
+            // Set pending bid in case auto-steps fail
             setPendingBid({
                 bidId: bidId,
                 amount: buyoutAmountE8s,
                 displayAmount: buyoutDisplayAmount,
                 subaccount: subaccount,
-                isBuyout: true
+                isBuyout: true,
+                escrowBalance: 0n
             });
+            
+            // Step 2: Auto-pay from wallet
+            setBuyoutProgress('Transferring from wallet...');
+            
+            const ledgerActor = await createLedgerActor(
+                offer.price_token_ledger.toString(),
+                identity
+            );
+            
+            const fee = await ledgerActor.icrc1_fee();
+            
+            const transferArg = {
+                to: {
+                    owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+                    subaccount: [Array.from(subaccount)],
+                },
+                fee: [fee],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: buyoutAmountE8s,
+            };
+            
+            const transferResult = await ledgerActor.icrc1_transfer(transferArg);
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds. Balance: ${formatAmount(err.InsufficientFunds.balance, tokenInfo.decimals)} ${tokenInfo.symbol}`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            // Update pending bid with new balance
+            setPendingBid(prev => prev ? { ...prev, escrowBalance: buyoutAmountE8s } : null);
+            
+            // Step 3: Auto-confirm bid (buyout)
+            setBuyoutProgress('Confirming buyout...');
+            
+            const confirmResult = await actor.confirmBid(bidId, buyoutAmountE8s);
+            
+            if ('err' in confirmResult) {
+                throw new Error(getErrorMessage(confirmResult.err));
+            }
+            
+            // Success! Clear pending bid and refresh
+            setPendingBid(null);
+            setBuyoutProgress('');
+            alert('Buyout successful! You now own the assets.');
+            await fetchOffer();
+            
         } catch (e) {
-            console.error('Failed to initiate buyout:', e);
-            setError(e.message || 'Failed to initiate buyout');
+            console.error('Failed during buyout process:', e);
+            setError(e.message || 'Failed to complete buyout');
+            setBuyoutProgress('');
+            
+            // If reservation failed, clear pending bid
+            if (!bidId) {
+                setPendingBid(null);
+            }
         } finally {
             setActionLoading(false);
+            setBuyoutProgress('');
         }
     };
     
@@ -1061,7 +1193,7 @@ function SneedexOffer() {
                                             onClick={handlePlaceBid}
                                             disabled={bidding}
                                         >
-                                            {bidding ? 'Processing...' : 'Place Bid'}
+                                            {bidding ? (bidProgress || 'Processing...') : 'Place Bid'}
                                         </button>
                                     </div>
                                     {offer.buyout_price[0] && (
@@ -1070,7 +1202,7 @@ function SneedexOffer() {
                                             onClick={handleBuyout}
                                             disabled={actionLoading}
                                         >
-                                            ⚡ Instant Buyout for {formatAmount(offer.buyout_price[0], tokenInfo.decimals)} {tokenInfo.symbol}
+                                            {actionLoading && buyoutProgress ? buyoutProgress : `⚡ Instant Buyout for ${formatAmount(offer.buyout_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}`}
                                         </button>
                                     )}
                                 </div>
