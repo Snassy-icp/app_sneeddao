@@ -15,6 +15,7 @@ import {
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/SnsUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
@@ -39,19 +40,24 @@ function SneedexOffers() {
     const [offerTab, setOfferTab] = useState('public'); // 'public' or 'private'
     const [snsLogos, setSnsLogos] = useState(new Map()); // governance_id -> logo URL
     const [snsList, setSnsList] = useState([]); // List of all SNSes
+    const [snsSymbols, setSnsSymbols] = useState(new Map()); // governance_id -> token symbol
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
     
     // Fetch SNS list on mount
     useEffect(() => {
-        const loadSnses = async () => {
-            startBackgroundSnsFetch();
-            const snses = getAllSnses();
+        // First check if we already have cached data
+        const cached = getAllSnses();
+        if (cached && cached.length > 0) {
+            setSnsList(cached);
+        }
+        
+        // Start background fetch and update when complete
+        startBackgroundSnsFetch(identity, (snses) => {
             if (snses && snses.length > 0) {
                 setSnsList(snses);
             }
-        };
-        loadSnses();
-    }, []);
+        });
+    }, [identity]);
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -82,12 +88,51 @@ function SneedexOffers() {
     
     // Helper to get SNS info by governance id
     const getSnsInfo = useCallback((governanceId) => {
-        const sns = snsList.find(s => s.governance_canister_id?.toString() === governanceId);
+        // Check both possible property paths for governance ID
+        const sns = snsList.find(s => 
+            s.canisters?.governance === governanceId || 
+            s.governance_canister_id?.toString() === governanceId
+        );
+        const symbol = snsSymbols.get(governanceId);
         if (sns) {
-            return { name: sns.name || 'SNS', symbol: sns.symbol || 'SNS' };
+            return { 
+                name: sns.name || 'SNS', 
+                symbol: symbol || 'Neuron',
+                ledgerId: sns.canisters?.ledger
+            };
         }
-        return { name: 'SNS Neuron', symbol: 'SNS' };
-    }, [snsList]);
+        return { name: 'SNS Neuron', symbol: symbol || 'Neuron', ledgerId: null };
+    }, [snsList, snsSymbols]);
+    
+    // Fetch token symbol from SNS ledger
+    const fetchSnsSymbol = useCallback(async (governanceId) => {
+        if (snsSymbols.has(governanceId)) return;
+        
+        // Find the SNS to get its ledger ID
+        const sns = snsList.find(s => 
+            s.canisters?.governance === governanceId || 
+            s.governance_canister_id?.toString() === governanceId
+        );
+        const ledgerId = sns?.canisters?.ledger;
+        if (!ledgerId) return;
+        
+        try {
+            const agent = new HttpAgent({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Find symbol in metadata
+            const symbolEntry = metadata.find(([key]) => key === 'icrc1:symbol');
+            if (symbolEntry && symbolEntry[1]?.Text) {
+                setSnsSymbols(prev => new Map(prev).set(governanceId, symbolEntry[1].Text));
+            }
+        } catch (e) {
+            console.warn('Failed to fetch SNS token symbol:', e);
+        }
+    }, [snsSymbols, snsList, identity]);
     
     // Fetch SNS logo for a governance ID
     const fetchSnsLogoForOffer = useCallback(async (governanceId) => {
@@ -183,7 +228,7 @@ function SneedexOffers() {
         fetchOffers();
     }, [fetchOffers]);
     
-    // Fetch SNS logos and neuron info when offers change
+    // Fetch SNS logos, symbols, and neuron info when offers change
     useEffect(() => {
         if (offers.length === 0) return;
         
@@ -193,6 +238,8 @@ function SneedexOffers() {
                 if (details.type === 'SNSNeuron') {
                     // Fetch SNS logo
                     fetchSnsLogoForOffer(details.governance_id);
+                    // Fetch SNS token symbol
+                    fetchSnsSymbol(details.governance_id);
                     // Fetch neuron info
                     if (details.neuron_id) {
                         fetchNeuronInfo(details.governance_id, details.neuron_id);
@@ -200,7 +247,7 @@ function SneedexOffers() {
                 }
             });
         });
-    }, [offers, fetchSnsLogoForOffer, fetchNeuronInfo]);
+    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo]);
     
     const filteredOffers = offers.filter(offer => {
         if (filterType !== 'all') {
@@ -708,16 +755,25 @@ function SneedexOffers() {
                                                     )}
                                                     {details.type === 'SNSNeuron' && (
                                                         <>
-                                                            {snsLogo ? (
-                                                                <img 
-                                                                    src={snsLogo} 
-                                                                    alt={snsInfo?.name || 'SNS'} 
-                                                                    style={{ width: 18, height: 18, borderRadius: '50%' }}
-                                                                />
-                                                            ) : (
-                                                                <FaBrain style={{ color: theme.colors.success }} />
-                                                            )}
-                                                            {nInfo ? `${nInfo.stake.toFixed(2)} ${snsInfo?.symbol || 'SNS'}` : snsInfo?.symbol || 'Neuron'}
+                                                            <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
+                                                                <FaBrain style={{ color: theme.colors.success, fontSize: '16px' }} />
+                                                                {snsLogo && (
+                                                                    <img 
+                                                                        src={snsLogo} 
+                                                                        alt={snsInfo?.name || 'SNS'} 
+                                                                        style={{ 
+                                                                            width: 12, 
+                                                                            height: 12, 
+                                                                            borderRadius: '50%',
+                                                                            position: 'absolute',
+                                                                            bottom: -2,
+                                                                            right: -4,
+                                                                            border: `1px solid ${theme.colors.tertiaryBg}`,
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                            </span>
+                                                            {nInfo ? `${nInfo.stake.toFixed(2)} ${snsInfo?.symbol || 'Neuron'}` : snsInfo?.symbol || 'Neuron'}
                                                         </>
                                                     )}
                                                     {details.type === 'ICRC1Token' && (
