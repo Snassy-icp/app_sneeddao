@@ -10,52 +10,6 @@ import T "Types";
 import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 
-// Migration expression to add approved_bidders field to existing offers
-(with migration = func (old : { var offers : [{
-    id : T.OfferId;
-    creator : Principal;
-    min_bid_price : ?Nat;
-    buyout_price : ?Nat;
-    expiration : ?Time.Time;
-    price_token_ledger : Principal;
-    assets : [T.AssetEntry];
-    state : T.OfferState;
-    created_at : Time.Time;
-    activated_at : ?Time.Time;
-}] }) : { var offers : [T.Offer] } {
-    {
-        var offers = Array.map(
-            old.offers,
-            func (o : {
-                id : T.OfferId;
-                creator : Principal;
-                min_bid_price : ?Nat;
-                buyout_price : ?Nat;
-                expiration : ?Time.Time;
-                price_token_ledger : Principal;
-                assets : [T.AssetEntry];
-                state : T.OfferState;
-                created_at : Time.Time;
-                activated_at : ?Time.Time;
-            }) : T.Offer {
-                {
-                    id = o.id;
-                    creator = o.creator;
-                    min_bid_price = o.min_bid_price;
-                    buyout_price = o.buyout_price;
-                    expiration = o.expiration;
-                    price_token_ledger = o.price_token_ledger;
-                    assets = o.assets;
-                    state = o.state;
-                    approved_bidders = null;
-                    created_at = o.created_at;
-                    activated_at = o.activated_at;
-                }
-            }
-        );
-    }
-})
-
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE

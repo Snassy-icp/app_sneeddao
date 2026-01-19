@@ -105,6 +105,10 @@ function SneedexCreate() {
     const [expirationDays, setExpirationDays] = useState('7');
     const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
     
+    // Private offer / Approved bidders
+    const [isPrivateOffer, setIsPrivateOffer] = useState(false);
+    const [approvedBiddersText, setApprovedBiddersText] = useState(''); // Comma-separated principals
+    
     // Token metadata from backend
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(true);
@@ -753,11 +757,26 @@ function SneedexCreate() {
             
             // Step 1: Create the offer
             updateProgressStep(0, 'in_progress');
+            
+            // Parse approved bidders if this is a private offer
+            let approvedBidders = [];
+            if (isPrivateOffer && approvedBiddersText.trim()) {
+                const lines = approvedBiddersText.split('\n').map(l => l.trim()).filter(l => l);
+                for (const line of lines) {
+                    try {
+                        approvedBidders.push(Principal.fromText(line));
+                    } catch (e) {
+                        throw new Error(`Invalid principal ID: ${line}`);
+                    }
+                }
+            }
+            
             const createRequest = {
                 price_token_ledger: Principal.fromText(priceTokenLedger),
                 min_bid_price: minBidPrice ? [parseAmount(minBidPrice, priceTokenDecimals)] : [],
                 buyout_price: buyoutPrice ? [parseAmount(buyoutPrice, priceTokenDecimals)] : [],
                 expiration: hasExpiration ? [daysToExpirationNs(parseInt(expirationDays))] : [],
+                approved_bidders: isPrivateOffer && approvedBidders.length > 0 ? [approvedBidders] : [],
             };
             
             const createResult = await actor.createOffer(createRequest);
@@ -1422,6 +1441,60 @@ function SneedexCreate() {
                                 </select>
                             </div>
                         )}
+                        
+                        <div style={{ 
+                            borderTop: `1px solid ${theme.colors.border}`, 
+                            margin: '24px 0', 
+                            paddingTop: '24px' 
+                        }}>
+                            <div style={styles.formGroup}>
+                                <label style={styles.checkbox}>
+                                    <input
+                                        type="checkbox"
+                                        style={styles.checkboxInput}
+                                        checked={isPrivateOffer}
+                                        onChange={(e) => setIsPrivateOffer(e.target.checked)}
+                                    />
+                                    Private Offer (OTC)
+                                    <span style={{ 
+                                        fontWeight: 'normal', 
+                                        color: theme.colors.mutedText, 
+                                        marginLeft: '8px' 
+                                    }}>
+                                        — Only approved bidders can place bids
+                                    </span>
+                                </label>
+                            </div>
+                            
+                            {isPrivateOffer && (
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>
+                                        Approved Bidders
+                                        <span style={styles.labelHint}> — Enter Principal IDs, one per line</span>
+                                    </label>
+                                    <textarea
+                                        style={{
+                                            ...styles.input,
+                                            minHeight: '100px',
+                                            resize: 'vertical',
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.9rem',
+                                        }}
+                                        placeholder="Enter principal IDs, one per line:&#10;xxxxx-xxxxx-xxxxx-xxxxx-cai&#10;yyyyy-yyyyy-yyyyy-yyyyy-cai"
+                                        value={approvedBiddersText}
+                                        onChange={(e) => setApprovedBiddersText(e.target.value)}
+                                    />
+                                    <p style={{ 
+                                        fontSize: '0.85rem', 
+                                        color: theme.colors.mutedText, 
+                                        marginTop: '8px' 
+                                    }}>
+                                        Only these principals will be able to bid on your offer.
+                                        You can add multiple principals, one per line.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                         
                         <div style={styles.buttonRow}>
                             <div />

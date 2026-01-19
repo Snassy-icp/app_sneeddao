@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock } from 'react-icons/fa';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -17,7 +17,7 @@ import { createActor as createBackendActor } from 'declarations/app_sneeddao_bac
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 function SneedexOffers() {
-    const { identity, isAuthenticated } = useAuth();
+    const { identity, isAuthenticated, principal } = useAuth();
     const { theme } = useTheme();
     const navigate = useNavigate();
     
@@ -29,6 +29,7 @@ function SneedexOffers() {
     const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const [offerTab, setOfferTab] = useState('public'); // 'public' or 'private'
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -62,7 +63,20 @@ function SneedexOffers() {
         setError('');
         try {
             const actor = createSneedexActor(identity);
-            const activeOffers = await actor.getActiveOffers();
+            let activeOffers;
+            
+            if (offerTab === 'public') {
+                // Fetch public offers (no approved bidders list)
+                activeOffers = await actor.getPublicOffers();
+            } else {
+                // Fetch private offers where user is creator or in approved bidders list
+                if (principal) {
+                    activeOffers = await actor.getPrivateOffers(principal);
+                } else {
+                    activeOffers = [];
+                }
+            }
+            
             setOffers(activeOffers);
             
             // Fetch bid info for each offer
@@ -87,7 +101,7 @@ function SneedexOffers() {
         } finally {
             setLoading(false);
         }
-    }, [identity]);
+    }, [identity, offerTab, principal]);
     
     useEffect(() => {
         fetchOffers();
@@ -213,6 +227,34 @@ function SneedexOffers() {
             alignItems: 'center',
             gap: '8px',
             transition: 'all 0.3s ease',
+        },
+        tabContainer: {
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '1.5rem',
+            background: theme.colors.tertiaryBg,
+            padding: '6px',
+            borderRadius: '12px',
+            width: 'fit-content',
+        },
+        tab: {
+            padding: '10px 20px',
+            borderRadius: '8px',
+            border: 'none',
+            background: 'transparent',
+            color: theme.colors.mutedText,
+            cursor: 'pointer',
+            fontSize: '0.95rem',
+            fontWeight: '500',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.2s ease',
+        },
+        tabActive: {
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            boxShadow: `0 2px 8px ${theme.colors.shadow}`,
         },
         controls: {
             display: 'flex',
@@ -435,6 +477,30 @@ function SneedexOffers() {
                     </div>
                 )}
                 
+                {/* Public/Private tabs */}
+                <div style={styles.tabContainer}>
+                    <button
+                        style={{
+                            ...styles.tab,
+                            ...(offerTab === 'public' ? styles.tabActive : {})
+                        }}
+                        onClick={() => setOfferTab('public')}
+                    >
+                        <FaGlobe /> Public Offers
+                    </button>
+                    <button
+                        style={{
+                            ...styles.tab,
+                            ...(offerTab === 'private' ? styles.tabActive : {})
+                        }}
+                        onClick={() => setOfferTab('private')}
+                        disabled={!isAuthenticated}
+                        title={!isAuthenticated ? 'Connect wallet to view private offers' : ''}
+                    >
+                        <FaLock /> Private (OTC)
+                    </button>
+                </div>
+                
                 <div style={styles.controls}>
                     <div style={styles.searchBox}>
                         <FaSearch style={styles.searchIcon} />
@@ -477,10 +543,17 @@ function SneedexOffers() {
                     </div>
                 ) : filteredOffers.length === 0 ? (
                     <div style={styles.emptyState}>
-                        <div style={styles.emptyIcon}>📭</div>
-                        <h3 style={styles.emptyTitle}>No Active Offers</h3>
+                        <div style={styles.emptyIcon}>{offerTab === 'public' ? '📭' : '🔐'}</div>
+                        <h3 style={styles.emptyTitle}>
+                            {offerTab === 'public' ? 'No Public Offers' : 'No Private Offers'}
+                        </h3>
                         <p style={styles.emptyText}>
-                            There are no offers matching your criteria. Be the first to create one!
+                            {offerTab === 'public' 
+                                ? 'There are no public offers matching your criteria. Be the first to create one!'
+                                : isAuthenticated 
+                                    ? 'You have no private offers available. Private offers are only visible to you if you created them or were added as an approved bidder.'
+                                    : 'Connect your wallet to view private offers where you are an approved bidder.'
+                            }
                         </p>
                         {isAuthenticated && (
                             <Link to="/sneedex_create" style={styles.createButton}>
@@ -511,7 +584,25 @@ function SneedexOffers() {
                                     }}
                                 >
                                     <div style={styles.cardHeader}>
-                                        <span style={styles.offerId}>Offer #{Number(offer.id)}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={styles.offerId}>Offer #{Number(offer.id)}</span>
+                                            {offer.approved_bidders && offer.approved_bidders[0] && offer.approved_bidders[0].length > 0 && (
+                                                <span style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    background: `${theme.colors.warning}20`,
+                                                    color: theme.colors.warning,
+                                                    padding: '2px 8px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '500',
+                                                }}>
+                                                    <FaLock size={10} />
+                                                    {offer.approved_bidders[0].length} bidder{offer.approved_bidders[0].length !== 1 ? 's' : ''}
+                                                </span>
+                                            )}
+                                        </div>
                                         <span style={styles.cardBadge}>{getOfferStateString(offer.state)}</span>
                                     </div>
                                     
