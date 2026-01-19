@@ -299,14 +299,7 @@ function SneedexCreate() {
             return uint8ArrayToHex(neuron.id);
         }
         // Fallback to getNeuronId utility
-        const fallback = getNeuronId(neuron);
-        if (fallback) return fallback;
-        
-        // Last resort - log for debugging
-        console.warn('Could not extract neuron ID from:', JSON.stringify(neuron.id, (key, value) => 
-            value instanceof Uint8Array ? Array.from(value) : value
-        ));
-        return null;
+        return getNeuronId(neuron);
     }, []);
     
     // Get display name for a neuron
@@ -466,14 +459,23 @@ function SneedexCreate() {
                 );
                 
                 if (userPerms && userPerms.permission_type) {
-                    // Check for key permissions (Vote, ManageVotingPermission, etc.)
-                    const hasVote = userPerms.permission_type.some(p => 'Vote' in p);
-                    const hasManageVoting = userPerms.permission_type.some(p => 'ManageVotingPermission' in p);
+                    // SNS permission types are integers:
+                    // 0: Unspecified, 1: ConfigureDissolveState, 2: ManagePrincipals, 3: SubmitProposal
+                    // 4: Vote, 5: Disburse, 6: Split, 7: MergeMaturity, 8: DisburseMaturity
+                    // 9: StakeMaturity, 10: ManageVotingPermission
+                    const PERM_VOTE = 4;
+                    const PERM_MANAGE_VOTING = 10;
+                    
+                    const hasVote = userPerms.permission_type.includes(PERM_VOTE);
+                    const hasManageVoting = userPerms.permission_type.includes(PERM_MANAGE_VOTING);
                     
                     if (hasVote && hasManageVoting) {
                         return { verified: true, message: 'Has hotkey permissions' };
                     } else {
-                        return { verified: false, message: 'Missing some permissions' };
+                        const missing = [];
+                        if (!hasVote) missing.push('Vote');
+                        if (!hasManageVoting) missing.push('ManageVotingPermission');
+                        return { verified: false, message: `Missing: ${missing.join(', ')}` };
                     }
                 }
                 return { verified: false, message: 'No permissions found - add Sneedex as hotkey' };
@@ -1420,10 +1422,7 @@ function SneedexCreate() {
                                                                 cursor: 'pointer',
                                                             }}
                                                             value={newAssetNeuronId}
-                                                            onChange={(e) => {
-                                                                console.log('Neuron selected:', e.target.value);
-                                                                setNewAssetNeuronId(e.target.value);
-                                                            }}
+                                                            onChange={(e) => setNewAssetNeuronId(e.target.value)}
                                                         >
                                                             <option value="">Select a neuron...</option>
                                                             {snsNeurons
