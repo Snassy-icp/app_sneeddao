@@ -32,6 +32,7 @@ function SneedexOffer() {
     const [bidAmount, setBidAmount] = useState('');
     const [bidding, setBidding] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+    const [pendingBid, setPendingBid] = useState(null); // {bidId, amount, subaccount}
     
     const fetchOffer = useCallback(async () => {
         setLoading(true);
@@ -122,20 +123,15 @@ function SneedexOffer() {
                 bidId
             );
             
-            // Step 3: User needs to send tokens to the escrow subaccount
-            // For now, show instructions
+            // Step 3: Store pending bid info for user to complete
             const amountE8s = parseAmount(amount, tokenInfo.decimals);
+            setPendingBid({
+                bidId: bidId,
+                amount: amountE8s,
+                displayAmount: amount,
+                subaccount: subaccount
+            });
             
-            alert(
-                `Bid reserved (ID: ${bidId})!\n\n` +
-                `To complete your bid:\n` +
-                `1. Send ${amount} ${tokenInfo.symbol} to the Sneedex canister\n` +
-                `2. Use subaccount: ${Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}\n\n` +
-                `After sending, call confirmBid(${bidId}, ${amountE8s}) to finalize.`
-            );
-            
-            // Refresh offer data
-            await fetchOffer();
             setBidAmount('');
         } catch (e) {
             console.error('Failed to place bid:', e);
@@ -143,6 +139,34 @@ function SneedexOffer() {
         } finally {
             setBidding(false);
         }
+    };
+    
+    const handleConfirmBid = async () => {
+        if (!identity || !pendingBid) return;
+        
+        setActionLoading(true);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.confirmBid(pendingBid.bidId, pendingBid.amount);
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('Bid confirmed successfully! Your bid is now active.');
+            setPendingBid(null);
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to confirm bid:', e);
+            setError(e.message || 'Failed to confirm bid. Make sure you have sent the tokens to the escrow subaccount.');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+    
+    const handleCancelPendingBid = () => {
+        setPendingBid(null);
     };
     
     const handleBuyout = async () => {
@@ -886,7 +910,7 @@ function SneedexOffer() {
                                 </span>
                             </div>
                             
-                            {isActive && !isCreator && isAuthenticated && (
+                            {isActive && isAuthenticated && !pendingBid && (
                                 <div style={styles.bidSection}>
                                     <div style={styles.minBidHint}>
                                         Minimum bid: {getMinimumBid().toFixed(4)} {tokenInfo.symbol}
@@ -919,6 +943,79 @@ function SneedexOffer() {
                                             ⚡ Instant Buyout for {formatAmount(offer.buyout_price[0], tokenInfo.decimals)} {tokenInfo.symbol}
                                         </button>
                                     )}
+                                </div>
+                            )}
+                            
+                            {/* Pending bid confirmation */}
+                            {pendingBid && (
+                                <div style={{
+                                    background: `${theme.colors.accent}10`,
+                                    border: `2px solid ${theme.colors.accent}`,
+                                    borderRadius: '12px',
+                                    padding: '1.5rem',
+                                    marginTop: '1rem'
+                                }}>
+                                    <h4 style={{ 
+                                        margin: '0 0 1rem 0', 
+                                        color: theme.colors.accent,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <FaGavel /> Bid Reserved - Complete Payment
+                                    </h4>
+                                    <div style={{ 
+                                        background: theme.colors.background,
+                                        borderRadius: '8px',
+                                        padding: '1rem',
+                                        marginBottom: '1rem',
+                                        fontSize: '0.9rem'
+                                    }}>
+                                        <p style={{ margin: '0 0 0.5rem 0' }}>
+                                            <strong>Bid ID:</strong> {pendingBid.bidId.toString()}
+                                        </p>
+                                        <p style={{ margin: '0 0 0.5rem 0' }}>
+                                            <strong>Amount:</strong> {pendingBid.displayAmount} {tokenInfo.symbol}
+                                        </p>
+                                        <p style={{ margin: '0 0 0.5rem 0' }}>
+                                            <strong>Send to:</strong> {SNEEDEX_CANISTER_ID}
+                                        </p>
+                                        <p style={{ margin: '0', wordBreak: 'break-all' }}>
+                                            <strong>Subaccount:</strong>{' '}
+                                            <code style={{ 
+                                                background: theme.colors.cardBackground,
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8rem'
+                                            }}>
+                                                {Array.from(pendingBid.subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}
+                                            </code>
+                                        </p>
+                                    </div>
+                                    <p style={{ 
+                                        margin: '0 0 1rem 0', 
+                                        fontSize: '0.85rem',
+                                        color: theme.colors.mutedText
+                                    }}>
+                                        Send {pendingBid.displayAmount} {tokenInfo.symbol} to the Sneedex canister using the subaccount above, 
+                                        then click "Confirm Bid" to verify payment and activate your bid.
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <button
+                                            style={styles.acceptButton}
+                                            onClick={handleConfirmBid}
+                                            disabled={actionLoading}
+                                        >
+                                            {actionLoading ? 'Confirming...' : '✓ Confirm Bid'}
+                                        </button>
+                                        <button
+                                            style={styles.cancelButton}
+                                            onClick={handleCancelPendingBid}
+                                            disabled={actionLoading}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                             
