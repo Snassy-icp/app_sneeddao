@@ -37,6 +37,35 @@ function SneedexOffer() {
     const [pendingBid, setPendingBid] = useState(null); // {bidId, amount, subaccount, escrowBalance}
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [withdrawLoading, setWithdrawLoading] = useState(false);
+    const [userBalance, setUserBalance] = useState(null);
+    
+    // Fetch user's token balance
+    const fetchUserBalance = useCallback(async () => {
+        if (!identity || !offer) return;
+        
+        try {
+            const ledgerActor = await createLedgerActor(
+                offer.price_token_ledger.toString(),
+                identity
+            );
+            
+            const balance = await ledgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            
+            setUserBalance(balance);
+        } catch (e) {
+            console.error('Failed to fetch user balance:', e);
+        }
+    }, [identity, offer]);
+    
+    // Fetch balance when offer loads or identity changes
+    useEffect(() => {
+        if (offer && identity) {
+            fetchUserBalance();
+        }
+    }, [offer, identity, fetchUserBalance]);
     
     const fetchOffer = useCallback(async () => {
         setLoading(true);
@@ -195,6 +224,7 @@ function SneedexOffer() {
             setBidProgress('');
             alert('Bid placed successfully!');
             await fetchOffer();
+            fetchUserBalance(); // Refresh balance
             
         } catch (e) {
             console.error('Failed during bid process:', e);
@@ -454,6 +484,7 @@ function SneedexOffer() {
             setBuyoutProgress('');
             alert('Buyout successful! You now own the assets.');
             await fetchOffer();
+            fetchUserBalance(); // Refresh balance
             
         } catch (e) {
             console.error('Failed during buyout process:', e);
@@ -1174,8 +1205,26 @@ function SneedexOffer() {
                             
                             {isActive && isAuthenticated && !pendingBid && (
                                 <div style={styles.bidSection}>
-                                    <div style={styles.minBidHint}>
-                                        Minimum bid: {getMinimumBid().toFixed(4)} {tokenInfo.symbol}
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        marginBottom: '0.75rem',
+                                        fontSize: '0.85rem'
+                                    }}>
+                                        <span style={{ color: theme.colors.mutedText }}>
+                                            Min: {getMinimumBid().toFixed(4)} {tokenInfo.symbol}
+                                        </span>
+                                        <span style={{ color: theme.colors.text }}>
+                                            <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
+                                            {userBalance !== null ? (
+                                                <span style={{ fontWeight: '600' }}>
+                                                    {formatAmount(userBalance, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                </span>
+                                            ) : (
+                                                <span style={{ opacity: 0.5 }}>Loading...</span>
+                                            )}
+                                        </span>
                                     </div>
                                     <div style={styles.bidInputRow}>
                                         <input
