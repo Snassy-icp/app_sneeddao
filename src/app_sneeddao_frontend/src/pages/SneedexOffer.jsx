@@ -1883,13 +1883,13 @@ function SneedexOffer() {
                                                             ID: {details.canister_id}
                                                         </div>
                                                     )}
-                                                    {details.type === 'SNSNeuron' && (
+                                                    {details.type === 'SNSNeuron' && !details.escrowed && (
                                                         <>
                                                             <div style={styles.assetDetail}>Governance: {details.governance_id}</div>
                                                             <div style={styles.assetDetail}>Neuron: {details.neuron_id}</div>
                                                         </>
                                                     )}
-                                                    {details.type === 'ICRC1Token' && (
+                                                    {details.type === 'ICRC1Token' && !details.escrowed && (
                                                         <div style={styles.assetDetail}>Ledger: {details.ledger_id}</div>
                                                     )}
                                                 </div>
@@ -2289,7 +2289,7 @@ function SneedexOffer() {
                                                             Loading neuron info...
                                                         </div>
                                                     ) : nInfo ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                                             <div style={{ 
                                                                 display: 'flex', 
                                                                 alignItems: 'center', 
@@ -2593,7 +2593,7 @@ function SneedexOffer() {
                                                             Loading token info...
                                                         </div>
                                                     ) : tMeta ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                                             <h4 style={{ 
                                                                 margin: 0, 
                                                                 fontSize: '0.9rem', 
