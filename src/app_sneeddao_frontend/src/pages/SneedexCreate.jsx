@@ -22,10 +22,13 @@ import { createActor as createBackendActor } from 'declarations/app_sneeddao_bac
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
+import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
+import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
+const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 
 // Management canister IDL for canister_status
 const managementIdlFactory = () => {
@@ -186,6 +189,117 @@ function SneedexCreate() {
     const [newAssetCanisterId, setNewAssetCanisterId] = useState('');
     const [newAssetGovernanceId, setNewAssetGovernanceId] = useState('');
     const [newAssetNeuronId, setNewAssetNeuronId] = useState('');
+    
+    // SNS and Neuron selection state
+    const [snsList, setSnsList] = useState([]);
+    const [loadingSnses, setLoadingSnses] = useState(true);
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState('');
+    const [snsNeurons, setSnsNeurons] = useState([]);
+    const [loadingSnsNeurons, setLoadingSnsNeurons] = useState(false);
+    const [snsLogos, setSnsLogos] = useState(new Map());
+    
+    // Fetch SNS list on mount
+    useEffect(() => {
+        const loadSnsData = async () => {
+            setLoadingSnses(true);
+            try {
+                // Check for cached data first
+                const cachedData = getAllSnses();
+                if (cachedData && cachedData.length > 0) {
+                    // Sort so Sneed comes first
+                    const sortedData = [...cachedData].sort((a, b) => {
+                        if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                        if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    setSnsList(sortedData);
+                    setLoadingSnses(false);
+                    
+                    // Load logos
+                    const host = getHost();
+                    const agent = HttpAgent.createSync({ host, identity });
+                    cachedData.forEach(async (sns) => {
+                        if (sns.canisters.governance && !snsLogos.has(sns.canisters.governance)) {
+                            try {
+                                const logo = await fetchSnsLogo(sns.canisters.governance, agent);
+                                setSnsLogos(prev => new Map(prev).set(sns.canisters.governance, logo));
+                            } catch (e) {}
+                        }
+                    });
+                    return;
+                }
+                
+                // No cached data - start background fetch
+                startBackgroundSnsFetch(identity, (data) => {
+                    const sortedData = [...data].sort((a, b) => {
+                        if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                        if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    setSnsList(sortedData);
+                    setLoadingSnses(false);
+                }).catch(() => setLoadingSnses(false));
+            } catch (e) {
+                console.error('Failed to load SNS data:', e);
+                setLoadingSnses(false);
+            }
+        };
+        loadSnsData();
+    }, [identity]);
+    
+    // Fetch neurons when SNS is selected
+    const fetchNeuronsForSelectedSns = useCallback(async (snsRoot) => {
+        if (!identity || !snsRoot) {
+            setSnsNeurons([]);
+            return;
+        }
+        
+        setLoadingSnsNeurons(true);
+        try {
+            const snsData = getSnsById(snsRoot);
+            if (!snsData) {
+                setSnsNeurons([]);
+                return;
+            }
+            
+            const neurons = await fetchUserNeuronsForSns(identity, snsData.canisters.governance);
+            
+            // Filter to only neurons where user has hotkey permissions
+            const userPrincipal = identity.getPrincipal().toString();
+            const hotkeyNeurons = neurons.filter(neuron => {
+                return neuron.permissions?.some(p => 
+                    p.principal?.[0]?.toString() === userPrincipal
+                );
+            });
+            
+            setSnsNeurons(hotkeyNeurons);
+            
+            // Auto-set governance ID
+            setNewAssetGovernanceId(snsData.canisters.governance);
+        } catch (e) {
+            console.error('Failed to fetch neurons:', e);
+            setSnsNeurons([]);
+        } finally {
+            setLoadingSnsNeurons(false);
+        }
+    }, [identity]);
+    
+    // Helper to convert neuron ID to hex string
+    const neuronIdToHex = useCallback((neuronId) => {
+        if (!neuronId?.id) return '';
+        const bytes = neuronId.id instanceof Uint8Array ? neuronId.id : new Uint8Array(neuronId.id);
+        return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }, []);
+    
+    // Get display name for a neuron
+    const getNeuronDisplayName = useCallback((neuron) => {
+        const idHex = neuronIdToHex(neuron.id);
+        const shortId = idHex.slice(0, 8) + '...' + idHex.slice(-8);
+        const stake = neuron.cached_neuron_stake_e8s ? 
+            (Number(neuron.cached_neuron_stake_e8s) / 1e8).toFixed(2) : '0';
+        return `${shortId} (${stake} tokens)`;
+    }, [neuronIdToHex]);
+    
     const [newAssetTokenLedger, setNewAssetTokenLedger] = useState('');
     const [newAssetTokenAmount, setNewAssetTokenAmount] = useState('');
     const [newAssetTokenSymbol, setNewAssetTokenSymbol] = useState('');
@@ -408,8 +522,12 @@ function SneedexCreate() {
                     display: `Canister: ${newAssetCanisterId.trim().slice(0, 10)}...`
                 };
             } else if (newAssetType === 'neuron') {
-                if (!newAssetGovernanceId.trim() || !newAssetNeuronId.trim()) {
-                    setError('Please enter governance canister ID and neuron ID');
+                if (!selectedSnsRoot || !newAssetGovernanceId.trim()) {
+                    setError('Please select an SNS');
+                    return;
+                }
+                if (!newAssetNeuronId.trim()) {
+                    setError('Please select or enter a neuron ID');
                     return;
                 }
                 // Validate governance principal
@@ -457,6 +575,8 @@ function SneedexCreate() {
         setNewAssetCanisterId('');
         setNewAssetGovernanceId('');
         setNewAssetNeuronId('');
+        setSelectedSnsRoot('');
+        setSnsNeurons([]);
         setNewAssetTokenLedger('');
         setNewAssetTokenAmount('');
         setNewAssetTokenSymbol('');
@@ -1225,25 +1345,118 @@ function SneedexCreate() {
                                 {newAssetType === 'neuron' && (
                                     <>
                                         <div style={styles.formGroup}>
-                                            <label style={styles.label}>SNS Governance Canister ID</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g., fi3zi-fyaaa-aaaaq-aachq-cai"
-                                                style={styles.input}
-                                                value={newAssetGovernanceId}
-                                                onChange={(e) => setNewAssetGovernanceId(e.target.value)}
-                                            />
+                                            <label style={styles.label}>Select SNS</label>
+                                            {loadingSnses ? (
+                                                <div style={{ 
+                                                    padding: '12px', 
+                                                    color: theme.colors.mutedText,
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '8px'
+                                                }}>
+                                                    Loading SNSes...
+                                                </div>
+                                            ) : (
+                                                <select
+                                                    style={{
+                                                        ...styles.input,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    value={selectedSnsRoot}
+                                                    onChange={(e) => {
+                                                        setSelectedSnsRoot(e.target.value);
+                                                        setNewAssetNeuronId('');
+                                                        fetchNeuronsForSelectedSns(e.target.value);
+                                                    }}
+                                                >
+                                                    <option value="">Select an SNS...</option>
+                                                    {snsList.map(sns => (
+                                                        <option key={sns.rootCanisterId} value={sns.rootCanisterId}>
+                                                            {sns.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
                                         </div>
-                                        <div style={styles.formGroup}>
-                                            <label style={styles.label}>Neuron ID (hex)</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Neuron ID in hex format"
-                                                style={styles.input}
-                                                value={newAssetNeuronId}
-                                                onChange={(e) => setNewAssetNeuronId(e.target.value)}
-                                            />
-                                        </div>
+                                        
+                                        {selectedSnsRoot && (
+                                            <div style={styles.formGroup}>
+                                                <label style={styles.label}>Select Your Neuron</label>
+                                                {loadingSnsNeurons ? (
+                                                    <div style={{ 
+                                                        padding: '12px', 
+                                                        color: theme.colors.mutedText,
+                                                        background: theme.colors.secondaryBg,
+                                                        borderRadius: '8px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                        Loading your neurons...
+                                                    </div>
+                                                ) : snsNeurons.length > 0 ? (
+                                                    <>
+                                                        <select
+                                                            style={{
+                                                                ...styles.input,
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            value={newAssetNeuronId}
+                                                            onChange={(e) => setNewAssetNeuronId(e.target.value)}
+                                                        >
+                                                            <option value="">Select a neuron...</option>
+                                                            {snsNeurons.map(neuron => {
+                                                                const hexId = neuronIdToHex(neuron.id);
+                                                                return (
+                                                                    <option key={hexId} value={hexId}>
+                                                                        {getNeuronDisplayName(neuron)}
+                                                                    </option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                        
+                                                        <div style={{ 
+                                                            marginTop: '8px', 
+                                                            fontSize: '0.8rem', 
+                                                            color: theme.colors.mutedText 
+                                                        }}>
+                                                            Or enter a neuron ID manually:
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Neuron ID in hex format"
+                                                            style={{ ...styles.input, marginTop: '4px' }}
+                                                            value={newAssetNeuronId}
+                                                            onChange={(e) => setNewAssetNeuronId(e.target.value)}
+                                                        />
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div style={{ 
+                                                            padding: '12px', 
+                                                            background: `${theme.colors.warning}15`,
+                                                            borderRadius: '8px',
+                                                            marginBottom: '8px',
+                                                            fontSize: '0.85rem',
+                                                            color: theme.colors.warning,
+                                                        }}>
+                                                            <FaExclamationTriangle style={{ marginRight: '8px' }} />
+                                                            No hotkeyed neurons found for this SNS. You can still enter a neuron ID manually.
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Neuron ID in hex format"
+                                                            style={styles.input}
+                                                            value={newAssetNeuronId}
+                                                            onChange={(e) => setNewAssetNeuronId(e.target.value)}
+                                                        />
+                                                    </>
+                                                )}
+                                                
+                                                {/* Hidden input to store governance ID */}
+                                                <input type="hidden" value={newAssetGovernanceId} />
+                                            </div>
+                                        )}
                                     </>
                                 )}
                                 
