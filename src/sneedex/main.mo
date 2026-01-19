@@ -184,6 +184,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = offer.assets;
                                     state = #Claimed;
+                                    approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -337,6 +338,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Reclaimed;
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -486,6 +488,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             price_token_ledger = request.price_token_ledger;
             assets = [];
             state = #Draft;
+            approved_bidders = request.approved_bidders;
             created_at = Time.now();
             activated_at = null;
         };
@@ -561,6 +564,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = Array.append(offer.assets, [entry]);
                     state = offer.state;
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -597,6 +601,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #PendingEscrow;
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -678,6 +683,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             price_token_ledger = offer.price_token_ledger;
                                             assets = updatedAssets;
                                             state = offer.state;
+                                            approved_bidders = offer.approved_bidders;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
                                         };
@@ -767,6 +773,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             price_token_ledger = offer.price_token_ledger;
                                             assets = updatedAssets;
                                             state = offer.state;
+                                            approved_bidders = offer.approved_bidders;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
                                         };
@@ -842,6 +849,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = updatedAssets;
                                     state = offer.state;
+                                    approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -898,6 +906,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Active;
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = ?Time.now();
                 };
@@ -924,6 +933,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (?offer) {
                 if (offer.state != #Active) {
                     return #err(#InvalidState("Offer is not active"));
+                };
+                
+                // Check if this is a private offer with approved bidders
+                switch (offer.approved_bidders) {
+                    case (?approvedList) {
+                        let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, caller) });
+                        if (isApproved == null and not Principal.equal(caller, offer.creator)) {
+                            return #err(#NotAuthorized);
+                        };
+                    };
+                    case null {}; // Public offer, anyone can bid
                 };
                 
                 // Check expiration
@@ -1093,6 +1113,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         winning_bid_id = winningBidId;
                         completion_time = Time.now();
                     });
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1206,6 +1227,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = offer.assets;
                                     state = #Expired;
+                                    approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1252,6 +1274,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Cancelled;
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1341,6 +1364,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = offer.assets;
                                     state = #Claimed;
+                                    approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1564,6 +1588,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Reclaimed;
+                    approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1807,6 +1832,30 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public query func getActiveOffers() : async [T.Offer] {
         Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             o.state == #Active;
+        });
+    };
+    
+    /// Get all active public offers (no approved_bidders list)
+    public query func getPublicOffers() : async [T.Offer] {
+        Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+            o.state == #Active and o.approved_bidders == null;
+        });
+    };
+    
+    /// Get all active private offers visible to a specific principal
+    /// (offers where the principal is the creator or in the approved_bidders list)
+    public query func getPrivateOffersFor(viewer : Principal) : async [T.Offer] {
+        Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
+            if (o.state != #Active) return false;
+            switch (o.approved_bidders) {
+                case null { false }; // Public offer, not included
+                case (?approvedList) {
+                    // Include if viewer is creator or in approved list
+                    if (Principal.equal(o.creator, viewer)) return true;
+                    let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
+                    isApproved != null;
+                };
+            };
         });
     };
     

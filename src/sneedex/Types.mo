@@ -281,6 +281,9 @@ module {
         // State
         state : OfferState;
         
+        // Access control - if set, only these principals can bid (OTC/private offer)
+        approved_bidders : ?[Principal];
+        
         // Timestamps
         created_at : Time.Time;
         activated_at : ?Time.Time;
@@ -322,6 +325,7 @@ module {
         buyout_price : ?Nat;
         expiration : ?Time.Time;
         price_token_ledger : Principal;
+        approved_bidders : ?[Principal]; // If set, only these principals can bid (OTC/private offer)
     };
     
     public type AddAssetRequest = {
