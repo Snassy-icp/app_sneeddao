@@ -436,15 +436,22 @@ function SneedexOffer() {
         }
     }, [offer, identity]);
     
-    // Fetch escrow subaccount for ICRC1 token assets
+    // Fetch escrow subaccount and token metadata for ICRC1 token assets
     useEffect(() => {
         if (offer && identity) {
-            const hasTokenAsset = offer.assets?.some(a => 'ICRC1Token' in a.asset);
-            if (hasTokenAsset) {
+            const tokenAssets = offer.assets?.filter(a => 'ICRC1Token' in a.asset) || [];
+            if (tokenAssets.length > 0) {
                 fetchEscrowSubaccountForOffer();
+                // Fetch metadata for all token assets
+                tokenAssets.forEach((assetEntry, idx) => {
+                    const ledgerId = assetEntry.asset.ICRC1Token.ledger_canister_id.toString();
+                    if (!tokenMetadata[ledgerId]) {
+                        fetchTokenMetadata(idx, ledgerId);
+                    }
+                });
             }
         }
-    }, [offer, identity, fetchEscrowSubaccountForOffer]);
+    }, [offer, identity, fetchEscrowSubaccountForOffer, fetchTokenMetadata, tokenMetadata]);
     
     // Toggle asset expansion and fetch info if needed
     const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
@@ -1151,11 +1158,54 @@ function SneedexOffer() {
     const handleEscrowICRC1Tokens = async (assetIndex) => {
         if (!identity || !offer) return;
         
+        const assetEntry = offer.assets[assetIndex];
+        if (!assetEntry || !('ICRC1Token' in assetEntry.asset)) {
+            setError('Invalid token asset');
+            return;
+        }
+        
+        const tokenAsset = assetEntry.asset.ICRC1Token;
+        const ledgerId = tokenAsset.ledger_canister_id.toString();
+        const amount = tokenAsset.amount;
+        
         setEscrowingAsset(assetIndex);
         setError('');
         try {
-            const actor = createSneedexActor(identity);
-            const result = await actor.escrowICRC1Tokens(BigInt(id), BigInt(assetIndex));
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            // Create actor for the specific token ledger (not ICP)
+            const ledgerActor = createICRC1Actor(ledgerId, { agent });
+            
+            // Get the escrow subaccount
+            const sneedexActor = createSneedexActor(identity);
+            const escrowSubaccount = await sneedexActor.getOfferEscrowSubaccount(
+                offer.creator,
+                BigInt(offer.id)
+            );
+            
+            // Transfer tokens to the escrow subaccount
+            const transferResult = await ledgerActor.icrc1_transfer({
+                to: {
+                    owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+                    subaccount: [escrowSubaccount],
+                },
+                amount: amount,
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Err' in transferResult) {
+                throw new Error(`Token transfer failed: ${JSON.stringify(transferResult.Err)}`);
+            }
+            
+            // Now verify the escrow in the backend
+            const result = await sneedexActor.escrowICRC1Tokens(BigInt(id), BigInt(assetIndex));
             
             if ('err' in result) {
                 throw new Error(getErrorMessage(result.err));
@@ -1165,7 +1215,7 @@ function SneedexOffer() {
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow tokens:', e);
-            setError(e.message || 'Failed to escrow tokens. Make sure you have sent tokens to the escrow subaccount.');
+            setError(e.message || 'Failed to escrow tokens. Make sure you have sufficient balance.');
         } finally {
             setEscrowingAsset(null);
         }
@@ -1654,7 +1704,13 @@ function SneedexOffer() {
                                                         <span style={styles.assetType}>
                                                             {details.type === 'Canister' && 'Canister'}
                                                             {details.type === 'SNSNeuron' && 'SNS Neuron'}
-                                                            {details.type === 'ICRC1Token' && `${formatAmount(details.amount)} Tokens`}
+                                                            {details.type === 'ICRC1Token' && (() => {
+                                                                const meta = tokenMetadata[details.ledger_id];
+                                                                const decimals = meta?.decimals || 8;
+                                                                const symbol = meta?.symbol || 'Tokens';
+                                                                const displayAmount = Number(details.amount) / Math.pow(10, decimals);
+                                                                return `${displayAmount.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${symbol}`;
+                                                            })()}
                                                         </span>
                                                     </div>
                                                     {details.type === 'Canister' && (
