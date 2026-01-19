@@ -965,8 +965,26 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             };
                         };
                     };
-                    case (_) {
-                        return #err(#InvalidState("Offer is not completed"));
+                    case (#Draft) {
+                        return #err(#InvalidState("Offer is in Draft state, not completed"));
+                    };
+                    case (#PendingEscrow) {
+                        return #err(#InvalidState("Offer is in PendingEscrow state, not completed"));
+                    };
+                    case (#Active) {
+                        return #err(#InvalidState("Offer is Active (not yet completed). Seller must accept a bid first."));
+                    };
+                    case (#Expired) {
+                        return #err(#InvalidState("Offer has expired"));
+                    };
+                    case (#Cancelled) {
+                        return #err(#InvalidState("Offer was cancelled"));
+                    };
+                    case (#Claimed) {
+                        return #err(#InvalidState("Assets already claimed"));
+                    };
+                    case (#Reclaimed) {
+                        return #err(#InvalidState("Assets were reclaimed by seller"));
                     };
                 };
             };
