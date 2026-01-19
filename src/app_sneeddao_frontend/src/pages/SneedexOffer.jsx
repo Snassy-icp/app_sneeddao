@@ -118,6 +118,11 @@ function SneedexOffer() {
     const [expandedAssets, setExpandedAssets] = useState({}); // {assetIndex: boolean}
     const [canisterInfo, setCanisterInfo] = useState({}); // {assetIndex: canisterInfo}
     const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
+    const [neuronInfo, setNeuronInfo] = useState({}); // {assetIndex: neuronInfo}
+    const [loadingNeuronInfo, setLoadingNeuronInfo] = useState({}); // {assetIndex: boolean}
+    const [tokenMetadata, setTokenMetadata] = useState({}); // {ledgerId: metadata}
+    const [loadingTokenMetadata, setLoadingTokenMetadata] = useState({}); // {assetIndex: boolean}
+    const [escrowSubaccount, setEscrowSubaccount] = useState(null); // Blob for ICRC1 token escrow
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -345,16 +350,118 @@ function SneedexOffer() {
         }
     }, [identity, offer, id]);
     
-    // Toggle asset expansion and fetch canister info if needed
-    const toggleAssetExpanded = useCallback((assetIndex, assetEntry) => {
+    // Fetch SNS neuron info directly from governance canister
+    const fetchNeuronInfo = useCallback(async (assetIndex, governanceId, neuronIdHex) => {
+        if (!identity) return;
+        
+        setLoadingNeuronInfo(prev => ({ ...prev, [assetIndex]: true }));
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const governanceActor = createGovernanceActor(governanceId, { agent });
+            const neuronIdBlob = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            
+            const result = await governanceActor.get_neuron({
+                neuron_id: [{ id: neuronIdBlob }]
+            });
+            
+            if (result.result && result.result[0] && 'Neuron' in result.result[0]) {
+                setNeuronInfo(prev => ({ ...prev, [assetIndex]: result.result[0].Neuron }));
+            }
+        } catch (e) {
+            console.error('Failed to fetch neuron info:', e);
+        } finally {
+            setLoadingNeuronInfo(prev => ({ ...prev, [assetIndex]: false }));
+        }
+    }, [identity]);
+    
+    // Fetch token metadata from ledger
+    const fetchTokenMetadata = useCallback(async (assetIndex, ledgerId) => {
+        // Check if we already have metadata for this ledger
+        if (tokenMetadata[ledgerId]) return;
+        
+        setLoadingTokenMetadata(prev => ({ ...prev, [assetIndex]: true }));
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createICRC1Actor(ledgerId, { agent });
+            
+            const [name, symbol, decimals, fee] = await Promise.all([
+                ledgerActor.icrc1_name(),
+                ledgerActor.icrc1_symbol(),
+                ledgerActor.icrc1_decimals(),
+                ledgerActor.icrc1_fee(),
+            ]);
+            
+            setTokenMetadata(prev => ({ 
+                ...prev, 
+                [ledgerId]: { name, symbol, decimals: Number(decimals), fee: Number(fee) } 
+            }));
+        } catch (e) {
+            console.error('Failed to fetch token metadata:', e);
+        } finally {
+            setLoadingTokenMetadata(prev => ({ ...prev, [assetIndex]: false }));
+        }
+    }, [identity, tokenMetadata]);
+    
+    // Fetch the escrow subaccount for the offer
+    const fetchEscrowSubaccountForOffer = useCallback(async () => {
+        if (!offer || !identity) return;
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const sneedexActor = createSneedexActor(identity);
+            const subaccount = await sneedexActor.getOfferEscrowSubaccount(
+                Principal.fromText(offer.creator.toString()),
+                BigInt(offer.id)
+            );
+            setEscrowSubaccount(subaccount);
+        } catch (e) {
+            console.error('Failed to fetch escrow subaccount:', e);
+        }
+    }, [offer, identity]);
+    
+    // Fetch escrow subaccount for ICRC1 token assets
+    useEffect(() => {
+        if (offer && identity) {
+            const hasTokenAsset = offer.assets?.some(a => 'ICRC1Token' in a.asset);
+            if (hasTokenAsset) {
+                fetchEscrowSubaccountForOffer();
+            }
+        }
+    }, [offer, identity, fetchEscrowSubaccountForOffer]);
+    
+    // Toggle asset expansion and fetch info if needed
+    const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
         const isExpanding = !expandedAssets[assetIndex];
         setExpandedAssets(prev => ({ ...prev, [assetIndex]: isExpanding }));
         
-        // If expanding a canister asset that's escrowed and we don't have info yet, fetch it
-        if (isExpanding && 'Canister' in assetEntry.asset && assetEntry.escrowed && !canisterInfo[assetIndex]) {
-            fetchCanisterInfo(assetIndex);
+        if (isExpanding && assetEntry.escrowed) {
+            // Fetch appropriate info based on asset type
+            if ('Canister' in assetEntry.asset && !canisterInfo[assetIndex]) {
+                fetchCanisterInfo(assetIndex);
+            } else if ('SNSNeuron' in assetEntry.asset && !neuronInfo[assetIndex]) {
+                fetchNeuronInfo(assetIndex, details.governance_id, details.neuron_id);
+            } else if ('ICRC1Token' in assetEntry.asset && !tokenMetadata[details.ledger_id]) {
+                fetchTokenMetadata(assetIndex, details.ledger_id);
+            }
         }
-    }, [expandedAssets, canisterInfo, fetchCanisterInfo]);
+    }, [expandedAssets, canisterInfo, neuronInfo, tokenMetadata, fetchCanisterInfo, fetchNeuronInfo, fetchTokenMetadata]);
     
     // Format bytes to human readable
     const formatBytes = (bytes) => {
@@ -1524,15 +1631,19 @@ function SneedexOffer() {
                                     const isExpanded = expandedAssets[idx];
                                     const info = canisterInfo[idx];
                                     const isLoadingInfo = loadingCanisterInfo[idx];
+                                    const nInfo = neuronInfo[idx];
+                                    const isLoadingNeuron = loadingNeuronInfo[idx];
+                                    const tMeta = tokenMetadata[details.ledger_id];
+                                    const isLoadingToken = loadingTokenMetadata[idx];
                                     
                                     return (
                                         <div key={idx} style={{
                                             ...styles.assetItem,
-                                            cursor: details.type === 'Canister' && details.escrowed ? 'pointer' : 'default',
+                                            cursor: details.escrowed ? 'pointer' : 'default',
                                         }}
                                         onClick={() => {
-                                            if (details.type === 'Canister' && details.escrowed) {
-                                                toggleAssetExpanded(idx, assetEntry);
+                                            if (details.escrowed) {
+                                                toggleAssetExpanded(idx, assetEntry, details);
                                             }
                                         }}
                                         >
@@ -1562,12 +1673,12 @@ function SneedexOffer() {
                                                     )}
                                                 </div>
                                                 
-                                                {/* Expand/Collapse button for escrowed canisters */}
-                                                {details.type === 'Canister' && details.escrowed && (
+                                                {/* Expand/Collapse button for escrowed assets */}
+                                                {details.escrowed && (
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            toggleAssetExpanded(idx, assetEntry);
+                                                            toggleAssetExpanded(idx, assetEntry, details);
                                                         }}
                                                         style={{
                                                             background: 'transparent',
@@ -1928,6 +2039,541 @@ function SneedexOffer() {
                                                             padding: '1rem',
                                                         }}>
                                                             Failed to load canister info
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Expanded SNS Neuron Info Section */}
+                                            {details.type === 'SNSNeuron' && details.escrowed && isExpanded && (
+                                                <div style={{
+                                                    marginTop: '1rem',
+                                                    padding: '1rem',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '10px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    {isLoadingNeuron ? (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            justifyContent: 'center',
+                                                            gap: '10px',
+                                                            padding: '1rem',
+                                                            color: theme.colors.mutedText,
+                                                        }}>
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                            Loading neuron info...
+                                                        </div>
+                                                    ) : nInfo ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                justifyContent: 'space-between',
+                                                                marginBottom: '0.5rem',
+                                                            }}>
+                                                                <h4 style={{ 
+                                                                    margin: 0, 
+                                                                    fontSize: '0.9rem', 
+                                                                    color: theme.colors.primaryText,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                }}>
+                                                                    <FaBrain /> Neuron Details
+                                                                </h4>
+                                                                {nInfo.state && (
+                                                                    <span style={{
+                                                                        fontSize: '0.75rem',
+                                                                        padding: '3px 10px',
+                                                                        borderRadius: '12px',
+                                                                        fontWeight: '600',
+                                                                        background: nInfo.state === 1 || nInfo.state === 2 
+                                                                            ? `${theme.colors.success}20`
+                                                                            : `${theme.colors.warning}20`,
+                                                                        color: nInfo.state === 1 || nInfo.state === 2
+                                                                            ? theme.colors.success
+                                                                            : theme.colors.warning,
+                                                                    }}>
+                                                                        {nInfo.state === 0 ? 'Unspecified' : 
+                                                                         nInfo.state === 1 ? '● Locked' :
+                                                                         nInfo.state === 2 ? '● Not Dissolving' :
+                                                                         nInfo.state === 3 ? '◐ Dissolving' :
+                                                                         nInfo.state === 4 ? '○ Dissolved' :
+                                                                         nInfo.state === 5 ? 'Spawning' :
+                                                                         `State ${nInfo.state}`}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            {/* Stats Grid */}
+                                                            <div style={{
+                                                                display: 'grid',
+                                                                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                                                gap: '0.75rem',
+                                                            }}>
+                                                                {/* Staked Tokens */}
+                                                                {nInfo.cached_neuron_stake_e8s !== undefined && (
+                                                                    <div style={{
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        borderRadius: '8px',
+                                                                        padding: '0.75rem',
+                                                                    }}>
+                                                                        <div style={{ 
+                                                                            fontSize: '0.7rem', 
+                                                                            color: theme.colors.mutedText,
+                                                                            marginBottom: '4px',
+                                                                        }}>
+                                                                            Staked Amount
+                                                                        </div>
+                                                                        <div style={{ 
+                                                                            fontSize: '1rem', 
+                                                                            fontWeight: '700',
+                                                                            color: theme.colors.accent,
+                                                                        }}>
+                                                                            {(Number(nInfo.cached_neuron_stake_e8s) / 1e8).toFixed(4)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Voting Power */}
+                                                                {nInfo.voting_power !== undefined && (
+                                                                    <div style={{
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        borderRadius: '8px',
+                                                                        padding: '0.75rem',
+                                                                    }}>
+                                                                        <div style={{ 
+                                                                            fontSize: '0.7rem', 
+                                                                            color: theme.colors.mutedText,
+                                                                            marginBottom: '4px',
+                                                                        }}>
+                                                                            Voting Power
+                                                                        </div>
+                                                                        <div style={{ 
+                                                                            fontSize: '1rem', 
+                                                                            fontWeight: '700',
+                                                                            color: theme.colors.primaryText,
+                                                                        }}>
+                                                                            {(Number(nInfo.voting_power) / 1e8).toFixed(4)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Maturity */}
+                                                                {nInfo.maturity_e8s_equivalent !== undefined && (
+                                                                    <div style={{
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        borderRadius: '8px',
+                                                                        padding: '0.75rem',
+                                                                    }}>
+                                                                        <div style={{ 
+                                                                            fontSize: '0.7rem', 
+                                                                            color: theme.colors.mutedText,
+                                                                            marginBottom: '4px',
+                                                                        }}>
+                                                                            Maturity
+                                                                        </div>
+                                                                        <div style={{ 
+                                                                            fontSize: '1rem', 
+                                                                            fontWeight: '700',
+                                                                            color: theme.colors.success,
+                                                                        }}>
+                                                                            {(Number(nInfo.maturity_e8s_equivalent) / 1e8).toFixed(4)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Age (Seconds) */}
+                                                                {nInfo.age_seconds !== undefined && Number(nInfo.age_seconds) > 0 && (
+                                                                    <div style={{
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        borderRadius: '8px',
+                                                                        padding: '0.75rem',
+                                                                    }}>
+                                                                        <div style={{ 
+                                                                            fontSize: '0.7rem', 
+                                                                            color: theme.colors.mutedText,
+                                                                            marginBottom: '4px',
+                                                                        }}>
+                                                                            Age
+                                                                        </div>
+                                                                        <div style={{ 
+                                                                            fontSize: '1rem', 
+                                                                            fontWeight: '700',
+                                                                            color: theme.colors.primaryText,
+                                                                        }}>
+                                                                            {Math.floor(Number(nInfo.age_seconds) / 86400)}d
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            {/* Permissions/Hotkeys */}
+                                                            {nInfo.permissions && nInfo.permissions.length > 0 && (
+                                                                <div style={{ marginTop: '0.5rem' }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.75rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '6px',
+                                                                    }}>
+                                                                        Hotkeys/Permissions ({nInfo.permissions.length})
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        display: 'flex', 
+                                                                        flexDirection: 'column', 
+                                                                        gap: '4px',
+                                                                        maxHeight: '150px',
+                                                                        overflowY: 'auto',
+                                                                    }}>
+                                                                        {nInfo.permissions.map((perm, i) => (
+                                                                            <div key={i} style={{
+                                                                                fontSize: '0.75rem',
+                                                                                fontFamily: 'monospace',
+                                                                                color: perm.principal?.[0]?.toString() === SNEEDEX_CANISTER_ID 
+                                                                                    ? theme.colors.accent 
+                                                                                    : theme.colors.secondaryText,
+                                                                                background: theme.colors.tertiaryBg,
+                                                                                padding: '4px 8px',
+                                                                                borderRadius: '4px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'space-between',
+                                                                                gap: '6px',
+                                                                            }}>
+                                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                    {perm.principal?.[0]?.toString() === SNEEDEX_CANISTER_ID && (
+                                                                                        <span style={{ 
+                                                                                            fontSize: '0.65rem',
+                                                                                            background: theme.colors.accent,
+                                                                                            color: '#fff',
+                                                                                            padding: '1px 5px',
+                                                                                            borderRadius: '3px',
+                                                                                        }}>
+                                                                                            SNEEDEX
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {perm.principal?.[0]?.toString()?.slice(0, 15)}...
+                                                                                </span>
+                                                                                <span style={{
+                                                                                    fontSize: '0.65rem',
+                                                                                    color: theme.colors.mutedText,
+                                                                                }}>
+                                                                                    [{perm.permission_type?.length || 0} perms]
+                                                                                </span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Dissolve Delay */}
+                                                            {nInfo.dissolve_state && nInfo.dissolve_state[0] && (
+                                                                <div style={{ marginTop: '0.25rem' }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.75rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Dissolve Info
+                                                                    </div>
+                                                                    <div style={{
+                                                                        fontSize: '0.8rem',
+                                                                        color: theme.colors.secondaryText,
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        padding: '6px 8px',
+                                                                        borderRadius: '4px',
+                                                                    }}>
+                                                                        {'DissolveDelaySeconds' in nInfo.dissolve_state[0] 
+                                                                            ? `Delay: ${Math.floor(Number(nInfo.dissolve_state[0].DissolveDelaySeconds) / 86400)} days`
+                                                                            : 'WhenDissolvedTimestampSeconds' in nInfo.dissolve_state[0]
+                                                                                ? `Dissolves: ${new Date(Number(nInfo.dissolve_state[0].WhenDissolvedTimestampSeconds) * 1000).toLocaleDateString()}`
+                                                                                : JSON.stringify(nInfo.dissolve_state[0])
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Refresh button */}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    fetchNeuronInfo(idx, details.governance_id, details.neuron_id);
+                                                                }}
+                                                                style={{
+                                                                    marginTop: '0.5rem',
+                                                                    background: 'transparent',
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    color: theme.colors.mutedText,
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '0.75rem',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    width: 'fit-content',
+                                                                }}
+                                                            >
+                                                                <FaSync /> Refresh Info
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            textAlign: 'center',
+                                                            padding: '1rem',
+                                                        }}>
+                                                            Failed to load neuron info
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Expanded ICRC1 Token Info Section */}
+                                            {details.type === 'ICRC1Token' && details.escrowed && isExpanded && (
+                                                <div style={{
+                                                    marginTop: '1rem',
+                                                    padding: '1rem',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '10px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    {isLoadingToken ? (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            justifyContent: 'center',
+                                                            gap: '10px',
+                                                            padding: '1rem',
+                                                            color: theme.colors.mutedText,
+                                                        }}>
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                            Loading token info...
+                                                        </div>
+                                                    ) : tMeta ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                            <h4 style={{ 
+                                                                margin: 0, 
+                                                                fontSize: '0.9rem', 
+                                                                color: theme.colors.primaryText,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                            }}>
+                                                                <FaCoins /> Token Details
+                                                            </h4>
+                                                            
+                                                            {/* Token Metadata */}
+                                                            <div style={{
+                                                                display: 'grid',
+                                                                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                                                                gap: '0.75rem',
+                                                            }}>
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Name
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        {tMeta.name}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Symbol
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.accent,
+                                                                    }}>
+                                                                        {tMeta.symbol}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Decimals
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        {tMeta.decimals}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Transfer Fee
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.warning,
+                                                                    }}>
+                                                                        {tMeta.fee / Math.pow(10, tMeta.decimals)} {tMeta.symbol}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Escrowed Amount */}
+                                                            <div style={{
+                                                                background: `${theme.colors.accent}15`,
+                                                                borderRadius: '8px',
+                                                                padding: '1rem',
+                                                                border: `1px solid ${theme.colors.accent}30`,
+                                                                marginTop: '0.5rem',
+                                                            }}>
+                                                                <div style={{ 
+                                                                    fontSize: '0.75rem', 
+                                                                    color: theme.colors.mutedText,
+                                                                    marginBottom: '4px',
+                                                                }}>
+                                                                    Escrowed Amount
+                                                                </div>
+                                                                <div style={{ 
+                                                                    fontSize: '1.25rem', 
+                                                                    fontWeight: '700',
+                                                                    color: theme.colors.accent,
+                                                                }}>
+                                                                    {(Number(details.amount) / Math.pow(10, tMeta.decimals)).toLocaleString(undefined, { maximumFractionDigits: tMeta.decimals })} {tMeta.symbol}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Escrow Account Info */}
+                                                            <div style={{ marginTop: '0.5rem' }}>
+                                                                <div style={{ 
+                                                                    fontSize: '0.75rem', 
+                                                                    color: theme.colors.mutedText,
+                                                                    marginBottom: '6px',
+                                                                }}>
+                                                                    Escrow Account
+                                                                </div>
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    flexDirection: 'column', 
+                                                                    gap: '6px',
+                                                                }}>
+                                                                    <div style={{
+                                                                        fontSize: '0.75rem',
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        padding: '8px 10px',
+                                                                        borderRadius: '6px',
+                                                                    }}>
+                                                                        <span style={{ color: theme.colors.mutedText }}>Principal: </span>
+                                                                        <span style={{
+                                                                            fontFamily: 'monospace',
+                                                                            color: theme.colors.secondaryText,
+                                                                        }}>
+                                                                            {SNEEDEX_CANISTER_ID}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div style={{
+                                                                        fontSize: '0.75rem',
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        padding: '8px 10px',
+                                                                        borderRadius: '6px',
+                                                                    }}>
+                                                                        <span style={{ color: theme.colors.mutedText }}>Subaccount: </span>
+                                                                        <span style={{
+                                                                            fontFamily: 'monospace',
+                                                                            color: theme.colors.secondaryText,
+                                                                            fontSize: '0.7rem',
+                                                                            wordBreak: 'break-all',
+                                                                        }}>
+                                                                            {escrowSubaccount 
+                                                                                ? Array.from(escrowSubaccount).map(b => b.toString(16).padStart(2, '0')).join('')
+                                                                                : '(Loading...)'
+                                                                            }
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Ledger Canister */}
+                                                            <div style={{ marginTop: '0.25rem' }}>
+                                                                <div style={{ 
+                                                                    fontSize: '0.75rem', 
+                                                                    color: theme.colors.mutedText,
+                                                                    marginBottom: '4px',
+                                                                }}>
+                                                                    Ledger Canister
+                                                                </div>
+                                                                <div style={{
+                                                                    fontSize: '0.75rem',
+                                                                    fontFamily: 'monospace',
+                                                                    color: theme.colors.secondaryText,
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    padding: '6px 8px',
+                                                                    borderRadius: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                }}>
+                                                                    {details.ledger_id}
+                                                                    <a 
+                                                                        href={`https://dashboard.internetcomputer.org/canister/${details.ledger_id}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        style={{ color: theme.colors.accent }}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <FaExternalLinkAlt size={12} />
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            textAlign: 'center',
+                                                            padding: '1rem',
+                                                        }}>
+                                                            Failed to load token info
                                                         </div>
                                                     )}
                                                 </div>
