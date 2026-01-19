@@ -1235,25 +1235,64 @@ function SneedexOffer() {
             marginTop: '0.75rem',
         },
         bidsList: {
-            maxHeight: '300px',
+            maxHeight: '400px',
             overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
         },
         bidItem: {
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '0.75rem',
-            borderBottom: `1px solid ${theme.colors.border}`,
+            gap: '12px',
+            padding: '0.85rem 1rem',
+            background: theme.colors.tertiaryBg,
+            borderRadius: '10px',
+            transition: 'all 0.2s ease',
+        },
+        bidRank: {
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: '700',
+            fontSize: '0.85rem',
+            flexShrink: 0,
+        },
+        bidInfo: {
+            flex: 1,
+            minWidth: 0,
         },
         bidder: {
-            fontSize: '0.85rem',
+            fontSize: '0.9rem',
             fontFamily: 'monospace',
-            color: theme.colors.mutedText,
+            color: theme.colors.primaryText,
+            fontWeight: '500',
+        },
+        bidMeta: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '4px',
+            flexWrap: 'wrap',
+        },
+        bidStateBadge: {
+            fontSize: '0.7rem',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            fontWeight: '600',
+            textTransform: 'uppercase',
         },
         bidAmountValue: {
-            fontSize: '1rem',
-            fontWeight: '600',
+            fontSize: '1.1rem',
+            fontWeight: '700',
             color: theme.colors.primaryText,
+            textAlign: 'right',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
         },
         noBids: {
             textAlign: 'center',
@@ -1561,20 +1600,74 @@ function SneedexOffer() {
                                 <div style={styles.noBids}>No bids yet. Be the first!</div>
                             ) : (
                                 <div style={styles.bidsList}>
-                                    {bids.sort((a, b) => Number(b.amount) - Number(a.amount)).map((bid, idx) => (
-                                        <div key={Number(bid.id)} style={styles.bidItem}>
-                                            <div>
-                                                <div style={styles.bidder}>{bid.bidder.toString().slice(0, 12)}...</div>
-                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
-                                                    {formatDate(bid.created_at)} • {getBidStateString(bid.state)}
+                                    {bids.sort((a, b) => Number(b.amount) - Number(a.amount)).map((bid, idx) => {
+                                        const isHighest = idx === 0;
+                                        const bidState = getBidStateString(bid.state);
+                                        const stateColor = 
+                                            'Won' in bid.state ? theme.colors.success :
+                                            'Lost' in bid.state ? theme.colors.error :
+                                            'Refunded' in bid.state ? theme.colors.mutedText :
+                                            'Pending' in bid.state ? theme.colors.warning :
+                                            theme.colors.mutedText;
+                                        
+                                        return (
+                                            <div 
+                                                key={Number(bid.id)} 
+                                                style={{
+                                                    ...styles.bidItem,
+                                                    background: isHighest 
+                                                        ? `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}08)`
+                                                        : theme.colors.tertiaryBg,
+                                                    border: isHighest 
+                                                        ? `1px solid ${theme.colors.success}40`
+                                                        : '1px solid transparent',
+                                                }}
+                                            >
+                                                {/* Rank */}
+                                                <div style={{
+                                                    ...styles.bidRank,
+                                                    background: isHighest ? theme.colors.success : theme.colors.secondaryBg,
+                                                    color: isHighest ? '#fff' : theme.colors.mutedText,
+                                                }}>
+                                                    {isHighest ? '👑' : `#${idx + 1}`}
+                                                </div>
+                                                
+                                                {/* Bidder Info */}
+                                                <div style={styles.bidInfo}>
+                                                    <div style={styles.bidder}>
+                                                        {bid.bidder.toString().slice(0, 8)}...{bid.bidder.toString().slice(-4)}
+                                                    </div>
+                                                    <div style={styles.bidMeta}>
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                                            {formatDate(bid.created_at)}
+                                                        </span>
+                                                        <span style={{
+                                                            ...styles.bidStateBadge,
+                                                            background: `${stateColor}20`,
+                                                            color: stateColor,
+                                                        }}>
+                                                            {bidState}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Amount */}
+                                                <div style={{
+                                                    ...styles.bidAmountValue,
+                                                    color: isHighest ? theme.colors.success : theme.colors.primaryText,
+                                                }}>
+                                                    {formatAmount(bid.amount, tokenInfo.decimals)}
+                                                    <span style={{ 
+                                                        fontSize: '0.85rem', 
+                                                        fontWeight: '500',
+                                                        color: theme.colors.mutedText,
+                                                    }}>
+                                                        {tokenInfo.symbol}
+                                                    </span>
                                                 </div>
                                             </div>
-                                            <div style={styles.bidAmountValue}>
-                                                {formatAmount(bid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
-                                                {idx === 0 && <span style={{ color: theme.colors.success, marginLeft: '8px' }}>👑</span>}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
