@@ -278,6 +278,29 @@ function SneedexOffer() {
         }
     };
     
+    const handleFinalizeAssets = async () => {
+        if (!identity || !offer) return;
+        
+        setActionLoading(true);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.finalizeAssets(BigInt(id));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('Assets finalized! You can now verify and escrow each asset.');
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to finalize assets:', e);
+            setError(e.message || 'Failed to finalize assets');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+    
     const [escrowingAsset, setEscrowingAsset] = useState(null);
     
     const handleEscrowCanister = async (assetIndex) => {
@@ -718,8 +741,8 @@ function SneedexOffer() {
                                 <FaCubes /> Assets in this Offer
                             </h3>
                             
-                            {/* Escrow instructions for creator */}
-                            {isCreator && ('Draft' in offer.state || 'PendingEscrow' in offer.state) && offer.assets.some(a => !a.escrowed) && (
+                            {/* Escrow instructions for creator - only show in PendingEscrow state */}
+                            {isCreator && 'PendingEscrow' in offer.state && offer.assets.some(a => !a.escrowed) && (
                                 <div style={{
                                     background: `${theme.colors.accent}10`,
                                     border: `1px solid ${theme.colors.accent}40`,
@@ -742,7 +765,7 @@ function SneedexOffer() {
                             <div style={styles.assetsList}>
                                 {offer.assets.map((assetEntry, idx) => {
                                     const details = getAssetDetails(assetEntry);
-                                    const canEscrow = isCreator && !details.escrowed && ('Draft' in offer.state || 'PendingEscrow' in offer.state);
+                                    const canEscrow = isCreator && !details.escrowed && 'PendingEscrow' in offer.state;
                                     return (
                                         <div key={idx} style={styles.assetItem}>
                                             <div style={styles.assetHeader}>
@@ -899,8 +922,58 @@ function SneedexOffer() {
                                 </div>
                             )}
                             
-                            {/* Draft/Pending Escrow state - show activate button when all escrowed */}
-                            {isCreator && ('Draft' in offer.state || 'PendingEscrow' in offer.state) && (
+                            {/* Draft state - show finalize button */}
+                            {isCreator && 'Draft' in offer.state && (
+                                <div style={styles.creatorActions}>
+                                    {offer.assets.length > 0 ? (
+                                        <>
+                                            <div style={{ 
+                                                background: `${theme.colors.accent}15`,
+                                                border: `1px solid ${theme.colors.accent}`,
+                                                borderRadius: '10px',
+                                                padding: '1rem',
+                                                fontSize: '0.9rem',
+                                                color: theme.colors.text,
+                                                textAlign: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                📋 <strong>Step 1:</strong> Your offer has {offer.assets.length} asset{offer.assets.length > 1 ? 's' : ''}. 
+                                                Click "Finalize Assets" to lock in your asset list and proceed to escrow.
+                                            </div>
+                                            <button 
+                                                style={styles.acceptButton}
+                                                onClick={handleFinalizeAssets}
+                                                disabled={actionLoading}
+                                            >
+                                                {actionLoading ? 'Finalizing...' : '📋 Finalize Assets'}
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <div style={{ 
+                                            background: `${theme.colors.warning}15`,
+                                            border: `1px solid ${theme.colors.warning}`,
+                                            borderRadius: '10px',
+                                            padding: '1rem',
+                                            fontSize: '0.9rem',
+                                            color: theme.colors.warning,
+                                            textAlign: 'center'
+                                        }}>
+                                            ⚠️ No assets added yet. Add assets to your offer before finalizing.
+                                        </div>
+                                    )}
+                                    <button 
+                                        style={styles.cancelButton}
+                                        onClick={handleCancelOffer}
+                                        disabled={actionLoading}
+                                    >
+                                        <FaTimes style={{ marginRight: '8px' }} />
+                                        {actionLoading ? 'Processing...' : 'Cancel Offer'}
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {/* PendingEscrow state - show activate button when all escrowed */}
+                            {isCreator && 'PendingEscrow' in offer.state && (
                                 <div style={styles.creatorActions}>
                                     {(() => {
                                         const allEscrowed = offer.assets.every(a => a.escrowed);
