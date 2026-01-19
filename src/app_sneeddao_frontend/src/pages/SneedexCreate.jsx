@@ -459,23 +459,13 @@ function SneedexCreate() {
                 );
                 
                 if (userPerms && userPerms.permission_type) {
-                    // SNS permission types are integers:
-                    // 0: Unspecified, 1: ConfigureDissolveState, 2: ManagePrincipals, 3: SubmitProposal
-                    // 4: Vote, 5: Disburse, 6: Split, 7: MergeMaturity, 8: DisburseMaturity
-                    // 9: StakeMaturity, 10: ManageVotingPermission
-                    const PERM_VOTE = 4;
-                    const PERM_MANAGE_VOTING = 10;
+                    // ManagePrincipals (2) is required to add Sneedex as a hotkey for escrow
+                    const PERM_MANAGE_PRINCIPALS = 2;
                     
-                    const hasVote = userPerms.permission_type.includes(PERM_VOTE);
-                    const hasManageVoting = userPerms.permission_type.includes(PERM_MANAGE_VOTING);
-                    
-                    if (hasVote && hasManageVoting) {
-                        return { verified: true, message: 'Has hotkey permissions' };
+                    if (userPerms.permission_type.includes(PERM_MANAGE_PRINCIPALS)) {
+                        return { verified: true, message: 'Can escrow (has ManagePrincipals)' };
                     } else {
-                        const missing = [];
-                        if (!hasVote) missing.push('Vote');
-                        if (!hasManageVoting) missing.push('ManageVotingPermission');
-                        return { verified: false, message: `Missing: ${missing.join(', ')}` };
+                        return { verified: false, message: 'Missing ManagePrincipals permission' };
                     }
                 }
                 return { verified: false, message: 'No permissions found - add Sneedex as hotkey' };
