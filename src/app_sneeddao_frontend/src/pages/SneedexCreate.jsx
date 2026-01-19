@@ -3,8 +3,10 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle } from 'react-icons/fa';
+import { useNaming } from '../NamingContext';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
 import { 
     createSneedexActor, 
     parseAmount, 
@@ -13,14 +15,18 @@ import {
     getErrorMessage,
     SNEEDEX_CANISTER_ID 
 } from '../utils/SneedexUtils';
+import { getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
 import TokenSelector from '../components/TokenSelector';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
+const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const { principalNames } = useNaming();
     const navigate = useNavigate();
     
     // Offer settings
@@ -33,6 +39,11 @@ function SneedexCreate() {
     // Token metadata from backend
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(true);
+    
+    // User's registered canisters and neuron managers
+    const [userCanisters, setUserCanisters] = useState([]); // Array of canister ID strings
+    const [neuronManagers, setNeuronManagers] = useState([]); // Array of canister ID strings
+    const [loadingCanisters, setLoadingCanisters] = useState(true);
     
     // Derived token info from selected ledger
     const selectedPriceToken = whitelistedTokens.find(t => t.ledger_id.toString() === priceTokenLedger);
@@ -56,6 +67,70 @@ function SneedexCreate() {
         };
         fetchTokens();
     }, [identity]);
+    
+    // Fetch user's registered canisters and neuron managers
+    useEffect(() => {
+        const fetchUserCanisters = async () => {
+            if (!identity) {
+                setLoadingCanisters(false);
+                return;
+            }
+            
+            setLoadingCanisters(true);
+            try {
+                // Fetch canister groups (registered canisters)
+                const groupsResult = await getCanisterGroups(identity);
+                const canisters = [];
+                
+                if (groupsResult) {
+                    const groups = convertGroupsFromBackend(groupsResult);
+                    // Collect all canister IDs from groups and ungrouped
+                    if (groups.ungrouped) {
+                        canisters.push(...groups.ungrouped);
+                    }
+                    if (groups.groups) {
+                        const collectFromGroups = (groupList) => {
+                            for (const group of groupList) {
+                                if (group.canisters) {
+                                    canisters.push(...group.canisters);
+                                }
+                                if (group.subgroups) {
+                                    collectFromGroups(group.subgroups);
+                                }
+                            }
+                        };
+                        collectFromGroups(groups.groups);
+                    }
+                }
+                setUserCanisters(canisters);
+                
+                // Fetch neuron managers
+                const host = getHost();
+                const agent = HttpAgent.createSync({ host, identity });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                const managerIds = await factory.getMyManagers();
+                setNeuronManagers(managerIds.map(p => p.toString()));
+                
+            } catch (e) {
+                console.error('Failed to fetch user canisters:', e);
+            } finally {
+                setLoadingCanisters(false);
+            }
+        };
+        
+        fetchUserCanisters();
+    }, [identity]);
+    
+    // Helper to get canister display name
+    const getCanisterName = useCallback((canisterId) => {
+        const name = principalNames?.get(canisterId);
+        if (name) return name;
+        return canisterId.slice(0, 10) + '...' + canisterId.slice(-5);
+    }, [principalNames]);
     
     // Assets
     const [assets, setAssets] = useState([]);
@@ -767,14 +842,89 @@ function SneedexCreate() {
                                 
                                 {newAssetType === 'canister' && (
                                     <div style={styles.formGroup}>
-                                        <label style={styles.label}>Canister ID</label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
-                                            style={styles.input}
-                                            value={newAssetCanisterId}
-                                            onChange={(e) => setNewAssetCanisterId(e.target.value)}
-                                        />
+                                        <label style={styles.label}>Select Canister</label>
+                                        
+                                        {loadingCanisters ? (
+                                            <div style={{ 
+                                                padding: '12px', 
+                                                color: theme.colors.mutedText,
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                                fontSize: '0.9rem'
+                                            }}>
+                                                Loading your canisters...
+                                            </div>
+                                        ) : (userCanisters.length > 0 || neuronManagers.length > 0) ? (
+                                            <>
+                                                <select
+                                                    style={{
+                                                        ...styles.input,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    value={newAssetCanisterId}
+                                                    onChange={(e) => setNewAssetCanisterId(e.target.value)}
+                                                >
+                                                    <option value="">Select a canister...</option>
+                                                    
+                                                    {userCanisters.length > 0 && (
+                                                        <optgroup label="📦 Registered Canisters">
+                                                            {userCanisters.map(canisterId => (
+                                                                <option key={canisterId} value={canisterId}>
+                                                                    {getCanisterName(canisterId)}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+                                                    
+                                                    {neuronManagers.length > 0 && (
+                                                        <optgroup label="🤖 ICP Neuron Managers">
+                                                            {neuronManagers.map(canisterId => (
+                                                                <option key={canisterId} value={canisterId}>
+                                                                    {getCanisterName(canisterId)}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+                                                </select>
+                                                
+                                                <div style={{ 
+                                                    marginTop: '8px', 
+                                                    fontSize: '0.8rem', 
+                                                    color: theme.colors.mutedText 
+                                                }}>
+                                                    Or enter a canister ID manually:
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                                    style={{ ...styles.input, marginTop: '4px' }}
+                                                    value={newAssetCanisterId}
+                                                    onChange={(e) => setNewAssetCanisterId(e.target.value)}
+                                                />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div style={{ 
+                                                    padding: '12px', 
+                                                    background: `${theme.colors.accent}10`,
+                                                    borderRadius: '8px',
+                                                    marginBottom: '8px',
+                                                    fontSize: '0.85rem',
+                                                    color: theme.colors.secondaryText,
+                                                }}>
+                                                    <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> Register canisters on the{' '}
+                                                    <Link to="/canisters" style={{ color: theme.colors.accent }}>Canisters page</Link>{' '}
+                                                    to see them here, or enter an ID manually below.
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                                    style={styles.input}
+                                                    value={newAssetCanisterId}
+                                                    onChange={(e) => setNewAssetCanisterId(e.target.value)}
+                                                />
+                                            </>
+                                        )}
                                     </div>
                                 )}
                                 
