@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock } from 'react-icons/fa';
+import { HttpAgent } from '@dfinity/agent';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -13,8 +14,11 @@ import {
     getAssetDetails
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createGovernanceActor } from 'external/sns_governance';
+import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/SnsUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
+const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
 function SneedexOffers() {
     const { identity, isAuthenticated } = useAuth();
@@ -33,6 +37,21 @@ function SneedexOffers() {
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [offerTab, setOfferTab] = useState('public'); // 'public' or 'private'
+    const [snsLogos, setSnsLogos] = useState(new Map()); // governance_id -> logo URL
+    const [snsList, setSnsList] = useState([]); // List of all SNSes
+    const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
+    
+    // Fetch SNS list on mount
+    useEffect(() => {
+        const loadSnses = async () => {
+            startBackgroundSnsFetch();
+            const snses = getAllSnses();
+            if (snses && snses.length > 0) {
+                setSnsList(snses);
+            }
+        };
+        loadSnses();
+    }, []);
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -54,12 +73,66 @@ function SneedexOffers() {
     const getTokenInfo = useCallback((ledgerId) => {
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
-            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: token.logo?.[0] || null };
         }
         // Fallback for known tokens
-        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
-        return { symbol: 'TOKEN', decimals: 8 };
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: null };
+        return { symbol: 'TOKEN', decimals: 8, logo: null };
     }, [whitelistedTokens]);
+    
+    // Helper to get SNS info by governance id
+    const getSnsInfo = useCallback((governanceId) => {
+        const sns = snsList.find(s => s.governance_canister_id?.toString() === governanceId);
+        if (sns) {
+            return { name: sns.name || 'SNS', symbol: sns.symbol || 'SNS' };
+        }
+        return { name: 'SNS Neuron', symbol: 'SNS' };
+    }, [snsList]);
+    
+    // Fetch SNS logo for a governance ID
+    const fetchSnsLogoForOffer = useCallback(async (governanceId) => {
+        if (snsLogos.has(governanceId)) return;
+        try {
+            const logo = await fetchSnsLogo(governanceId);
+            if (logo) {
+                setSnsLogos(prev => new Map(prev).set(governanceId, logo));
+            }
+        } catch (e) {
+            console.warn('Failed to fetch SNS logo:', e);
+        }
+    }, [snsLogos]);
+    
+    // Fetch neuron info (staked amount)
+    const fetchNeuronInfo = useCallback(async (governanceId, neuronIdHex) => {
+        const key = `${governanceId}_${neuronIdHex}`;
+        if (neuronInfo[key]) return;
+        
+        try {
+            const agent = new HttpAgent({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const govActor = createGovernanceActor(governanceId, { agent });
+            
+            // Convert hex to blob for the neuron ID
+            const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            
+            const result = await govActor.get_neuron({
+                neuron_id: [{ id: neuronIdBytes }]
+            });
+            
+            if (result && result.result && result.result[0] && result.result[0].Neuron) {
+                const neuron = result.result[0].Neuron;
+                const stake = neuron.cached_neuron_stake_e8s || BigInt(0);
+                setNeuronInfo(prev => ({
+                    ...prev,
+                    [key]: { stake: Number(stake) / 1e8 }
+                }));
+            }
+        } catch (e) {
+            console.warn('Failed to fetch neuron info:', e);
+        }
+    }, [neuronInfo, identity]);
     
     const fetchOffers = useCallback(async () => {
         setLoading(true);
@@ -110,29 +183,24 @@ function SneedexOffers() {
         fetchOffers();
     }, [fetchOffers]);
     
-    const getAssetTypeIcon = (type) => {
-        switch (type) {
-            case 'Canister': return <FaCubes style={{ color: theme.colors.accent }} />;
-            case 'SNSNeuron': return <FaBrain style={{ color: theme.colors.success }} />;
-            case 'ICRC1Token': return <FaCoins style={{ color: theme.colors.warning }} />;
-            default: return <FaCubes />;
-        }
-    };
-    
-    const getAssetSummary = (assets) => {
-        const counts = { Canister: 0, SNSNeuron: 0, ICRC1Token: 0 };
-        assets.forEach(a => {
-            const type = getAssetType(a.asset);
-            counts[type]++;
+    // Fetch SNS logos and neuron info when offers change
+    useEffect(() => {
+        if (offers.length === 0) return;
+        
+        offers.forEach(offer => {
+            offer.assets.forEach(assetEntry => {
+                const details = getAssetDetails(assetEntry);
+                if (details.type === 'SNSNeuron') {
+                    // Fetch SNS logo
+                    fetchSnsLogoForOffer(details.governance_id);
+                    // Fetch neuron info
+                    if (details.neuron_id) {
+                        fetchNeuronInfo(details.governance_id, details.neuron_id);
+                    }
+                }
+            });
         });
-        
-        const parts = [];
-        if (counts.Canister > 0) parts.push(`${counts.Canister} Canister${counts.Canister > 1 ? 's' : ''}`);
-        if (counts.SNSNeuron > 0) parts.push(`${counts.SNSNeuron} Neuron${counts.SNSNeuron > 1 ? 's' : ''}`);
-        if (counts.ICRC1Token > 0) parts.push(`${counts.ICRC1Token} Token${counts.ICRC1Token > 1 ? 's' : ''}`);
-        
-        return parts.join(', ');
-    };
+    }, [offers, fetchSnsLogoForOffer, fetchNeuronInfo]);
     
     const filteredOffers = offers.filter(offer => {
         if (filterType !== 'all') {
@@ -612,12 +680,60 @@ function SneedexOffers() {
                                     <div style={styles.assetsRow}>
                                         {offer.assets.map((assetEntry, idx) => {
                                             const details = getAssetDetails(assetEntry);
+                                            
+                                            // Get token info for ICRC1Token assets
+                                            const assetTokenInfo = details.type === 'ICRC1Token' 
+                                                ? getTokenInfo(details.ledger_id)
+                                                : null;
+                                            
+                                            // Get SNS info for SNSNeuron assets
+                                            const snsInfo = details.type === 'SNSNeuron'
+                                                ? getSnsInfo(details.governance_id)
+                                                : null;
+                                            const snsLogo = details.type === 'SNSNeuron'
+                                                ? snsLogos.get(details.governance_id)
+                                                : null;
+                                            const neuronInfoKey = details.type === 'SNSNeuron' && details.neuron_id
+                                                ? `${details.governance_id}_${details.neuron_id}`
+                                                : null;
+                                            const nInfo = neuronInfoKey ? neuronInfo[neuronInfoKey] : null;
+                                            
                                             return (
                                                 <span key={idx} style={styles.assetBadge}>
-                                                    {getAssetTypeIcon(details.type)}
-                                                    {details.type === 'Canister' && 'Canister'}
-                                                    {details.type === 'SNSNeuron' && 'Neuron'}
-                                                    {details.type === 'ICRC1Token' && `${formatAmount(details.amount)} Tokens`}
+                                                    {details.type === 'Canister' && (
+                                                        <>
+                                                            <FaCubes style={{ color: theme.colors.accent }} />
+                                                            Canister
+                                                        </>
+                                                    )}
+                                                    {details.type === 'SNSNeuron' && (
+                                                        <>
+                                                            {snsLogo ? (
+                                                                <img 
+                                                                    src={snsLogo} 
+                                                                    alt={snsInfo?.name || 'SNS'} 
+                                                                    style={{ width: 18, height: 18, borderRadius: '50%' }}
+                                                                />
+                                                            ) : (
+                                                                <FaBrain style={{ color: theme.colors.success }} />
+                                                            )}
+                                                            {nInfo ? `${nInfo.stake.toFixed(2)} ${snsInfo?.symbol || 'SNS'}` : snsInfo?.symbol || 'Neuron'}
+                                                        </>
+                                                    )}
+                                                    {details.type === 'ICRC1Token' && (
+                                                        <>
+                                                            {assetTokenInfo?.logo ? (
+                                                                <img 
+                                                                    src={assetTokenInfo.logo} 
+                                                                    alt={assetTokenInfo.symbol} 
+                                                                    style={{ width: 18, height: 18, borderRadius: '50%' }}
+                                                                />
+                                                            ) : (
+                                                                <FaCoins style={{ color: theme.colors.warning }} />
+                                                            )}
+                                                            {formatAmount(details.amount, assetTokenInfo?.decimals || 8)} {assetTokenInfo?.symbol || 'TOKEN'}
+                                                        </>
+                                                    )}
                                                 </span>
                                             );
                                         })}
