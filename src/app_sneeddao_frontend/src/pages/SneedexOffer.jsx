@@ -2289,12 +2289,14 @@ function SneedexOffer() {
                                                             Loading neuron info...
                                                         </div>
                                                     ) : nInfo ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
                                                             <div style={{ 
                                                                 display: 'flex', 
                                                                 alignItems: 'center', 
-                                                                justifyContent: 'space-between',
+                                                                justifyContent: 'flex-start',
+                                                                gap: '12px',
                                                                 marginBottom: '0.5rem',
+                                                                flexWrap: 'wrap',
                                                             }}>
                                                                 <h4 style={{ 
                                                                     margin: 0, 
@@ -2302,13 +2304,14 @@ function SneedexOffer() {
                                                                     color: theme.colors.primaryText,
                                                                     display: 'flex',
                                                                     alignItems: 'center',
+                                                                    justifyContent: 'flex-start',
                                                                     gap: '8px',
                                                                 }}>
                                                                     {snsLogos[details.governance_id] ? (
                                                                         <img 
                                                                             src={snsLogos[details.governance_id]} 
                                                                             alt="SNS" 
-                                                                            style={{ width: '20px', height: '20px', borderRadius: '50%' }}
+                                                                            style={{ width: '24px', height: '24px', borderRadius: '50%' }}
                                                                         />
                                                                     ) : (
                                                                         <FaBrain />
@@ -2590,20 +2593,21 @@ function SneedexOffer() {
                                                             Loading token info...
                                                         </div>
                                                     ) : tMeta ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
                                                             <h4 style={{ 
                                                                 margin: 0, 
                                                                 fontSize: '0.9rem', 
                                                                 color: theme.colors.primaryText,
                                                                 display: 'flex',
                                                                 alignItems: 'center',
+                                                                justifyContent: 'flex-start',
                                                                 gap: '8px',
                                                             }}>
                                                                 {tokenLogos[details.ledger_id] ? (
                                                                     <img 
                                                                         src={tokenLogos[details.ledger_id]} 
                                                                         alt="Token" 
-                                                                        style={{ width: '20px', height: '20px', borderRadius: '50%' }}
+                                                                        style={{ width: '24px', height: '24px', borderRadius: '50%' }}
                                                                     />
                                                                 ) : (
                                                                     <FaCoins />
