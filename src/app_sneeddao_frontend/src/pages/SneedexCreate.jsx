@@ -1037,14 +1037,19 @@ function SneedexCreate() {
                                                         <span style={{ color: theme.colors.mutedText }}>—</span>
                                                     )}
                                                     
-                                                    {/* Quick fill button */}
+                                                    {/* Quick fill button - uses balance minus one fee */}
                                                     {newAssetTokenBalance !== null && Number(newAssetTokenBalance) > 0 && (
                                                         <button
                                                             type="button"
                                                             onClick={() => {
                                                                 const decimals = parseInt(newAssetTokenDecimals) || 8;
-                                                                const fullAmount = Number(newAssetTokenBalance) / Math.pow(10, decimals);
-                                                                setNewAssetTokenAmount(fullAmount.toString());
+                                                                const token = whitelistedTokens.find(t => t.ledger_id.toString() === newAssetTokenLedger);
+                                                                const fee = token?.fee ? Number(token.fee) : 10000; // Default to 0.0001 if no fee found
+                                                                const maxAmount = Number(newAssetTokenBalance) - fee;
+                                                                if (maxAmount > 0) {
+                                                                    const maxFormatted = maxAmount / Math.pow(10, decimals);
+                                                                    setNewAssetTokenAmount(maxFormatted.toString());
+                                                                }
                                                             }}
                                                             style={{
                                                                 marginLeft: 'auto',
