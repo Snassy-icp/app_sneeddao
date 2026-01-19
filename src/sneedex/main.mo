@@ -1842,18 +1842,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
-    /// Get all active private offers visible to a specific principal
+    /// Get all private offers visible to a specific principal
     /// (offers where the principal is the creator or in the approved_bidders list)
+    /// For creators: shows all states (Draft, PendingEscrow, Active)
+    /// For approved bidders: shows only Active offers
     public query func getPrivateOffersFor(viewer : Principal) : async [T.Offer] {
         Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
-            if (o.state != #Active) return false;
             switch (o.approved_bidders) {
                 case null { false }; // Public offer, not included
                 case (?approvedList) {
-                    // Include if viewer is creator or in approved list
-                    if (Principal.equal(o.creator, viewer)) return true;
-                    let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
-                    isApproved != null;
+                    // If viewer is creator, show Draft, PendingEscrow, and Active offers
+                    if (Principal.equal(o.creator, viewer)) {
+                        o.state == #Draft or o.state == #PendingEscrow or o.state == #Active;
+                    } else if (o.state == #Active) {
+                        // For approved bidders (not creator), only show Active offers
+                        let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
+                        isApproved != null;
+                    } else {
+                        false;
+                    };
                 };
             };
         });
@@ -1863,6 +1870,33 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public query func getOffersByCreator(creator : Principal) : async [T.Offer] {
         Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             Principal.equal(o.creator, creator);
+        });
+    };
+    
+    /// Debug: Get all offers (for debugging approved_bidders)
+    public query func debugGetAllOffers() : async [{
+        id : T.OfferId;
+        creator : Principal;
+        state : T.OfferState;
+        approved_bidders : ?[Principal];
+    }] {
+        Array.map<T.Offer, {
+            id : T.OfferId;
+            creator : Principal;
+            state : T.OfferState;
+            approved_bidders : ?[Principal];
+        }>(offers, func(o : T.Offer) : {
+            id : T.OfferId;
+            creator : Principal;
+            state : T.OfferState;
+            approved_bidders : ?[Principal];
+        } {
+            {
+                id = o.id;
+                creator = o.creator;
+                state = o.state;
+                approved_bidders = o.approved_bidders;
+            }
         });
     };
     

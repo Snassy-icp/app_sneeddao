@@ -17,9 +17,12 @@ import { createActor as createBackendActor } from 'declarations/app_sneeddao_bac
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 function SneedexOffers() {
-    const { identity, isAuthenticated, principal } = useAuth();
+    const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     const navigate = useNavigate();
+    
+    // Get the principal from identity
+    const principal = identity ? identity.getPrincipal() : null;
     
     const [offers, setOffers] = useState([]);
     const [offersWithBids, setOffersWithBids] = useState({}); // Map of offerId to bid info
@@ -71,7 +74,7 @@ function SneedexOffers() {
             } else {
                 // Fetch private offers where user is creator or in approved bidders list
                 if (principal) {
-                    activeOffers = await actor.getPrivateOffers(principal);
+                    activeOffers = await actor.getPrivateOffersFor(principal);
                 } else {
                     activeOffers = [];
                 }
