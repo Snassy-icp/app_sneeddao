@@ -29,7 +29,7 @@ const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || proces
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
-// Management canister IDL for canister_status
+// Management canister IDL for canister_status and update_settings
 const managementIdlFactory = () => {
     const definite_canister_settings = IDL.Record({
         'controllers': IDL.Vec(IDL.Principal),
@@ -62,10 +62,31 @@ const managementIdlFactory = () => {
             'response_payload_bytes_total': IDL.Nat,
         }),
     });
+    // Settings for update_settings - all fields optional
+    const canister_settings = IDL.Record({
+        'controllers': IDL.Opt(IDL.Vec(IDL.Principal)),
+        'compute_allocation': IDL.Opt(IDL.Nat),
+        'memory_allocation': IDL.Opt(IDL.Nat),
+        'freezing_threshold': IDL.Opt(IDL.Nat),
+        'reserved_cycles_limit': IDL.Opt(IDL.Nat),
+        'log_visibility': IDL.Opt(IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        })),
+        'wasm_memory_limit': IDL.Opt(IDL.Nat),
+    });
     return IDL.Service({
         'canister_status': IDL.Func(
             [IDL.Record({ 'canister_id': IDL.Principal })],
             [canister_status_result],
+            []
+        ),
+        'update_settings': IDL.Func(
+            [IDL.Record({ 
+                'canister_id': IDL.Principal,
+                'settings': canister_settings,
+            })],
+            [],
             []
         ),
     });
@@ -869,6 +890,58 @@ function SneedexOffer() {
         setEscrowingAsset(assetIndex);
         setError('');
         try {
+            // Get the canister ID from the asset
+            const assetEntry = offer.assets[assetIndex];
+            const details = getAssetDetails(assetEntry);
+            const canisterId = details.canister_id;
+            
+            if (!canisterId) {
+                throw new Error('Could not find canister ID');
+            }
+            
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const sneedexPrincipal = Principal.fromText(SNEEDEX_CANISTER_ID);
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managementCanister = Actor.createActor(managementIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            // Step 1: Get current controllers
+            const status = await managementCanister.canister_status({ canister_id: canisterPrincipal });
+            const currentControllers = status.settings.controllers;
+            
+            // Check if Sneedex is already a controller
+            const sneedexIsController = currentControllers.some(c => c.toString() === SNEEDEX_CANISTER_ID);
+            
+            if (!sneedexIsController) {
+                // Step 2: Add Sneedex as a controller
+                const newControllers = [...currentControllers, sneedexPrincipal];
+                await managementCanister.update_settings({
+                    canister_id: canisterPrincipal,
+                    settings: {
+                        controllers: [newControllers],
+                        compute_allocation: [],
+                        memory_allocation: [],
+                        freezing_threshold: [],
+                        reserved_cycles_limit: [],
+                        log_visibility: [],
+                        wasm_memory_limit: [],
+                    },
+                });
+            }
+            
+            // Step 3: Call backend to verify and complete escrow
             const actor = createSneedexActor(identity);
             const result = await actor.escrowCanister(BigInt(id), BigInt(assetIndex));
             
@@ -880,7 +953,7 @@ function SneedexOffer() {
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow canister:', e);
-            setError(e.message || 'Failed to escrow canister. Make sure Sneedex is added as a controller.');
+            setError(e.message || 'Failed to escrow canister. Make sure you are a controller of the canister.');
         } finally {
             setEscrowingAsset(null);
         }
@@ -1404,7 +1477,7 @@ function SneedexOffer() {
                                                             gap: '4px',
                                                         }}>
                                                             <FaCheck /> {
-                                                                details.type === 'Canister' ? 'You are a controller' :
+                                                                details.type === 'Canister' ? 'You are a controller - ready to escrow' :
                                                                 details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Has permissions') :
                                                                 details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Sufficient balance') :
                                                                 'Ready'
@@ -1420,7 +1493,7 @@ function SneedexOffer() {
                                                                 gap: '4px',
                                                             }}>
                                                                 <FaTimes /> {
-                                                                    details.type === 'Canister' ? 'Add Sneedex as controller first' :
+                                                                    details.type === 'Canister' ? 'You must be a controller to escrow' :
                                                                     details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Missing permissions - add hotkey manually') :
                                                                     details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Insufficient balance') :
                                                                     'Cannot auto-escrow'
