@@ -21,6 +21,8 @@ import {
     SNEEDEX_CANISTER_ID 
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createGovernanceActor } from 'external/sns_governance';
+import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
@@ -88,7 +90,9 @@ function SneedexOffer() {
     const [withdrawLoading, setWithdrawLoading] = useState(false);
     const [userBalance, setUserBalance] = useState(null);
     const [canisterControllerStatus, setCanisterControllerStatus] = useState({}); // {canisterId: boolean}
-    const [checkingControllers, setCheckingControllers] = useState(false);
+    const [neuronPermissionStatus, setNeuronPermissionStatus] = useState({}); // {governanceId_neuronId: {verified, message}}
+    const [tokenBalanceStatus, setTokenBalanceStatus] = useState({}); // {ledgerId: {verified, balance, required}}
+    const [checkingAssets, setCheckingAssets] = useState(false);
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     
     // Fetch whitelisted tokens for metadata lookup
@@ -139,33 +143,133 @@ function SneedexOffer() {
         }
     }, [identity]);
     
-    // Check controller status for all canister assets when offer loads
-    const checkAllCanisterControllers = useCallback(async () => {
-        if (!offer || !identity || !('PendingEscrow' in offer.state)) return;
+    // Check if user has ManagePrincipals permission on an SNS neuron
+    const checkNeuronPermission = useCallback(async (governanceId, neuronIdHex) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
         
-        setCheckingControllers(true);
-        const newStatus = {};
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const governanceActor = createGovernanceActor(governanceId, { agent });
+            const neuronIdBlob = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            
+            const result = await governanceActor.get_neuron({
+                neuron_id: [{ id: neuronIdBlob }]
+            });
+            
+            if (result.result && result.result[0] && 'Neuron' in result.result[0]) {
+                const neuron = result.result[0].Neuron;
+                const userPrincipal = identity.getPrincipal().toString();
+                
+                const permissions = neuron.permissions || [];
+                const userPerms = permissions.find(p => 
+                    p.principal && p.principal[0] && p.principal[0].toString() === userPrincipal
+                );
+                
+                if (userPerms && userPerms.permission_type) {
+                    // ManagePrincipals (2) is required to add Sneedex as a hotkey for escrow
+                    const PERM_MANAGE_PRINCIPALS = 2;
+                    
+                    if (userPerms.permission_type.includes(PERM_MANAGE_PRINCIPALS)) {
+                        return { verified: true, message: 'Can escrow (has ManagePrincipals)' };
+                    } else {
+                        return { verified: false, message: 'Missing ManagePrincipals permission' };
+                    }
+                }
+                return { verified: false, message: 'No permissions found' };
+            }
+            return { verified: false, message: 'Neuron not found' };
+        } catch (e) {
+            console.error('Failed to check neuron permission:', e);
+            return { verified: false, message: 'Could not verify' };
+        }
+    }, [identity]);
+    
+    // Check if user has sufficient token balance for escrow
+    const checkTokenBalance = useCallback(async (ledgerId, requiredAmount) => {
+        if (!identity) return { verified: false, message: 'Not authenticated', balance: 0n };
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createICRC1Actor(ledgerId, { agent });
+            const balance = await ledgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            const fee = await ledgerActor.icrc1_fee();
+            
+            // Need amount + fee for transfer
+            const totalRequired = requiredAmount + fee;
+            
+            if (balance >= totalRequired) {
+                return { verified: true, message: 'Sufficient balance', balance, required: totalRequired };
+            } else {
+                return { verified: false, message: 'Insufficient balance', balance, required: totalRequired };
+            }
+        } catch (e) {
+            console.error('Failed to check token balance:', e);
+            return { verified: false, message: 'Could not verify', balance: 0n, required: requiredAmount };
+        }
+    }, [identity]);
+    
+    // Check all pending escrow assets (canisters, neurons, tokens)
+    // Run in both Draft and PendingEscrow states
+    const checkAllPendingAssets = useCallback(async () => {
+        if (!offer || !identity) return;
+        const isDraftOrPending = 'Draft' in offer.state || 'PendingEscrow' in offer.state;
+        if (!isDraftOrPending) return;
+        
+        setCheckingAssets(true);
+        const canisterStatus = {};
+        const neuronStatus = {};
+        const tokenStatus = {};
         
         for (const assetEntry of offer.assets) {
             const details = getAssetDetails(assetEntry);
-            if (details.type === 'Canister' && !details.escrowed) {
-                const canisterId = details.details.canister_id?.toString() || details.details.canisterId?.toString();
+            if (details.escrowed) continue; // Skip already escrowed assets
+            
+            if (details.type === 'Canister') {
+                const canisterId = details.canister_id;
                 if (canisterId) {
-                    newStatus[canisterId] = await checkCanisterController(canisterId);
+                    canisterStatus[canisterId] = await checkCanisterController(canisterId);
+                }
+            } else if (details.type === 'SNSNeuron') {
+                const governanceId = details.governance_id;
+                const neuronIdHex = details.neuron_id;
+                if (governanceId && neuronIdHex) {
+                    const key = `${governanceId}_${neuronIdHex}`;
+                    neuronStatus[key] = await checkNeuronPermission(governanceId, neuronIdHex);
+                }
+            } else if (details.type === 'ICRC1Token') {
+                const ledgerId = details.ledger_id;
+                const amount = details.amount || 0n;
+                if (ledgerId) {
+                    tokenStatus[ledgerId] = await checkTokenBalance(ledgerId, BigInt(amount));
                 }
             }
         }
         
-        setCanisterControllerStatus(newStatus);
-        setCheckingControllers(false);
-    }, [offer, identity, checkCanisterController]);
+        setCanisterControllerStatus(canisterStatus);
+        setNeuronPermissionStatus(neuronStatus);
+        setTokenBalanceStatus(tokenStatus);
+        setCheckingAssets(false);
+    }, [offer, identity, checkCanisterController, checkNeuronPermission, checkTokenBalance]);
     
-    // Run controller check when offer loads
+    // Run asset verification check when offer loads (in Draft or PendingEscrow state)
     useEffect(() => {
-        if (offer && identity && 'PendingEscrow' in offer.state) {
-            checkAllCanisterControllers();
+        if (offer && identity && ('Draft' in offer.state || 'PendingEscrow' in offer.state)) {
+            checkAllPendingAssets();
         }
-    }, [offer, identity, checkAllCanisterControllers]);
+    }, [offer, identity, checkAllPendingAssets]);
     
     // Fetch user's token balance
     const fetchUserBalance = useCallback(async () => {
@@ -1221,17 +1325,28 @@ function SneedexOffer() {
                             <div style={styles.assetsList}>
                                 {offer.assets.map((assetEntry, idx) => {
                                     const details = getAssetDetails(assetEntry);
+                                    const isDraftOrPending = 'Draft' in offer.state || 'PendingEscrow' in offer.state;
                                     const isPendingEscrow = 'PendingEscrow' in offer.state;
                                     
-                                    // For canisters, check if user is a controller
+                                    // Check verification status for each asset type
                                     let canEscrow = false;
-                                    if (isCreator && !details.escrowed && isPendingEscrow) {
+                                    let verificationStatus = null;
+                                    
+                                    if (isCreator && !details.escrowed && isDraftOrPending) {
                                         if (details.type === 'Canister') {
                                             const canisterId = details.canister_id;
                                             canEscrow = canisterId && canisterControllerStatus[canisterId] === true;
-                                        } else {
-                                            // For other asset types, allow escrow attempt
-                                            canEscrow = true;
+                                            verificationStatus = canisterControllerStatus[canisterId];
+                                        } else if (details.type === 'SNSNeuron') {
+                                            const governanceId = details.governance_id;
+                                            const neuronIdHex = details.neuron_id;
+                                            const key = `${governanceId}_${neuronIdHex}`;
+                                            verificationStatus = neuronPermissionStatus[key];
+                                            canEscrow = verificationStatus?.verified === true;
+                                        } else if (details.type === 'ICRC1Token') {
+                                            const ledgerId = details.ledger_id;
+                                            verificationStatus = tokenBalanceStatus[ledgerId];
+                                            canEscrow = verificationStatus?.verified === true;
                                         }
                                     }
                                     
@@ -1268,9 +1383,9 @@ function SneedexOffer() {
                                                     {details.escrowed ? <><FaCheck /> Escrowed</> : <><FaClock /> Pending Escrow</>}
                                                 </span>
                                                 
-                                                {/* Show controller status for canisters */}
-                                                {details.type === 'Canister' && !details.escrowed && isPendingEscrow && isCreator && (
-                                                    checkingControllers ? (
+                                                {/* Show verification status for all asset types (Draft and PendingEscrow) */}
+                                                {!details.escrowed && isDraftOrPending && isCreator && (
+                                                    checkingAssets ? (
                                                         <span style={{
                                                             fontSize: '0.75rem',
                                                             color: theme.colors.mutedText,
@@ -1278,9 +1393,9 @@ function SneedexOffer() {
                                                             alignItems: 'center',
                                                             gap: '6px',
                                                         }}>
-                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Checking controller...
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Verifying...
                                                         </span>
-                                                    ) : canisterControllerStatus[details.canister_id] === true ? (
+                                                    ) : verificationStatus === true || verificationStatus?.verified === true ? (
                                                         <span style={{
                                                             fontSize: '0.75rem',
                                                             color: theme.colors.success,
@@ -1288,10 +1403,15 @@ function SneedexOffer() {
                                                             alignItems: 'center',
                                                             gap: '4px',
                                                         }}>
-                                                            <FaCheck /> You are a controller
+                                                            <FaCheck /> {
+                                                                details.type === 'Canister' ? 'You are a controller' :
+                                                                details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Has permissions') :
+                                                                details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Sufficient balance') :
+                                                                'Ready'
+                                                            }
                                                         </span>
-                                                    ) : canisterControllerStatus[details.canister_id] === false ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    ) : verificationStatus === false || verificationStatus?.verified === false ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                             <span style={{
                                                                 fontSize: '0.75rem',
                                                                 color: theme.colors.warning,
@@ -1299,12 +1419,17 @@ function SneedexOffer() {
                                                                 alignItems: 'center',
                                                                 gap: '4px',
                                                             }}>
-                                                                <FaTimes /> Add Sneedex as controller first
+                                                                <FaTimes /> {
+                                                                    details.type === 'Canister' ? 'Add Sneedex as controller first' :
+                                                                    details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Missing permissions - add hotkey manually') :
+                                                                    details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Insufficient balance') :
+                                                                    'Cannot auto-escrow'
+                                                                }
                                                             </span>
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    checkAllCanisterControllers();
+                                                                    checkAllPendingAssets();
                                                                 }}
                                                                 style={{
                                                                     background: 'transparent',
@@ -1322,7 +1447,8 @@ function SneedexOffer() {
                                                     ) : null
                                                 )}
                                                 
-                                                {canEscrow && (
+                                                {/* Escrow button only in PendingEscrow state */}
+                                                {canEscrow && isPendingEscrow && (
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
