@@ -4,6 +4,7 @@ import Nat "mo:base/Nat";
 import Array "mo:base/Array";
 import Text "mo:base/Text";
 import Timer "mo:base/Timer";
+import Blob "mo:base/Blob";
 
 import T "Types";
 import Utils "Utils";
@@ -494,6 +495,32 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         #ok(offerId);
     };
     
+    // Helper to check if an asset already exists in an offer
+    func assetExists(assets : [T.AssetEntry], newAsset : T.Asset) : Bool {
+        for (entry in assets.vals()) {
+            switch (entry.asset, newAsset) {
+                case (#Canister(existing), #Canister(new)) {
+                    if (Principal.equal(existing.canister_id, new.canister_id)) {
+                        return true;
+                    };
+                };
+                case (#SNSNeuron(existing), #SNSNeuron(new)) {
+                    if (Principal.equal(existing.governance_canister_id, new.governance_canister_id) and 
+                        Blob.equal(existing.neuron_id.id, new.neuron_id.id)) {
+                        return true;
+                    };
+                };
+                case (#ICRC1Token(existing), #ICRC1Token(new)) {
+                    if (Principal.equal(existing.ledger_canister_id, new.ledger_canister_id)) {
+                        return true;
+                    };
+                };
+                case (_, _) {};
+            };
+        };
+        false;
+    };
+    
     /// Add an asset to an offer (must be in Draft state)
     public shared ({ caller }) func addAsset(request : T.AddAssetRequest) : async T.Result<()> {
         switch (getOffer(request.offer_id)) {
@@ -512,6 +539,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 // Check max assets
                 if (offer.assets.size() >= config.max_assets_per_offer) {
                     return #err(#InvalidAsset("Maximum number of assets reached"));
+                };
+                
+                // Check for duplicate asset
+                if (assetExists(offer.assets, request.asset)) {
+                    return #err(#InvalidAsset("This asset has already been added to the offer"));
                 };
                 
                 // Add asset entry

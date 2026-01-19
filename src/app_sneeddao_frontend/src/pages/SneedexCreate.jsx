@@ -4,9 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
-import { HttpAgent } from '@dfinity/agent';
+import { HttpAgent, Actor } from '@dfinity/agent';
+import { IDL } from '@dfinity/candid';
 import { 
     createSneedexActor, 
     parseAmount, 
@@ -20,9 +21,53 @@ import TokenSelector from '../components/TokenSelector';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createGovernanceActor } from 'external/sns_governance';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
+const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
+
+// Management canister IDL for canister_status
+const managementIdlFactory = () => {
+    const definite_canister_settings = IDL.Record({
+        'controllers': IDL.Vec(IDL.Principal),
+        'freezing_threshold': IDL.Nat,
+        'memory_allocation': IDL.Nat,
+        'compute_allocation': IDL.Nat,
+        'reserved_cycles_limit': IDL.Nat,
+        'log_visibility': IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        }),
+        'wasm_memory_limit': IDL.Nat,
+    });
+    const canister_status_result = IDL.Record({
+        'status': IDL.Variant({
+            'running': IDL.Null,
+            'stopping': IDL.Null,
+            'stopped': IDL.Null,
+        }),
+        'settings': definite_canister_settings,
+        'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
+        'memory_size': IDL.Nat,
+        'cycles': IDL.Nat,
+        'idle_cycles_burned_per_day': IDL.Nat,
+        'reserved_cycles': IDL.Nat,
+        'query_stats': IDL.Record({
+            'num_calls_total': IDL.Nat,
+            'num_instructions_total': IDL.Nat,
+            'request_payload_bytes_total': IDL.Nat,
+            'response_payload_bytes_total': IDL.Nat,
+        }),
+    });
+    return IDL.Service({
+        'canister_status': IDL.Func(
+            [IDL.Record({ 'canister_id': IDL.Principal })],
+            [canister_status_result],
+            []
+        ),
+    });
+};
 
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
@@ -135,6 +180,7 @@ function SneedexCreate() {
     
     // Assets
     const [assets, setAssets] = useState([]);
+    const [assetVerification, setAssetVerification] = useState({}); // {assetKey: {verified: bool, checking: bool, message: string}}
     const [showAddAsset, setShowAddAsset] = useState(false);
     const [newAssetType, setNewAssetType] = useState('canister');
     const [newAssetCanisterId, setNewAssetCanisterId] = useState('');
@@ -180,6 +226,169 @@ function SneedexCreate() {
     const [error, setError] = useState('');
     const [step, setStep] = useState(1); // 1: Configure, 2: Add Assets, 3: Review
     const [createdOfferId, setCreatedOfferId] = useState(null);
+    
+    // Generate unique key for an asset (for duplicate detection and verification tracking)
+    const getAssetKey = useCallback((asset) => {
+        if (asset.type === 'canister') return `canister:${asset.canister_id}`;
+        if (asset.type === 'neuron') return `neuron:${asset.governance_id}:${asset.neuron_id}`;
+        if (asset.type === 'token') return `token:${asset.ledger_id}`;
+        return `unknown:${Date.now()}`;
+    }, []);
+    
+    // Check if asset already exists in the list
+    const assetExists = useCallback((newAsset) => {
+        const newKey = getAssetKey(newAsset);
+        return assets.some(a => getAssetKey(a) === newKey);
+    }, [assets, getAssetKey]);
+    
+    // Verify canister - check if user is controller
+    const verifyCanister = useCallback(async (canisterId) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
+        
+        try {
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managementCanister = Actor.createActor(managementIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            await managementCanister.canister_status({ canister_id: canisterPrincipal });
+            return { verified: true, message: 'You are a controller' };
+        } catch (e) {
+            return { verified: false, message: 'Not a controller - add Sneedex manually' };
+        }
+    }, [identity]);
+    
+    // Verify ICRC1 token - check if user has sufficient balance
+    const verifyTokenBalance = useCallback(async (ledgerId, amount, decimals) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const balance = await ledgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            
+            // Get fee
+            const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+            const fee = token?.fee ? Number(token.fee) : 10000;
+            
+            // Required: amount + fee (in smallest units)
+            const amountInSmallest = parseFloat(amount) * Math.pow(10, decimals);
+            const required = amountInSmallest + fee;
+            
+            if (Number(balance) >= required) {
+                return { verified: true, message: 'Sufficient balance' };
+            } else {
+                const shortfall = (required - Number(balance)) / Math.pow(10, decimals);
+                return { verified: false, message: `Insufficient balance (need ${shortfall.toFixed(4)} more)` };
+            }
+        } catch (e) {
+            return { verified: false, message: 'Could not verify balance' };
+        }
+    }, [identity, whitelistedTokens]);
+    
+    // Verify SNS Neuron - check if user has hotkey with full permissions
+    const verifyNeuronHotkey = useCallback(async (governanceId, neuronId) => {
+        if (!identity) return { verified: false, message: 'Not authenticated' };
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const governanceActor = createGovernanceActor(governanceId, { agent });
+            const neuronIdBlob = new Uint8Array(neuronId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            
+            const result = await governanceActor.get_neuron({
+                neuron_id: [{ id: neuronIdBlob }]
+            });
+            
+            if (result.result && result.result[0] && 'Neuron' in result.result[0]) {
+                const neuron = result.result[0].Neuron;
+                const userPrincipal = identity.getPrincipal().toString();
+                
+                // Check permissions - need all key permissions
+                const permissions = neuron.permissions || [];
+                const userPerms = permissions.find(p => 
+                    p.principal && p.principal[0] && p.principal[0].toString() === userPrincipal
+                );
+                
+                if (userPerms && userPerms.permission_type) {
+                    // Check for key permissions (Vote, ManageVotingPermission, etc.)
+                    const hasVote = userPerms.permission_type.some(p => 'Vote' in p);
+                    const hasManageVoting = userPerms.permission_type.some(p => 'ManageVotingPermission' in p);
+                    
+                    if (hasVote && hasManageVoting) {
+                        return { verified: true, message: 'Has hotkey permissions' };
+                    } else {
+                        return { verified: false, message: 'Missing some permissions' };
+                    }
+                }
+                return { verified: false, message: 'No permissions found - add Sneedex as hotkey' };
+            }
+            return { verified: false, message: 'Neuron not found or no access' };
+        } catch (e) {
+            console.error('Failed to verify neuron:', e);
+            return { verified: false, message: 'Could not verify - add hotkey manually' };
+        }
+    }, [identity]);
+    
+    // Verify an asset and update verification state
+    const verifyAsset = useCallback(async (asset) => {
+        const key = getAssetKey(asset);
+        
+        setAssetVerification(prev => ({
+            ...prev,
+            [key]: { ...prev[key], checking: true }
+        }));
+        
+        let result;
+        if (asset.type === 'canister') {
+            result = await verifyCanister(asset.canister_id);
+        } else if (asset.type === 'token') {
+            result = await verifyTokenBalance(asset.ledger_id, asset.amount, asset.decimals);
+        } else if (asset.type === 'neuron') {
+            result = await verifyNeuronHotkey(asset.governance_id, asset.neuron_id);
+        } else {
+            result = { verified: false, message: 'Unknown asset type' };
+        }
+        
+        setAssetVerification(prev => ({
+            ...prev,
+            [key]: { verified: result.verified, checking: false, message: result.message }
+        }));
+    }, [getAssetKey, verifyCanister, verifyTokenBalance, verifyNeuronHotkey]);
+    
+    // Verify all assets when they change
+    useEffect(() => {
+        assets.forEach(asset => {
+            const key = getAssetKey(asset);
+            // Only verify if not already verified or checking
+            if (!assetVerification[key] || (!assetVerification[key].checking && assetVerification[key].verified === undefined)) {
+                verifyAsset(asset);
+            }
+        });
+    }, [assets, getAssetKey, assetVerification, verifyAsset]);
     
     const addAsset = () => {
         setError('');
@@ -234,6 +443,12 @@ function SneedexCreate() {
             }
         } catch (e) {
             setError('Invalid principal/canister ID format');
+            return;
+        }
+        
+        // Check for duplicates
+        if (assetExists(asset)) {
+            setError('This asset has already been added to the offer');
             return;
         }
         
@@ -815,33 +1030,79 @@ function SneedexCreate() {
                             </div>
                         ) : (
                             <div style={styles.assetsList}>
-                                {assets.map((asset, idx) => (
-                                    <div key={idx} style={styles.assetItem}>
-                                        <div style={styles.assetInfo}>
-                                            {getAssetIcon(asset.type)}
-                                            <div style={styles.assetDetails}>
-                                                <div style={styles.assetType}>
-                                                    {asset.type === 'canister' && 'Canister'}
-                                                    {asset.type === 'neuron' && 'SNS Neuron'}
-                                                    {asset.type === 'token' && `${asset.amount} ${asset.symbol}`}
-                                                </div>
-                                                <div style={styles.assetId}>
-                                                    {asset.type === 'canister' && asset.canister_id}
-                                                    {asset.type === 'neuron' && `${asset.governance_id.slice(0, 10)}... / ${asset.neuron_id.slice(0, 10)}...`}
-                                                    {asset.type === 'token' && asset.ledger_id}
+                                {assets.map((asset, idx) => {
+                                    const key = getAssetKey(asset);
+                                    const verification = assetVerification[key] || {};
+                                    
+                                    return (
+                                        <div key={idx} style={styles.assetItem}>
+                                            <div style={styles.assetInfo}>
+                                                {getAssetIcon(asset.type)}
+                                                <div style={styles.assetDetails}>
+                                                    <div style={styles.assetType}>
+                                                        {asset.type === 'canister' && 'Canister'}
+                                                        {asset.type === 'neuron' && 'SNS Neuron'}
+                                                        {asset.type === 'token' && `${asset.amount} ${asset.symbol}`}
+                                                    </div>
+                                                    <div style={styles.assetId}>
+                                                        {asset.type === 'canister' && asset.canister_id}
+                                                        {asset.type === 'neuron' && `${asset.governance_id.slice(0, 10)}... / ${asset.neuron_id.slice(0, 10)}...`}
+                                                        {asset.type === 'token' && asset.ledger_id}
+                                                    </div>
                                                 </div>
                                             </div>
+                                            
+                                            {/* Verification status */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                {verification.checking ? (
+                                                    <span style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '6px',
+                                                        fontSize: '0.8rem',
+                                                        color: theme.colors.mutedText 
+                                                    }}>
+                                                        <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                        Checking...
+                                                    </span>
+                                                ) : verification.verified !== undefined ? (
+                                                    <span 
+                                                        style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '6px',
+                                                            fontSize: '0.8rem',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '6px',
+                                                            background: verification.verified 
+                                                                ? `${theme.colors.success}15` 
+                                                                : `${theme.colors.warning}15`,
+                                                            color: verification.verified 
+                                                                ? theme.colors.success 
+                                                                : theme.colors.warning,
+                                                        }}
+                                                        title={verification.message}
+                                                    >
+                                                        {verification.verified ? (
+                                                            <><FaCheck /> Ready</>
+                                                        ) : (
+                                                            <><FaExclamationTriangle /> Manual escrow</>
+                                                        )}
+                                                    </span>
+                                                ) : null}
+                                                
+                                                <button
+                                                    style={styles.removeButton}
+                                                    onClick={() => removeAsset(idx)}
+                                                    onMouseEnter={(e) => e.target.style.background = `${theme.colors.error || '#ff4444'}20`}
+                                                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                                >
+                                                    <FaTrash />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <button
-                                            style={styles.removeButton}
-                                            onClick={() => removeAsset(idx)}
-                                            onMouseEnter={(e) => e.target.style.background = `${theme.colors.error || '#ff4444'}20`}
-                                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                                        >
-                                            <FaTrash />
-                                        </button>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                         
