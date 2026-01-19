@@ -701,6 +701,26 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 
                                 updateBid(bidId, updatedBid);
                                 
+                                // Mark all lower confirmed bids as Lost (outbid)
+                                // This allows outbid users to reclaim their funds immediately
+                                for (otherBid in getBidsForOffer(bid.offer_id).vals()) {
+                                    if (otherBid.id != bidId and 
+                                        otherBid.tokens_escrowed and 
+                                        otherBid.state == #Pending and 
+                                        otherBid.amount < amount) {
+                                        let lostBid : T.Bid = {
+                                            id = otherBid.id;
+                                            offer_id = otherBid.offer_id;
+                                            bidder = otherBid.bidder;
+                                            amount = otherBid.amount;
+                                            state = #Lost;
+                                            created_at = otherBid.created_at;
+                                            tokens_escrowed = otherBid.tokens_escrowed;
+                                        };
+                                        updateBid(otherBid.id, lostBid);
+                                    };
+                                };
+                                
                                 // Check for buyout
                                 switch (offer.buyout_price) {
                                     case (?buyout) {
