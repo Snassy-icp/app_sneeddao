@@ -23,6 +23,7 @@ import {
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
+import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
@@ -123,6 +124,9 @@ function SneedexOffer() {
     const [tokenMetadata, setTokenMetadata] = useState({}); // {ledgerId: metadata}
     const [loadingTokenMetadata, setLoadingTokenMetadata] = useState({}); // {assetIndex: boolean}
     const [escrowSubaccount, setEscrowSubaccount] = useState(null); // Blob for ICRC1 token escrow
+    const [snsData, setSnsData] = useState([]); // All SNS data
+    const [snsLogos, setSnsLogos] = useState({}); // {governanceId: logoUrl}
+    const [tokenLogos, setTokenLogos] = useState({}); // {ledgerId: logoUrl}
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -436,22 +440,109 @@ function SneedexOffer() {
         }
     }, [offer, identity]);
     
+    // Fetch SNS data for neuron assets
+    const fetchSnsData = useCallback(async () => {
+        try {
+            // Try to get cached data first
+            let data = getAllSnses();
+            if (!data || data.length === 0) {
+                data = await fetchAndCacheSnsData(identity);
+            }
+            setSnsData(data || []);
+        } catch (e) {
+            console.error('Failed to fetch SNS data:', e);
+        }
+    }, [identity]);
+    
+    // Fetch SNS logo for a governance canister
+    const fetchSnsLogoForGovernance = useCallback(async (governanceId) => {
+        if (snsLogos[governanceId]) return;
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const logo = await fetchSnsLogo(governanceId, agent);
+            if (logo) {
+                setSnsLogos(prev => ({ ...prev, [governanceId]: logo }));
+            }
+        } catch (e) {
+            console.error('Failed to fetch SNS logo:', e);
+        }
+    }, [identity, snsLogos]);
+    
+    // Fetch token logo from ledger metadata
+    const fetchTokenLogo = useCallback(async (ledgerId) => {
+        if (tokenLogos[ledgerId]) return;
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createICRC1Actor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Find logo in metadata
+            const logoEntry = metadata.find(([key]) => key === 'icrc1:logo');
+            if (logoEntry && logoEntry[1] && 'Text' in logoEntry[1]) {
+                setTokenLogos(prev => ({ ...prev, [ledgerId]: logoEntry[1].Text }));
+            }
+        } catch (e) {
+            console.error('Failed to fetch token logo:', e);
+        }
+    }, [identity, tokenLogos]);
+    
     // Fetch escrow subaccount and token metadata for ICRC1 token assets
     useEffect(() => {
         if (offer && identity) {
             const tokenAssets = offer.assets?.filter(a => 'ICRC1Token' in a.asset) || [];
             if (tokenAssets.length > 0) {
                 fetchEscrowSubaccountForOffer();
-                // Fetch metadata for all token assets
+                // Fetch metadata and logos for all token assets
                 tokenAssets.forEach((assetEntry, idx) => {
                     const ledgerId = assetEntry.asset.ICRC1Token.ledger_canister_id.toString();
                     if (!tokenMetadata[ledgerId]) {
                         fetchTokenMetadata(idx, ledgerId);
                     }
+                    if (!tokenLogos[ledgerId]) {
+                        fetchTokenLogo(ledgerId);
+                    }
                 });
             }
         }
-    }, [offer, identity, fetchEscrowSubaccountForOffer, fetchTokenMetadata, tokenMetadata]);
+    }, [offer, identity, fetchEscrowSubaccountForOffer, fetchTokenMetadata, tokenMetadata, fetchTokenLogo, tokenLogos]);
+    
+    // Fetch SNS data, logos, and neuron info for neuron assets
+    useEffect(() => {
+        if (offer && identity) {
+            const neuronAssets = offer.assets?.filter(a => 'SNSNeuron' in a.asset) || [];
+            if (neuronAssets.length > 0) {
+                // Fetch SNS data first
+                fetchSnsData();
+                // Fetch logos and neuron info for all neuron assets
+                neuronAssets.forEach((assetEntry, idx) => {
+                    const governanceId = assetEntry.asset.SNSNeuron.governance_canister_id.toString();
+                    const neuronIdHex = Array.from(assetEntry.asset.SNSNeuron.neuron_id.id)
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
+                    
+                    if (!snsLogos[governanceId]) {
+                        fetchSnsLogoForGovernance(governanceId);
+                    }
+                    // Also fetch neuron info to show staked amount
+                    if (!neuronInfo[idx]) {
+                        fetchNeuronInfo(idx, governanceId, neuronIdHex);
+                    }
+                });
+            }
+        }
+    }, [offer, identity, fetchSnsData, fetchSnsLogoForGovernance, snsLogos, neuronInfo, fetchNeuronInfo]);
     
     // Toggle asset expansion and fetch info if needed
     const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
@@ -1700,10 +1791,38 @@ function SneedexOffer() {
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                 <div style={{ flex: 1 }}>
                                                     <div style={styles.assetHeader}>
-                                                        {getAssetTypeIcon(details.type)}
+                                                        {/* Show custom icons for tokens and neurons */}
+                                                        {details.type === 'ICRC1Token' && tokenLogos[details.ledger_id] ? (
+                                                            <img 
+                                                                src={tokenLogos[details.ledger_id]} 
+                                                                alt="Token" 
+                                                                style={{ width: '24px', height: '24px', borderRadius: '50%' }}
+                                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                                            />
+                                                        ) : details.type === 'SNSNeuron' && snsLogos[details.governance_id] ? (
+                                                            <img 
+                                                                src={snsLogos[details.governance_id]} 
+                                                                alt="SNS" 
+                                                                style={{ width: '24px', height: '24px', borderRadius: '50%' }}
+                                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                                            />
+                                                        ) : (
+                                                            getAssetTypeIcon(details.type)
+                                                        )}
                                                         <span style={styles.assetType}>
                                                             {details.type === 'Canister' && 'Canister'}
-                                                            {details.type === 'SNSNeuron' && 'SNS Neuron'}
+                                                            {details.type === 'SNSNeuron' && (() => {
+                                                                // Find SNS name from snsData
+                                                                const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
+                                                                const snsName = sns?.name || 'SNS';
+                                                                // Get staked amount from neuronInfo if available
+                                                                const nInfo = neuronInfo[idx];
+                                                                if (nInfo?.cached_neuron_stake_e8s) {
+                                                                    const staked = (Number(nInfo.cached_neuron_stake_e8s) / 1e8).toFixed(2);
+                                                                    return `${snsName} Neuron (${staked} staked)`;
+                                                                }
+                                                                return `${snsName} Neuron`;
+                                                            })()}
                                                             {details.type === 'ICRC1Token' && (() => {
                                                                 const meta = tokenMetadata[details.ledger_id];
                                                                 const decimals = meta?.decimals || 8;
@@ -2139,7 +2258,19 @@ function SneedexOffer() {
                                                                     alignItems: 'center',
                                                                     gap: '8px',
                                                                 }}>
-                                                                    <FaBrain /> Neuron Details
+                                                                    {snsLogos[details.governance_id] ? (
+                                                                        <img 
+                                                                            src={snsLogos[details.governance_id]} 
+                                                                            alt="SNS" 
+                                                                            style={{ width: '20px', height: '20px', borderRadius: '50%' }}
+                                                                        />
+                                                                    ) : (
+                                                                        <FaBrain />
+                                                                    )}
+                                                                    {(() => {
+                                                                        const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
+                                                                        return sns?.name ? `${sns.name} Neuron Details` : 'Neuron Details';
+                                                                    })()}
                                                                 </h4>
                                                                 {nInfo.state && (
                                                                     <span style={{
@@ -2422,7 +2553,16 @@ function SneedexOffer() {
                                                                 alignItems: 'center',
                                                                 gap: '8px',
                                                             }}>
-                                                                <FaCoins /> Token Details
+                                                                {tokenLogos[details.ledger_id] ? (
+                                                                    <img 
+                                                                        src={tokenLogos[details.ledger_id]} 
+                                                                        alt="Token" 
+                                                                        style={{ width: '20px', height: '20px', borderRadius: '50%' }}
+                                                                    />
+                                                                ) : (
+                                                                    <FaCoins />
+                                                                )}
+                                                                {tMeta?.name || 'Token'} Details
                                                             </h4>
                                                             
                                                             {/* Token Metadata */}
