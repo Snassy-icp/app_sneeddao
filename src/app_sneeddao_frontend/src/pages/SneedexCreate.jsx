@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
 import { 
@@ -19,6 +19,7 @@ import { getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUti
 import TokenSelector from '../components/TokenSelector';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -143,6 +144,37 @@ function SneedexCreate() {
     const [newAssetTokenAmount, setNewAssetTokenAmount] = useState('');
     const [newAssetTokenSymbol, setNewAssetTokenSymbol] = useState('');
     const [newAssetTokenDecimals, setNewAssetTokenDecimals] = useState('8');
+    const [newAssetTokenBalance, setNewAssetTokenBalance] = useState(null);
+    const [loadingTokenBalance, setLoadingTokenBalance] = useState(false);
+    
+    // Fetch balance for selected asset token
+    const fetchAssetTokenBalance = useCallback(async (ledgerId) => {
+        if (!identity || !ledgerId) {
+            setNewAssetTokenBalance(null);
+            return;
+        }
+        
+        setLoadingTokenBalance(true);
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const balance = await ledgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            setNewAssetTokenBalance(balance);
+        } catch (e) {
+            console.error('Failed to fetch token balance:', e);
+            setNewAssetTokenBalance(null);
+        } finally {
+            setLoadingTokenBalance(false);
+        }
+    }, [identity]);
     
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -213,6 +245,7 @@ function SneedexCreate() {
         setNewAssetTokenLedger('');
         setNewAssetTokenAmount('');
         setNewAssetTokenSymbol('');
+        setNewAssetTokenBalance(null);
     };
     
     const removeAsset = (index) => {
@@ -967,10 +1000,69 @@ function SneedexCreate() {
                                                         setNewAssetTokenSymbol(token.symbol);
                                                         setNewAssetTokenDecimals(token.decimals.toString());
                                                     }
+                                                    // Fetch balance for selected token
+                                                    fetchAssetTokenBalance(ledgerId);
                                                 }}
                                                 placeholder="Select token to sell..."
                                                 disabled={loadingTokens}
                                             />
+                                            
+                                            {/* Show wallet balance */}
+                                            {newAssetTokenLedger && (
+                                                <div style={{
+                                                    marginTop: '8px',
+                                                    padding: '10px 12px',
+                                                    background: `${theme.colors.accent}10`,
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.85rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                }}>
+                                                    <FaWallet style={{ color: theme.colors.accent }} />
+                                                    <span style={{ color: theme.colors.secondaryText }}>Your balance:</span>
+                                                    {loadingTokenBalance ? (
+                                                        <span style={{ color: theme.colors.mutedText }}>Loading...</span>
+                                                    ) : newAssetTokenBalance !== null ? (
+                                                        <span style={{ 
+                                                            fontWeight: '600', 
+                                                            color: theme.colors.primaryText 
+                                                        }}>
+                                                            {(Number(newAssetTokenBalance) / Math.pow(10, parseInt(newAssetTokenDecimals) || 8)).toLocaleString(undefined, {
+                                                                minimumFractionDigits: 0,
+                                                                maximumFractionDigits: 4,
+                                                            })} {newAssetTokenSymbol || 'TOKEN'}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: theme.colors.mutedText }}>—</span>
+                                                    )}
+                                                    
+                                                    {/* Quick fill button */}
+                                                    {newAssetTokenBalance !== null && Number(newAssetTokenBalance) > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const decimals = parseInt(newAssetTokenDecimals) || 8;
+                                                                const fullAmount = Number(newAssetTokenBalance) / Math.pow(10, decimals);
+                                                                setNewAssetTokenAmount(fullAmount.toString());
+                                                            }}
+                                                            style={{
+                                                                marginLeft: 'auto',
+                                                                background: theme.colors.accent,
+                                                                color: theme.colors.primaryBg,
+                                                                border: 'none',
+                                                                padding: '4px 10px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: '600',
+                                                                cursor: 'pointer',
+                                                            }}
+                                                        >
+                                                            Use Max
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                         <div style={styles.formGroup}>
                                             <label style={styles.label}>
