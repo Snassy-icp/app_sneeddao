@@ -1789,26 +1789,72 @@ function SneedexOffer() {
                                         }}
                                         >
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <div style={{ flex: 1 }}>
-                                                    <div style={styles.assetHeader}>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '12px', 
+                                                        marginBottom: '0.75rem',
+                                                        justifyContent: 'flex-start',
+                                                    }}>
                                                         {/* Show custom icons for tokens and neurons */}
-                                                        {details.type === 'ICRC1Token' && tokenLogos[details.ledger_id] ? (
-                                                            <img 
-                                                                src={tokenLogos[details.ledger_id]} 
-                                                                alt="Token" 
-                                                                style={{ width: '24px', height: '24px', borderRadius: '50%' }}
-                                                                onError={(e) => { e.target.style.display = 'none'; }}
-                                                            />
-                                                        ) : details.type === 'SNSNeuron' && snsLogos[details.governance_id] ? (
-                                                            <img 
-                                                                src={snsLogos[details.governance_id]} 
-                                                                alt="SNS" 
-                                                                style={{ width: '24px', height: '24px', borderRadius: '50%' }}
-                                                                onError={(e) => { e.target.style.display = 'none'; }}
-                                                            />
-                                                        ) : (
-                                                            getAssetTypeIcon(details.type)
+                                                        {details.type === 'ICRC1Token' && (
+                                                            <div style={{ 
+                                                                position: 'relative', 
+                                                                width: '36px', 
+                                                                height: '36px', 
+                                                                flexShrink: 0,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                            }}>
+                                                                {tokenLogos[details.ledger_id] ? (
+                                                                    <img 
+                                                                        src={tokenLogos[details.ledger_id]} 
+                                                                        alt="Token" 
+                                                                        style={{ width: '36px', height: '36px', borderRadius: '50%' }}
+                                                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                                                    />
+                                                                ) : (
+                                                                    <FaCoins style={{ fontSize: '28px', color: theme.colors.warning }} />
+                                                                )}
+                                                            </div>
                                                         )}
+                                                        {details.type === 'SNSNeuron' && (
+                                                            <div style={{ 
+                                                                position: 'relative', 
+                                                                width: '40px', 
+                                                                height: '36px', 
+                                                                flexShrink: 0,
+                                                            }}>
+                                                                {/* Base neuron icon */}
+                                                                <FaBrain style={{ 
+                                                                    fontSize: '28px', 
+                                                                    color: theme.colors.success,
+                                                                    position: 'absolute',
+                                                                    left: 0,
+                                                                    top: '4px',
+                                                                }} />
+                                                                {/* Overlay SNS logo */}
+                                                                {snsLogos[details.governance_id] && (
+                                                                    <img 
+                                                                        src={snsLogos[details.governance_id]} 
+                                                                        alt="SNS" 
+                                                                        style={{ 
+                                                                            width: '22px', 
+                                                                            height: '22px', 
+                                                                            borderRadius: '50%',
+                                                                            position: 'absolute',
+                                                                            right: 0,
+                                                                            bottom: 0,
+                                                                            border: `2px solid ${theme.colors.primaryBg}`,
+                                                                        }}
+                                                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {details.type === 'Canister' && getAssetTypeIcon(details.type)}
                                                         <span style={styles.assetType}>
                                                             {details.type === 'Canister' && 'Canister'}
                                                             {details.type === 'SNSNeuron' && (() => {
