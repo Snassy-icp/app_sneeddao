@@ -3,6 +3,7 @@ import Time "mo:base/Time";
 import Nat "mo:base/Nat";
 import Array "mo:base/Array";
 import Text "mo:base/Text";
+import Timer "mo:base/Timer";
 
 import T "Types";
 import Utils "Utils";
@@ -68,6 +69,67 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func updateBid(bidId : T.BidId, newBid : T.Bid) {
         bids := Array.map<T.Bid, T.Bid>(bids, func(b : T.Bid) : T.Bid {
             if (b.id == bidId) { newBid } else { b };
+        });
+    };
+    
+    /// Auto-refund a lost bid (called via Timer)
+    /// This is a best-effort operation - if it fails, user can manually refund from GUI
+    func autoRefundBid(bidId : T.BidId) : async () {
+        switch (getBid(bidId)) {
+            case null { /* Bid not found, ignore */ };
+            case (?bid) {
+                // Only refund if bid is Lost and has escrowed tokens
+                if (bid.state != #Lost or not bid.tokens_escrowed) {
+                    return;
+                };
+                
+                switch (getOffer(bid.offer_id)) {
+                    case null { /* Offer not found, ignore */ };
+                    case (?offer) {
+                        // Get fee and calculate refund amount
+                        let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                        let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+                        
+                        if (refundAmount == 0) {
+                            return; // Amount too small to refund
+                        };
+                        
+                        let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                        let transferResult = await* AssetHandlers.transferTokens(
+                            offer.price_token_ledger,
+                            ?subaccount,
+                            { owner = bid.bidder; subaccount = null },
+                            refundAmount
+                        );
+                        
+                        switch (transferResult) {
+                            case (#err(_e)) { 
+                                // Transfer failed - user can manually refund later
+                            };
+                            case (#ok(_)) {
+                                // Update bid state to Refunded
+                                let updatedBid : T.Bid = {
+                                    id = bid.id;
+                                    offer_id = bid.offer_id;
+                                    bidder = bid.bidder;
+                                    amount = bid.amount;
+                                    state = #Refunded;
+                                    created_at = bid.created_at;
+                                    tokens_escrowed = bid.tokens_escrowed;
+                                };
+                                updateBid(bid.id, updatedBid);
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    
+    /// Schedule auto-refund for a bid using Timer (1 second delay)
+    func scheduleAutoRefund<system>(bidId : T.BidId) {
+        ignore Timer.setTimer<system>(#seconds 1, func() : async () {
+            await autoRefundBid(bidId);
         });
     };
     
@@ -701,8 +763,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 
                                 updateBid(bidId, updatedBid);
                                 
-                                // Mark all lower confirmed bids as Lost (outbid)
+                                // Mark all lower confirmed bids as Lost (outbid) and schedule auto-refund
                                 // This allows outbid users to reclaim their funds immediately
+                                // Auto-refund runs via Timer to avoid instruction limits
                                 for (otherBid in getBidsForOffer(bid.offer_id).vals()) {
                                     if (otherBid.id != bidId and 
                                         otherBid.tokens_escrowed and 
@@ -718,6 +781,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             tokens_escrowed = otherBid.tokens_escrowed;
                                         };
                                         updateBid(otherBid.id, lostBid);
+                                        
+                                        // Schedule auto-refund via Timer (best effort)
+                                        scheduleAutoRefund<system>(otherBid.id);
                                     };
                                 };
                                 
