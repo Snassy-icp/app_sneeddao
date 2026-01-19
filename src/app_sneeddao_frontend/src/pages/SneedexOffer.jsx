@@ -14,7 +14,8 @@ import {
     getAssetDetails,
     getTokenInfo,
     parseAmount,
-    getErrorMessage 
+    getErrorMessage,
+    SNEEDEX_CANISTER_ID 
 } from '../utils/SneedexUtils';
 
 function SneedexOffer() {
@@ -272,6 +273,100 @@ function SneedexOffer() {
         } catch (e) {
             console.error('Failed to claim payment:', e);
             setError(e.message || 'Failed to claim payment');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+    
+    const [escrowingAsset, setEscrowingAsset] = useState(null);
+    
+    const handleEscrowCanister = async (assetIndex) => {
+        if (!identity || !offer) return;
+        
+        setEscrowingAsset(assetIndex);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.escrowCanister(BigInt(id), BigInt(assetIndex));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('Canister escrowed successfully! Sneedex is now a controller.');
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to escrow canister:', e);
+            setError(e.message || 'Failed to escrow canister. Make sure Sneedex is added as a controller.');
+        } finally {
+            setEscrowingAsset(null);
+        }
+    };
+    
+    const handleEscrowSNSNeuron = async (assetIndex) => {
+        if (!identity || !offer) return;
+        
+        setEscrowingAsset(assetIndex);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.escrowSNSNeuron(BigInt(id), BigInt(assetIndex));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('SNS Neuron escrowed successfully!');
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to escrow neuron:', e);
+            setError(e.message || 'Failed to escrow neuron. Make sure Sneedex is added as a hotkey.');
+        } finally {
+            setEscrowingAsset(null);
+        }
+    };
+    
+    const handleEscrowICRC1Tokens = async (assetIndex) => {
+        if (!identity || !offer) return;
+        
+        setEscrowingAsset(assetIndex);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.escrowICRC1Tokens(BigInt(id), BigInt(assetIndex));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('Tokens escrowed successfully!');
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to escrow tokens:', e);
+            setError(e.message || 'Failed to escrow tokens. Make sure you have sent tokens to the escrow subaccount.');
+        } finally {
+            setEscrowingAsset(null);
+        }
+    };
+    
+    const handleActivateOffer = async () => {
+        if (!identity || !offer) return;
+        
+        setActionLoading(true);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.activateOffer(BigInt(id));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert('Offer activated! It is now live on the marketplace.');
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to activate offer:', e);
+            setError(e.message || 'Failed to activate offer. Make sure all assets are escrowed.');
         } finally {
             setActionLoading(false);
         }
@@ -622,9 +717,32 @@ function SneedexOffer() {
                             <h3 style={styles.cardTitle}>
                                 <FaCubes /> Assets in this Offer
                             </h3>
+                            
+                            {/* Escrow instructions for creator */}
+                            {isCreator && ('Draft' in offer.state || 'PendingEscrow' in offer.state) && offer.assets.some(a => !a.escrowed) && (
+                                <div style={{
+                                    background: `${theme.colors.accent}10`,
+                                    border: `1px solid ${theme.colors.accent}40`,
+                                    borderRadius: '10px',
+                                    padding: '1rem',
+                                    marginBottom: '1rem',
+                                    fontSize: '0.85rem',
+                                }}>
+                                    <strong style={{ color: theme.colors.accent }}>📋 How to Escrow Assets:</strong>
+                                    <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0, color: theme.colors.secondaryText, lineHeight: 1.8 }}>
+                                        <li><strong>Canisters:</strong> Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>{SNEEDEX_CANISTER_ID}</code> as a controller</li>
+                                        <li><strong>SNS Neurons:</strong> Add Sneedex as a hotkey with full permissions</li>
+                                        <li><strong>ICRC1 Tokens:</strong> Transfer tokens to the escrow subaccount</li>
+                                    </ul>
+                                    <div style={{ marginTop: '0.75rem', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                        After adding Sneedex, click "Verify & Escrow" on each asset below.
+                                    </div>
+                                </div>
+                            )}
                             <div style={styles.assetsList}>
                                 {offer.assets.map((assetEntry, idx) => {
                                     const details = getAssetDetails(assetEntry);
+                                    const canEscrow = isCreator && !details.escrowed && ('Draft' in offer.state || 'PendingEscrow' in offer.state);
                                     return (
                                         <div key={idx} style={styles.assetItem}>
                                             <div style={styles.assetHeader}>
@@ -649,13 +767,39 @@ function SneedexOffer() {
                                             {details.type === 'ICRC1Token' && (
                                                 <div style={styles.assetDetail}>Ledger: {details.ledger_id}</div>
                                             )}
-                                            <span style={{
-                                                ...styles.escrowBadge,
-                                                background: details.escrowed ? `${theme.colors.success}20` : `${theme.colors.warning}20`,
-                                                color: details.escrowed ? theme.colors.success : theme.colors.warning,
-                                            }}>
-                                                {details.escrowed ? <><FaCheck /> Escrowed</> : <><FaClock /> Pending Escrow</>}
-                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '0.5rem' }}>
+                                                <span style={{
+                                                    ...styles.escrowBadge,
+                                                    background: details.escrowed ? `${theme.colors.success}20` : `${theme.colors.warning}20`,
+                                                    color: details.escrowed ? theme.colors.success : theme.colors.warning,
+                                                }}>
+                                                    {details.escrowed ? <><FaCheck /> Escrowed</> : <><FaClock /> Pending Escrow</>}
+                                                </span>
+                                                {canEscrow && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (details.type === 'Canister') handleEscrowCanister(idx);
+                                                            else if (details.type === 'SNSNeuron') handleEscrowSNSNeuron(idx);
+                                                            else if (details.type === 'ICRC1Token') handleEscrowICRC1Tokens(idx);
+                                                        }}
+                                                        disabled={escrowingAsset === idx}
+                                                        style={{
+                                                            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)`,
+                                                            color: theme.colors.primaryBg,
+                                                            border: 'none',
+                                                            padding: '6px 12px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.8rem',
+                                                            fontWeight: '600',
+                                                            cursor: 'pointer',
+                                                            opacity: escrowingAsset === idx ? 0.7 : 1,
+                                                        }}
+                                                    >
+                                                        {escrowingAsset === idx ? 'Verifying...' : '🔒 Verify & Escrow'}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -752,6 +896,54 @@ function SneedexOffer() {
                                             ⚡ Instant Buyout for {formatAmount(offer.buyout_price[0], tokenInfo.decimals)} {tokenInfo.symbol}
                                         </button>
                                     )}
+                                </div>
+                            )}
+                            
+                            {/* Draft/Pending Escrow state - show activate button when all escrowed */}
+                            {isCreator && ('Draft' in offer.state || 'PendingEscrow' in offer.state) && (
+                                <div style={styles.creatorActions}>
+                                    {(() => {
+                                        const allEscrowed = offer.assets.every(a => a.escrowed);
+                                        const pendingCount = offer.assets.filter(a => !a.escrowed).length;
+                                        
+                                        if (allEscrowed) {
+                                            return (
+                                                <button 
+                                                    style={styles.acceptButton}
+                                                    onClick={handleActivateOffer}
+                                                    disabled={actionLoading}
+                                                >
+                                                    {actionLoading ? 'Activating...' : '🚀 Activate Offer'}
+                                                </button>
+                                            );
+                                        } else {
+                                            return (
+                                                <div style={{ 
+                                                    background: `${theme.colors.warning}15`,
+                                                    border: `1px solid ${theme.colors.warning}`,
+                                                    borderRadius: '10px',
+                                                    padding: '1rem',
+                                                    fontSize: '0.9rem',
+                                                    color: theme.colors.warning,
+                                                    textAlign: 'center'
+                                                }}>
+                                                    ⚠️ {pendingCount} asset{pendingCount > 1 ? 's' : ''} still pending escrow.
+                                                    <br />
+                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                                                        Use the "Verify & Escrow" buttons above to escrow each asset.
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
+                                    })()}
+                                    <button 
+                                        style={styles.cancelButton}
+                                        onClick={handleCancelOffer}
+                                        disabled={actionLoading}
+                                    >
+                                        <FaTimes style={{ marginRight: '8px' }} />
+                                        {actionLoading ? 'Processing...' : 'Cancel Offer'}
+                                    </button>
                                 </div>
                             )}
                             
