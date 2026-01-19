@@ -1754,6 +1754,55 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    /// Get canister info for an escrowed canister asset
+    /// Only works for escrowed canisters where Sneedex is a controller
+    public shared func getCanisterInfo(offerId : T.OfferId, assetIndex : Nat) : async T.Result<T.CanisterInfo> {
+        switch (getOffer(offerId)) {
+            case null { return #err(#OfferNotFound) };
+            case (?offer) {
+                if (assetIndex >= offer.assets.size()) {
+                    return #err(#InvalidAsset("Asset index out of bounds"));
+                };
+                
+                let assetEntry = offer.assets[assetIndex];
+                
+                // Check if asset is escrowed
+                if (not assetEntry.escrowed) {
+                    return #err(#InvalidState("Asset is not escrowed - cannot query canister info"));
+                };
+                
+                // Check if it's a canister asset
+                switch (assetEntry.asset) {
+                    case (#Canister(canisterAsset)) {
+                        let ic : T.ManagementActor = actor("aaaaa-aa");
+                        
+                        try {
+                            let status = await ic.canister_status({ canister_id = canisterAsset.canister_id });
+                            
+                            #ok({
+                                canister_id = canisterAsset.canister_id;
+                                status = status.status;
+                                controllers = status.settings.controllers;
+                                memory_size = status.memory_size;
+                                cycles = status.cycles;
+                                idle_cycles_burned_per_day = status.idle_cycles_burned_per_day;
+                                module_hash = status.module_hash;
+                                compute_allocation = status.settings.compute_allocation;
+                                memory_allocation = status.settings.memory_allocation;
+                                freezing_threshold = status.settings.freezing_threshold;
+                            });
+                        } catch (_e) {
+                            #err(#CanisterError("Failed to get canister status - may not have controller access"));
+                        };
+                    };
+                    case _ {
+                        #err(#InvalidAsset("Asset is not a canister"));
+                    };
+                };
+            };
+        };
+    };
+    
     /// Get all active offers
     public query func getActiveOffers() : async [T.Offer] {
         Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {

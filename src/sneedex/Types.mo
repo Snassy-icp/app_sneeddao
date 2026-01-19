@@ -183,6 +183,20 @@ module {
         update_settings : shared (UpdateSettingsArgs) -> async ();
     };
     
+    // Canister info response for frontend display
+    public type CanisterInfo = {
+        canister_id : Principal;
+        status : { #running; #stopping; #stopped };
+        controllers : [Principal];
+        memory_size : Nat;
+        cycles : Nat;
+        idle_cycles_burned_per_day : Nat;
+        module_hash : ?Blob;
+        compute_allocation : Nat;
+        memory_allocation : Nat;
+        freezing_threshold : Nat;
+    };
+    
     // ============================================
     // ASSET DEFINITIONS
     // ============================================

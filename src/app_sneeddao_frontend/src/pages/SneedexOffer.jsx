@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -115,6 +115,9 @@ function SneedexOffer() {
     const [tokenBalanceStatus, setTokenBalanceStatus] = useState({}); // {ledgerId: {verified, balance, required}}
     const [checkingAssets, setCheckingAssets] = useState(false);
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const [expandedAssets, setExpandedAssets] = useState({}); // {assetIndex: boolean}
+    const [canisterInfo, setCanisterInfo] = useState({}); // {assetIndex: canisterInfo}
+    const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -319,6 +322,62 @@ function SneedexOffer() {
             fetchUserBalance();
         }
     }, [offer, identity, fetchUserBalance]);
+    
+    // Fetch canister info for an escrowed canister asset
+    const fetchCanisterInfo = useCallback(async (assetIndex) => {
+        if (!identity || !offer) return;
+        
+        setLoadingCanisterInfo(prev => ({ ...prev, [assetIndex]: true }));
+        
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.getCanisterInfo(BigInt(id), BigInt(assetIndex));
+            
+            if ('ok' in result) {
+                setCanisterInfo(prev => ({ ...prev, [assetIndex]: result.ok }));
+            } else {
+                console.error('Failed to get canister info:', result.err);
+            }
+        } catch (e) {
+            console.error('Failed to fetch canister info:', e);
+        } finally {
+            setLoadingCanisterInfo(prev => ({ ...prev, [assetIndex]: false }));
+        }
+    }, [identity, offer, id]);
+    
+    // Toggle asset expansion and fetch canister info if needed
+    const toggleAssetExpanded = useCallback((assetIndex, assetEntry) => {
+        const isExpanding = !expandedAssets[assetIndex];
+        setExpandedAssets(prev => ({ ...prev, [assetIndex]: isExpanding }));
+        
+        // If expanding a canister asset that's escrowed and we don't have info yet, fetch it
+        if (isExpanding && 'Canister' in assetEntry.asset && assetEntry.escrowed && !canisterInfo[assetIndex]) {
+            fetchCanisterInfo(assetIndex);
+        }
+    }, [expandedAssets, canisterInfo, fetchCanisterInfo]);
+    
+    // Format bytes to human readable
+    const formatBytes = (bytes) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+    
+    // Format cycles to human readable
+    const formatCycles = (cycles) => {
+        if (cycles >= 1_000_000_000_000) {
+            return (cycles / 1_000_000_000_000).toFixed(2) + ' T';
+        } else if (cycles >= 1_000_000_000) {
+            return (cycles / 1_000_000_000).toFixed(2) + ' B';
+        } else if (cycles >= 1_000_000) {
+            return (cycles / 1_000_000).toFixed(2) + ' M';
+        } else if (cycles >= 1_000) {
+            return (cycles / 1_000).toFixed(2) + ' K';
+        }
+        return cycles.toString();
+    };
     
     const fetchOffer = useCallback(async () => {
         setLoading(true);
@@ -1462,30 +1521,72 @@ function SneedexOffer() {
                                         }
                                     }
                                     
+                                    const isExpanded = expandedAssets[idx];
+                                    const info = canisterInfo[idx];
+                                    const isLoadingInfo = loadingCanisterInfo[idx];
+                                    
                                     return (
-                                        <div key={idx} style={styles.assetItem}>
-                                            <div style={styles.assetHeader}>
-                                                {getAssetTypeIcon(details.type)}
-                                                <span style={styles.assetType}>
-                                                    {details.type === 'Canister' && 'Canister'}
-                                                    {details.type === 'SNSNeuron' && 'SNS Neuron'}
-                                                    {details.type === 'ICRC1Token' && `${formatAmount(details.amount)} Tokens`}
-                                                </span>
-                                            </div>
-                                            {details.type === 'Canister' && (
-                                                <div style={styles.assetDetail}>
-                                                    ID: {details.canister_id}
+                                        <div key={idx} style={{
+                                            ...styles.assetItem,
+                                            cursor: details.type === 'Canister' && details.escrowed ? 'pointer' : 'default',
+                                        }}
+                                        onClick={() => {
+                                            if (details.type === 'Canister' && details.escrowed) {
+                                                toggleAssetExpanded(idx, assetEntry);
+                                            }
+                                        }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={styles.assetHeader}>
+                                                        {getAssetTypeIcon(details.type)}
+                                                        <span style={styles.assetType}>
+                                                            {details.type === 'Canister' && 'Canister'}
+                                                            {details.type === 'SNSNeuron' && 'SNS Neuron'}
+                                                            {details.type === 'ICRC1Token' && `${formatAmount(details.amount)} Tokens`}
+                                                        </span>
+                                                    </div>
+                                                    {details.type === 'Canister' && (
+                                                        <div style={styles.assetDetail}>
+                                                            ID: {details.canister_id}
+                                                        </div>
+                                                    )}
+                                                    {details.type === 'SNSNeuron' && (
+                                                        <>
+                                                            <div style={styles.assetDetail}>Governance: {details.governance_id}</div>
+                                                            <div style={styles.assetDetail}>Neuron: {details.neuron_id}</div>
+                                                        </>
+                                                    )}
+                                                    {details.type === 'ICRC1Token' && (
+                                                        <div style={styles.assetDetail}>Ledger: {details.ledger_id}</div>
+                                                    )}
                                                 </div>
-                                            )}
-                                            {details.type === 'SNSNeuron' && (
-                                                <>
-                                                    <div style={styles.assetDetail}>Governance: {details.governance_id}</div>
-                                                    <div style={styles.assetDetail}>Neuron: {details.neuron_id}</div>
-                                                </>
-                                            )}
-                                            {details.type === 'ICRC1Token' && (
-                                                <div style={styles.assetDetail}>Ledger: {details.ledger_id}</div>
-                                            )}
+                                                
+                                                {/* Expand/Collapse button for escrowed canisters */}
+                                                {details.type === 'Canister' && details.escrowed && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleAssetExpanded(idx, assetEntry);
+                                                        }}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: theme.colors.accent,
+                                                            cursor: 'pointer',
+                                                            padding: '4px',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            fontSize: '0.8rem',
+                                                        }}
+                                                    >
+                                                        {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                                                        {isExpanded ? 'Less' : 'Info'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                                 <span style={{
                                                     ...styles.escrowBadge,
@@ -1585,6 +1686,252 @@ function SneedexOffer() {
                                                     </button>
                                                 )}
                                             </div>
+                                            
+                                            {/* Expanded Canister Info Section */}
+                                            {details.type === 'Canister' && details.escrowed && isExpanded && (
+                                                <div style={{
+                                                    marginTop: '1rem',
+                                                    padding: '1rem',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '10px',
+                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                }}>
+                                                    {isLoadingInfo ? (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            justifyContent: 'center',
+                                                            gap: '10px',
+                                                            padding: '1rem',
+                                                            color: theme.colors.mutedText,
+                                                        }}>
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                            Loading canister info...
+                                                        </div>
+                                                    ) : info ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                justifyContent: 'space-between',
+                                                                marginBottom: '0.5rem',
+                                                            }}>
+                                                                <h4 style={{ 
+                                                                    margin: 0, 
+                                                                    fontSize: '0.9rem', 
+                                                                    color: theme.colors.primaryText,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                }}>
+                                                                    <FaMicrochip /> Canister Status
+                                                                </h4>
+                                                                <span style={{
+                                                                    fontSize: '0.75rem',
+                                                                    padding: '3px 10px',
+                                                                    borderRadius: '12px',
+                                                                    fontWeight: '600',
+                                                                    textTransform: 'uppercase',
+                                                                    background: 'running' in info.status 
+                                                                        ? `${theme.colors.success}20`
+                                                                        : 'stopping' in info.status 
+                                                                            ? `${theme.colors.warning}20`
+                                                                            : `${theme.colors.error}20`,
+                                                                    color: 'running' in info.status 
+                                                                        ? theme.colors.success
+                                                                        : 'stopping' in info.status 
+                                                                            ? theme.colors.warning
+                                                                            : theme.colors.error,
+                                                                }}>
+                                                                    {'running' in info.status ? '● Running' : 
+                                                                     'stopping' in info.status ? '◐ Stopping' : 
+                                                                     '○ Stopped'}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {/* Stats Grid */}
+                                                            <div style={{
+                                                                display: 'grid',
+                                                                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                                                gap: '0.75rem',
+                                                            }}>
+                                                                {/* Cycles */}
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                    }}>
+                                                                        <FaBolt /> Cycles
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.accent,
+                                                                    }}>
+                                                                        {formatCycles(Number(info.cycles))}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {/* Memory */}
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                    }}>
+                                                                        <FaMemory /> Memory
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        {formatBytes(Number(info.memory_size))}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {/* Idle Burn */}
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    borderRadius: '8px',
+                                                                    padding: '0.75rem',
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Daily Burn
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        fontSize: '1rem', 
+                                                                        fontWeight: '700',
+                                                                        color: theme.colors.warning,
+                                                                    }}>
+                                                                        {formatCycles(Number(info.idle_cycles_burned_per_day))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Controllers */}
+                                                            <div style={{ marginTop: '0.5rem' }}>
+                                                                <div style={{ 
+                                                                    fontSize: '0.75rem', 
+                                                                    color: theme.colors.mutedText,
+                                                                    marginBottom: '6px',
+                                                                }}>
+                                                                    Controllers ({info.controllers.length})
+                                                                </div>
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    flexDirection: 'column', 
+                                                                    gap: '4px',
+                                                                }}>
+                                                                    {info.controllers.map((ctrl, i) => (
+                                                                        <div key={i} style={{
+                                                                            fontSize: '0.75rem',
+                                                                            fontFamily: 'monospace',
+                                                                            color: ctrl.toString() === SNEEDEX_CANISTER_ID 
+                                                                                ? theme.colors.accent 
+                                                                                : theme.colors.secondaryText,
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            padding: '4px 8px',
+                                                                            borderRadius: '4px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px',
+                                                                        }}>
+                                                                            {ctrl.toString() === SNEEDEX_CANISTER_ID && (
+                                                                                <span style={{ 
+                                                                                    fontSize: '0.65rem',
+                                                                                    background: theme.colors.accent,
+                                                                                    color: '#fff',
+                                                                                    padding: '1px 5px',
+                                                                                    borderRadius: '3px',
+                                                                                }}>
+                                                                                    SNEEDEX
+                                                                                </span>
+                                                                            )}
+                                                                            {ctrl.toString()}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Module Hash */}
+                                                            {info.module_hash && info.module_hash.length > 0 && (
+                                                                <div style={{ marginTop: '0.25rem' }}>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.75rem', 
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '4px',
+                                                                    }}>
+                                                                        Module Hash
+                                                                    </div>
+                                                                    <div style={{
+                                                                        fontSize: '0.7rem',
+                                                                        fontFamily: 'monospace',
+                                                                        color: theme.colors.secondaryText,
+                                                                        wordBreak: 'break-all',
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        padding: '6px 8px',
+                                                                        borderRadius: '4px',
+                                                                    }}>
+                                                                        {Array.from(info.module_hash[0]).map(b => b.toString(16).padStart(2, '0')).join('')}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Refresh button */}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    fetchCanisterInfo(idx);
+                                                                }}
+                                                                style={{
+                                                                    marginTop: '0.5rem',
+                                                                    background: 'transparent',
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    color: theme.colors.mutedText,
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '0.75rem',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    width: 'fit-content',
+                                                                }}
+                                                            >
+                                                                <FaSync /> Refresh Info
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            textAlign: 'center',
+                                                            padding: '1rem',
+                                                        }}>
+                                                            Failed to load canister info
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
