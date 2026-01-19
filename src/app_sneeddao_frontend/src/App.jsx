@@ -75,6 +75,13 @@ import CreateIcpNeuron from './pages/CreateIcpNeuron';
 import IcpNeuronManager from './pages/IcpNeuronManager';
 import LockWizard from './pages/LockWizard';
 
+// Sneedex pages
+import Sneedex from './pages/Sneedex';
+import SneedexOffers from './pages/SneedexOffers';
+import SneedexOffer from './pages/SneedexOffer';
+import SneedexCreate from './pages/SneedexCreate';
+import SneedexMy from './pages/SneedexMy';
+
 // Component to set up global naming function
 function GlobalNamingSetup() {
     const { getNeuronDisplayName } = useNaming();
@@ -162,6 +169,13 @@ function App() {
                     <Route path="/tools/main" element={<ToolsMain />} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
                     <Route path="/tools/escrow/swap" element={<EscrowSwap />} />
+
+                    {/* Sneedex routes */}
+                    <Route path="/sneedex" element={<Sneedex />} />
+                    <Route path="/sneedex_offers" element={<SneedexOffers />} />
+                    <Route path="/sneedex_offer/:id" element={<SneedexOffer />} />
+                    <Route path="/sneedex_create" element={<SneedexCreate />} />
+                    <Route path="/sneedex_my" element={<SneedexMy />} />
 
                     {/* Admin routes */}
                     <Route path="/admin" element={<Admin />} />

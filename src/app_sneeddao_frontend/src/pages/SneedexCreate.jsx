@@ -1,0 +1,985 @@
+import React, { useState } from 'react';
+import Header from '../components/Header';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle } from 'react-icons/fa';
+import { Principal } from '@dfinity/principal';
+import { 
+    createSneedexActor, 
+    parseAmount, 
+    daysToExpirationNs,
+    createAssetVariant,
+    getErrorMessage,
+    SNEEDEX_CANISTER_ID 
+} from '../utils/SneedexUtils';
+
+function SneedexCreate() {
+    const { identity, isAuthenticated } = useAuth();
+    const { theme } = useTheme();
+    const navigate = useNavigate();
+    
+    // Offer settings
+    const [minBidPrice, setMinBidPrice] = useState('');
+    const [buyoutPrice, setBuyoutPrice] = useState('');
+    const [hasExpiration, setHasExpiration] = useState(true);
+    const [expirationDays, setExpirationDays] = useState('7');
+    const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
+    const [priceTokenSymbol, setPriceTokenSymbol] = useState('ICP');
+    const [priceTokenDecimals, setPriceTokenDecimals] = useState(8);
+    
+    // Assets
+    const [assets, setAssets] = useState([]);
+    const [showAddAsset, setShowAddAsset] = useState(false);
+    const [newAssetType, setNewAssetType] = useState('canister');
+    const [newAssetCanisterId, setNewAssetCanisterId] = useState('');
+    const [newAssetGovernanceId, setNewAssetGovernanceId] = useState('');
+    const [newAssetNeuronId, setNewAssetNeuronId] = useState('');
+    const [newAssetTokenLedger, setNewAssetTokenLedger] = useState('');
+    const [newAssetTokenAmount, setNewAssetTokenAmount] = useState('');
+    const [newAssetTokenSymbol, setNewAssetTokenSymbol] = useState('');
+    const [newAssetTokenDecimals, setNewAssetTokenDecimals] = useState('8');
+    
+    const [creating, setCreating] = useState(false);
+    const [error, setError] = useState('');
+    const [step, setStep] = useState(1); // 1: Configure, 2: Add Assets, 3: Review
+    const [createdOfferId, setCreatedOfferId] = useState(null);
+    
+    const addAsset = () => {
+        setError('');
+        let asset;
+        
+        try {
+            if (newAssetType === 'canister') {
+                if (!newAssetCanisterId.trim()) {
+                    setError('Please enter a canister ID');
+                    return;
+                }
+                // Validate principal
+                Principal.fromText(newAssetCanisterId.trim());
+                asset = { 
+                    type: 'canister', 
+                    canister_id: newAssetCanisterId.trim(),
+                    display: `Canister: ${newAssetCanisterId.trim().slice(0, 10)}...`
+                };
+            } else if (newAssetType === 'neuron') {
+                if (!newAssetGovernanceId.trim() || !newAssetNeuronId.trim()) {
+                    setError('Please enter governance canister ID and neuron ID');
+                    return;
+                }
+                // Validate governance principal
+                Principal.fromText(newAssetGovernanceId.trim());
+                asset = { 
+                    type: 'neuron', 
+                    governance_id: newAssetGovernanceId.trim(), 
+                    neuron_id: newAssetNeuronId.trim(),
+                    display: `Neuron: ${newAssetNeuronId.trim().slice(0, 10)}...`
+                };
+            } else if (newAssetType === 'token') {
+                if (!newAssetTokenLedger.trim() || !newAssetTokenAmount.trim()) {
+                    setError('Please enter token ledger and amount');
+                    return;
+                }
+                // Validate ledger principal
+                Principal.fromText(newAssetTokenLedger.trim());
+                const amount = parseFloat(newAssetTokenAmount);
+                if (isNaN(amount) || amount <= 0) {
+                    setError('Please enter a valid token amount');
+                    return;
+                }
+                asset = { 
+                    type: 'token', 
+                    ledger_id: newAssetTokenLedger.trim(), 
+                    amount: newAssetTokenAmount.trim(),
+                    symbol: newAssetTokenSymbol.trim() || 'TOKEN',
+                    decimals: parseInt(newAssetTokenDecimals) || 8,
+                    display: `${newAssetTokenAmount} ${newAssetTokenSymbol.trim() || 'TOKEN'}`
+                };
+            }
+        } catch (e) {
+            setError('Invalid principal/canister ID format');
+            return;
+        }
+        
+        setAssets([...assets, asset]);
+        setShowAddAsset(false);
+        setNewAssetCanisterId('');
+        setNewAssetGovernanceId('');
+        setNewAssetNeuronId('');
+        setNewAssetTokenLedger('');
+        setNewAssetTokenAmount('');
+        setNewAssetTokenSymbol('');
+    };
+    
+    const removeAsset = (index) => {
+        setAssets(assets.filter((_, i) => i !== index));
+    };
+    
+    const validateStep1 = () => {
+        if (!minBidPrice && !buyoutPrice) {
+            setError('You must set either a minimum bid price or a buyout price (or both)');
+            return false;
+        }
+        if (!hasExpiration && !buyoutPrice) {
+            setError('If there is no expiration, you must set a buyout price');
+            return false;
+        }
+        if (minBidPrice && buyoutPrice && parseFloat(minBidPrice) > parseFloat(buyoutPrice)) {
+            setError('Minimum bid cannot be higher than buyout price');
+            return false;
+        }
+        try {
+            Principal.fromText(priceTokenLedger);
+        } catch (e) {
+            setError('Invalid price token ledger ID');
+            return false;
+        }
+        setError('');
+        return true;
+    };
+    
+    const validateStep2 = () => {
+        if (assets.length === 0) {
+            setError('You must add at least one asset to your offer');
+            return false;
+        }
+        setError('');
+        return true;
+    };
+    
+    const handleNext = () => {
+        if (step === 1 && validateStep1()) {
+            setStep(2);
+        } else if (step === 2 && validateStep2()) {
+            setStep(3);
+        }
+    };
+    
+    const handleBack = () => {
+        setStep(step - 1);
+        setError('');
+    };
+    
+    const handleCreate = async () => {
+        if (!identity) {
+            setError('Please connect your wallet first');
+            return;
+        }
+        
+        setCreating(true);
+        setError('');
+        
+        try {
+            const actor = createSneedexActor(identity);
+            
+            // Step 1: Create the offer
+            const createRequest = {
+                price_token_ledger: Principal.fromText(priceTokenLedger),
+                min_bid_price: minBidPrice ? [parseAmount(minBidPrice, priceTokenDecimals)] : [],
+                buyout_price: buyoutPrice ? [parseAmount(buyoutPrice, priceTokenDecimals)] : [],
+                expiration: hasExpiration ? [daysToExpirationNs(parseInt(expirationDays))] : [],
+            };
+            
+            const createResult = await actor.createOffer(createRequest);
+            
+            if ('err' in createResult) {
+                throw new Error(getErrorMessage(createResult.err));
+            }
+            
+            const offerId = createResult.ok;
+            setCreatedOfferId(offerId);
+            
+            // Step 2: Add assets to the offer
+            for (const asset of assets) {
+                const assetVariant = createAssetVariant(asset.type, asset);
+                const addResult = await actor.addAsset({
+                    offer_id: offerId,
+                    asset: assetVariant,
+                });
+                
+                if ('err' in addResult) {
+                    throw new Error(`Failed to add asset: ${getErrorMessage(addResult.err)}`);
+                }
+            }
+            
+            // Show success and next steps
+            setStep(4); // Success step
+            
+        } catch (e) {
+            console.error('Failed to create offer:', e);
+            setError(e.message || 'Failed to create offer');
+        } finally {
+            setCreating(false);
+        }
+    };
+    
+    const getAssetIcon = (type) => {
+        switch (type) {
+            case 'canister': return <FaCubes style={{ color: theme.colors.accent }} />;
+            case 'neuron': return <FaBrain style={{ color: theme.colors.success }} />;
+            case 'token': return <FaCoins style={{ color: theme.colors.warning }} />;
+            default: return <FaCubes />;
+        }
+    };
+
+    const styles = {
+        container: {
+            maxWidth: '800px',
+            margin: '0 auto',
+            padding: '2rem',
+            color: theme.colors.primaryText,
+        },
+        backButton: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: theme.colors.mutedText,
+            textDecoration: 'none',
+            marginBottom: '1.5rem',
+            fontSize: '0.95rem',
+            transition: 'color 0.3s ease',
+        },
+        title: {
+            fontSize: '2.5rem',
+            fontWeight: '700',
+            color: theme.colors.accent,
+            marginBottom: '0.5rem',
+        },
+        subtitle: {
+            color: theme.colors.mutedText,
+            marginBottom: '2rem',
+        },
+        progressBar: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: '2rem',
+            position: 'relative',
+        },
+        progressStep: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            flex: 1,
+            zIndex: 1,
+        },
+        progressCircle: {
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: '600',
+            marginBottom: '8px',
+            transition: 'all 0.3s ease',
+        },
+        progressLabel: {
+            fontSize: '0.85rem',
+            color: theme.colors.mutedText,
+            textAlign: 'center',
+        },
+        progressLine: {
+            position: 'absolute',
+            top: '20px',
+            left: '20%',
+            right: '20%',
+            height: '2px',
+            background: theme.colors.border,
+            zIndex: 0,
+        },
+        card: {
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '16px',
+            padding: '2rem',
+            marginBottom: '1.5rem',
+        },
+        cardTitle: {
+            fontSize: '1.3rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+            marginBottom: '1.5rem',
+        },
+        formGroup: {
+            marginBottom: '1.5rem',
+        },
+        label: {
+            display: 'block',
+            fontSize: '0.95rem',
+            fontWeight: '500',
+            color: theme.colors.primaryText,
+            marginBottom: '0.5rem',
+        },
+        labelHint: {
+            fontSize: '0.85rem',
+            color: theme.colors.mutedText,
+            fontWeight: 'normal',
+        },
+        input: {
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '1rem',
+            outline: 'none',
+            transition: 'border-color 0.3s ease',
+            boxSizing: 'border-box',
+        },
+        inputRow: {
+            display: 'flex',
+            gap: '1rem',
+            alignItems: 'flex-end',
+        },
+        checkbox: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+        },
+        checkboxInput: {
+            width: '20px',
+            height: '20px',
+            cursor: 'pointer',
+        },
+        select: {
+            width: '100%',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '1rem',
+            outline: 'none',
+            cursor: 'pointer',
+        },
+        assetsList: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+        },
+        assetItem: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '1rem',
+            background: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '10px',
+        },
+        assetInfo: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+        },
+        assetDetails: {
+            fontSize: '0.9rem',
+        },
+        assetType: {
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+        },
+        assetId: {
+            fontSize: '0.8rem',
+            color: theme.colors.mutedText,
+            fontFamily: 'monospace',
+        },
+        removeButton: {
+            background: 'transparent',
+            border: 'none',
+            color: theme.colors.error || '#ff4444',
+            cursor: 'pointer',
+            padding: '8px',
+            borderRadius: '6px',
+            transition: 'background 0.3s ease',
+        },
+        addAssetButton: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '1rem',
+            background: `${theme.colors.accent}15`,
+            border: `2px dashed ${theme.colors.accent}`,
+            borderRadius: '10px',
+            color: theme.colors.accent,
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+        },
+        addAssetModal: {
+            background: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
+            padding: '1.5rem',
+            marginTop: '1rem',
+        },
+        buttonRow: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            marginTop: '2rem',
+        },
+        backBtn: {
+            padding: '12px 24px',
+            borderRadius: '10px',
+            border: `2px solid ${theme.colors.border}`,
+            background: 'transparent',
+            color: theme.colors.primaryText,
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+        },
+        nextBtn: {
+            padding: '12px 32px',
+            borderRadius: '10px',
+            border: 'none',
+            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)`,
+            color: theme.colors.primaryBg,
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+        },
+        createBtn: {
+            padding: '14px 40px',
+            borderRadius: '10px',
+            border: 'none',
+            background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}cc)`,
+            color: theme.colors.primaryBg,
+            fontSize: '1.1rem',
+            fontWeight: '700',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+        },
+        errorText: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: theme.colors.error || '#ff4444',
+            background: `${theme.colors.error || '#ff4444'}15`,
+            padding: '12px 16px',
+            borderRadius: '8px',
+            marginBottom: '1.5rem',
+        },
+        reviewSection: {
+            marginBottom: '1.5rem',
+            padding: '1rem',
+            background: theme.colors.tertiaryBg,
+            borderRadius: '10px',
+        },
+        reviewLabel: {
+            fontSize: '0.85rem',
+            color: theme.colors.mutedText,
+            marginBottom: '4px',
+        },
+        reviewValue: {
+            fontSize: '1.1rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+        },
+        emptyAssets: {
+            textAlign: 'center',
+            padding: '2rem',
+            color: theme.colors.mutedText,
+        },
+        successCard: {
+            background: `${theme.colors.success}15`,
+            border: `1px solid ${theme.colors.success}`,
+            borderRadius: '16px',
+            padding: '2rem',
+            textAlign: 'center',
+        },
+        successIcon: {
+            fontSize: '4rem',
+            marginBottom: '1rem',
+        },
+        successTitle: {
+            fontSize: '1.5rem',
+            fontWeight: '700',
+            color: theme.colors.success,
+            marginBottom: '1rem',
+        },
+        successText: {
+            color: theme.colors.primaryText,
+            marginBottom: '1.5rem',
+            lineHeight: '1.6',
+        },
+        nextStepsBox: {
+            background: theme.colors.tertiaryBg,
+            borderRadius: '10px',
+            padding: '1.5rem',
+            textAlign: 'left',
+            marginTop: '1.5rem',
+        },
+    };
+    
+    const getStepStyle = (stepNum) => ({
+        ...styles.progressCircle,
+        background: step >= stepNum ? theme.colors.accent : theme.colors.tertiaryBg,
+        color: step >= stepNum ? theme.colors.primaryBg : theme.colors.mutedText,
+        border: `2px solid ${step >= stepNum ? theme.colors.accent : theme.colors.border}`,
+    });
+
+    if (!isAuthenticated) {
+        return (
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <Header />
+                <main style={styles.container}>
+                    <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem' }}>Connect Your Wallet</h2>
+                        <p style={{ color: theme.colors.mutedText }}>Please connect your wallet to create an offer.</p>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    return (
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <Header />
+            <main style={styles.container}>
+                <Link 
+                    to="/sneedex_offers" 
+                    style={styles.backButton}
+                    onMouseEnter={(e) => e.target.style.color = theme.colors.accent}
+                    onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                >
+                    <FaArrowLeft /> Back to Marketplace
+                </Link>
+                
+                <h1 style={styles.title}>Create Offer</h1>
+                <p style={styles.subtitle}>List your assets for auction or instant sale</p>
+                
+                {/* Progress Bar */}
+                {step < 4 && (
+                    <div style={styles.progressBar}>
+                        <div style={styles.progressLine} />
+                        <div style={styles.progressStep}>
+                            <div style={getStepStyle(1)}>{step > 1 ? <FaCheck /> : '1'}</div>
+                            <span style={styles.progressLabel}>Configure Pricing</span>
+                        </div>
+                        <div style={styles.progressStep}>
+                            <div style={getStepStyle(2)}>{step > 2 ? <FaCheck /> : '2'}</div>
+                            <span style={styles.progressLabel}>Add Assets</span>
+                        </div>
+                        <div style={styles.progressStep}>
+                            <div style={getStepStyle(3)}>3</div>
+                            <span style={styles.progressLabel}>Review & Create</span>
+                        </div>
+                    </div>
+                )}
+                
+                {error && (
+                    <div style={styles.errorText}>
+                        <FaExclamationTriangle /> {error}
+                    </div>
+                )}
+                
+                {/* Step 1: Configure Pricing */}
+                {step === 1 && (
+                    <div style={styles.card}>
+                        <h3 style={styles.cardTitle}>Pricing Configuration</h3>
+                        
+                        <div style={styles.formGroup}>
+                            <label style={styles.label}>
+                                Price Token
+                                <span style={styles.labelHint}> — The token buyers will pay in</span>
+                            </label>
+                            <div style={styles.inputRow}>
+                                <input
+                                    type="text"
+                                    placeholder="Token ledger canister ID"
+                                    style={{ ...styles.input, flex: 2 }}
+                                    value={priceTokenLedger}
+                                    onChange={(e) => setPriceTokenLedger(e.target.value)}
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Symbol"
+                                    style={{ ...styles.input, flex: 1 }}
+                                    value={priceTokenSymbol}
+                                    onChange={(e) => setPriceTokenSymbol(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        
+                        <div style={styles.formGroup}>
+                            <label style={styles.label}>
+                                Minimum Bid Price
+                                <span style={styles.labelHint}> — Optional, for auction-style offers</span>
+                            </label>
+                            <input
+                                type="number"
+                                step="0.0001"
+                                placeholder={`e.g., 10 ${priceTokenSymbol}`}
+                                style={styles.input}
+                                value={minBidPrice}
+                                onChange={(e) => setMinBidPrice(e.target.value)}
+                            />
+                        </div>
+                        
+                        <div style={styles.formGroup}>
+                            <label style={styles.label}>
+                                Buyout Price
+                                <span style={styles.labelHint}> — Optional, for instant purchase</span>
+                            </label>
+                            <input
+                                type="number"
+                                step="0.0001"
+                                placeholder={`e.g., 50 ${priceTokenSymbol}`}
+                                style={styles.input}
+                                value={buyoutPrice}
+                                onChange={(e) => setBuyoutPrice(e.target.value)}
+                            />
+                        </div>
+                        
+                        <div style={styles.formGroup}>
+                            <label style={styles.checkbox}>
+                                <input
+                                    type="checkbox"
+                                    style={styles.checkboxInput}
+                                    checked={hasExpiration}
+                                    onChange={(e) => setHasExpiration(e.target.checked)}
+                                />
+                                Set an expiration date
+                            </label>
+                        </div>
+                        
+                        {hasExpiration && (
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>Expires in</label>
+                                <select
+                                    style={styles.select}
+                                    value={expirationDays}
+                                    onChange={(e) => setExpirationDays(e.target.value)}
+                                >
+                                    <option value="1">1 day</option>
+                                    <option value="3">3 days</option>
+                                    <option value="7">7 days</option>
+                                    <option value="14">14 days</option>
+                                    <option value="30">30 days</option>
+                                </select>
+                            </div>
+                        )}
+                        
+                        <div style={styles.buttonRow}>
+                            <div />
+                            <button style={styles.nextBtn} onClick={handleNext}>
+                                Next: Add Assets →
+                            </button>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Step 2: Add Assets */}
+                {step === 2 && (
+                    <div style={styles.card}>
+                        <h3 style={styles.cardTitle}>Assets to Sell</h3>
+                        
+                        {assets.length === 0 ? (
+                            <div style={styles.emptyAssets}>
+                                No assets added yet. Add at least one asset to continue.
+                            </div>
+                        ) : (
+                            <div style={styles.assetsList}>
+                                {assets.map((asset, idx) => (
+                                    <div key={idx} style={styles.assetItem}>
+                                        <div style={styles.assetInfo}>
+                                            {getAssetIcon(asset.type)}
+                                            <div style={styles.assetDetails}>
+                                                <div style={styles.assetType}>
+                                                    {asset.type === 'canister' && 'Canister'}
+                                                    {asset.type === 'neuron' && 'SNS Neuron'}
+                                                    {asset.type === 'token' && `${asset.amount} ${asset.symbol}`}
+                                                </div>
+                                                <div style={styles.assetId}>
+                                                    {asset.type === 'canister' && asset.canister_id}
+                                                    {asset.type === 'neuron' && `${asset.governance_id.slice(0, 10)}... / ${asset.neuron_id.slice(0, 10)}...`}
+                                                    {asset.type === 'token' && asset.ledger_id}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            style={styles.removeButton}
+                                            onClick={() => removeAsset(idx)}
+                                            onMouseEnter={(e) => e.target.style.background = `${theme.colors.error || '#ff4444'}20`}
+                                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                        >
+                                            <FaTrash />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {!showAddAsset ? (
+                            <button
+                                style={styles.addAssetButton}
+                                onClick={() => setShowAddAsset(true)}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = `${theme.colors.accent}25`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = `${theme.colors.accent}15`;
+                                }}
+                            >
+                                <FaPlus /> Add Asset
+                            </button>
+                        ) : (
+                            <div style={styles.addAssetModal}>
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>Asset Type</label>
+                                    <select
+                                        style={styles.select}
+                                        value={newAssetType}
+                                        onChange={(e) => setNewAssetType(e.target.value)}
+                                    >
+                                        <option value="canister">Canister</option>
+                                        <option value="neuron">SNS Neuron</option>
+                                        <option value="token">ICRC1 Token</option>
+                                    </select>
+                                </div>
+                                
+                                {newAssetType === 'canister' && (
+                                    <div style={styles.formGroup}>
+                                        <label style={styles.label}>Canister ID</label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                            style={styles.input}
+                                            value={newAssetCanisterId}
+                                            onChange={(e) => setNewAssetCanisterId(e.target.value)}
+                                        />
+                                    </div>
+                                )}
+                                
+                                {newAssetType === 'neuron' && (
+                                    <>
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>SNS Governance Canister ID</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g., fi3zi-fyaaa-aaaaq-aachq-cai"
+                                                style={styles.input}
+                                                value={newAssetGovernanceId}
+                                                onChange={(e) => setNewAssetGovernanceId(e.target.value)}
+                                            />
+                                        </div>
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>Neuron ID (hex)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Neuron ID in hex format"
+                                                style={styles.input}
+                                                value={newAssetNeuronId}
+                                                onChange={(e) => setNewAssetNeuronId(e.target.value)}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                                
+                                {newAssetType === 'token' && (
+                                    <>
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>Token Ledger Canister ID</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g., cngnf-vqaaa-aaaar-qag4q-cai"
+                                                style={styles.input}
+                                                value={newAssetTokenLedger}
+                                                onChange={(e) => setNewAssetTokenLedger(e.target.value)}
+                                            />
+                                        </div>
+                                        <div style={styles.inputRow}>
+                                            <div style={{ flex: 2, ...styles.formGroup }}>
+                                                <label style={styles.label}>Amount</label>
+                                                <input
+                                                    type="number"
+                                                    placeholder="e.g., 1000"
+                                                    style={styles.input}
+                                                    value={newAssetTokenAmount}
+                                                    onChange={(e) => setNewAssetTokenAmount(e.target.value)}
+                                                />
+                                            </div>
+                                            <div style={{ flex: 1, ...styles.formGroup }}>
+                                                <label style={styles.label}>Symbol</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g., SNEED"
+                                                    style={styles.input}
+                                                    value={newAssetTokenSymbol}
+                                                    onChange={(e) => setNewAssetTokenSymbol(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                                    <button
+                                        style={styles.backBtn}
+                                        onClick={() => setShowAddAsset(false)}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        style={styles.nextBtn}
+                                        onClick={addAsset}
+                                    >
+                                        Add Asset
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div style={styles.buttonRow}>
+                            <button style={styles.backBtn} onClick={handleBack}>
+                                ← Back
+                            </button>
+                            <button style={styles.nextBtn} onClick={handleNext}>
+                                Next: Review →
+                            </button>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Step 3: Review & Create */}
+                {step === 3 && (
+                    <div style={styles.card}>
+                        <h3 style={styles.cardTitle}>Review Your Offer</h3>
+                        
+                        <div style={styles.reviewSection}>
+                            <div style={styles.reviewLabel}>Price Token</div>
+                            <div style={styles.reviewValue}>{priceTokenSymbol}</div>
+                        </div>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div style={styles.reviewSection}>
+                                <div style={styles.reviewLabel}>Minimum Bid</div>
+                                <div style={styles.reviewValue}>
+                                    {minBidPrice ? `${minBidPrice} ${priceTokenSymbol}` : 'Not set'}
+                                </div>
+                            </div>
+                            <div style={styles.reviewSection}>
+                                <div style={styles.reviewLabel}>Buyout Price</div>
+                                <div style={styles.reviewValue}>
+                                    {buyoutPrice ? `${buyoutPrice} ${priceTokenSymbol}` : 'Not set'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style={styles.reviewSection}>
+                            <div style={styles.reviewLabel}>Expiration</div>
+                            <div style={styles.reviewValue}>
+                                {hasExpiration ? `${expirationDays} days from activation` : 'No expiration'}
+                            </div>
+                        </div>
+                        
+                        <div style={styles.reviewSection}>
+                            <div style={styles.reviewLabel}>Assets ({assets.length})</div>
+                            <div style={styles.assetsList}>
+                                {assets.map((asset, idx) => (
+                                    <div key={idx} style={{ ...styles.assetItem, background: theme.colors.secondaryBg }}>
+                                        <div style={styles.assetInfo}>
+                                            {getAssetIcon(asset.type)}
+                                            <div style={styles.assetDetails}>
+                                                <div style={styles.assetType}>{asset.display}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div style={{ 
+                            background: `${theme.colors.warning}15`, 
+                            border: `1px solid ${theme.colors.warning}`,
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            marginBottom: '1.5rem',
+                            fontSize: '0.9rem',
+                            color: theme.colors.warning,
+                        }}>
+                            <strong>⚠️ Important:</strong> After creating the offer, you'll need to escrow each asset:
+                            <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
+                                <li>For canisters: Add Sneedex ({SNEEDEX_CANISTER_ID}) as a controller first</li>
+                                <li>For neurons: Add Sneedex as a hotkey with full permissions</li>
+                                <li>For tokens: Send tokens to the escrow subaccount</li>
+                            </ul>
+                        </div>
+                        
+                        <div style={styles.buttonRow}>
+                            <button style={styles.backBtn} onClick={handleBack}>
+                                ← Back
+                            </button>
+                            <button
+                                style={styles.createBtn}
+                                onClick={handleCreate}
+                                disabled={creating}
+                                onMouseEnter={(e) => {
+                                    e.target.style.transform = 'translateY(-2px)';
+                                    e.target.style.boxShadow = `0 8px 25px ${theme.colors.success}40`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.transform = 'translateY(0)';
+                                    e.target.style.boxShadow = 'none';
+                                }}
+                            >
+                                {creating ? 'Creating...' : '🚀 Create Offer'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Step 4: Success */}
+                {step === 4 && (
+                    <div style={styles.successCard}>
+                        <div style={styles.successIcon}>🎉</div>
+                        <h2 style={styles.successTitle}>Offer Created Successfully!</h2>
+                        <p style={styles.successText}>
+                            Your offer (ID: {Number(createdOfferId)}) has been created and is now in <strong>Draft</strong> state.
+                        </p>
+                        
+                        <div style={styles.nextStepsBox}>
+                            <h4 style={{ color: theme.colors.primaryText, marginBottom: '1rem' }}>Next Steps:</h4>
+                            <ol style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.25rem', lineHeight: '2' }}>
+                                <li><strong>Escrow your assets</strong> - For each asset in your offer:
+                                    <ul style={{ marginTop: '0.5rem' }}>
+                                        <li>Canisters: Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>{SNEEDEX_CANISTER_ID}</code> as a controller</li>
+                                        <li>Neurons: Add Sneedex as a hotkey</li>
+                                        <li>Tokens: Transfer to the escrow subaccount</li>
+                                    </ul>
+                                </li>
+                                <li><strong>Verify escrow</strong> - Call the escrow functions for each asset</li>
+                                <li><strong>Activate the offer</strong> - Once all assets are escrowed, activate to go live</li>
+                            </ol>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '2rem' }}>
+                            <Link
+                                to={`/sneedex_offer/${createdOfferId}`}
+                                style={styles.nextBtn}
+                            >
+                                View Offer →
+                            </Link>
+                            <Link
+                                to="/sneedex_my"
+                                style={{ ...styles.backBtn, textDecoration: 'none' }}
+                            >
+                                My Offers
+                            </Link>
+                        </div>
+                    </div>
+                )}
+            </main>
+        </div>
+    );
+}
+
+export default SneedexCreate;

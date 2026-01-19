@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -39,6 +39,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Locks';
+        if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'DEX';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
@@ -59,6 +60,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path)) {
             setActiveSection('Locks');
+        } else if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) {
+            setActiveSection('DEX');
         } else if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || path.startsWith('/tools/')) {
             setActiveSection('Tools');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
@@ -104,6 +107,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) {
             setActiveSection('Locks');
+        } else if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) {
+            setActiveSection('DEX');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
         } else if (['/help', '/doc'].includes(path) || path.startsWith('/help/')) {
@@ -199,6 +204,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' },
                 { name: 'Wizard', path: '/lock_wizard' }
+            ]
+        },
+        'DEX': {
+            icon: <FaExchangeAlt size={18} />,
+            displayName: 'Sneedex',
+            defaultPath: '/sneedex',
+            subMenu: [
+                { name: 'Sneedex', path: '/sneedex' },
+                { name: 'Marketplace', path: '/sneedex_offers' },
+                { name: 'Create Offer', path: '/sneedex_create' },
+                { name: 'My Sneedex', path: '/sneedex_my' }
             ]
         },
         'Help': {
