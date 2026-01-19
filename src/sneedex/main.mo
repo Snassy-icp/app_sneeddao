@@ -1009,13 +1009,21 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     return #err(#InvalidState("Bid is not in won state"));
                                 };
                                 
-                                // Transfer tokens to seller
+                                // Get fee and calculate transfer amount (bid amount - fee)
+                                let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                                let transferAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+                                
+                                if (transferAmount == 0) {
+                                    return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
+                                };
+                                
+                                // Transfer tokens to seller (amount - fee, since fee is deducted)
                                 let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
                                 let transferResult = await* AssetHandlers.transferTokens(
                                     offer.price_token_ledger,
                                     ?subaccount,
                                     { owner = caller; subaccount = null },
-                                    bid.amount
+                                    transferAmount
                                 );
                                 
                                 switch (transferResult) {
@@ -1043,16 +1051,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         // Also allow claiming after assets claimed
                         switch (getHighestBid(offerId)) {
                             case null { return #err(#BidNotFound) };
-                            case (?bid) {
+                            case (?_bid) {
+                                // Get fee for transfer
+                                let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                                
                                 // Find the winning bid from completed state
                                 for (b in getBidsForOffer(offerId).vals()) {
                                     if (b.state == #Won) {
+                                        let transferAmount = if (b.amount > fee) { b.amount - fee } else { 0 };
+                                        
+                                        if (transferAmount == 0) {
+                                            return #err(#InsufficientFunds({ available = b.amount; required = fee }));
+                                        };
+                                        
                                         let subaccount = Utils.bidEscrowSubaccount(b.bidder, b.id);
                                         let transferResult = await* AssetHandlers.transferTokens(
                                             offer.price_token_ledger,
                                             ?subaccount,
                                             { owner = caller; subaccount = null },
-                                            b.amount
+                                            transferAmount
                                         );
                                         
                                         switch (transferResult) {
@@ -1192,12 +1209,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (getOffer(bid.offer_id)) {
                     case null { return #err(#OfferNotFound) };
                     case (?offer) {
+                        // Get fee and calculate refund amount (bid amount - fee)
+                        let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                        let refundAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+                        
+                        if (refundAmount == 0) {
+                            return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
+                        };
+                        
                         let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
                         let transferResult = await* AssetHandlers.transferTokens(
                             offer.price_token_ledger,
                             ?subaccount,
                             { owner = caller; subaccount = null },
-                            bid.amount
+                            refundAmount
                         );
                         
                         switch (transferResult) {
