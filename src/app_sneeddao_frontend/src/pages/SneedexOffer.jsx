@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -2933,13 +2933,69 @@ function SneedexOffer() {
                                     {highestBid ? `${formatAmount(highestBid.amount, tokenInfo.decimals)} ${tokenInfo.symbol}` : 'No bids'}
                                 </span>
                             </div>
-                            <div style={{ ...styles.priceRow, borderBottom: 'none' }}>
+                            <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
                                 <span style={styles.priceLabel}>Time Remaining</span>
                                 <span style={{ ...styles.priceValue, color: theme.colors.warning }}>
                                     <FaClock style={{ marginRight: '8px' }} />
                                     {formatTimeRemaining(offer.expiration[0])}
                                 </span>
                             </div>
+                            
+                            {/* Private Offer indicator */}
+                            {offer.approved_bidders?.[0]?.length > 0 && (
+                                <div style={{ ...styles.priceRow, borderBottom: 'none' }}>
+                                    <span style={styles.priceLabel}>
+                                        <FaLock style={{ marginRight: '6px' }} />
+                                        Private Offer
+                                    </span>
+                                    <span style={{ ...styles.priceValue, fontSize: '0.9rem' }}>
+                                        {offer.approved_bidders[0].length} approved bidder{offer.approved_bidders[0].length !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                            )}
+                            
+                            {/* Approved Bidders List - visible to creator only */}
+                            {isCreator && offer.approved_bidders?.[0]?.length > 0 && (
+                                <div style={{
+                                    background: `${theme.colors.warning}10`,
+                                    border: `1px solid ${theme.colors.warning}40`,
+                                    borderRadius: '10px',
+                                    padding: '1rem',
+                                    marginTop: '1rem',
+                                }}>
+                                    <h4 style={{ 
+                                        margin: '0 0 0.75rem 0', 
+                                        fontSize: '0.9rem', 
+                                        color: theme.colors.warning,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <FaUserCheck /> Approved Bidders
+                                    </h4>
+                                    <div style={{ 
+                                        maxHeight: '150px', 
+                                        overflowY: 'auto',
+                                        fontSize: '0.8rem',
+                                        fontFamily: 'monospace',
+                                    }}>
+                                        {offer.approved_bidders[0].map((principal, idx) => (
+                                            <div 
+                                                key={idx}
+                                                style={{
+                                                    padding: '6px 8px',
+                                                    background: idx % 2 === 0 ? theme.colors.tertiaryBg : 'transparent',
+                                                    borderRadius: '4px',
+                                                    color: theme.colors.secondaryText,
+                                                    wordBreak: 'break-all',
+                                                }}
+                                            >
+                                                {principal.toString()}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             
                             {isActive && isAuthenticated && !pendingBid && (
                                 <div style={styles.bidSection}>
