@@ -22,5 +22,8 @@
   "sneed_sns_forum": {
     "ic": "mcigm-4aaaa-aaaad-qhlkq-cai",
     "staging": "nrtf2-wiaaa-aaaad-aankq-cai"
+  },
+  "sneedex": {
+    "staging": "igm46-laaaa-aaaae-qgwra-cai"
   }
 }
