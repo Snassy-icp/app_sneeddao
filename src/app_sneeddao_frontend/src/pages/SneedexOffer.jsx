@@ -3,9 +3,11 @@ import Header from '../components/Header';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet } from 'react-icons/fa';
+import { Principal } from '@dfinity/principal';
 import { 
     createSneedexActor, 
+    createLedgerActor,
     formatAmount, 
     formatDate,
     formatTimeRemaining, 
@@ -32,7 +34,9 @@ function SneedexOffer() {
     const [bidAmount, setBidAmount] = useState('');
     const [bidding, setBidding] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
-    const [pendingBid, setPendingBid] = useState(null); // {bidId, amount, subaccount}
+    const [pendingBid, setPendingBid] = useState(null); // {bidId, amount, subaccount, escrowBalance}
+    const [paymentLoading, setPaymentLoading] = useState(false);
+    const [withdrawLoading, setWithdrawLoading] = useState(false);
     
     const fetchOffer = useCallback(async () => {
         setLoading(true);
@@ -169,6 +173,132 @@ function SneedexOffer() {
         setPendingBid(null);
     };
     
+    // Fetch escrow balance for pending bid
+    const fetchEscrowBalance = useCallback(async () => {
+        if (!pendingBid || !offer) return;
+        
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.getBidEscrowBalance(pendingBid.bidId);
+            
+            if ('ok' in result) {
+                setPendingBid(prev => prev ? { ...prev, escrowBalance: result.ok } : null);
+            }
+        } catch (e) {
+            console.error('Failed to fetch escrow balance:', e);
+        }
+    }, [pendingBid?.bidId, offer, identity]);
+    
+    // Refresh escrow balance periodically when there's a pending bid
+    useEffect(() => {
+        if (pendingBid) {
+            fetchEscrowBalance();
+            const interval = setInterval(fetchEscrowBalance, 5000); // Refresh every 5 seconds
+            return () => clearInterval(interval);
+        }
+    }, [pendingBid?.bidId, fetchEscrowBalance]);
+    
+    // Direct payment from wallet
+    const handleDirectPayment = async () => {
+        if (!identity || !offer || !pendingBid) return;
+        
+        setPaymentLoading(true);
+        setError('');
+        try {
+            const ledgerActor = await createLedgerActor(
+                offer.price_token_ledger.toString(),
+                identity
+            );
+            
+            // Get the transfer fee
+            const fee = await ledgerActor.icrc1_fee();
+            
+            // Prepare transfer
+            const transferArg = {
+                to: {
+                    owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+                    subaccount: [Array.from(pendingBid.subaccount)],
+                },
+                fee: [fee],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: pendingBid.amount,
+            };
+            
+            const result = await ledgerActor.icrc1_transfer(transferArg);
+            
+            if ('Err' in result) {
+                const err = result.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds. Balance: ${formatAmount(err.InsufficientFunds.balance, tokenInfo.decimals)} ${tokenInfo.symbol}`);
+                }
+                throw new Error(JSON.stringify(err));
+            }
+            
+            // Refresh balance
+            await fetchEscrowBalance();
+            
+            alert(`Payment successful! Transaction ID: ${result.Ok}\n\nYou can now click "Confirm Bid" to activate your bid.`);
+        } catch (e) {
+            console.error('Failed to make payment:', e);
+            setError(e.message || 'Failed to make payment');
+        } finally {
+            setPaymentLoading(false);
+        }
+    };
+    
+    // Withdraw from escrow subaccount
+    // For unconfirmed bids: can withdraw everything
+    // For confirmed bids: backend reserves (bid_amount + 1 fee) for eventual transfer
+    const handleWithdraw = async () => {
+        if (!identity || !pendingBid) return;
+        
+        const currentBalance = pendingBid.escrowBalance || 0n;
+        
+        // For pending (unconfirmed) bids, user can withdraw everything
+        // Backend handles the actual validation including fee reservation for confirmed bids
+        const maxWithdrawable = currentBalance;
+        
+        if (maxWithdrawable <= 0n) {
+            setError('No funds available to withdraw');
+            return;
+        }
+        
+        // Ask user how much to withdraw
+        const amountStr = window.prompt(
+            `How much ${tokenInfo.symbol} to withdraw?\nAvailable: ${formatAmount(maxWithdrawable, tokenInfo.decimals)} ${tokenInfo.symbol}`,
+            formatAmount(maxWithdrawable, tokenInfo.decimals)
+        );
+        
+        if (!amountStr) return;
+        
+        const withdrawAmount = parseAmount(parseFloat(amountStr), tokenInfo.decimals);
+        if (withdrawAmount <= 0n || withdrawAmount > maxWithdrawable) {
+            setError(`Invalid amount. Max: ${formatAmount(maxWithdrawable, tokenInfo.decimals)} ${tokenInfo.symbol}`);
+            return;
+        }
+        
+        setWithdrawLoading(true);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.withdrawBidEscrow(pendingBid.bidId, withdrawAmount);
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            alert(`Withdrawal successful! Transaction ID: ${result.ok}`);
+            await fetchEscrowBalance();
+        } catch (e) {
+            console.error('Failed to withdraw:', e);
+            setError(e.message || 'Failed to withdraw');
+        } finally {
+            setWithdrawLoading(false);
+        }
+    };
+    
     const handleBuyout = async () => {
         if (!identity || !offer) return;
         
@@ -189,17 +319,17 @@ function SneedexOffer() {
                 bidId
             );
             
-            const buyoutAmount = formatAmount(offer.buyout_price[0], tokenInfo.decimals);
+            const buyoutAmountE8s = offer.buyout_price[0];
+            const buyoutDisplayAmount = Number(buyoutAmountE8s) / Math.pow(10, tokenInfo.decimals);
             
-            alert(
-                `Buyout bid reserved (ID: ${bidId})!\n\n` +
-                `To complete the buyout:\n` +
-                `1. Send ${buyoutAmount} ${tokenInfo.symbol} to the Sneedex canister\n` +
-                `2. Use subaccount: ${Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}\n\n` +
-                `After sending, call confirmBid(${bidId}, ${offer.buyout_price[0]}) to finalize.`
-            );
-            
-            await fetchOffer();
+            // Set pending bid for buyout (same UI as regular bid)
+            setPendingBid({
+                bidId: bidId,
+                amount: buyoutAmountE8s,
+                displayAmount: buyoutDisplayAmount,
+                subaccount: subaccount,
+                isBuyout: true
+            });
         } catch (e) {
             console.error('Failed to initiate buyout:', e);
             setError(e.message || 'Failed to initiate buyout');
@@ -957,13 +1087,15 @@ function SneedexOffer() {
                                 }}>
                                     <h4 style={{ 
                                         margin: '0 0 1rem 0', 
-                                        color: theme.colors.accent,
+                                        color: pendingBid.isBuyout ? theme.colors.success : theme.colors.accent,
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '8px'
                                     }}>
-                                        <FaGavel /> Bid Reserved - Complete Payment
+                                        <FaGavel /> {pendingBid.isBuyout ? '⚡ Buyout' : 'Bid'} Reserved - Complete Payment
                                     </h4>
+                                    
+                                    {/* Bid details */}
                                     <div style={{ 
                                         background: theme.colors.background,
                                         borderRadius: '8px',
@@ -971,51 +1103,126 @@ function SneedexOffer() {
                                         marginBottom: '1rem',
                                         fontSize: '0.9rem'
                                     }}>
-                                        <p style={{ margin: '0 0 0.5rem 0' }}>
-                                            <strong>Bid ID:</strong> {pendingBid.bidId.toString()}
-                                        </p>
-                                        <p style={{ margin: '0 0 0.5rem 0' }}>
-                                            <strong>Amount:</strong> {pendingBid.displayAmount} {tokenInfo.symbol}
-                                        </p>
-                                        <p style={{ margin: '0 0 0.5rem 0' }}>
-                                            <strong>Send to:</strong> {SNEEDEX_CANISTER_ID}
-                                        </p>
-                                        <p style={{ margin: '0', wordBreak: 'break-all' }}>
-                                            <strong>Subaccount:</strong>{' '}
-                                            <code style={{ 
-                                                background: theme.colors.cardBackground,
-                                                padding: '2px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '0.8rem'
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                            <p style={{ margin: 0 }}><strong>Bid ID:</strong></p>
+                                            <p style={{ margin: 0 }}>{pendingBid.bidId.toString()}</p>
+                                            
+                                            <p style={{ margin: 0 }}><strong>Bid Amount:</strong></p>
+                                            <p style={{ margin: 0 }}>{pendingBid.displayAmount} {tokenInfo.symbol}</p>
+                                            
+                                            <p style={{ margin: 0 }}><strong>Escrow Balance:</strong></p>
+                                            <p style={{ 
+                                                margin: 0, 
+                                                color: pendingBid.escrowBalance >= pendingBid.amount ? theme.colors.success : theme.colors.warning,
+                                                fontWeight: 'bold'
                                             }}>
-                                                {Array.from(pendingBid.subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}
-                                            </code>
-                                        </p>
+                                                {formatAmount(pendingBid.escrowBalance || 0n, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                {pendingBid.escrowBalance >= pendingBid.amount && ' ✓'}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <p style={{ 
-                                        margin: '0 0 1rem 0', 
-                                        fontSize: '0.85rem',
-                                        color: theme.colors.mutedText
-                                    }}>
-                                        Send {pendingBid.displayAmount} {tokenInfo.symbol} to the Sneedex canister using the subaccount above, 
-                                        then click "Confirm Bid" to verify payment and activate your bid.
-                                    </p>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    
+                                    {/* Quick pay button */}
+                                    <button
+                                        style={{
+                                            ...styles.acceptButton,
+                                            width: '100%',
+                                            marginBottom: '1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '8px'
+                                        }}
+                                        onClick={handleDirectPayment}
+                                        disabled={paymentLoading || (pendingBid.escrowBalance >= pendingBid.amount)}
+                                    >
+                                        <FaWallet />
+                                        {paymentLoading ? 'Processing Payment...' : 
+                                         pendingBid.escrowBalance >= pendingBid.amount ? 'Payment Complete ✓' :
+                                         `Pay ${pendingBid.displayAmount} ${tokenInfo.symbol} from Wallet`}
+                                    </button>
+                                    
+                                    {/* Manual payment instructions (collapsed) */}
+                                    <details style={{ marginBottom: '1rem' }}>
+                                        <summary style={{ 
+                                            cursor: 'pointer', 
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.85rem'
+                                        }}>
+                                            Or pay manually via CLI/wallet...
+                                        </summary>
+                                        <div style={{ 
+                                            marginTop: '0.5rem',
+                                            padding: '0.75rem',
+                                            background: theme.colors.cardBackground,
+                                            borderRadius: '6px',
+                                            fontSize: '0.8rem'
+                                        }}>
+                                            <p style={{ margin: '0 0 0.5rem 0' }}>
+                                                <strong>Canister:</strong> {SNEEDEX_CANISTER_ID}
+                                            </p>
+                                            <p style={{ margin: '0', wordBreak: 'break-all' }}>
+                                                <strong>Subaccount:</strong><br/>
+                                                <code style={{ 
+                                                    fontSize: '0.75rem'
+                                                }}>
+                                                    {Array.from(pendingBid.subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}
+                                                </code>
+                                            </p>
+                                        </div>
+                                    </details>
+                                    
+                                    {/* Action buttons */}
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                         <button
-                                            style={styles.acceptButton}
+                                            style={{
+                                                ...styles.acceptButton,
+                                                flex: '1',
+                                                opacity: pendingBid.escrowBalance >= pendingBid.amount ? 1 : 0.6
+                                            }}
                                             onClick={handleConfirmBid}
-                                            disabled={actionLoading}
+                                            disabled={actionLoading || pendingBid.escrowBalance < pendingBid.amount}
+                                            title={pendingBid.escrowBalance < pendingBid.amount ? 
+                                                'Send payment first' : 'Confirm your bid'}
                                         >
                                             {actionLoading ? 'Confirming...' : '✓ Confirm Bid'}
                                         </button>
+                                        
+                                        {pendingBid.escrowBalance > 0n && (
+                                            <button
+                                                style={{
+                                                    ...styles.cancelButton,
+                                                    background: 'transparent',
+                                                    border: `1px solid ${theme.colors.warning}`,
+                                                    color: theme.colors.warning
+                                                }}
+                                                onClick={handleWithdraw}
+                                                disabled={withdrawLoading}
+                                            >
+                                                {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                                            </button>
+                                        )}
+                                        
                                         <button
-                                            style={styles.cancelButton}
+                                            style={{
+                                                ...styles.cancelButton,
+                                                flex: pendingBid.escrowBalance > 0n ? 'none' : '1'
+                                            }}
                                             onClick={handleCancelPendingBid}
                                             disabled={actionLoading}
                                         >
                                             Cancel
                                         </button>
                                     </div>
+                                    
+                                    <p style={{ 
+                                        margin: '1rem 0 0 0', 
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                        textAlign: 'center'
+                                    }}>
+                                        <FaSync style={{ marginRight: '4px' }} /> Balance auto-refreshes every 5s
+                                    </p>
                                 </div>
                             )}
                             

@@ -1,8 +1,65 @@
 import { createActor } from 'declarations/sneedex';
 import { Principal } from '@dfinity/principal';
+import { Actor, HttpAgent } from '@dfinity/agent';
 
 // Sneedex canister ID (staging)
 export const SNEEDEX_CANISTER_ID = 'igm46-laaaa-aaaae-qgwra-cai';
+
+// ICRC-1 Ledger IDL for basic operations
+const icrc1IdlFactory = ({ IDL: idl }) => {
+    const Account = idl.Record({
+        owner: idl.Principal,
+        subaccount: idl.Opt(idl.Vec(idl.Nat8)),
+    });
+    const TransferArg = idl.Record({
+        to: Account,
+        fee: idl.Opt(idl.Nat),
+        memo: idl.Opt(idl.Vec(idl.Nat8)),
+        from_subaccount: idl.Opt(idl.Vec(idl.Nat8)),
+        created_at_time: idl.Opt(idl.Nat64),
+        amount: idl.Nat,
+    });
+    const TransferError = idl.Variant({
+        GenericError: idl.Record({ message: idl.Text, error_code: idl.Nat }),
+        TemporarilyUnavailable: idl.Null,
+        BadBurn: idl.Record({ min_burn_amount: idl.Nat }),
+        Duplicate: idl.Record({ duplicate_of: idl.Nat }),
+        BadFee: idl.Record({ expected_fee: idl.Nat }),
+        CreatedInFuture: idl.Record({ ledger_time: idl.Nat64 }),
+        TooOld: idl.Null,
+        InsufficientFunds: idl.Record({ balance: idl.Nat }),
+    });
+    const TransferResult = idl.Variant({
+        Ok: idl.Nat,
+        Err: TransferError,
+    });
+    return idl.Service({
+        icrc1_balance_of: idl.Func([Account], [idl.Nat], ['query']),
+        icrc1_transfer: idl.Func([TransferArg], [TransferResult], []),
+        icrc1_fee: idl.Func([], [idl.Nat], ['query']),
+        icrc1_decimals: idl.Func([], [idl.Nat8], ['query']),
+        icrc1_symbol: idl.Func([], [idl.Text], ['query']),
+    });
+};
+
+/**
+ * Create an ICRC-1 ledger actor
+ * @param {string} ledgerId - Ledger canister ID
+ * @param {Identity} identity - Optional identity for authenticated calls
+ * @returns {Actor} ICRC-1 ledger actor
+ */
+export const createLedgerActor = async (ledgerId, identity = null) => {
+    const agentOptions = { host: 'https://icp-api.io' };
+    if (identity) {
+        agentOptions.identity = identity;
+    }
+    const agent = await HttpAgent.create(agentOptions);
+    
+    return Actor.createActor(icrc1IdlFactory, {
+        agent,
+        canisterId: ledgerId,
+    });
+};
 
 /**
  * Create a Sneedex actor instance

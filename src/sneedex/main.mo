@@ -1205,6 +1205,98 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    /// Withdraw funds from bid escrow subaccount
+    /// - Before confirmation: can withdraw all funds
+    /// - After confirmation: can withdraw excess (balance - bid amount - 1 fee)
+    ///   We reserve 1 fee so there's enough for the eventual refund/claim transfer
+    public shared ({ caller }) func withdrawBidEscrow(bidId : T.BidId, amount : Nat) : async T.Result<Nat> {
+        switch (getBid(bidId)) {
+            case null { return #err(#BidNotFound) };
+            case (?bid) {
+                if (not Principal.equal(caller, bid.bidder)) {
+                    return #err(#NotAuthorized);
+                };
+                
+                // Can't withdraw from winning or refunded bids
+                if (bid.state == #Won or bid.state == #Refunded) {
+                    return #err(#InvalidState("Cannot withdraw from won or refunded bids"));
+                };
+                
+                switch (getOffer(bid.offer_id)) {
+                    case null { return #err(#OfferNotFound) };
+                    case (?offer) {
+                        let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                        
+                        // Get current balance
+                        let balance = await* AssetHandlers.getTokenBalance(
+                            offer.price_token_ledger,
+                            self(),
+                            ?subaccount
+                        );
+                        
+                        // Get the ledger fee
+                        let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                        
+                        // Calculate minimum that must remain
+                        // After confirmation: bid amount + 1 fee (for eventual refund/claim transfer)
+                        let minimumReserved : Nat = if (bid.tokens_escrowed) {
+                            bid.amount + fee // Must keep bid amount + 1 fee for later transfer
+                        } else {
+                            0 // Nothing reserved yet
+                        };
+                        
+                        let maxWithdrawable : Nat = if (balance > minimumReserved) {
+                            balance - minimumReserved
+                        } else {
+                            0
+                        };
+                        
+                        if (amount > maxWithdrawable) {
+                            return #err(#InsufficientFunds({ 
+                                available = maxWithdrawable;
+                                required = amount
+                            }));
+                        };
+                        
+                        // Perform transfer back to caller
+                        let transferResult = await* AssetHandlers.transferTokens(
+                            offer.price_token_ledger,
+                            ?subaccount,
+                            { owner = caller; subaccount = null },
+                            amount
+                        );
+                        
+                        switch (transferResult) {
+                            case (#err(e)) { return #err(e) };
+                            case (#ok(txId)) { return #ok(txId) };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    
+    /// Get the balance in a bid escrow subaccount
+    public shared func getBidEscrowBalance(bidId : T.BidId) : async T.Result<Nat> {
+        switch (getBid(bidId)) {
+            case null { return #err(#BidNotFound) };
+            case (?bid) {
+                switch (getOffer(bid.offer_id)) {
+                    case null { return #err(#OfferNotFound) };
+                    case (?offer) {
+                        let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                        let balance = await* AssetHandlers.getTokenBalance(
+                            offer.price_token_ledger,
+                            self(),
+                            ?subaccount
+                        );
+                        #ok(balance);
+                    };
+                };
+            };
+        };
+    };
+    
     // ============================================
     // QUERY FUNCTIONS
     // ============================================
