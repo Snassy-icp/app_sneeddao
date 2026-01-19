@@ -133,6 +133,238 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
+    /// Auto-deliver assets to winning bidder (called via Timer)
+    /// Best effort - if it fails, buyer can manually claim from GUI
+    func autoDeliverAssets(offerId : T.OfferId) : async () {
+        switch (getOffer(offerId)) {
+            case null { /* Offer not found, ignore */ };
+            case (?offer) {
+                switch (offer.state) {
+                    case (#Completed(completion)) {
+                        switch (getBid(completion.winning_bid_id)) {
+                            case null { /* Bid not found, ignore */ };
+                            case (?bid) {
+                                // Transfer all assets to the winner
+                                for (entry in offer.assets.vals()) {
+                                    switch (entry.asset) {
+                                        case (#Canister(asset)) {
+                                            let _ = await* AssetHandlers.transferCanister(
+                                                asset.canister_id,
+                                                [bid.bidder]
+                                            );
+                                        };
+                                        case (#SNSNeuron(asset)) {
+                                            let _ = await* AssetHandlers.transferNeuron(
+                                                asset.governance_canister_id,
+                                                asset.neuron_id,
+                                                self(),
+                                                [bid.bidder]
+                                            );
+                                        };
+                                        case (#ICRC1Token(asset)) {
+                                            let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                                            let _ = await* AssetHandlers.transferTokens(
+                                                asset.ledger_canister_id,
+                                                ?subaccount,
+                                                { owner = bid.bidder; subaccount = null },
+                                                asset.amount
+                                            );
+                                        };
+                                    };
+                                };
+                                
+                                // Update state to Claimed
+                                let updatedOffer : T.Offer = {
+                                    id = offer.id;
+                                    creator = offer.creator;
+                                    min_bid_price = offer.min_bid_price;
+                                    buyout_price = offer.buyout_price;
+                                    expiration = offer.expiration;
+                                    price_token_ledger = offer.price_token_ledger;
+                                    assets = offer.assets;
+                                    state = #Claimed;
+                                    created_at = offer.created_at;
+                                    activated_at = offer.activated_at;
+                                };
+                                updateOffer(offerId, updatedOffer);
+                            };
+                        };
+                    };
+                    case (_) { /* Wrong state, ignore */ };
+                };
+            };
+        };
+    };
+    
+    /// Auto-deliver payment to seller (called via Timer)
+    /// Best effort - if it fails, seller can manually claim from GUI
+    func autoDeliverPayment(offerId : T.OfferId) : async () {
+        switch (getOffer(offerId)) {
+            case null { /* Offer not found, ignore */ };
+            case (?offer) {
+                // Check if state is Completed or Claimed
+                let winningBidId : ?T.BidId = switch (offer.state) {
+                    case (#Completed(completion)) { ?completion.winning_bid_id };
+                    case (#Claimed) {
+                        // Find winning bid
+                        var found : ?T.BidId = null;
+                        for (b in getBidsForOffer(offerId).vals()) {
+                            if (b.state == #Won) { found := ?b.id };
+                        };
+                        found;
+                    };
+                    case (_) { null };
+                };
+                
+                switch (winningBidId) {
+                    case null { /* No winning bid, ignore */ };
+                    case (?bidId) {
+                        switch (getBid(bidId)) {
+                            case null { /* Bid not found, ignore */ };
+                            case (?bid) {
+                                if (bid.state != #Won) { return }; // Already claimed
+                                
+                                // Get fee and calculate transfer amount
+                                let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
+                                let transferAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+                                
+                                if (transferAmount == 0) { return };
+                                
+                                // Transfer tokens to seller
+                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                                let transferResult = await* AssetHandlers.transferTokens(
+                                    offer.price_token_ledger,
+                                    ?subaccount,
+                                    { owner = offer.creator; subaccount = null },
+                                    transferAmount
+                                );
+                                
+                                switch (transferResult) {
+                                    case (#err(_e)) { /* Transfer failed, user can manually claim */ };
+                                    case (#ok(_)) {
+                                        // Update bid state to ClaimedBySeller
+                                        let updatedBid : T.Bid = {
+                                            id = bid.id;
+                                            offer_id = bid.offer_id;
+                                            bidder = bid.bidder;
+                                            amount = bid.amount;
+                                            state = #ClaimedBySeller;
+                                            created_at = bid.created_at;
+                                            tokens_escrowed = bid.tokens_escrowed;
+                                        };
+                                        updateBid(bid.id, updatedBid);
+                                    };
+                                };
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    
+    /// Auto-reclaim assets for expired/cancelled offers (called via Timer)
+    /// Best effort - if it fails, seller can manually reclaim from GUI
+    func autoReclaimAssets(offerId : T.OfferId) : async () {
+        switch (getOffer(offerId)) {
+            case null { /* Offer not found, ignore */ };
+            case (?offer) {
+                if (offer.state != #Expired and offer.state != #Cancelled) {
+                    return; // Wrong state
+                };
+                
+                // Transfer all escrowed assets back to creator
+                for (entry in offer.assets.vals()) {
+                    if (entry.escrowed) {
+                        switch (entry.asset) {
+                            case (#Canister(asset)) {
+                                switch (asset.controllers_snapshot) {
+                                    case (?snapshot) {
+                                        let _ = await* AssetHandlers.releaseCanister(
+                                            asset.canister_id,
+                                            snapshot
+                                        );
+                                    };
+                                    case null {
+                                        let _ = await* AssetHandlers.transferCanister(
+                                            asset.canister_id,
+                                            [offer.creator]
+                                        );
+                                    };
+                                };
+                            };
+                            case (#SNSNeuron(asset)) {
+                                switch (asset.hotkeys_snapshot) {
+                                    case (?snapshot) {
+                                        let _ = await* AssetHandlers.releaseNeuron(
+                                            asset.governance_canister_id,
+                                            asset.neuron_id,
+                                            self(),
+                                            snapshot
+                                        );
+                                    };
+                                    case null {
+                                        let _ = await* AssetHandlers.transferNeuron(
+                                            asset.governance_canister_id,
+                                            asset.neuron_id,
+                                            self(),
+                                            [offer.creator]
+                                        );
+                                    };
+                                };
+                            };
+                            case (#ICRC1Token(asset)) {
+                                let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                                let _ = await* AssetHandlers.transferTokens(
+                                    asset.ledger_canister_id,
+                                    ?subaccount,
+                                    { owner = offer.creator; subaccount = null },
+                                    asset.amount
+                                );
+                            };
+                        };
+                    };
+                };
+                
+                // Update state to Reclaimed
+                let updatedOffer : T.Offer = {
+                    id = offer.id;
+                    creator = offer.creator;
+                    min_bid_price = offer.min_bid_price;
+                    buyout_price = offer.buyout_price;
+                    expiration = offer.expiration;
+                    price_token_ledger = offer.price_token_ledger;
+                    assets = offer.assets;
+                    state = #Reclaimed;
+                    created_at = offer.created_at;
+                    activated_at = offer.activated_at;
+                };
+                updateOffer(offerId, updatedOffer);
+            };
+        };
+    };
+    
+    /// Schedule auto-delivery of assets to buyer (2 second delay)
+    func scheduleAutoDeliverAssets<system>(offerId : T.OfferId) {
+        ignore Timer.setTimer<system>(#seconds 2, func() : async () {
+            await autoDeliverAssets(offerId);
+        });
+    };
+    
+    /// Schedule auto-delivery of payment to seller (3 second delay, after assets)
+    func scheduleAutoDeliverPayment<system>(offerId : T.OfferId) {
+        ignore Timer.setTimer<system>(#seconds 3, func() : async () {
+            await autoDeliverPayment(offerId);
+        });
+    };
+    
+    /// Schedule auto-reclaim of assets for expired/cancelled offers (2 second delay)
+    func scheduleAutoReclaimAssets<system>(offerId : T.OfferId) {
+        ignore Timer.setTimer<system>(#seconds 2, func() : async () {
+            await autoReclaimAssets(offerId);
+        });
+    };
+    
     func getBidsForOffer(offerId : T.OfferId) : [T.Bid] {
         Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
             b.offer_id == offerId;
@@ -852,7 +1084,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case null {};
                 };
                 
-                // Mark all other bids as lost
+                // Mark all other bids as lost and schedule auto-refunds
                 for (bid in getBidsForOffer(offerId).vals()) {
                     if (bid.id != winningBidId and bid.state == #Pending) {
                         let updatedBid : T.Bid = {
@@ -865,8 +1097,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             tokens_escrowed = bid.tokens_escrowed;
                         };
                         updateBid(bid.id, updatedBid);
+                        
+                        // Schedule auto-refund for lost bid (best effort)
+                        if (bid.tokens_escrowed) {
+                            scheduleAutoRefund<system>(bid.id);
+                        };
                     };
                 };
+                
+                // Schedule auto-delivery to buyer and seller (best effort)
+                scheduleAutoDeliverAssets<system>(offerId);
+                scheduleAutoDeliverPayment<system>(offerId);
                 
                 #ok();
             };
@@ -938,6 +1179,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                                 
                                 updateOffer(offerId, updatedOffer);
+                                
+                                // Schedule auto-reclaim of assets back to seller (best effort)
+                                scheduleAutoReclaimAssets<system>(offerId);
+                                
                                 #ok();
                             };
                         };
@@ -980,6 +1225,28 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 updateOffer(offerId, updatedOffer);
+                
+                // Schedule auto-reclaim of assets back to seller (best effort)
+                scheduleAutoReclaimAssets<system>(offerId);
+                
+                // Schedule auto-refund for any bids that had escrowed tokens
+                for (bid in getBidsForOffer(offerId).vals()) {
+                    if (bid.tokens_escrowed and bid.state == #Pending) {
+                        // Mark as lost first
+                        let updatedBid : T.Bid = {
+                            id = bid.id;
+                            offer_id = bid.offer_id;
+                            bidder = bid.bidder;
+                            amount = bid.amount;
+                            state = #Lost;
+                            created_at = bid.created_at;
+                            tokens_escrowed = bid.tokens_escrowed;
+                        };
+                        updateBid(bid.id, updatedBid);
+                        scheduleAutoRefund<system>(bid.id);
+                    };
+                };
+                
                 #ok();
             };
         };
