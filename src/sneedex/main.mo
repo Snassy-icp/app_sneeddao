@@ -2,21 +2,13 @@ import Principal "mo:base/Principal";
 import Time "mo:base/Time";
 import Nat "mo:base/Nat";
 import Array "mo:base/Array";
-import Buffer "mo:base/Buffer";
-import Iter "mo:base/Iter";
-import Option "mo:base/Option";
-import Result "mo:base/Result";
-import Map "mo:base/HashMap";
-import Hash "mo:base/Hash";
 import Text "mo:base/Text";
-import Debug "mo:base/Debug";
-import Order "mo:base/Order";
 
 import T "Types";
 import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 
-persistent actor class Sneedex(initConfig : ?T.Config) {
+shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
     // ============================================
@@ -109,7 +101,7 @@ persistent actor class Sneedex(initConfig : ?T.Config) {
     };
     
     func self() : Principal {
-        Principal.fromActor(Sneedex);
+        Principal.fromActor(this);
     };
     
     // ============================================

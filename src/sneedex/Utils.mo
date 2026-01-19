@@ -3,6 +3,7 @@ import Blob "mo:base/Blob";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
 import Nat32 "mo:base/Nat32";
+import Nat64 "mo:base/Nat64";
 import Array "mo:base/Array";
 import Iter "mo:base/Iter";
 import Text "mo:base/Text";
@@ -10,47 +11,83 @@ import Char "mo:base/Char";
 import Buffer "mo:base/Buffer";
 
 import T "Types";
-import Crypto "Crypto";
 
 module {
     // ============================================
     // SUBACCOUNT GENERATION
     // ============================================
     
-    /// Generate a deterministic subaccount from a principal and an ID (offer_id or bid_id)
-    /// This creates a unique escrow subaccount for each user+offer or user+bid combination
-    public func generateEscrowSubaccount(principal : Principal, id : Nat) : Blob {
-        let principalBlob = Principal.toBlob(principal);
-        let idBytes = natToBytes(id);
-        
-        // Combine principal and id
-        let combined = Array.append<Nat8>(Blob.toArray(principalBlob), idBytes);
-        
-        // Hash to get 32 bytes
-        let hash = Crypto.sha256(combined);
-        Blob.fromArray(hash);
-    };
+    // Subaccount structure (32 bytes):
+    // - Byte 0: principal length
+    // - Bytes 1-N: principal bytes  
+    // - Bytes 24-31: 8-byte big-endian ID (offer_id or bid_id)
+    // - Byte 23: type marker (0x4F = offer, 0x42 = bid)
+    // This ensures uniqueness: each offer/bid has unique ID, and type marker prevents collisions
     
     /// Generate subaccount for offer escrow (for ICRC1 tokens in offer)
     public func offerEscrowSubaccount(creator : Principal, offerId : T.OfferId) : Blob {
-        let prefix : [Nat8] = [0x4F, 0x46, 0x46, 0x45, 0x52]; // "OFFER"
-        let principalBlob = Principal.toBlob(creator);
-        let idBytes = natToBytes(offerId);
+        let a = Array.init<Nat8>(32, 0);
+        let pa = Principal.toBlob(creator);
+        let size = pa.size();
         
-        let combined = Array.flatten<Nat8>([prefix, Blob.toArray(principalBlob), idBytes]);
-        let hash = Crypto.sha256(combined);
-        Blob.fromArray(hash);
+        // Byte 0: principal length
+        a[0] := Nat8.fromNat(size);
+        
+        // Bytes 1-N: principal bytes
+        var pos = 1;
+        for (x in pa.vals()) {
+            a[pos] := x;
+            pos += 1;
+        };
+        
+        // Byte 23: type marker for offer
+        a[23] := 0x4F; // 'O'
+        
+        // Bytes 24-31: offer ID as big-endian Nat64
+        let id64 = Nat64.fromNat(offerId);
+        a[24] := Nat8.fromNat(Nat64.toNat((id64 >> 56) & 0xFF));
+        a[25] := Nat8.fromNat(Nat64.toNat((id64 >> 48) & 0xFF));
+        a[26] := Nat8.fromNat(Nat64.toNat((id64 >> 40) & 0xFF));
+        a[27] := Nat8.fromNat(Nat64.toNat((id64 >> 32) & 0xFF));
+        a[28] := Nat8.fromNat(Nat64.toNat((id64 >> 24) & 0xFF));
+        a[29] := Nat8.fromNat(Nat64.toNat((id64 >> 16) & 0xFF));
+        a[30] := Nat8.fromNat(Nat64.toNat((id64 >> 8) & 0xFF));
+        a[31] := Nat8.fromNat(Nat64.toNat(id64 & 0xFF));
+        
+        Blob.fromArray(Array.freeze(a));
     };
     
     /// Generate subaccount for bid escrow (for ICRC1 tokens in bid)
     public func bidEscrowSubaccount(bidder : Principal, bidId : T.BidId) : Blob {
-        let prefix : [Nat8] = [0x42, 0x49, 0x44]; // "BID"
-        let principalBlob = Principal.toBlob(bidder);
-        let idBytes = natToBytes(bidId);
+        let a = Array.init<Nat8>(32, 0);
+        let pa = Principal.toBlob(bidder);
+        let size = pa.size();
         
-        let combined = Array.flatten<Nat8>([prefix, Blob.toArray(principalBlob), idBytes]);
-        let hash = Crypto.sha256(combined);
-        Blob.fromArray(hash);
+        // Byte 0: principal length
+        a[0] := Nat8.fromNat(size);
+        
+        // Bytes 1-N: principal bytes
+        var pos = 1;
+        for (x in pa.vals()) {
+            a[pos] := x;
+            pos += 1;
+        };
+        
+        // Byte 23: type marker for bid
+        a[23] := 0x42; // 'B'
+        
+        // Bytes 24-31: bid ID as big-endian Nat64
+        let id64 = Nat64.fromNat(bidId);
+        a[24] := Nat8.fromNat(Nat64.toNat((id64 >> 56) & 0xFF));
+        a[25] := Nat8.fromNat(Nat64.toNat((id64 >> 48) & 0xFF));
+        a[26] := Nat8.fromNat(Nat64.toNat((id64 >> 40) & 0xFF));
+        a[27] := Nat8.fromNat(Nat64.toNat((id64 >> 32) & 0xFF));
+        a[28] := Nat8.fromNat(Nat64.toNat((id64 >> 24) & 0xFF));
+        a[29] := Nat8.fromNat(Nat64.toNat((id64 >> 16) & 0xFF));
+        a[30] := Nat8.fromNat(Nat64.toNat((id64 >> 8) & 0xFF));
+        a[31] := Nat8.fromNat(Nat64.toNat(id64 & 0xFF));
+        
+        Blob.fromArray(Array.freeze(a));
     };
     
     // ============================================

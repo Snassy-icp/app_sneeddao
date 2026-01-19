@@ -1,10 +1,4 @@
 import Principal "mo:base/Principal";
-import Array "mo:base/Array";
-import Result "mo:base/Result";
-import Buffer "mo:base/Buffer";
-import Iter "mo:base/Iter";
-import Debug "mo:base/Debug";
-import Int32 "mo:base/Int32";
 import Blob "mo:base/Blob";
 
 import T "Types";
