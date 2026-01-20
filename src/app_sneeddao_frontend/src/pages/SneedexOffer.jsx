@@ -2270,30 +2270,8 @@ function SneedexOffer() {
                                                 )}
                                             </div>
                                             
-                                            {/* Canister Description (shown if present, regardless of escrow status) */}
-                                            {details.type === 'Canister' && details.description && (
-                                                <div style={{
-                                                    marginTop: '0.75rem',
-                                                    padding: '0.75rem 1rem',
-                                                    background: theme.colors.tertiaryBg,
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                }}>
-                                                    <div style={{
-                                                        fontSize: '0.85rem',
-                                                        color: theme.colors.secondaryText,
-                                                        lineHeight: '1.5',
-                                                        whiteSpace: 'pre-wrap',
-                                                        wordBreak: 'break-word',
-                                                    }}>
-                                                        {/* React automatically escapes text, preventing XSS */}
-                                                        {details.description}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            
                                             {/* Expanded Canister Info Section */}
-                                            {details.type === 'Canister' && details.escrowed && isExpanded && (
+                                            {details.type === 'Canister' && isExpanded && (
                                                 <div style={{
                                                     marginTop: '1rem',
                                                     padding: '1rem',
@@ -2301,6 +2279,38 @@ function SneedexOffer() {
                                                     borderRadius: '10px',
                                                     borderTop: `1px solid ${theme.colors.border}`,
                                                 }}>
+                                                    {/* Description (shown first in expanded section) */}
+                                                    {details.description && (
+                                                        <div style={{
+                                                            marginBottom: '1rem',
+                                                            padding: '0.75rem 1rem',
+                                                            background: theme.colors.tertiaryBg,
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                        }}>
+                                                            <div style={{
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: '600',
+                                                                color: theme.colors.mutedText,
+                                                                marginBottom: '0.5rem',
+                                                                textTransform: 'uppercase',
+                                                                letterSpacing: '0.5px',
+                                                            }}>
+                                                                Description
+                                                            </div>
+                                                            <div style={{
+                                                                fontSize: '0.85rem',
+                                                                color: theme.colors.secondaryText,
+                                                                lineHeight: '1.5',
+                                                                whiteSpace: 'pre-wrap',
+                                                                wordBreak: 'break-word',
+                                                            }}>
+                                                                {/* React automatically escapes text, preventing XSS */}
+                                                                {details.description}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
                                                     {isLoadingInfo ? (
                                                         <div style={{ 
                                                             display: 'flex', 

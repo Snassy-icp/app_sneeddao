@@ -1285,6 +1285,14 @@ function SneedexOffers() {
                             const bidInfo = offersWithBids[Number(offer.id)] || {};
                             const tokenInfo = getTokenInfo(offer.price_token_ledger.toString());
                             
+                            // Check if there's exactly one canister asset with a title
+                            const canisterAssets = offer.assets.filter(a => a.asset && a.asset.Canister);
+                            const singleCanisterTitle = canisterAssets.length === 1 && 
+                                canisterAssets[0].asset.Canister.title && 
+                                canisterAssets[0].asset.Canister.title[0]
+                                    ? canisterAssets[0].asset.Canister.title[0]
+                                    : null;
+                            
                             return (
                                 <div
                                     key={Number(offer.id)}
@@ -1302,8 +1310,21 @@ function SneedexOffers() {
                                     }}
                                 >
                                     <div style={styles.cardHeader}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                             <span style={styles.offerId}>Offer #{Number(offer.id)}</span>
+                                            {singleCanisterTitle && (
+                                                <span style={{
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    color: theme.colors.primaryText,
+                                                    maxWidth: '200px',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                    – {singleCanisterTitle}
+                                                </span>
+                                            )}
                                             {offer.approved_bidders && offer.approved_bidders[0] && offer.approved_bidders[0].length > 0 && (
                                                 <span style={{
                                                     display: 'flex',
