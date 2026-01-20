@@ -126,6 +126,7 @@ function SneedexOffer() {
     const [checkingAssets, setCheckingAssets] = useState(false);
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [expandedAssets, setExpandedAssets] = useState({}); // {assetIndex: boolean}
+    const [expandedDescriptions, setExpandedDescriptions] = useState({}); // {assetIndex: boolean} - for long descriptions
     const [canisterInfo, setCanisterInfo] = useState({}); // {assetIndex: canisterInfo}
     const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // {assetIndex: neuronManagerInfo}
@@ -2280,36 +2281,71 @@ function SneedexOffer() {
                                                     borderTop: `1px solid ${theme.colors.border}`,
                                                 }}>
                                                     {/* Description (shown first in expanded section) */}
-                                                    {details.description && (
-                                                        <div style={{
-                                                            marginBottom: '1rem',
-                                                            padding: '0.75rem 1rem',
-                                                            background: theme.colors.tertiaryBg,
-                                                            borderRadius: '8px',
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                        }}>
+                                                    {details.description && (() => {
+                                                        const MAX_DESC_LENGTH = 300;
+                                                        const isLongDescription = details.description.length > MAX_DESC_LENGTH;
+                                                        // For long descriptions, start collapsed; for short ones, always show full
+                                                        const isDescExpanded = isLongDescription ? (expandedDescriptions[idx] === true) : true;
+                                                        const displayText = isLongDescription && !isDescExpanded
+                                                            ? details.description.slice(0, MAX_DESC_LENGTH) + '...'
+                                                            : details.description;
+                                                        
+                                                        return (
                                                             <div style={{
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: '600',
-                                                                color: theme.colors.mutedText,
-                                                                marginBottom: '0.5rem',
-                                                                textTransform: 'uppercase',
-                                                                letterSpacing: '0.5px',
+                                                                marginBottom: '1rem',
+                                                                padding: '0.75rem 1rem',
+                                                                background: theme.colors.tertiaryBg,
+                                                                borderRadius: '8px',
+                                                                border: `1px solid ${theme.colors.border}`,
                                                             }}>
-                                                                Description
+                                                                <div style={{
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: '600',
+                                                                    color: theme.colors.mutedText,
+                                                                    marginBottom: '0.5rem',
+                                                                    textTransform: 'uppercase',
+                                                                    letterSpacing: '0.5px',
+                                                                }}>
+                                                                    Description
+                                                                </div>
+                                                                <div style={{
+                                                                    fontSize: '0.85rem',
+                                                                    color: theme.colors.secondaryText,
+                                                                    lineHeight: '1.5',
+                                                                    whiteSpace: 'pre-wrap',
+                                                                    wordBreak: 'break-word',
+                                                                }}>
+                                                                    {/* React automatically escapes text, preventing XSS */}
+                                                                    {displayText}
+                                                                </div>
+                                                                {isLongDescription && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setExpandedDescriptions(prev => ({
+                                                                                ...prev,
+                                                                                [idx]: !isDescExpanded
+                                                                            }));
+                                                                        }}
+                                                                        style={{
+                                                                            background: 'transparent',
+                                                                            border: 'none',
+                                                                            color: theme.colors.accent,
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '0.8rem',
+                                                                            padding: '0.5rem 0 0 0',
+                                                                            fontWeight: '500',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                        }}
+                                                                    >
+                                                                        {isDescExpanded ? '▲ Show less' : '▼ Show more...'}
+                                                                    </button>
+                                                                )}
                                                             </div>
-                                                            <div style={{
-                                                                fontSize: '0.85rem',
-                                                                color: theme.colors.secondaryText,
-                                                                lineHeight: '1.5',
-                                                                whiteSpace: 'pre-wrap',
-                                                                wordBreak: 'break-word',
-                                                            }}>
-                                                                {/* React automatically escapes text, preventing XSS */}
-                                                                {details.description}
-                                                            </div>
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
                                                     
                                                     {isLoadingInfo ? (
                                                         <div style={{ 
