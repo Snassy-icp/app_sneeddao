@@ -374,14 +374,31 @@ function SneedexOffer() {
             if ('Ok' in result) {
                 setNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: result.Ok }));
                 
-                // Also verify wasm hash against official versions
-                // First get canister info (which includes module_hash)
-                const canisterInfoResult = canisterInfo[assetIndex];
-                if (canisterInfoResult?.module_hash?.[0]) {
-                    const moduleHashHex = Array.from(canisterInfoResult.module_hash[0])
+                // Verify wasm hash against official versions
+                // Get module_hash from canisterInfo if already loaded, otherwise from the canister info we already fetched
+                let moduleHashHex = null;
+                
+                // Try to get from already loaded canister info
+                const existingCanisterInfo = canisterInfo[assetIndex];
+                if (existingCanisterInfo?.module_hash?.[0]) {
+                    moduleHashHex = Array.from(existingCanisterInfo.module_hash[0])
                         .map(b => b.toString(16).padStart(2, '0'))
                         .join('');
-                    
+                } else {
+                    // Fetch canister info directly via Sneedex backend
+                    try {
+                        const canisterInfoResult = await actor.getCanisterInfo(Principal.fromText(canisterId));
+                        if ('ok' in canisterInfoResult && canisterInfoResult.ok.module_hash?.[0]) {
+                            moduleHashHex = Array.from(canisterInfoResult.ok.module_hash[0])
+                                .map(b => b.toString(16).padStart(2, '0'))
+                                .join('');
+                        }
+                    } catch (e) {
+                        console.log('Could not get canister info for wasm verification:', e);
+                    }
+                }
+                
+                if (moduleHashHex) {
                     try {
                         const host = getHost();
                         const agent = HttpAgent.createSync({ host, identity });
@@ -419,7 +436,24 @@ function SneedexOffer() {
                         }
                     } catch (e) {
                         console.error('Failed to verify wasm hash:', e);
+                        setManagerWasmVerification(prev => ({
+                            ...prev,
+                            [assetIndex]: {
+                                verified: false,
+                                moduleHash: moduleHashHex,
+                                message: 'Verification failed',
+                            }
+                        }));
                     }
+                } else {
+                    setManagerWasmVerification(prev => ({
+                        ...prev,
+                        [assetIndex]: {
+                            verified: false,
+                            moduleHash: null,
+                            message: 'Could not get module hash',
+                        }
+                    }));
                 }
             } else {
                 console.error('Failed to get neuron manager info:', result.Err);

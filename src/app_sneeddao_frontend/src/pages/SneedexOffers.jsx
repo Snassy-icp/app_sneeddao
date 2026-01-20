@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { 
     createSneedexActor, 
@@ -11,7 +11,8 @@ import {
     formatTimeRemaining, 
     getOfferStateString,
     getAssetType,
-    getAssetDetails
+    getAssetDetails,
+    CANISTER_KIND_ICP_NEURON_MANAGER
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
@@ -34,7 +35,7 @@ function SneedexOffers() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token
+    const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token, neuron_manager
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [offerTab, setOfferTab] = useState('public'); // 'public' or 'private'
@@ -253,7 +254,9 @@ function SneedexOffers() {
         if (filterType !== 'all') {
             const hasType = offer.assets.some(a => {
                 const type = getAssetType(a.asset);
-                if (filterType === 'canister') return type === 'Canister';
+                const details = getAssetDetails(a);
+                if (filterType === 'canister') return type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER;
+                if (filterType === 'neuron_manager') return type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER;
                 if (filterType === 'neuron') return type === 'SNSNeuron';
                 if (filterType === 'token') return type === 'ICRC1Token';
                 return true;
@@ -639,6 +642,7 @@ function SneedexOffers() {
                     >
                         <option value="all">All Assets</option>
                         <option value="canister">Canisters</option>
+                        <option value="neuron_manager">ICP Neuron Managers</option>
                         <option value="neuron">SNS Neurons</option>
                         <option value="token">ICRC1 Tokens</option>
                     </select>
@@ -747,7 +751,13 @@ function SneedexOffers() {
                                             
                                             return (
                                                 <span key={idx} style={styles.assetBadge}>
-                                                    {details.type === 'Canister' && (
+                                                    {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
+                                                        <>
+                                                            <FaRobot style={{ color: theme.colors.accent }} />
+                                                            Neuron Manager
+                                                        </>
+                                                    )}
+                                                    {details.type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                         <>
                                                             <FaCubes style={{ color: theme.colors.accent }} />
                                                             Canister
