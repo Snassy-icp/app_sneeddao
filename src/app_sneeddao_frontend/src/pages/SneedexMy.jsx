@@ -13,9 +13,43 @@ import {
     getBidStateString,
     getAssetType,
     getErrorMessage,
-    parseAmount
+    parseAmount,
+    SNEEDEX_CANISTER_ID
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { Principal } from '@dfinity/principal';
+
+// Generate bid escrow subaccount (matches backend Utils.bidEscrowSubaccount)
+// Structure: byte 0 = principal length, bytes 1-N = principal, byte 23 = 0x42 ('B'), bytes 24-31 = bidId big-endian
+const getBidEscrowSubaccount = (bidderPrincipal, bidId) => {
+    const subaccount = new Uint8Array(32);
+    const principalBytes = bidderPrincipal.toUint8Array();
+    
+    // Byte 0: principal length
+    subaccount[0] = principalBytes.length;
+    
+    // Bytes 1-N: principal bytes
+    for (let i = 0; i < principalBytes.length && i < 22; i++) {
+        subaccount[1 + i] = principalBytes[i];
+    }
+    
+    // Byte 23: type marker for bid
+    subaccount[23] = 0x42; // 'B'
+    
+    // Bytes 24-31: bid ID as big-endian 64-bit
+    const bidIdBigInt = BigInt(bidId);
+    subaccount[24] = Number((bidIdBigInt >> 56n) & 0xFFn);
+    subaccount[25] = Number((bidIdBigInt >> 48n) & 0xFFn);
+    subaccount[26] = Number((bidIdBigInt >> 40n) & 0xFFn);
+    subaccount[27] = Number((bidIdBigInt >> 32n) & 0xFFn);
+    subaccount[28] = Number((bidIdBigInt >> 24n) & 0xFFn);
+    subaccount[29] = Number((bidIdBigInt >> 16n) & 0xFFn);
+    subaccount[30] = Number((bidIdBigInt >> 8n) & 0xFFn);
+    subaccount[31] = Number(bidIdBigInt & 0xFFn);
+    
+    return Array.from(subaccount);
+};
 import InfoModal from '../components/InfoModal';
 import ConfirmationModal from '../ConfirmationModal';
 
@@ -75,24 +109,57 @@ function SneedexMy() {
     }, [whitelistedTokens]);
     
     // Fetch escrow balances for all bids that have tokens escrowed
+    // Calls the ledger directly for better performance
     const fetchBidEscrowBalances = useCallback(async (bids) => {
         if (!identity || !bids.length) return;
         
+        // Filter to bids with tokens escrowed
+        const escrowedBids = bids.filter(bid => bid.tokens_escrowed);
+        if (escrowedBids.length === 0) return;
+        
+        // Get unique offer IDs to fetch their price_token_ledger
+        const uniqueOfferIds = [...new Set(escrowedBids.map(b => Number(b.offer_id)))];
+        
+        // Fetch offer info to get price_token_ledger for each offer
         const actor = createSneedexActor(identity);
+        const offerLedgers = {};
+        
+        await Promise.all(uniqueOfferIds.map(async (offerId) => {
+            try {
+                const offerView = await actor.getOfferView(BigInt(offerId));
+                if (offerView && offerView.length > 0) {
+                    offerLedgers[offerId] = offerView[0].offer.price_token_ledger.toString();
+                }
+            } catch (e) {
+                console.warn(`Failed to fetch offer ${offerId}:`, e);
+            }
+        }));
+        
+        // Now fetch balances directly from ledgers in parallel
+        const sneedexPrincipal = Principal.fromText(SNEEDEX_CANISTER_ID);
         const balances = {};
         
-        for (const bid of bids) {
-            if (bid.tokens_escrowed) {
-                try {
-                    const result = await actor.getBidEscrowBalance(bid.id);
-                    if ('ok' in result) {
-                        balances[Number(bid.id)] = result.ok;
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch escrow balance for bid ${bid.id}:`, e);
-                }
+        await Promise.all(escrowedBids.map(async (bid) => {
+            const ledgerId = offerLedgers[Number(bid.offer_id)];
+            if (!ledgerId) return;
+            
+            try {
+                const ledgerActor = createLedgerActor(ledgerId, {
+                    agentOptions: { identity }
+                });
+                
+                const subaccount = getBidEscrowSubaccount(bid.bidder, bid.id);
+                
+                const balance = await ledgerActor.icrc1_balance_of({
+                    owner: sneedexPrincipal,
+                    subaccount: [subaccount]
+                });
+                
+                balances[Number(bid.id)] = balance;
+            } catch (e) {
+                console.warn(`Failed to fetch escrow balance for bid ${bid.id}:`, e);
             }
-        }
+        }));
         
         setBidEscrowBalances(balances);
     }, [identity]);
