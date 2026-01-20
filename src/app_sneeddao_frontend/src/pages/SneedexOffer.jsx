@@ -679,9 +679,10 @@ function SneedexOffer() {
             return;
         }
         
-        const minBid = getMinimumBid();
+        const minBidE8s = getMinimumBidE8s();
+        const minBid = Number(minBidE8s) / Math.pow(10, tokenInfo.decimals);
         if (amount < minBid) {
-            setError(`Bid must be at least ${minBid.toFixed(4)} ${tokenInfo.symbol}`);
+            setError(`Bid must be at least ${formatAmount(minBidE8s, tokenInfo.decimals)} ${tokenInfo.symbol}`);
             return;
         }
         
@@ -3036,7 +3037,7 @@ function SneedexOffer() {
                                         fontSize: '0.85rem'
                                     }}>
                                         <span style={{ color: theme.colors.mutedText }}>
-                                            Min: {getMinimumBid().toFixed(4)} {tokenInfo.symbol}
+                                            Min: {formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} {tokenInfo.symbol}
                                         </span>
                                         <span style={{ color: theme.colors.text }}>
                                             <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
