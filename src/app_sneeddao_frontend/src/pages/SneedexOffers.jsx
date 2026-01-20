@@ -605,6 +605,8 @@ function SneedexOffers() {
             padding: '6px',
             borderRadius: '12px',
             width: 'fit-content',
+            maxWidth: '100%',
+            flexWrap: 'wrap',
         },
         tab: {
             padding: '10px 20px',
@@ -617,8 +619,11 @@ function SneedexOffers() {
             fontWeight: '500',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: '8px',
             transition: 'all 0.2s ease',
+            flex: '1 1 auto',
+            minWidth: '120px',
         },
         tabActive: {
             background: theme.colors.secondaryBg,
@@ -666,6 +671,7 @@ function SneedexOffers() {
             cursor: 'pointer',
             outline: 'none',
             minWidth: '150px',
+            flex: '1 1 150px',
         },
         grid: {
             display: 'grid',
@@ -813,6 +819,7 @@ function SneedexOffers() {
             paddingTop: '1.5rem',
             borderTop: `1px solid ${theme.colors.border}`,
             gridColumn: '1 / -1',
+            flexWrap: 'wrap',
         },
         paginationButton: {
             display: 'flex',
@@ -835,6 +842,7 @@ function SneedexOffers() {
         advancedFilterToggle: {
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: '8px',
             padding: '10px 16px',
             borderRadius: '10px',
@@ -845,6 +853,7 @@ function SneedexOffers() {
             fontWeight: '500',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
+            flex: '0 1 auto',
         },
         advancedFilterSection: {
             background: theme.colors.cardGradient,
@@ -984,7 +993,7 @@ function SneedexOffers() {
                 )}
                 
                 {/* Public/Private tabs */}
-                <div style={styles.tabContainer}>
+                <div className="sneedex-tab-container" style={styles.tabContainer}>
                     <button
                         style={{
                             ...styles.tab,
@@ -1007,7 +1016,7 @@ function SneedexOffers() {
                     </button>
                 </div>
                 
-                <div style={styles.controls}>
+                <div className="sneedex-controls" style={styles.controls}>
                     <div style={styles.searchBox}>
                         <FaSearch style={styles.searchIcon} />
                         <input
@@ -1077,7 +1086,7 @@ function SneedexOffers() {
                             )}
                         </div>
                         
-                        <div style={styles.advancedFilterGrid}>
+                        <div className="sneedex-advanced-filter-grid" style={styles.advancedFilterGrid}>
                             {/* Payment Token Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Payment Token <span style={styles.filterLabelHint}>(Bid Currency)</span></label>
@@ -1516,6 +1525,22 @@ function SneedexOffers() {
                 @keyframes fadeIn {
                     from { opacity: 0; transform: translateY(-8px); }
                     to { opacity: 1; transform: translateY(0); }
+                }
+                @media (max-width: 768px) {
+                    .sneedex-advanced-filter-grid {
+                        grid-template-columns: 1fr !important;
+                    }
+                    .sneedex-tab-container {
+                        width: 100% !important;
+                    }
+                    .sneedex-controls {
+                        flex-direction: column;
+                    }
+                    .sneedex-controls > * {
+                        width: 100% !important;
+                        min-width: unset !important;
+                        flex: 1 1 100% !important;
+                    }
                 }
             `}</style>
         </div>
