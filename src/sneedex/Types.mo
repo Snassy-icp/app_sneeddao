@@ -374,6 +374,9 @@ module {
         // Access control - if set, only these principals can bid (OTC/private offer)
         approved_bidders : ?[Principal];
         
+        // Marketplace fee rate in basis points (100 = 1%) - locked in at offer creation
+        fee_rate_bps : Nat;
+        
         // Timestamps
         created_at : Time.Time;
         activated_at : ?Time.Time;

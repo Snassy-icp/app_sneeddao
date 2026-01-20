@@ -49,6 +49,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Bids storage  
     var bids : [T.Bid] = [];
     
+    // Marketplace fee settings
+    // Fee rate in basis points (100 = 1%, 250 = 2.5%, etc.)
+    var marketplaceFeeRateBps : Nat = 0; // Default 0% - admin must set
+    
+    // Account to receive marketplace fees
+    var feeRecipient : T.Account = {
+        owner = Principal.fromText("aaaaa-aa"); // Default to management canister (will fail transfers until set)
+        subaccount = null;
+    };
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -196,6 +206,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     state = #Claimed;
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
+                                    fee_rate_bps = offer.fee_rate_bps;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -237,19 +248,41 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case (?bid) {
                                 if (bid.state != #Won) { return }; // Already claimed
                                 
-                                // Get fee and calculate transfer amount
                                 let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                                let transferAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
                                 
-                                if (transferAmount == 0) { return };
+                                // Calculate marketplace fee using the rate locked at offer creation
+                                let marketplaceFee = bid.amount * offer.fee_rate_bps / 10000;
+                                
+                                // If there's a marketplace fee, transfer it first (best effort)
+                                if (marketplaceFee > 0) {
+                                    let feeTransferAmount = if (marketplaceFee > fee) { marketplaceFee - fee } else { 0 };
+                                    if (feeTransferAmount > 0) {
+                                        let feeTransferResult = await* AssetHandlers.transferTokens(
+                                            offer.price_token_ledger,
+                                            ?subaccount,
+                                            feeRecipient,
+                                            feeTransferAmount
+                                        );
+                                        switch (feeTransferResult) {
+                                            case (#err(_e)) { return }; // Fee transfer failed, abort
+                                            case (#ok(_)) {};
+                                        };
+                                    };
+                                };
+                                
+                                // Calculate and transfer seller amount
+                                let amountAfterFee = bid.amount - marketplaceFee;
+                                let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
+                                
+                                if (sellerTransferAmount == 0) { return };
                                 
                                 // Transfer tokens to seller
-                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
                                 let transferResult = await* AssetHandlers.transferTokens(
                                     offer.price_token_ledger,
                                     ?subaccount,
                                     { owner = offer.creator; subaccount = null },
-                                    transferAmount
+                                    sellerTransferAmount
                                 );
                                 
                                 switch (transferResult) {
@@ -351,6 +384,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = #Reclaimed;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -483,6 +517,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = offer.state;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -712,6 +747,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             assets = [];
             state = #Draft;
             approved_bidders = request.approved_bidders;
+            fee_rate_bps = marketplaceFeeRateBps; // Lock in current fee rate
             created_at = Time.now();
             activated_at = null;
         };
@@ -789,6 +825,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = offer.state;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -827,6 +864,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = #PendingEscrow;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -912,6 +950,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             state = offer.state;
                                             min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                             approved_bidders = offer.approved_bidders;
+                                            fee_rate_bps = offer.fee_rate_bps;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
                                         };
@@ -1004,6 +1043,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             state = offer.state;
                                             min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                             approved_bidders = offer.approved_bidders;
+                                            fee_rate_bps = offer.fee_rate_bps;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
                                         };
@@ -1081,6 +1121,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     state = offer.state;
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
+                                    fee_rate_bps = offer.fee_rate_bps;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1139,6 +1180,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = #Active;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = ?Time.now();
                 };
@@ -1368,6 +1410,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     });
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1483,6 +1526,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     state = #Expired;
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
+                                    fee_rate_bps = offer.fee_rate_bps;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1531,6 +1575,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = #Cancelled;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1622,6 +1667,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     state = #Claimed;
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
+                                    fee_rate_bps = offer.fee_rate_bps;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1675,21 +1721,46 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     return #err(#InvalidState("Bid is not in won state"));
                                 };
                                 
-                                // Get fee and calculate transfer amount (bid amount - fee)
                                 let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
-                                let transferAmount = if (bid.amount > fee) { bid.amount - fee } else { 0 };
+                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
                                 
-                                if (transferAmount == 0) {
-                                    return #err(#InsufficientFunds({ available = bid.amount; required = fee }));
+                                // Calculate marketplace fee using the rate locked at offer creation
+                                let marketplaceFee = bid.amount * offer.fee_rate_bps / 10000;
+                                
+                                // If there's a marketplace fee to collect, transfer it first
+                                if (marketplaceFee > 0) {
+                                    // Transfer marketplace fee to fee recipient
+                                    let feeTransferAmount = if (marketplaceFee > fee) { marketplaceFee - fee } else { 0 };
+                                    if (feeTransferAmount > 0) {
+                                        let feeTransferResult = await* AssetHandlers.transferTokens(
+                                            offer.price_token_ledger,
+                                            ?subaccount,
+                                            feeRecipient,
+                                            feeTransferAmount
+                                        );
+                                        switch (feeTransferResult) {
+                                            case (#err(e)) { return #err(e) };
+                                            case (#ok(_)) {};
+                                        };
+                                    };
                                 };
                                 
-                                // Transfer tokens to seller (amount - fee, since fee is deducted)
-                                let subaccount = Utils.bidEscrowSubaccount(bid.bidder, bid.id);
+                                // Calculate seller amount: bid - marketplace fee - transfer fees
+                                // If marketplace fee was paid, we already deducted (marketplaceFee) from escrow
+                                // Seller gets remaining minus one more transfer fee
+                                let amountAfterFee = bid.amount - marketplaceFee;
+                                let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
+                                
+                                if (sellerTransferAmount == 0) {
+                                    return #err(#InsufficientFunds({ available = amountAfterFee; required = fee }));
+                                };
+                                
+                                // Transfer remaining tokens to seller
                                 let transferResult = await* AssetHandlers.transferTokens(
                                     offer.price_token_ledger,
                                     ?subaccount,
                                     { owner = caller; subaccount = null },
-                                    transferAmount
+                                    sellerTransferAmount
                                 );
                                 
                                 switch (transferResult) {
@@ -1718,24 +1789,46 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         switch (getHighestBid(offerId)) {
                             case null { return #err(#BidNotFound) };
                             case (?_bid) {
-                                // Get fee for transfer
                                 let fee = await* AssetHandlers.getTokenFee(offer.price_token_ledger);
                                 
                                 // Find the winning bid from completed state
                                 for (b in getBidsForOffer(offerId).vals()) {
                                     if (b.state == #Won) {
-                                        let transferAmount = if (b.amount > fee) { b.amount - fee } else { 0 };
+                                        let subaccount = Utils.bidEscrowSubaccount(b.bidder, b.id);
                                         
-                                        if (transferAmount == 0) {
-                                            return #err(#InsufficientFunds({ available = b.amount; required = fee }));
+                                        // Calculate marketplace fee using the rate locked at offer creation
+                                        let marketplaceFee = b.amount * offer.fee_rate_bps / 10000;
+                                        
+                                        // If there's a marketplace fee, transfer it first
+                                        if (marketplaceFee > 0) {
+                                            let feeTransferAmount = if (marketplaceFee > fee) { marketplaceFee - fee } else { 0 };
+                                            if (feeTransferAmount > 0) {
+                                                let feeTransferResult = await* AssetHandlers.transferTokens(
+                                                    offer.price_token_ledger,
+                                                    ?subaccount,
+                                                    feeRecipient,
+                                                    feeTransferAmount
+                                                );
+                                                switch (feeTransferResult) {
+                                                    case (#err(e)) { return #err(e) };
+                                                    case (#ok(_)) {};
+                                                };
+                                            };
                                         };
                                         
-                                        let subaccount = Utils.bidEscrowSubaccount(b.bidder, b.id);
+                                        // Calculate and transfer seller amount
+                                        let amountAfterFee = b.amount - marketplaceFee;
+                                        let sellerTransferAmount = if (amountAfterFee > fee) { amountAfterFee - fee } else { 0 };
+                                        
+                                        if (sellerTransferAmount == 0) {
+                                            return #err(#InsufficientFunds({ available = amountAfterFee; required = fee }));
+                                        };
+                                        
                                         let transferResult = await* AssetHandlers.transferTokens(
                                             offer.price_token_ledger,
                                             ?subaccount,
                                             { owner = caller; subaccount = null },
-                                            transferAmount
+                                            sellerTransferAmount
                                         );
                                         
                                         switch (transferResult) {
@@ -1847,6 +1940,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     state = #Reclaimed;
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
+                    fee_rate_bps = offer.fee_rate_bps;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -2250,6 +2344,46 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             max_assets_per_offer = config.max_assets_per_offer;
         };
         
+        #ok();
+    };
+    
+    // ============================================
+    // MARKETPLACE FEE MANAGEMENT (Admin)
+    // ============================================
+    
+    /// Get current marketplace fee rate in basis points (100 = 1%)
+    public query func getMarketplaceFeeRate() : async Nat {
+        marketplaceFeeRateBps;
+    };
+    
+    /// Set marketplace fee rate in basis points (admin only)
+    /// e.g., 100 = 1%, 250 = 2.5%, 500 = 5%
+    public shared ({ caller }) func setMarketplaceFeeRate(rateBps : Nat) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        // Sanity check: max 50% (5000 bps)
+        if (rateBps > 5000) {
+            return #err(#InvalidAsset("Fee rate cannot exceed 50% (5000 bps)"));
+        };
+        
+        marketplaceFeeRateBps := rateBps;
+        #ok();
+    };
+    
+    /// Get current fee recipient account
+    public query func getFeeRecipient() : async T.Account {
+        feeRecipient;
+    };
+    
+    /// Set fee recipient account (admin only)
+    public shared ({ caller }) func setFeeRecipient(account : T.Account) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        feeRecipient := account;
         #ok();
     };
 };
