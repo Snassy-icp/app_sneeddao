@@ -1270,6 +1270,25 @@ function Neuron() {
                                         >
                                             📋
                                         </button>
+                                        <a
+                                            href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/neuron/${currentNeuronId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                color: theme.colors.accent,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                flexShrink: 0,
+                                                fontSize: '0.85rem',
+                                                textDecoration: 'none',
+                                            }}
+                                            title="View on IC Dashboard"
+                                        >
+                                            🌐 Dashboard
+                                        </a>
                                     </div>
                                     {(() => {
                                         const { name, nickname, isVerified } = getDisplayName(currentNeuronId);
