@@ -811,6 +811,16 @@ function SneedexOffers() {
                                             <div style={styles.priceToken}>{tokenInfo.symbol}</div>
                                         </div>
                                     </div>
+                                    {offer.min_bid_increment_fee_multiple?.[0] && (
+                                        <div style={{ 
+                                            fontSize: '0.75rem', 
+                                            color: theme.colors.mutedText,
+                                            marginBottom: '0.75rem',
+                                            textAlign: 'center'
+                                        }}>
+                                            Min increment: {Number(offer.min_bid_increment_fee_multiple[0])}× fee
+                                        </div>
+                                    )}
                                     
                                     <div style={styles.cardFooter}>
                                         <div style={styles.timeInfo}>

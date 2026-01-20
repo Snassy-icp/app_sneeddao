@@ -105,6 +105,9 @@ function SneedexCreate() {
     const [expirationDays, setExpirationDays] = useState('7');
     const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
     
+    // Minimum bid increment (as multiple of token fee)
+    const [minBidIncrementMultiple, setMinBidIncrementMultiple] = useState('');
+    
     // Private offer / Approved bidders
     const [isPrivateOffer, setIsPrivateOffer] = useState(false);
     const [approvedBiddersText, setApprovedBiddersText] = useState(''); // Comma-separated principals
@@ -777,6 +780,7 @@ function SneedexCreate() {
                 buyout_price: buyoutPrice ? [parseAmount(buyoutPrice, priceTokenDecimals)] : [],
                 expiration: hasExpiration ? [daysToExpirationNs(parseInt(expirationDays))] : [],
                 approved_bidders: isPrivateOffer && approvedBidders.length > 0 ? [approvedBidders] : [],
+                min_bid_increment_fee_multiple: minBidIncrementMultiple ? [BigInt(parseInt(minBidIncrementMultiple))] : [],
             };
             
             const createResult = await actor.createOffer(createRequest);
@@ -1434,6 +1438,26 @@ function SneedexCreate() {
                             </div>
                         )}
                         
+                        <div style={styles.formGroup}>
+                            <label style={styles.label}>
+                                Min Bid Increment
+                                <span style={styles.labelHint}> — Optional, as multiple of token transaction fee</span>
+                            </label>
+                            <input
+                                type="number"
+                                style={styles.input}
+                                value={minBidIncrementMultiple}
+                                onChange={(e) => setMinBidIncrementMultiple(e.target.value)}
+                                placeholder={`e.g. 10 = 10× fee${selectedPriceToken ? ` (${(10 * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} ${selectedPriceToken.symbol})` : ''}`}
+                                min="1"
+                            />
+                            {minBidIncrementMultiple && selectedPriceToken && (
+                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                    Min increment: {(parseInt(minBidIncrementMultiple) * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} {selectedPriceToken.symbol}
+                                </div>
+                            )}
+                        </div>
+                        
                         <div style={{ 
                             borderTop: `1px solid ${theme.colors.border}`, 
                             margin: '24px 0', 
@@ -1985,6 +2009,20 @@ function SneedexCreate() {
                                 {hasExpiration ? `${expirationDays} days from activation` : 'No expiration'}
                             </div>
                         </div>
+                        
+                        {minBidIncrementMultiple && (
+                            <div style={styles.reviewSection}>
+                                <div style={styles.reviewLabel}>Min Bid Increment</div>
+                                <div style={styles.reviewValue}>
+                                    {minBidIncrementMultiple}× fee
+                                    {selectedPriceToken && (
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
+                                            ({(parseInt(minBidIncrementMultiple) * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} {selectedPriceToken.symbol})
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         
                         <div style={styles.reviewSection}>
                             <div style={styles.reviewLabel}>Assets ({assets.length})</div>

@@ -612,16 +612,18 @@ function SneedexOffer() {
     
     // Get token info from whitelisted tokens
     const tokenInfo = (() => {
-        if (!offer) return { symbol: 'TOKEN', decimals: 8 };
+        if (!offer) return { symbol: 'TOKEN', decimals: 8, fee: null };
         const ledgerId = offer.price_token_ledger.toString();
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
-            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, fee: token.fee ? BigInt(token.fee) : null };
         }
         // Fallback for known tokens if not in whitelist
-        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
-        return { symbol: 'TOKEN', decimals: 8 };
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, fee: BigInt(10000) };
+        return { symbol: 'TOKEN', decimals: 8, fee: null };
     })();
+    
+    const tokenFee = tokenInfo.fee;
     
     const getMinimumBid = () => {
         if (!offer) return 0;
@@ -2927,6 +2929,19 @@ function SneedexOffer() {
                                     {offer.buyout_price[0] ? `${formatAmount(offer.buyout_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
                                 </span>
                             </div>
+                            {offer.min_bid_increment_fee_multiple?.[0] && (
+                                <div style={styles.priceRow}>
+                                    <span style={styles.priceLabel}>Min Bid Increment</span>
+                                    <span style={styles.priceValue}>
+                                        {Number(offer.min_bid_increment_fee_multiple[0])}× fee
+                                        {tokenFee && (
+                                            <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                                ({formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenFee, tokenInfo.decimals)} {tokenInfo.symbol})
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+                            )}
                             <div style={styles.priceRow}>
                                 <span style={styles.priceLabel}>Current Highest Bid</span>
                                 <span style={{ ...styles.priceValue, color: theme.colors.success }}>
