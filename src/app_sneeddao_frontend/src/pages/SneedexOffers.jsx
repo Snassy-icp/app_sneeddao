@@ -324,16 +324,18 @@ function SneedexOffers() {
                     fetchSnsLogoForOffer(details.governance_id);
                     // Fetch SNS token symbol
                     fetchSnsSymbol(details.governance_id);
-                    // Fetch neuron info
-                    if (details.neuron_id) {
+                    // Only fetch live neuron info if no cached stake is available
+                    // (for backwards compatibility with offers activated before caching was added)
+                    if (details.neuron_id && details.cached_stake_e8s === null) {
                         fetchNeuronInfo(details.governance_id, details.neuron_id);
                     }
                 } else if (details.type === 'ICRC1Token') {
                     // Fetch token logo
                     fetchTokenLogo(details.ledger_id);
                 } else if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
-                    // Fetch neuron manager info (only for escrowed assets)
-                    if (assetEntry.escrowed) {
+                    // Only fetch live neuron manager info if no cached value is available
+                    // (for backwards compatibility with offers activated before caching was added)
+                    if (assetEntry.escrowed && details.cached_total_stake_e8s === null) {
                         fetchNeuronManagerInfo(details.canister_id);
                     }
                 }
@@ -454,13 +456,20 @@ function SneedexOffers() {
                     const snsLedger = getSnsLedgerFromGovernance(details.governance_id);
                     const tokenMatches = !assetTokenFilter || snsLedger === assetTokenFilter;
                     if (tokenMatches) {
-                        // For neurons, check the staked amount from neuronInfo
-                        const neuronInfoKey = `${details.governance_id}_${details.neuron_id}`;
-                        const nInfo = neuronInfo[neuronInfoKey];
-                        if (nInfo && nInfo.stake !== undefined) {
-                            // neuronInfo stake is already in human-readable format
+                        // Use cached stake if available, otherwise fall back to fetched data
+                        let stakeValue = null;
+                        if (details.cached_stake_e8s !== null) {
+                            stakeValue = details.cached_stake_e8s / 1e8;
+                        } else {
+                            const neuronInfoKey = `${details.governance_id}_${details.neuron_id}`;
+                            const nInfo = neuronInfo[neuronInfoKey];
+                            if (nInfo && nInfo.stake !== undefined) {
+                                stakeValue = nInfo.stake;
+                            }
+                        }
+                        
+                        if (stakeValue !== null) {
                             if (minAssetAmountFilter || maxAssetAmountFilter) {
-                                const stakeValue = nInfo.stake;
                                 if (minAssetAmountFilter) {
                                     const minAmount = parseFloat(minAssetAmountFilter);
                                     if (!isNaN(minAmount) && stakeValue < minAmount) return false;
@@ -472,7 +481,7 @@ function SneedexOffers() {
                             }
                             return true;
                         }
-                        // If we don't have neuron info yet but token matches, include it (amount filter won't apply)
+                        // If we don't have stake info yet but token matches, include it (amount filter won't apply)
                         return !minAssetAmountFilter && !maxAssetAmountFilter;
                     }
                 }
@@ -481,11 +490,19 @@ function SneedexOffers() {
                 if (type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
                     const tokenMatches = !assetTokenFilter || assetTokenFilter === ICP_LEDGER_ID;
                     if (tokenMatches) {
-                        // Check total ICP amount from neuronManagerInfo
-                        const mInfo = neuronManagerInfo[details.canister_id];
-                        if (mInfo && mInfo.totalIcp !== undefined) {
+                        // Use cached stake if available, otherwise fall back to fetched data
+                        let totalValue = null;
+                        if (details.cached_total_stake_e8s !== null) {
+                            totalValue = details.cached_total_stake_e8s / 1e8;
+                        } else {
+                            const mInfo = neuronManagerInfo[details.canister_id];
+                            if (mInfo && mInfo.totalIcp !== undefined) {
+                                totalValue = mInfo.totalIcp;
+                            }
+                        }
+                        
+                        if (totalValue !== null) {
                             if (minAssetAmountFilter || maxAssetAmountFilter) {
-                                const totalValue = mInfo.totalIcp;
                                 if (minAssetAmountFilter) {
                                     const minAmount = parseFloat(minAssetAmountFilter);
                                     if (!isNaN(minAmount) && totalValue < minAmount) return false;
@@ -497,7 +514,7 @@ function SneedexOffers() {
                             }
                             return true;
                         }
-                        // If we don't have manager info yet but token matches, include it (amount filter won't apply)
+                        // If we don't have stake info yet but token matches, include it (amount filter won't apply)
                         return !minAssetAmountFilter && !maxAssetAmountFilter;
                     }
                 }
@@ -1143,7 +1160,7 @@ function SneedexOffers() {
                             {/* Asset Token Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>
-                                    Asset Token <span style={styles.filterLabelHint}>(Tokens, SNS Neurons, Neuron Managers)</span>
+                                    Asset Token <span style={styles.filterLabelHint}></span>
                                 </label>
                                 <TokenSelector
                                     value={assetTokenFilter}
@@ -1331,6 +1348,10 @@ function SneedexOffers() {
                                             // Generate tooltip text based on asset type
                                             const getTooltip = () => {
                                                 if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                                                    // Use cached value if available
+                                                    if (details.cached_total_stake_e8s !== null) {
+                                                        return `ICP Neuron Manager\nCanister: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
+                                                    }
                                                     const mInfo = neuronManagerInfo[details.canister_id];
                                                     if (mInfo) {
                                                         return `ICP Neuron Manager\nCanister: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
@@ -1341,7 +1362,11 @@ function SneedexOffers() {
                                                     return `Canister: ${details.canister_id}`;
                                                 }
                                                 if (details.type === 'SNSNeuron') {
-                                                    const stakeText = nInfo ? `\nStake: ${nInfo.stake.toFixed(4)} ${snsInfo?.symbol || 'tokens'}` : '';
+                                                    // Use cached stake if available, otherwise fall back to fetched data
+                                                    const stakeValue = details.cached_stake_e8s !== null 
+                                                        ? (details.cached_stake_e8s / 1e8)
+                                                        : nInfo?.stake;
+                                                    const stakeText = stakeValue !== undefined ? `\nStake: ${stakeValue.toFixed(4)} ${snsInfo?.symbol || 'tokens'}` : '';
                                                     return `${snsInfo?.name || 'SNS'} Neuron\nGovernance: ${details.governance_id}\nNeuron ID: ${details.neuron_id?.slice(0, 16)}...${stakeText}`;
                                                 }
                                                 if (details.type === 'ICRC1Token') {
@@ -1371,11 +1396,14 @@ function SneedexOffers() {
                                                                     }}
                                                                 />
                                                             </span>
-                                                            {neuronManagerInfo[details.canister_id] 
-                                                                ? `${neuronManagerInfo[details.canister_id].totalIcp.toFixed(2)} ICP`
-                                                                : details.escrowed 
-                                                                    ? 'Loading...'
-                                                                    : 'Neuron Manager'
+                                                            {/* Use cached value if available, otherwise fall back to fetched data */}
+                                                            {details.cached_total_stake_e8s !== null
+                                                                ? `${(details.cached_total_stake_e8s / 1e8).toFixed(2)} ICP`
+                                                                : neuronManagerInfo[details.canister_id] 
+                                                                    ? `${neuronManagerInfo[details.canister_id].totalIcp.toFixed(2)} ICP`
+                                                                    : details.escrowed 
+                                                                        ? 'Loading...'
+                                                                        : 'Neuron Manager'
                                                             }
                                                         </>
                                                     )}
@@ -1405,7 +1433,13 @@ function SneedexOffers() {
                                                                     />
                                                                 )}
                                                             </span>
-                                                            {nInfo ? `${nInfo.stake.toFixed(2)} ${snsInfo?.symbol || 'Neuron'}` : snsInfo?.symbol || 'Neuron'}
+                                                            {/* Use cached stake if available, otherwise fall back to fetched data */}
+                                                            {details.cached_stake_e8s !== null
+                                                                ? `${(details.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || 'Neuron'}`
+                                                                : nInfo 
+                                                                    ? `${nInfo.stake.toFixed(2)} ${snsInfo?.symbol || 'Neuron'}` 
+                                                                    : snsInfo?.symbol || 'Neuron'
+                                                            }
                                                         </>
                                                     )}
                                                     {details.type === 'ICRC1Token' && (

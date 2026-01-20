@@ -1,6 +1,7 @@
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
 import Nat "mo:base/Nat";
+import Nat64 "mo:base/Nat64";
 import Array "mo:base/Array";
 import Text "mo:base/Text";
 import Timer "mo:base/Timer";
@@ -10,6 +11,143 @@ import Buffer "mo:base/Buffer";
 import T "Types";
 import Utils "Utils";
 import AssetHandlers "AssetHandlers";
+
+// Migration expression to add cached_stake_e8s fields to assets
+(with migration = func (old : { 
+    var offers : [{
+        id : Nat;
+        creator : Principal;
+        min_bid_price : ?Nat;
+        buyout_price : ?Nat;
+        expiration : ?Time.Time;
+        price_token_ledger : Principal;
+        min_bid_increment_fee_multiple : ?Nat;
+        assets : [{
+            asset : {
+                #Canister : {
+                    canister_id : Principal;
+                    canister_kind : ?Nat;
+                    controllers_snapshot : ?[Principal];
+                };
+                #SNSNeuron : {
+                    governance_canister_id : Principal;
+                    neuron_id : { id : Blob };
+                    hotkeys_snapshot : ?[Principal];
+                };
+                #ICRC1Token : {
+                    ledger_canister_id : Principal;
+                    amount : Nat;
+                };
+            };
+            escrowed : Bool;
+        }];
+        state : T.OfferState;
+        approved_bidders : ?[Principal];
+        created_at : Time.Time;
+        activated_at : ?Time.Time;
+    }]
+}) : { var offers : [T.Offer] } {
+    {
+        var offers = Array.map(
+            old.offers,
+            func (o : {
+                id : Nat;
+                creator : Principal;
+                min_bid_price : ?Nat;
+                buyout_price : ?Nat;
+                expiration : ?Time.Time;
+                price_token_ledger : Principal;
+                min_bid_increment_fee_multiple : ?Nat;
+                assets : [{
+                    asset : {
+                        #Canister : {
+                            canister_id : Principal;
+                            canister_kind : ?Nat;
+                            controllers_snapshot : ?[Principal];
+                        };
+                        #SNSNeuron : {
+                            governance_canister_id : Principal;
+                            neuron_id : { id : Blob };
+                            hotkeys_snapshot : ?[Principal];
+                        };
+                        #ICRC1Token : {
+                            ledger_canister_id : Principal;
+                            amount : Nat;
+                        };
+                    };
+                    escrowed : Bool;
+                }];
+                state : T.OfferState;
+                approved_bidders : ?[Principal];
+                created_at : Time.Time;
+                activated_at : ?Time.Time;
+            }) : T.Offer {
+                let newAssets = Array.map(
+                    o.assets,
+                    func (ae : {
+                        asset : {
+                            #Canister : {
+                                canister_id : Principal;
+                                canister_kind : ?Nat;
+                                controllers_snapshot : ?[Principal];
+                            };
+                            #SNSNeuron : {
+                                governance_canister_id : Principal;
+                                neuron_id : { id : Blob };
+                                hotkeys_snapshot : ?[Principal];
+                            };
+                            #ICRC1Token : {
+                                ledger_canister_id : Principal;
+                                amount : Nat;
+                            };
+                        };
+                        escrowed : Bool;
+                    }) : T.AssetEntry {
+                        let newAsset : T.Asset = switch (ae.asset) {
+                            case (#Canister(ca)) {
+                                #Canister({
+                                    canister_id = ca.canister_id;
+                                    canister_kind = ca.canister_kind;
+                                    controllers_snapshot = ca.controllers_snapshot;
+                                    cached_total_stake_e8s = null;
+                                });
+                            };
+                            case (#SNSNeuron(sn)) {
+                                #SNSNeuron({
+                                    governance_canister_id = sn.governance_canister_id;
+                                    neuron_id = sn.neuron_id;
+                                    hotkeys_snapshot = sn.hotkeys_snapshot;
+                                    cached_stake_e8s = null;
+                                });
+                            };
+                            case (#ICRC1Token(tok)) {
+                                #ICRC1Token(tok);
+                            };
+                        };
+                        {
+                            asset = newAsset;
+                            escrowed = ae.escrowed;
+                        }
+                    }
+                );
+                {
+                    id = o.id;
+                    creator = o.creator;
+                    min_bid_price = o.min_bid_price;
+                    buyout_price = o.buyout_price;
+                    expiration = o.expiration;
+                    price_token_ledger = o.price_token_ledger;
+                    min_bid_increment_fee_multiple = o.min_bid_increment_fee_multiple;
+                    assets = newAssets;
+                    state = o.state;
+                    approved_bidders = o.approved_bidders;
+                    created_at = o.created_at;
+                    activated_at = o.activated_at;
+                }
+            }
+        );
+    }
+})
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -375,6 +513,125 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func scheduleAutoReclaimAssets<system>(offerId : T.OfferId) {
         ignore Timer.setTimer<system>(#seconds 2, func() : async () {
             await autoReclaimAssets(offerId);
+        });
+    };
+    
+    /// Cache stake values for SNS neurons and ICP neuron managers in an offer
+    /// This is called via Timer after activation to avoid instruction limits
+    func cacheAssetStakes(offerId : T.OfferId) : async () {
+        switch (getOffer(offerId)) {
+            case null { /* Offer not found, ignore */ };
+            case (?offer) {
+                // Only cache for Active offers
+                if (offer.state != #Active) { return };
+                
+                var updatedAssets = Buffer.Buffer<T.AssetEntry>(offer.assets.size());
+                
+                for (entry in offer.assets.vals()) {
+                    if (not entry.escrowed) {
+                        updatedAssets.add(entry);
+                    } else {
+                        switch (entry.asset) {
+                            case (#SNSNeuron(neuronAsset)) {
+                                // Fetch stake from SNS governance using get_neuron
+                                try {
+                                    let governance : T.SNSGovernanceActor = actor(Principal.toText(neuronAsset.governance_canister_id));
+                                    let response = await governance.get_neuron({
+                                        neuron_id = ?neuronAsset.neuron_id;
+                                    });
+                                    
+                                    var cachedStake : ?Nat64 = null;
+                                    
+                                    switch (response.result) {
+                                        case (?#Neuron(neuron)) {
+                                            cachedStake := ?neuron.cached_neuron_stake_e8s;
+                                        };
+                                        case (_) {};
+                                    };
+                                    
+                                    let updatedAsset : T.Asset = #SNSNeuron({
+                                        governance_canister_id = neuronAsset.governance_canister_id;
+                                        neuron_id = neuronAsset.neuron_id;
+                                        hotkeys_snapshot = neuronAsset.hotkeys_snapshot;
+                                        cached_stake_e8s = cachedStake;
+                                    });
+                                    updatedAssets.add({ asset = updatedAsset; escrowed = true });
+                                } catch (_e) {
+                                    // On error, keep original asset without cache
+                                    updatedAssets.add(entry);
+                                };
+                            };
+                            case (#Canister(canisterAsset)) {
+                                // Only cache for ICP Neuron Managers
+                                let isNeuronManager = switch (canisterAsset.canister_kind) {
+                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                    case null { false };
+                                };
+                                
+                                if (isNeuronManager) {
+                                    try {
+                                        let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterAsset.canister_id));
+                                        let neuronsInfo = await manager.getAllNeuronsInfo();
+                                        
+                                        var totalStake : Nat64 = 0;
+                                        for ((_, maybeInfo) in neuronsInfo.vals()) {
+                                            switch (maybeInfo) {
+                                                case (?info) {
+                                                    totalStake += info.stake_e8s;
+                                                };
+                                                case null {};
+                                            };
+                                        };
+                                        
+                                        let updatedAsset : T.Asset = #Canister({
+                                            canister_id = canisterAsset.canister_id;
+                                            canister_kind = canisterAsset.canister_kind;
+                                            controllers_snapshot = canisterAsset.controllers_snapshot;
+                                            cached_total_stake_e8s = ?totalStake;
+                                        });
+                                        updatedAssets.add({ asset = updatedAsset; escrowed = true });
+                                    } catch (_e) {
+                                        // On error, keep original asset without cache
+                                        updatedAssets.add(entry);
+                                    };
+                                } else {
+                                    // Not a neuron manager, keep original
+                                    updatedAssets.add(entry);
+                                };
+                            };
+                            case (#ICRC1Token(_)) {
+                                // No caching needed for tokens
+                                updatedAssets.add(entry);
+                            };
+                        };
+                    };
+                };
+                
+                // Update offer with cached values
+                let updatedOffer : T.Offer = {
+                    id = offer.id;
+                    creator = offer.creator;
+                    min_bid_price = offer.min_bid_price;
+                    buyout_price = offer.buyout_price;
+                    expiration = offer.expiration;
+                    price_token_ledger = offer.price_token_ledger;
+                    assets = Buffer.toArray(updatedAssets);
+                    state = offer.state;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
+                    approved_bidders = offer.approved_bidders;
+                    created_at = offer.created_at;
+                    activated_at = offer.activated_at;
+                };
+                
+                updateOffer(offerId, updatedOffer);
+            };
+        };
+    };
+    
+    /// Schedule caching of asset stakes (1 second delay to let activation complete)
+    func scheduleCacheAssetStakes<system>(offerId : T.OfferId) {
+        ignore Timer.setTimer<system>(#seconds 1, func() : async () {
+            await cacheAssetStakes(offerId);
         });
     };
     
@@ -770,6 +1027,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             canister_id = canisterAsset.canister_id;
                                             canister_kind = canisterAsset.canister_kind;
                                             controllers_snapshot = ?snapshot;
+                                            cached_total_stake_e8s = null; // Will be populated after activation for neuron managers
                                         });
                                         
                                         let updatedEntry : T.AssetEntry = {
@@ -861,6 +1119,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             governance_canister_id = neuronAsset.governance_canister_id;
                                             neuron_id = neuronAsset.neuron_id;
                                             hotkeys_snapshot = ?snapshot;
+                                            cached_stake_e8s = null; // Will be populated after activation
                                         });
                                         
                                         let updatedEntry : T.AssetEntry = {
@@ -1021,6 +1280,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 
                 updateOffer(offerId, updatedOffer);
+                
+                // Schedule caching of asset stakes (SNS neurons and neuron managers)
+                scheduleCacheAssetStakes<system>(offerId);
+                
                 #ok();
             };
         };

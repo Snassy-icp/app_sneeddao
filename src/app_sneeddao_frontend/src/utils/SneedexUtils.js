@@ -211,11 +211,16 @@ export const getAssetDetails = (assetEntry) => {
         const rawKind = asset.Canister.canister_kind?.[0];
         const canisterKind = rawKind !== undefined ? Number(rawKind) : 0;
         
+        // Get cached total stake for neuron managers (convert from optional)
+        const rawCachedStake = asset.Canister.cached_total_stake_e8s?.[0];
+        const cachedTotalStakeE8s = rawCachedStake !== undefined ? Number(rawCachedStake) : null;
+        
         return {
             type: 'Canister',
             canister_id: asset.Canister.canister_id.toString(),
             canister_kind: canisterKind, // 0 = unknown, 1 = ICP Neuron Manager
             controllers_snapshot: asset.Canister.controllers_snapshot[0]?.map(p => p.toString()) || [],
+            cached_total_stake_e8s: cachedTotalStakeE8s, // For neuron managers: total staked ICP (no maturity)
             escrowed,
         };
     }
@@ -225,11 +230,17 @@ export const getAssetDetails = (assetEntry) => {
         const neuronIdHex = Array.from(asset.SNSNeuron.neuron_id.id)
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
+        
+        // Get cached stake (convert from optional)
+        const rawCachedStake = asset.SNSNeuron.cached_stake_e8s?.[0];
+        const cachedStakeE8s = rawCachedStake !== undefined ? Number(rawCachedStake) : null;
+        
         return {
             type: 'SNSNeuron',
             governance_id: asset.SNSNeuron.governance_canister_id.toString(),
             neuron_id: neuronIdHex,
             hotkeys_snapshot: asset.SNSNeuron.hotkeys_snapshot[0]?.map(p => p.toString()) || [],
+            cached_stake_e8s: cachedStakeE8s, // Cached stake amount
             escrowed,
         };
     }
@@ -270,6 +281,7 @@ export const createAssetVariant = (type, details) => {
                     canister_id: Principal.fromText(details.canister_id),
                     canister_kind: details.canister_kind !== undefined ? [details.canister_kind] : [], // Optional nat
                     controllers_snapshot: [],
+                    cached_total_stake_e8s: [], // Optional, populated by backend after activation
                 }
             };
         case 'neuron':
@@ -283,6 +295,7 @@ export const createAssetVariant = (type, details) => {
                     governance_canister_id: Principal.fromText(details.governance_id),
                     neuron_id: { id: neuronIdBytes },
                     hotkeys_snapshot: [],
+                    cached_stake_e8s: [], // Optional, populated by backend after activation
                 }
             };
         case 'token':

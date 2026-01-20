@@ -289,6 +289,7 @@ module {
         canister_id : Principal;
         canister_kind : ?CanisterKindId; // Optional known canister type (0 = unknown, 1 = ICP Neuron Manager, etc.)
         controllers_snapshot : ?[Principal]; // Populated when escrowed
+        cached_total_stake_e8s : ?Nat64; // For neuron managers: total staked ICP (no maturity), cached on activation
     };
     
     // SNS Neuron asset - stores governance canister and neuron id
@@ -296,6 +297,7 @@ module {
         governance_canister_id : Principal;
         neuron_id : NeuronId;
         hotkeys_snapshot : ?[Principal]; // Populated when escrowed
+        cached_stake_e8s : ?Nat64; // Cached stake amount, populated on activation
     };
     
     // ICRC1 Token asset
