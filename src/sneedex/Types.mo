@@ -383,6 +383,10 @@ module {
         // Marketplace fee rate in basis points (100 = 1%) - locked in at offer creation
         fee_rate_bps : Nat;
         
+        // Notes
+        public_note : ?Text;    // Visible to everyone
+        note_to_buyer : ?Text;  // Only visible to winning bidder and creator
+        
         // Timestamps
         created_at : Time.Time;
         activated_at : ?Time.Time;
@@ -426,6 +430,8 @@ module {
         price_token_ledger : Principal;
         approved_bidders : ?[Principal]; // If set, only these principals can bid (OTC/private offer)
         min_bid_increment_fee_multiple : ?Nat; // Min bid increase as multiple of token fee
+        public_note : ?Text;    // Visible to everyone
+        note_to_buyer : ?Text;  // Only visible to winning bidder and creator
     };
     
     public type AddAssetRequest = {
@@ -448,6 +454,7 @@ module {
         #BidNotFound;
         #InvalidState : Text;
         #InvalidAsset : Text;
+        #InvalidInput : Text;
         #EscrowFailed : Text;
         #TransferFailed : Text;
         #InvalidPrice : Text;

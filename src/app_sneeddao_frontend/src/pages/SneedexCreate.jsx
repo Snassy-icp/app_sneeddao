@@ -119,6 +119,10 @@ function SneedexCreate() {
     const [isPrivateOffer, setIsPrivateOffer] = useState(false);
     const [approvedBiddersText, setApprovedBiddersText] = useState(''); // Comma-separated principals
     
+    // Notes
+    const [publicNote, setPublicNote] = useState(''); // Visible to everyone
+    const [noteToBuyer, setNoteToBuyer] = useState(''); // Only visible to winning bidder
+    
     // Token metadata from backend
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(true);
@@ -924,6 +928,8 @@ function SneedexCreate() {
                 expiration: hasExpiration ? [daysToExpirationNs(parseInt(expirationDays))] : [],
                 approved_bidders: isPrivateOffer && approvedBidders.length > 0 ? [approvedBidders] : [],
                 min_bid_increment_fee_multiple: minBidIncrementMultiple ? [BigInt(parseInt(minBidIncrementMultiple))] : [],
+                public_note: publicNote.trim() ? [publicNote.trim()] : [],
+                note_to_buyer: noteToBuyer.trim() ? [noteToBuyer.trim()] : [],
             };
             
             const createResult = await actor.createOffer(createRequest);
@@ -1658,6 +1664,93 @@ function SneedexCreate() {
                                     </p>
                                 </div>
                             )}
+                        </div>
+                        
+                        {/* Notes Section */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <h4 style={{ 
+                                margin: '0 0 16px 0', 
+                                color: theme.colors.primaryText,
+                                fontSize: '1rem',
+                            }}>
+                                📝 Offer Notes
+                            </h4>
+                            
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>
+                                    Public Note
+                                    <span style={styles.labelHint}> — Visible to everyone</span>
+                                </label>
+                                <textarea
+                                    style={{
+                                        ...styles.input,
+                                        minHeight: '80px',
+                                        resize: 'vertical',
+                                    }}
+                                    placeholder="Add a public note about this offer (optional)..."
+                                    value={publicNote}
+                                    onChange={(e) => setPublicNote(e.target.value.slice(0, 4000))}
+                                    maxLength={4000}
+                                />
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginTop: '4px',
+                                }}>
+                                    <p style={{ 
+                                        fontSize: '0.8rem', 
+                                        color: theme.colors.mutedText, 
+                                        margin: 0,
+                                    }}>
+                                        This note will be visible to all viewers of the offer.
+                                    </p>
+                                    <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        color: publicNote.length > 3800 ? theme.colors.warning : theme.colors.mutedText,
+                                    }}>
+                                        {publicNote.length}/4000
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>
+                                    Note to Buyer
+                                    <span style={styles.labelHint}> — Only visible to winning bidder</span>
+                                </label>
+                                <textarea
+                                    style={{
+                                        ...styles.input,
+                                        minHeight: '80px',
+                                        resize: 'vertical',
+                                    }}
+                                    placeholder="Add a private note for the buyer (optional)..."
+                                    value={noteToBuyer}
+                                    onChange={(e) => setNoteToBuyer(e.target.value.slice(0, 4000))}
+                                    maxLength={4000}
+                                />
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginTop: '4px',
+                                }}>
+                                    <p style={{ 
+                                        fontSize: '0.8rem', 
+                                        color: theme.colors.mutedText, 
+                                        margin: 0,
+                                    }}>
+                                        Only you and the winning bidder will be able to see this note.
+                                    </p>
+                                    <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        color: noteToBuyer.length > 3800 ? theme.colors.warning : theme.colors.mutedText,
+                                    }}>
+                                        {noteToBuyer.length}/4000
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                         
                         {/* Marketplace Fee Info */}

@@ -13,6 +13,61 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 
 
+// Migration expression to add public_note and note_to_buyer fields to existing offers
+(with migration = func (old : { var offers : [{
+    id : Nat;
+    creator : Principal;
+    min_bid_price : ?Nat;
+    buyout_price : ?Nat;
+    expiration : ?Time.Time;
+    price_token_ledger : Principal;
+    min_bid_increment_fee_multiple : ?Nat;
+    assets : [T.AssetEntry];
+    state : T.OfferState;
+    approved_bidders : ?[Principal];
+    fee_rate_bps : Nat;
+    created_at : Time.Time;
+    activated_at : ?Time.Time;
+}] }) : { var offers : [T.Offer] } {
+    {
+        var offers = Array.map(
+            old.offers,
+            func (o : {
+                id : Nat;
+                creator : Principal;
+                min_bid_price : ?Nat;
+                buyout_price : ?Nat;
+                expiration : ?Time.Time;
+                price_token_ledger : Principal;
+                min_bid_increment_fee_multiple : ?Nat;
+                assets : [T.AssetEntry];
+                state : T.OfferState;
+                approved_bidders : ?[Principal];
+                fee_rate_bps : Nat;
+                created_at : Time.Time;
+                activated_at : ?Time.Time;
+            }) : T.Offer {
+                {
+                    id = o.id;
+                    creator = o.creator;
+                    min_bid_price = o.min_bid_price;
+                    buyout_price = o.buyout_price;
+                    expiration = o.expiration;
+                    price_token_ledger = o.price_token_ledger;
+                    min_bid_increment_fee_multiple = o.min_bid_increment_fee_multiple;
+                    assets = o.assets;
+                    state = o.state;
+                    approved_bidders = o.approved_bidders;
+                    fee_rate_bps = o.fee_rate_bps;
+                    public_note = null;
+                    note_to_buyer = null;
+                    created_at = o.created_at;
+                    activated_at = o.activated_at;
+                }
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
@@ -221,6 +276,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     fee_rate_bps = offer.fee_rate_bps;
+                                    public_note = offer.public_note;
+                                    note_to_buyer = offer.note_to_buyer;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -399,6 +456,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -534,6 +593,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -749,6 +810,24 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case (_, _) {};
         };
         
+        // Validate note lengths (max 4000 chars each)
+        switch (request.public_note) {
+            case (?note) {
+                if (note.size() > 4000) {
+                    return #err(#InvalidInput("Public note exceeds maximum length of 4000 characters"));
+                };
+            };
+            case null {};
+        };
+        switch (request.note_to_buyer) {
+            case (?note) {
+                if (note.size() > 4000) {
+                    return #err(#InvalidInput("Note to buyer exceeds maximum length of 4000 characters"));
+                };
+            };
+            case null {};
+        };
+        
         let offerId = nextOfferId;
         nextOfferId += 1;
         
@@ -764,6 +843,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             state = #Draft;
             approved_bidders = request.approved_bidders;
             fee_rate_bps = marketplaceFeeRateBps; // Lock in current fee rate
+            public_note = request.public_note;
+            note_to_buyer = request.note_to_buyer;
             created_at = Time.now();
             activated_at = null;
         };
@@ -865,6 +946,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -904,6 +987,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -992,6 +1077,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                             approved_bidders = offer.approved_bidders;
                                             fee_rate_bps = offer.fee_rate_bps;
+                                            public_note = offer.public_note;
+                                            note_to_buyer = offer.note_to_buyer;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
                                         };
@@ -1085,6 +1172,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                             approved_bidders = offer.approved_bidders;
                                             fee_rate_bps = offer.fee_rate_bps;
+                                            public_note = offer.public_note;
+                                            note_to_buyer = offer.note_to_buyer;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
                                         };
@@ -1163,6 +1252,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     fee_rate_bps = offer.fee_rate_bps;
+                                    public_note = offer.public_note;
+                                    note_to_buyer = offer.note_to_buyer;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1222,6 +1313,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = ?Time.now();
                 };
@@ -1452,6 +1545,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1568,6 +1663,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     fee_rate_bps = offer.fee_rate_bps;
+                                    public_note = offer.public_note;
+                                    note_to_buyer = offer.note_to_buyer;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1617,6 +1714,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -1709,6 +1808,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     fee_rate_bps = offer.fee_rate_bps;
+                                    public_note = offer.public_note;
+                                    note_to_buyer = offer.note_to_buyer;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
                                 };
@@ -1982,6 +2083,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     fee_rate_bps = offer.fee_rate_bps;
+                    public_note = offer.public_note;
+                    note_to_buyer = offer.note_to_buyer;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
                 };
@@ -2158,15 +2261,60 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     /// Get offer with bids
-    public query func getOfferView(offerId : T.OfferId) : async ?T.OfferView {
+    public shared query ({ caller }) func getOfferView(offerId : T.OfferId) : async ?T.OfferView {
         switch (getOffer(offerId)) {
             case null { null };
             case (?offer) {
                 let offerBids = getBidsForOffer(offerId);
+                let highestBid = getHighestBid(offerId);
+                
+                // Determine if caller can see the private note
+                // Creator can always see it
+                // Winning bidder can see it (highest bid that is Won or Confirmed)
+                var canSeePrivateNote = Principal.equal(caller, offer.creator);
+                
+                if (not canSeePrivateNote) {
+                    switch (highestBid) {
+                        case (?bid) {
+                            if (Principal.equal(caller, bid.bidder)) {
+                                switch (bid.state) {
+                                    case (#Won) { canSeePrivateNote := true };
+                                    case (#Confirmed) { canSeePrivateNote := true };
+                                    case (_) {};
+                                };
+                            };
+                        };
+                        case null {};
+                    };
+                };
+                
+                // Return offer with or without the private note
+                let filteredOffer : T.Offer = if (canSeePrivateNote) {
+                    offer;
+                } else {
+                    {
+                        id = offer.id;
+                        creator = offer.creator;
+                        min_bid_price = offer.min_bid_price;
+                        buyout_price = offer.buyout_price;
+                        expiration = offer.expiration;
+                        price_token_ledger = offer.price_token_ledger;
+                        min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
+                        assets = offer.assets;
+                        state = offer.state;
+                        approved_bidders = offer.approved_bidders;
+                        fee_rate_bps = offer.fee_rate_bps;
+                        public_note = offer.public_note;
+                        note_to_buyer = null; // Hide private note
+                        created_at = offer.created_at;
+                        activated_at = offer.activated_at;
+                    };
+                };
+                
                 ?{
-                    offer = offer;
+                    offer = filteredOffer;
                     bids = offerBids;
-                    highest_bid = getHighestBid(offerId);
+                    highest_bid = highestBid;
                 };
             };
         };

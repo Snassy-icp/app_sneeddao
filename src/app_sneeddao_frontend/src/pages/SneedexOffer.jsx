@@ -3525,6 +3525,58 @@ function SneedexOffer() {
                             </div>
                         </div>
                         
+                        {/* Public Note - Visible to everyone */}
+                        {offer.public_note && offer.public_note[0] && (
+                            <div style={styles.card}>
+                                <h3 style={styles.cardTitle}>
+                                    📝 Seller's Note
+                                </h3>
+                                <div style={{
+                                    fontSize: '0.9rem',
+                                    color: theme.colors.secondaryText,
+                                    lineHeight: '1.6',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                }}>
+                                    {offer.public_note[0]}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Note to Buyer - Only visible to creator or winning bidder */}
+                        {offer.note_to_buyer && offer.note_to_buyer[0] && (
+                            <div style={{
+                                ...styles.card,
+                                background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.success}10)`,
+                                border: `1px solid ${theme.colors.success}40`,
+                            }}>
+                                <h3 style={{
+                                    ...styles.cardTitle,
+                                    color: theme.colors.success,
+                                }}>
+                                    🔐 Private Note from Seller
+                                </h3>
+                                <p style={{
+                                    fontSize: '0.8rem',
+                                    color: theme.colors.mutedText,
+                                    marginTop: 0,
+                                    marginBottom: '0.75rem',
+                                    fontStyle: 'italic',
+                                }}>
+                                    {isCreator ? 'This note is only visible to you and the winning bidder.' : 'This note is only visible to you as the winning bidder.'}
+                                </p>
+                                <div style={{
+                                    fontSize: '0.9rem',
+                                    color: theme.colors.secondaryText,
+                                    lineHeight: '1.6',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                }}>
+                                    {offer.note_to_buyer[0]}
+                                </div>
+                            </div>
+                        )}
+                        
                         {/* Bids History */}
                         <div style={styles.card}>
                             <h3 style={styles.cardTitle}>
