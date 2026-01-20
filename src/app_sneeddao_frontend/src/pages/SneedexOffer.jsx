@@ -2132,20 +2132,52 @@ function SneedexOffer() {
                                                             </Link>
                                                         </div>
                                                     )}
-                                                    {details.type === 'SNSNeuron' && !details.escrowed && (
-                                                        <>
-                                                            <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
-                                                                Governance: <PrincipalDisplay 
-                                                                    principal={details.governance_id}
-                                                                    short={true}
-                                                                    showCopyButton={false}
-                                                                    style={{ fontSize: 'inherit' }}
-                                                                    isAuthenticated={isAuthenticated}
-                                                                />
-                                                            </div>
-                                                            <div style={styles.assetDetail}>Neuron: {details.neuron_id}</div>
-                                                        </>
-                                                    )}
+                                                    {details.type === 'SNSNeuron' && !details.escrowed && (() => {
+                                                        const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
+                                                        const snsRoot = sns?.canisters?.root;
+                                                        return (
+                                                            <>
+                                                                <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
+                                                                    Governance: <PrincipalDisplay 
+                                                                        principal={details.governance_id}
+                                                                        short={true}
+                                                                        showCopyButton={false}
+                                                                        style={{ fontSize: 'inherit' }}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                    />
+                                                                </div>
+                                                                <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap'}}>
+                                                                    Neuron: {details.neuron_id?.slice(0, 16)}...
+                                                                    {snsRoot && (
+                                                                        <>
+                                                                            <Link 
+                                                                                to={`/neuron?neuronid=${details.neuron_id}&sns=${snsRoot}`}
+                                                                                style={{ 
+                                                                                    marginLeft: '8px',
+                                                                                    color: theme.colors.accent,
+                                                                                    fontSize: '0.75rem',
+                                                                                    textDecoration: 'none',
+                                                                                }}
+                                                                            >
+                                                                                View Neuron →
+                                                                            </Link>
+                                                                            <Link 
+                                                                                to={`/hub?sns=${snsRoot}`}
+                                                                                style={{ 
+                                                                                    marginLeft: '8px',
+                                                                                    color: theme.colors.success,
+                                                                                    fontSize: '0.75rem',
+                                                                                    textDecoration: 'none',
+                                                                                }}
+                                                                            >
+                                                                                SNS Hub →
+                                                                            </Link>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </>
+                                                        );
+                                                    })()}
                                                     {details.type === 'ICRC1Token' && !details.escrowed && (
                                                         <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
                                                             Ledger: <PrincipalDisplay 
@@ -3077,6 +3109,36 @@ function SneedexOffer() {
                                                                          `State ${nInfo.state}`}
                                                                     </span>
                                                                 )}
+                                                                {/* Links to neuron and hub pages */}
+                                                                {(() => {
+                                                                    const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
+                                                                    const snsRoot = sns?.canisters?.root;
+                                                                    if (!snsRoot) return null;
+                                                                    return (
+                                                                        <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
+                                                                            <Link 
+                                                                                to={`/neuron?neuronid=${details.neuron_id}&sns=${snsRoot}`}
+                                                                                style={{ 
+                                                                                    color: theme.colors.accent,
+                                                                                    fontSize: '0.75rem',
+                                                                                    textDecoration: 'none',
+                                                                                }}
+                                                                            >
+                                                                                View Neuron →
+                                                                            </Link>
+                                                                            <Link 
+                                                                                to={`/hub?sns=${snsRoot}`}
+                                                                                style={{ 
+                                                                                    color: theme.colors.success,
+                                                                                    fontSize: '0.75rem',
+                                                                                    textDecoration: 'none',
+                                                                                }}
+                                                                            >
+                                                                                SNS Hub →
+                                                                            </Link>
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                             
                                                             {/* Stats Grid */}
