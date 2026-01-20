@@ -2111,7 +2111,7 @@ function SneedexOffer() {
                                                         </span>
                                                     </div>
                                                     {details.type === 'Canister' && (
-                                                        <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
+                                                        <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap'}}>
                                                             ID: <PrincipalDisplay 
                                                                 principal={details.canister_id}
                                                                 short={true}
@@ -2119,6 +2119,17 @@ function SneedexOffer() {
                                                                 style={{ fontSize: 'inherit' }}
                                                                 isAuthenticated={isAuthenticated}
                                                             />
+                                                            <Link 
+                                                                to={`/canister?id=${details.canister_id}`}
+                                                                style={{ 
+                                                                    marginLeft: '8px',
+                                                                    color: theme.colors.accent,
+                                                                    fontSize: '0.75rem',
+                                                                    textDecoration: 'none',
+                                                                }}
+                                                            >
+                                                                View Details →
+                                                            </Link>
                                                         </div>
                                                     )}
                                                     {details.type === 'SNSNeuron' && !details.escrowed && (
