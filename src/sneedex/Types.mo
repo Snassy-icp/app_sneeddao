@@ -275,6 +275,10 @@ module {
         // Token for pricing
         price_token_ledger : Principal;
         
+        // Minimum bid increment as a multiple of the token's transaction fee
+        // e.g., if fee is 10000 and this is 10, min increment is 100000
+        min_bid_increment_fee_multiple : ?Nat;
+        
         // Assets in this offer
         assets : [AssetEntry];
         
@@ -326,6 +330,7 @@ module {
         expiration : ?Time.Time;
         price_token_ledger : Principal;
         approved_bidders : ?[Principal]; // If set, only these principals can bid (OTC/private offer)
+        min_bid_increment_fee_multiple : ?Nat; // Min bid increase as multiple of token fee
     };
     
     public type AddAssetRequest = {
@@ -356,6 +361,7 @@ module {
         #OfferMustHaveBuyoutOrExpiration;
         #CannotCancelWithBids;
         #BidTooLow : { minimum : Nat };
+        #BidIncrementTooSmall : { current_highest : Nat; minimum_next : Nat; required_increment : Nat };
         #InsufficientFunds : { required : Nat; available : Nat };
         #OfferExpired;
         #GovernanceError : Text;

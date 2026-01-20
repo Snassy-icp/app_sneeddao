@@ -184,6 +184,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = offer.assets;
                                     state = #Claimed;
+                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
@@ -338,6 +339,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Reclaimed;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
@@ -486,6 +488,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             buyout_price = request.buyout_price;
             expiration = request.expiration;
             price_token_ledger = request.price_token_ledger;
+            min_bid_increment_fee_multiple = request.min_bid_increment_fee_multiple;
             assets = [];
             state = #Draft;
             approved_bidders = request.approved_bidders;
@@ -564,6 +567,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = Array.append(offer.assets, [entry]);
                     state = offer.state;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
@@ -601,6 +605,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #PendingEscrow;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
@@ -683,6 +688,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             price_token_ledger = offer.price_token_ledger;
                                             assets = updatedAssets;
                                             state = offer.state;
+                                            min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                             approved_bidders = offer.approved_bidders;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
@@ -773,6 +779,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             price_token_ledger = offer.price_token_ledger;
                                             assets = updatedAssets;
                                             state = offer.state;
+                                            min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                             approved_bidders = offer.approved_bidders;
                                             created_at = offer.created_at;
                                             activated_at = offer.activated_at;
@@ -849,6 +856,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = updatedAssets;
                                     state = offer.state;
+                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
@@ -906,6 +914,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Active;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = ?Time.now();
@@ -1012,11 +1021,28 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             return #err(#BidTooLow({ minimum = minBid }));
                         };
                         
-                        // Check must be higher than current highest bid
+                        // Check must be higher than current highest bid (with minimum increment if specified)
                         switch (getHighestBid(bid.offer_id)) {
                             case (?highest) {
-                                if (amount <= highest.amount) {
-                                    return #err(#BidTooLow({ minimum = highest.amount + 1 }));
+                                // Calculate minimum next bid based on increment setting
+                                let minIncrement = switch (offer.min_bid_increment_fee_multiple) {
+                                    case (?multiple) {
+                                        // Get the token fee
+                                        let ledger : T.ICRC1Actor = actor(Principal.toText(offer.price_token_ledger));
+                                        let fee = await ledger.icrc1_fee();
+                                        fee * multiple;
+                                    };
+                                    case null { 1 }; // Default minimum increment of 1
+                                };
+                                
+                                let minimumNextBid = highest.amount + minIncrement;
+                                
+                                if (amount < minimumNextBid) {
+                                    return #err(#BidIncrementTooSmall({ 
+                                        current_highest = highest.amount; 
+                                        minimum_next = minimumNextBid;
+                                        required_increment = minIncrement;
+                                    }));
                                 };
                             };
                             case null {};
@@ -1113,6 +1139,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         winning_bid_id = winningBidId;
                         completion_time = Time.now();
                     });
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
@@ -1227,6 +1254,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = offer.assets;
                                     state = #Expired;
+                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
@@ -1274,6 +1302,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Cancelled;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
@@ -1364,6 +1393,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     price_token_ledger = offer.price_token_ledger;
                                     assets = offer.assets;
                                     state = #Claimed;
+                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                                     approved_bidders = offer.approved_bidders;
                                     created_at = offer.created_at;
                                     activated_at = offer.activated_at;
@@ -1588,6 +1618,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     price_token_ledger = offer.price_token_ledger;
                     assets = offer.assets;
                     state = #Reclaimed;
+                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
                     approved_bidders = offer.approved_bidders;
                     created_at = offer.created_at;
                     activated_at = offer.activated_at;
