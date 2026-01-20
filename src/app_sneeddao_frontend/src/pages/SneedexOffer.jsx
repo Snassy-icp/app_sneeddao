@@ -127,6 +127,8 @@ function SneedexOffer() {
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [expandedAssets, setExpandedAssets] = useState({}); // {assetIndex: boolean}
     const [expandedDescriptions, setExpandedDescriptions] = useState({}); // {assetIndex: boolean} - for long descriptions
+    const [publicNoteExpanded, setPublicNoteExpanded] = useState(false); // For long public notes
+    const [buyerNoteExpanded, setBuyerNoteExpanded] = useState(false); // For long buyer notes
     const [canisterInfo, setCanisterInfo] = useState({}); // {assetIndex: canisterInfo}
     const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // {assetIndex: neuronManagerInfo}
@@ -3562,56 +3564,112 @@ function SneedexOffer() {
                         </div>
                         
                         {/* Public Note - Visible to everyone */}
-                        {offer.public_note && offer.public_note[0] && (
-                            <div style={styles.card}>
-                                <h3 style={styles.cardTitle}>
-                                    📝 Seller's Note
-                                </h3>
-                                <div style={{
-                                    fontSize: '0.9rem',
-                                    color: theme.colors.secondaryText,
-                                    lineHeight: '1.6',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                }}>
-                                    {offer.public_note[0]}
+                        {offer.public_note && offer.public_note[0] && (() => {
+                            const MAX_NOTE_LENGTH = 300;
+                            const noteText = offer.public_note[0];
+                            const isLongNote = noteText.length > MAX_NOTE_LENGTH;
+                            const displayText = isLongNote && !publicNoteExpanded
+                                ? noteText.slice(0, MAX_NOTE_LENGTH) + '...'
+                                : noteText;
+                            
+                            return (
+                                <div style={styles.card}>
+                                    <h3 style={styles.cardTitle}>
+                                        📝 Seller's Note
+                                    </h3>
+                                    <div style={{
+                                        fontSize: '0.9rem',
+                                        color: theme.colors.secondaryText,
+                                        lineHeight: '1.6',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                    }}>
+                                        {displayText}
+                                    </div>
+                                    {isLongNote && (
+                                        <button
+                                            onClick={() => setPublicNoteExpanded(!publicNoteExpanded)}
+                                            style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: theme.colors.accent,
+                                                cursor: 'pointer',
+                                                fontSize: '0.8rem',
+                                                padding: '0.5rem 0 0 0',
+                                                fontWeight: '500',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                            }}
+                                        >
+                                            {publicNoteExpanded ? '▲ Show less' : '▼ Show more...'}
+                                        </button>
+                                    )}
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                         
                         {/* Note to Buyer - Only visible to creator or winning bidder */}
-                        {offer.note_to_buyer && offer.note_to_buyer[0] && (
-                            <div style={{
-                                ...styles.card,
-                                background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.success}10)`,
-                                border: `1px solid ${theme.colors.success}40`,
-                            }}>
-                                <h3 style={{
-                                    ...styles.cardTitle,
-                                    color: theme.colors.success,
-                                }}>
-                                    🔐 Private Note from Seller
-                                </h3>
-                                <p style={{
-                                    fontSize: '0.8rem',
-                                    color: theme.colors.mutedText,
-                                    marginTop: 0,
-                                    marginBottom: '0.75rem',
-                                    fontStyle: 'italic',
-                                }}>
-                                    {isCreator ? 'This note is only visible to you and the winning bidder.' : 'This note is only visible to you as the winning bidder.'}
-                                </p>
+                        {offer.note_to_buyer && offer.note_to_buyer[0] && (() => {
+                            const MAX_NOTE_LENGTH = 300;
+                            const noteText = offer.note_to_buyer[0];
+                            const isLongNote = noteText.length > MAX_NOTE_LENGTH;
+                            const displayText = isLongNote && !buyerNoteExpanded
+                                ? noteText.slice(0, MAX_NOTE_LENGTH) + '...'
+                                : noteText;
+                            
+                            return (
                                 <div style={{
-                                    fontSize: '0.9rem',
-                                    color: theme.colors.secondaryText,
-                                    lineHeight: '1.6',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
+                                    ...styles.card,
+                                    background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.success}10)`,
+                                    border: `1px solid ${theme.colors.success}40`,
                                 }}>
-                                    {offer.note_to_buyer[0]}
+                                    <h3 style={{
+                                        ...styles.cardTitle,
+                                        color: theme.colors.success,
+                                    }}>
+                                        🔐 Private Note from Seller
+                                    </h3>
+                                    <p style={{
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                        marginTop: 0,
+                                        marginBottom: '0.75rem',
+                                        fontStyle: 'italic',
+                                    }}>
+                                        {isCreator ? 'This note is only visible to you and the winning bidder.' : 'This note is only visible to you as the winning bidder.'}
+                                    </p>
+                                    <div style={{
+                                        fontSize: '0.9rem',
+                                        color: theme.colors.secondaryText,
+                                        lineHeight: '1.6',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                    }}>
+                                        {displayText}
+                                    </div>
+                                    {isLongNote && (
+                                        <button
+                                            onClick={() => setBuyerNoteExpanded(!buyerNoteExpanded)}
+                                            style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: theme.colors.success,
+                                                cursor: 'pointer',
+                                                fontSize: '0.8rem',
+                                                padding: '0.5rem 0 0 0',
+                                                fontWeight: '500',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                            }}
+                                        >
+                                            {buyerNoteExpanded ? '▲ Show less' : '▼ Show more...'}
+                                        </button>
+                                    )}
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                         
                         {/* Bids History */}
                         <div style={styles.card}>
