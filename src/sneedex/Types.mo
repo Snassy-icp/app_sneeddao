@@ -521,6 +521,21 @@ module {
         SNS_NEURON_PERMISSION_MANAGE_VOTING_PERMISSION,
     ];
     
+    // ALL possible permissions (including unspecified) for complete removal
+    public let ALL_PERMISSIONS : [Int32] = [
+        SNS_NEURON_PERMISSION_UNSPECIFIED,
+        SNS_NEURON_PERMISSION_CONFIGURE_DISSOLVE_STATE,
+        SNS_NEURON_PERMISSION_MANAGE_PRINCIPALS,
+        SNS_NEURON_PERMISSION_SUBMIT_PROPOSAL,
+        SNS_NEURON_PERMISSION_VOTE,
+        SNS_NEURON_PERMISSION_DISBURSE,
+        SNS_NEURON_PERMISSION_SPLIT,
+        SNS_NEURON_PERMISSION_MERGE_MATURITY,
+        SNS_NEURON_PERMISSION_DISBURSE_MATURITY,
+        SNS_NEURON_PERMISSION_STAKE_MATURITY,
+        SNS_NEURON_PERMISSION_MANAGE_VOTING_PERMISSION,
+    ];
+    
     // ============================================
     // SUBACCOUNT UTILITIES
     // ============================================

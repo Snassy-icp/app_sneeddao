@@ -135,6 +135,7 @@ module {
     };
     
     /// Verify caller and sneedex have owner hotkeys on the neuron
+    /// Returns ALL principals with any permissions (for complete removal during escrow)
     public func verifyNeuronHotkeys(
         governanceCanisterId : Principal,
         neuronId : T.NeuronId,
@@ -150,7 +151,7 @@ module {
                 case (?#Neuron(neuron)) {
                     let owners = Utils.getOwnerPrincipals(neuron.permissions);
                     
-                    // Check caller has owner permissions
+                    // Check caller has owner permissions (full owner needed to add/remove hotkeys)
                     if (not Utils.principalInList(caller, owners)) {
                         return #err(#GovernanceError("Caller does not have owner permissions on the neuron"));
                     };
@@ -160,7 +161,9 @@ module {
                         return #err(#GovernanceError("Sneedex canister does not have owner permissions. Please add it as a hotkey first."));
                     };
                     
-                    #ok(owners);
+                    // Return ALL principals (not just owners) so we remove everyone during escrow
+                    let allPrincipals = Utils.getAllPrincipals(neuron.permissions);
+                    #ok(allPrincipals);
                 };
                 case (?#Error(e)) {
                     #err(#GovernanceError(e.error_message));
@@ -186,19 +189,38 @@ module {
         // Snapshot hotkeys (excluding sneedex)
         let snapshot = Utils.removePrincipal(sneedex, originalOwners);
         
-        // Remove all owner hotkeys except sneedex
+        // Remove ALL permissions from all hotkeys except sneedex
         for (owner in snapshot.vals()) {
             try {
                 let _ = await governance.manage_neuron({
                     subaccount = neuronId.id;
                     command = ?#RemoveNeuronPermissions({
-                        permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                        permissions_to_remove = ?{ permissions = T.ALL_PERMISSIONS };
                         principal_id = ?owner;
                     });
                 });
             } catch (_e) {
-                return #err(#GovernanceError("Failed to remove hotkey from neuron"));
+                return #err(#GovernanceError("Failed to remove permissions from hotkey"));
             };
+        };
+        
+        // Verify that only sneedex remains with permissions
+        try {
+            let response = await governance.get_neuron({ neuron_id = ?neuronId });
+            switch (response.result) {
+                case (?#Neuron(neuron)) {
+                    let remainingPrincipals = Utils.getAllPrincipals(neuron.permissions);
+                    // Check that only sneedex has permissions
+                    for (p in remainingPrincipals.vals()) {
+                        if (not Principal.equal(p, sneedex)) {
+                            return #err(#GovernanceError("Failed to fully escrow neuron - other principals still have permissions"));
+                        };
+                    };
+                };
+                case _ {};
+            };
+        } catch (_e) {
+            // Verification failed but removal might have succeeded
         };
         
         #ok(snapshot);

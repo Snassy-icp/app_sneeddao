@@ -194,6 +194,31 @@ module {
         Buffer.toArray(buffer);
     };
     
+    /// Get ALL principals from a neuron's permission list (regardless of permission level)
+    public func getAllPrincipals(permissions : [T.NeuronPermission]) : [Principal] {
+        let seen = Buffer.Buffer<Principal>(8);
+        
+        for (perm in permissions.vals()) {
+            switch (perm.principal) {
+                case (?p) {
+                    // Check if already added (avoid duplicates)
+                    var found = false;
+                    for (existing in seen.vals()) {
+                        if (Principal.equal(existing, p)) {
+                            found := true;
+                        };
+                    };
+                    if (not found) {
+                        seen.add(p);
+                    };
+                };
+                case null {};
+            };
+        };
+        
+        Buffer.toArray(seen);
+    };
+    
     // ============================================
     // VALIDATION UTILITIES
     // ============================================
