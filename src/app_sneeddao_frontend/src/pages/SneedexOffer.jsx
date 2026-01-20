@@ -142,6 +142,7 @@ function SneedexOffer() {
     const [escrowSubaccount, setEscrowSubaccount] = useState(null); // Blob for ICRC1 token escrow
     const [snsData, setSnsData] = useState([]); // All SNS data
     const [snsLogos, setSnsLogos] = useState({}); // {governanceId: logoUrl}
+    const [snsSymbols, setSnsSymbols] = useState({}); // {governanceId: tokenSymbol}
     const [tokenLogos, setTokenLogos] = useState({}); // {ledgerId: logoUrl}
     
     // InfoModal state
@@ -642,6 +643,35 @@ function SneedexOffer() {
         }
     }, [identity, snsLogos]);
     
+    // Fetch SNS token symbol from ledger metadata
+    const fetchSnsSymbol = useCallback(async (governanceId) => {
+        if (snsSymbols[governanceId]) return;
+        
+        // Find the SNS to get its ledger ID
+        const sns = snsData.find(s => s.canisters?.governance === governanceId);
+        const ledgerId = sns?.canisters?.ledger;
+        if (!ledgerId) return;
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Find symbol in metadata
+            const symbolEntry = metadata.find(([key]) => key === 'icrc1:symbol');
+            if (symbolEntry && symbolEntry[1]?.Text) {
+                setSnsSymbols(prev => ({ ...prev, [governanceId]: symbolEntry[1].Text }));
+            }
+        } catch (e) {
+            console.warn('Failed to fetch SNS token symbol:', e);
+        }
+    }, [identity, snsSymbols, snsData]);
+    
     // Fetch token logo from ledger metadata
     const fetchTokenLogo = useCallback(async (ledgerId) => {
         if (tokenLogos[ledgerId]) return;
@@ -703,6 +733,10 @@ function SneedexOffer() {
                     if (!snsLogos[governanceId]) {
                         fetchSnsLogoForGovernance(governanceId);
                     }
+                    // Fetch token symbol for the SNS
+                    if (!snsSymbols[governanceId]) {
+                        fetchSnsSymbol(governanceId);
+                    }
                     // Also fetch neuron info to show staked amount
                     if (!neuronInfo[idx]) {
                         fetchNeuronInfo(idx, governanceId, neuronIdHex);
@@ -710,7 +744,7 @@ function SneedexOffer() {
                 });
             }
         }
-    }, [offer, identity, fetchSnsData, fetchSnsLogoForGovernance, snsLogos, neuronInfo, fetchNeuronInfo]);
+    }, [offer, identity, fetchSnsData, fetchSnsLogoForGovernance, snsLogos, snsSymbols, fetchSnsSymbol, neuronInfo, fetchNeuronInfo]);
     
     // Toggle asset expansion and fetch info if needed
     const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
@@ -2094,12 +2128,6 @@ function SneedexOffer() {
                                                                 // Find SNS name from snsData
                                                                 const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
                                                                 const snsName = sns?.name || 'SNS';
-                                                                // Get staked amount from neuronInfo if available
-                                                                const nInfo = neuronInfo[idx];
-                                                                if (nInfo?.cached_neuron_stake_e8s) {
-                                                                    const staked = (Number(nInfo.cached_neuron_stake_e8s) / 1e8).toFixed(2);
-                                                                    return `${snsName} Neuron (${staked} staked)`;
-                                                                }
                                                                 return `${snsName} Neuron`;
                                                             })()}
                                                             {details.type === 'ICRC1Token' && (() => {
@@ -2111,6 +2139,25 @@ function SneedexOffer() {
                                                             })()}
                                                         </span>
                                                     </div>
+                                                    {/* SNS Neuron staked amount on separate line */}
+                                                    {details.type === 'SNSNeuron' && (() => {
+                                                        const nInfo = neuronInfo[idx];
+                                                        if (nInfo?.cached_neuron_stake_e8s) {
+                                                            const staked = Number(nInfo.cached_neuron_stake_e8s) / 1e8;
+                                                            const symbol = snsSymbols[details.governance_id] || 'tokens';
+                                                            return (
+                                                                <div style={{
+                                                                    fontSize: '0.9rem',
+                                                                    fontWeight: '600',
+                                                                    color: theme.colors.accent,
+                                                                    marginTop: '4px',
+                                                                }}>
+                                                                    {formatAmount(nInfo.cached_neuron_stake_e8s, 8)} {symbol} staked
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
                                                     {details.type === 'Canister' && (
                                                         <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap'}}>
                                                             ID: <PrincipalDisplay 
