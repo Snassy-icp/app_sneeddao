@@ -923,24 +923,12 @@ function SneedexOffers() {
         rangeInputsRow: {
             display: 'flex',
             gap: '8px',
-            alignItems: 'flex-end',
-        },
-        rangeInputWrapper: {
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-        },
-        rangeInputLabel: {
-            fontSize: '0.7rem',
-            color: theme.colors.mutedText,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
+            alignItems: 'center',
         },
         rangeSeparator: {
             color: theme.colors.mutedText,
             fontSize: '1rem',
-            paddingBottom: '10px',
+            flexShrink: 0,
         },
         activeFilterBadge: {
             display: 'inline-flex',
@@ -1117,35 +1105,29 @@ function SneedexOffers() {
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Price Range <span style={styles.filterLabelHint}>(Min Bid / Buyout)</span></label>
                                 <div style={styles.rangeInputsRow}>
-                                    <div style={styles.rangeInputWrapper}>
-                                        <span style={styles.rangeInputLabel}>Min</span>
-                                        <input
-                                            type="number"
-                                            placeholder="0"
-                                            value={minPriceFilter}
-                                            onChange={(e) => setMinPriceFilter(e.target.value)}
-                                            style={styles.filterInput}
-                                            min="0"
-                                            step="any"
-                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                                        />
-                                    </div>
+                                    <input
+                                        type="number"
+                                        placeholder="Min"
+                                        value={minPriceFilter}
+                                        onChange={(e) => setMinPriceFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
                                     <span style={styles.rangeSeparator}>–</span>
-                                    <div style={styles.rangeInputWrapper}>
-                                        <span style={styles.rangeInputLabel}>Max</span>
-                                        <input
-                                            type="number"
-                                            placeholder="∞"
-                                            value={maxPriceFilter}
-                                            onChange={(e) => setMaxPriceFilter(e.target.value)}
-                                            style={styles.filterInput}
-                                            min="0"
-                                            step="any"
-                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                                        />
-                                    </div>
+                                    <input
+                                        type="number"
+                                        placeholder="Max"
+                                        value={maxPriceFilter}
+                                        onChange={(e) => setMaxPriceFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
                                 </div>
                             </div>
                             
@@ -1185,35 +1167,29 @@ function SneedexOffers() {
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Asset Amount <span style={styles.filterLabelHint}>(Token amount / Stake)</span></label>
                                 <div style={styles.rangeInputsRow}>
-                                    <div style={styles.rangeInputWrapper}>
-                                        <span style={styles.rangeInputLabel}>Min</span>
-                                        <input
-                                            type="number"
-                                            placeholder="0"
-                                            value={minAssetAmountFilter}
-                                            onChange={(e) => setMinAssetAmountFilter(e.target.value)}
-                                            style={styles.filterInput}
-                                            min="0"
-                                            step="any"
-                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                                        />
-                                    </div>
+                                    <input
+                                        type="number"
+                                        placeholder="Min"
+                                        value={minAssetAmountFilter}
+                                        onChange={(e) => setMinAssetAmountFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
                                     <span style={styles.rangeSeparator}>–</span>
-                                    <div style={styles.rangeInputWrapper}>
-                                        <span style={styles.rangeInputLabel}>Max</span>
-                                        <input
-                                            type="number"
-                                            placeholder="∞"
-                                            value={maxAssetAmountFilter}
-                                            onChange={(e) => setMaxAssetAmountFilter(e.target.value)}
-                                            style={styles.filterInput}
-                                            min="0"
-                                            step="any"
-                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                                        />
-                                    </div>
+                                    <input
+                                        type="number"
+                                        placeholder="Max"
+                                        value={maxAssetAmountFilter}
+                                        onChange={(e) => setMaxAssetAmountFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
                                 </div>
                             </div>
                         </div>
