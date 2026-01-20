@@ -207,10 +207,14 @@ export const getAssetDetails = (assetEntry) => {
     const { asset, escrowed } = assetEntry;
     
     if ('Canister' in asset) {
+        // Convert BigInt to Number for canister_kind
+        const rawKind = asset.Canister.canister_kind?.[0];
+        const canisterKind = rawKind !== undefined ? Number(rawKind) : 0;
+        
         return {
             type: 'Canister',
             canister_id: asset.Canister.canister_id.toString(),
-            canister_kind: asset.Canister.canister_kind[0] ?? 0, // 0 = unknown, 1 = ICP Neuron Manager
+            canister_kind: canisterKind, // 0 = unknown, 1 = ICP Neuron Manager
             controllers_snapshot: asset.Canister.controllers_snapshot[0]?.map(p => p.toString()) || [],
             escrowed,
         };
