@@ -206,7 +206,7 @@ function SneedexOffers() {
         }
     }, [tokenLogos, identity]);
     
-    // Fetch ICP Neuron Manager info (total staked across all neurons)
+    // Fetch ICP Neuron Manager info (total staked + maturity across all neurons)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
         if (neuronManagerInfo[canisterId]) return;
         
@@ -216,18 +216,27 @@ function SneedexOffers() {
             
             if ('Ok' in result) {
                 const info = result.Ok;
-                // Calculate total staked across all neurons
+                // Calculate total ICP value across all neurons (stake + maturity + staked maturity)
                 let totalStakeE8s = BigInt(0);
+                let totalMaturityE8s = BigInt(0);
+                let totalStakedMaturityE8s = BigInt(0);
                 if (info.neurons && info.neurons.length > 0) {
                     for (const neuron of info.neurons) {
                         totalStakeE8s += BigInt(neuron.cached_neuron_stake_e8s);
+                        totalMaturityE8s += BigInt(neuron.maturity_e8s_equivalent || 0);
+                        totalStakedMaturityE8s += BigInt(neuron.staked_maturity_e8s_equivalent || 0);
                     }
                 }
+                
+                const totalIcp = Number(totalStakeE8s + totalMaturityE8s + totalStakedMaturityE8s) / 1e8;
                 
                 setNeuronManagerInfo(prev => ({
                     ...prev,
                     [canisterId]: {
                         totalStake: Number(totalStakeE8s) / 1e8,
+                        totalMaturity: Number(totalMaturityE8s) / 1e8,
+                        totalStakedMaturity: Number(totalStakedMaturityE8s) / 1e8,
+                        totalIcp: totalIcp,
                         neuronCount: Number(info.neuron_count)
                     }
                 }));
@@ -836,7 +845,7 @@ function SneedexOffers() {
                                                                 />
                                                             </span>
                                                             {neuronManagerInfo[details.canister_id] 
-                                                                ? `${neuronManagerInfo[details.canister_id].totalStake.toFixed(2)} ICP`
+                                                                ? `${neuronManagerInfo[details.canister_id].totalIcp.toFixed(2)} ICP`
                                                                 : details.escrowed 
                                                                     ? 'Loading...'
                                                                     : 'Neuron Manager'

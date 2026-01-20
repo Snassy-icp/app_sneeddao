@@ -2571,8 +2571,63 @@ function SneedexOffer() {
                                                                     }}>
                                                                         Managed ICP Neurons
                                                                     </div>
+                                                                    {/* Grand Total Summary */}
+                                                                    {(() => {
+                                                                        const neurons = neuronManagerInfo[idx].neurons;
+                                                                        let grandTotalStake = 0;
+                                                                        let grandTotalMaturity = 0;
+                                                                        let grandTotalStakedMaturity = 0;
+                                                                        neurons.forEach(n => {
+                                                                            grandTotalStake += Number(n.cached_neuron_stake_e8s) / 1e8;
+                                                                            grandTotalMaturity += Number(n.maturity_e8s_equivalent || 0) / 1e8;
+                                                                            grandTotalStakedMaturity += Number(n.staked_maturity_e8s_equivalent || 0) / 1e8;
+                                                                        });
+                                                                        const grandTotal = grandTotalStake + grandTotalMaturity + grandTotalStakedMaturity;
+                                                                        
+                                                                        return (
+                                                                            <div style={{
+                                                                                background: `${theme.colors.accent}15`,
+                                                                                border: `1px solid ${theme.colors.accent}40`,
+                                                                                borderRadius: '8px',
+                                                                                padding: '12px',
+                                                                                marginBottom: '12px',
+                                                                            }}>
+                                                                                <div style={{ 
+                                                                                    fontWeight: '700', 
+                                                                                    color: theme.colors.text,
+                                                                                    marginBottom: '8px',
+                                                                                    fontSize: '0.9rem',
+                                                                                }}>
+                                                                                    Total: {grandTotal.toFixed(4)} ICP
+                                                                                </div>
+                                                                                <div style={{
+                                                                                    display: 'grid',
+                                                                                    gridTemplateColumns: 'repeat(3, 1fr)',
+                                                                                    gap: '8px',
+                                                                                    fontSize: '0.75rem',
+                                                                                }}>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText }}>Staked</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>{grandTotalStake.toFixed(4)} ICP</div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText }}>Maturity</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>{grandTotalMaturity.toFixed(4)} ICP</div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText }}>Staked Maturity</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>{grandTotalStakedMaturity.toFixed(4)} ICP</div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                    
                                                                     {neuronManagerInfo[idx].neurons.map((neuron, neuronIdx) => {
                                                                         const stakeIcp = Number(neuron.cached_neuron_stake_e8s) / 1e8;
+                                                                        const maturityIcp = Number(neuron.maturity_e8s_equivalent || 0) / 1e8;
+                                                                        const stakedMaturityIcp = Number(neuron.staked_maturity_e8s_equivalent || 0) / 1e8;
+                                                                        const totalIcp = stakeIcp + maturityIcp + stakedMaturityIcp;
                                                                         const dissolveDelaySeconds = Number(neuron.dissolve_delay_seconds);
                                                                         const dissolveDelayDays = dissolveDelaySeconds / (24 * 60 * 60);
                                                                         const dissolveDelayYears = dissolveDelayDays / 365;
@@ -2634,20 +2689,29 @@ function SneedexOffer() {
                                                                                         <FaExternalLinkAlt style={{ fontSize: '0.65rem' }} />
                                                                                         {neuronId}
                                                                                     </a>
-                                                                                    <span style={{
-                                                                                        padding: '2px 8px',
-                                                                                        borderRadius: '12px',
-                                                                                        fontSize: '0.75rem',
-                                                                                        fontWeight: '600',
-                                                                                        background: `${stateColor}20`,
-                                                                                        color: stateColor,
-                                                                                    }}>
-                                                                                        {stateText}
-                                                                                    </span>
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                        <span style={{
+                                                                                            fontSize: '0.8rem',
+                                                                                            fontWeight: '600',
+                                                                                            color: theme.colors.text,
+                                                                                        }}>
+                                                                                            {totalIcp.toFixed(4)} ICP
+                                                                                        </span>
+                                                                                        <span style={{
+                                                                                            padding: '2px 8px',
+                                                                                            borderRadius: '12px',
+                                                                                            fontSize: '0.75rem',
+                                                                                            fontWeight: '600',
+                                                                                            background: `${stateColor}20`,
+                                                                                            color: stateColor,
+                                                                                        }}>
+                                                                                            {stateText}
+                                                                                        </span>
+                                                                                    </div>
                                                                                 </div>
                                                                                 <div style={{
                                                                                     display: 'grid',
-                                                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+                                                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))',
                                                                                     gap: '8px',
                                                                                     fontSize: '0.8rem',
                                                                                 }}>
@@ -2655,6 +2719,18 @@ function SneedexOffer() {
                                                                                         <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Stake</div>
                                                                                         <div style={{ fontWeight: '600', color: theme.colors.text }}>
                                                                                             {stakeIcp.toFixed(4)} ICP
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Maturity</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                                            {maturityIcp.toFixed(4)} ICP
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Staked Maturity</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                                            {stakedMaturityIcp.toFixed(4)} ICP
                                                                                         </div>
                                                                                     </div>
                                                                                     <div>

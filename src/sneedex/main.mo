@@ -5,6 +5,7 @@ import Array "mo:base/Array";
 import Text "mo:base/Text";
 import Timer "mo:base/Timer";
 import Blob "mo:base/Blob";
+import Buffer "mo:base/Buffer";
 
 import T "Types";
 import Utils "Utils";
@@ -496,34 +497,49 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         try {
             let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
             
-            // Only make 2 calls instead of 3 - derive count from neurons array
+            // Get version and basic neuron info
             let version = await manager.getVersion();
             let neuronsInfoRaw = await manager.getAllNeuronsInfo();
             
-            // Convert neuron info to our format
-            let neurons = Array.mapFilter<(T.ICPNeuronId, ?{ dissolve_delay_seconds : Nat64; state : Int32; stake_e8s : Nat64; age_seconds : Nat64; voting_power : Nat64 }), T.ICPNeuronInfo>(
-                neuronsInfoRaw,
-                func((nid, infoOpt)) : ?T.ICPNeuronInfo {
-                    switch (infoOpt) {
-                        case null { null };
-                        case (?info) {
-                            ?{
-                                neuron_id = nid;
-                                cached_neuron_stake_e8s = info.stake_e8s; // Map from stake_e8s to cached_neuron_stake_e8s
-                                dissolve_delay_seconds = info.dissolve_delay_seconds;
-                                state = info.state;
-                                age_seconds = info.age_seconds;
-                                voting_power = info.voting_power;
-                                maturity_e8s_equivalent = 0; // Not available from getAllNeuronsInfo
+            // Build neurons array with maturity data from getFullNeuron
+            let neuronsBuffer = Buffer.Buffer<T.ICPNeuronInfo>(neuronsInfoRaw.size());
+            
+            for ((nid, infoOpt) in neuronsInfoRaw.vals()) {
+                switch (infoOpt) {
+                    case null {};
+                    case (?info) {
+                        // Get full neuron to get maturity data
+                        let fullNeuronOpt = await manager.getFullNeuron(nid);
+                        let (maturity, stakedMaturity) = switch (fullNeuronOpt) {
+                            case null { (0 : Nat64, 0 : Nat64) };
+                            case (?fullNeuron) {
+                                let staked = switch (fullNeuron.staked_maturity_e8s_equivalent) {
+                                    case null { 0 : Nat64 };
+                                    case (?s) { s };
+                                };
+                                (fullNeuron.maturity_e8s_equivalent, staked);
                             };
                         };
+                        
+                        neuronsBuffer.add({
+                            neuron_id = nid;
+                            cached_neuron_stake_e8s = info.stake_e8s;
+                            dissolve_delay_seconds = info.dissolve_delay_seconds;
+                            state = info.state;
+                            age_seconds = info.age_seconds;
+                            voting_power = info.voting_power;
+                            maturity_e8s_equivalent = maturity;
+                            staked_maturity_e8s_equivalent = stakedMaturity;
+                        });
                     };
-                }
-            );
+                };
+            };
+            
+            let neurons = Buffer.toArray(neuronsBuffer);
             
             #Ok({
                 version = version;
-                neuron_count = neurons.size(); // Derive from actual array
+                neuron_count = neurons.size();
                 neurons = neurons;
             });
         } catch (_e) {

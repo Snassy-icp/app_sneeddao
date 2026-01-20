@@ -231,6 +231,7 @@ module {
         age_seconds : Nat64;
         voting_power : Nat64;
         maturity_e8s_equivalent : Nat64;
+        staked_maturity_e8s_equivalent : Nat64;
     };
     
     // Summary of neuron manager status
@@ -238,6 +239,17 @@ module {
         version : NeuronManagerVersion;
         neuron_count : Nat;
         neurons : [ICPNeuronInfo];
+    };
+    
+    // Full neuron type for ICP Neuron Manager (simplified for our needs)
+    public type ICPFullNeuron = {
+        id : ?ICPNeuronId;
+        cached_neuron_stake_e8s : Nat64;
+        maturity_e8s_equivalent : Nat64;
+        staked_maturity_e8s_equivalent : ?Nat64;
+        dissolve_state : ?ICPDissolveState;
+        aging_since_timestamp_seconds : Nat64;
+        voting_power_refreshed_timestamp_seconds : ?Nat64;
     };
     
     // Actor interface for ICP Neuron Manager verification
@@ -250,9 +262,8 @@ module {
             stake_e8s : Nat64;
             age_seconds : Nat64;
             voting_power : Nat64;
-            // Additional fields from NeuronInfo that we don't use:
-            // recent_ballots, neuron_type, created_timestamp_seconds, etc.
         })];
+        getFullNeuron : shared (ICPNeuronId) -> async ?ICPFullNeuron;
     };
     
     // Canister info response for frontend display
