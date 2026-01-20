@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
+import NeuronDisplay from '../components/NeuronDisplay';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -2147,34 +2148,33 @@ function SneedexOffer() {
                                                                     />
                                                                 </div>
                                                                 <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap'}}>
-                                                                    Neuron: {details.neuron_id?.slice(0, 16)}...
-                                                                    {snsRoot && (
-                                                                        <>
-                                                                            <Link 
-                                                                                to={`/neuron?neuronid=${details.neuron_id}&sns=${snsRoot}`}
-                                                                                style={{ 
-                                                                                    marginLeft: '8px',
-                                                                                    color: theme.colors.accent,
-                                                                                    fontSize: '0.75rem',
-                                                                                    textDecoration: 'none',
-                                                                                }}
-                                                                            >
-                                                                                View Neuron →
-                                                                            </Link>
-                                                                            <Link 
-                                                                                to={`/hub?sns=${snsRoot}`}
-                                                                                style={{ 
-                                                                                    marginLeft: '8px',
-                                                                                    color: theme.colors.success,
-                                                                                    fontSize: '0.75rem',
-                                                                                    textDecoration: 'none',
-                                                                                }}
-                                                                            >
-                                                                                SNS Hub →
-                                                                            </Link>
-                                                                        </>
+                                                                    Neuron: {snsRoot ? (
+                                                                        <NeuronDisplay
+                                                                            neuronId={details.neuron_id}
+                                                                            snsRoot={snsRoot}
+                                                                            showCopyButton={true}
+                                                                            enableContextMenu={true}
+                                                                            isAuthenticated={isAuthenticated}
+                                                                            style={{ fontSize: 'inherit' }}
+                                                                        />
+                                                                    ) : (
+                                                                        <span style={{ fontFamily: 'monospace' }}>{details.neuron_id?.slice(0, 16)}...</span>
                                                                     )}
                                                                 </div>
+                                                                {snsRoot && (
+                                                                    <div style={{...styles.assetDetail}}>
+                                                                        <Link 
+                                                                            to={`/hub?sns=${snsRoot}`}
+                                                                            style={{ 
+                                                                                color: theme.colors.success,
+                                                                                fontSize: '0.75rem',
+                                                                                textDecoration: 'none',
+                                                                            }}
+                                                                        >
+                                                                            SNS Hub →
+                                                                        </Link>
+                                                                    </div>
+                                                                )}
                                                             </>
                                                         );
                                                     })()}
@@ -3109,33 +3109,38 @@ function SneedexOffer() {
                                                                          `State ${nInfo.state}`}
                                                                     </span>
                                                                 )}
-                                                                {/* Links to neuron and hub pages */}
+                                                                {/* Neuron ID and links */}
                                                                 {(() => {
                                                                     const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
                                                                     const snsRoot = sns?.canisters?.root;
-                                                                    if (!snsRoot) return null;
                                                                     return (
-                                                                        <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
-                                                                            <Link 
-                                                                                to={`/neuron?neuronid=${details.neuron_id}&sns=${snsRoot}`}
-                                                                                style={{ 
-                                                                                    color: theme.colors.accent,
-                                                                                    fontSize: '0.75rem',
-                                                                                    textDecoration: 'none',
-                                                                                }}
-                                                                            >
-                                                                                View Neuron →
-                                                                            </Link>
-                                                                            <Link 
-                                                                                to={`/hub?sns=${snsRoot}`}
-                                                                                style={{ 
-                                                                                    color: theme.colors.success,
-                                                                                    fontSize: '0.75rem',
-                                                                                    textDecoration: 'none',
-                                                                                }}
-                                                                            >
-                                                                                SNS Hub →
-                                                                            </Link>
+                                                                        <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                            {snsRoot ? (
+                                                                                <NeuronDisplay
+                                                                                    neuronId={details.neuron_id}
+                                                                                    snsRoot={snsRoot}
+                                                                                    showCopyButton={true}
+                                                                                    enableContextMenu={true}
+                                                                                    isAuthenticated={isAuthenticated}
+                                                                                    style={{ fontSize: '0.8rem' }}
+                                                                                />
+                                                                            ) : (
+                                                                                <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                                                                    {details.neuron_id?.slice(0, 12)}...
+                                                                                </span>
+                                                                            )}
+                                                                            {snsRoot && (
+                                                                                <Link 
+                                                                                    to={`/hub?sns=${snsRoot}`}
+                                                                                    style={{ 
+                                                                                        color: theme.colors.success,
+                                                                                        fontSize: '0.75rem',
+                                                                                        textDecoration: 'none',
+                                                                                    }}
+                                                                                >
+                                                                                    SNS Hub →
+                                                                                </Link>
+                                                                            )}
                                                                         </div>
                                                                     );
                                                                 })()}
