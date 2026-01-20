@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaGavel, FaHandHoldingUsd, FaClock, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus, FaCubes, FaBrain, FaCoins, FaSync, FaWallet } from 'react-icons/fa';
+import { FaGavel, FaHandHoldingUsd, FaClock, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus, FaCubes, FaBrain, FaCoins, FaSync, FaWallet, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -70,6 +70,11 @@ function SneedexMy() {
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     
+    // Pagination state
+    const [offersPage, setOffersPage] = useState(1);
+    const [bidsPage, setBidsPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
+    
     // InfoModal state
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     
@@ -107,6 +112,44 @@ function SneedexMy() {
         if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
         return { symbol: 'TOKEN', decimals: 8 };
     }, [whitelistedTokens]);
+    
+    // Sort offers by created_at (newest first) and paginate
+    const sortedOffers = useMemo(() => {
+        return [...myOffers].sort((a, b) => {
+            const timeA = BigInt(a.created_at);
+            const timeB = BigInt(b.created_at);
+            return timeB > timeA ? 1 : timeB < timeA ? -1 : 0;
+        });
+    }, [myOffers]);
+    
+    const paginatedOffers = useMemo(() => {
+        const startIndex = (offersPage - 1) * ITEMS_PER_PAGE;
+        return sortedOffers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [sortedOffers, offersPage]);
+    
+    const totalOffersPages = useMemo(() => Math.ceil(sortedOffers.length / ITEMS_PER_PAGE), [sortedOffers.length]);
+    
+    // Sort bids by created_at (newest first) and paginate
+    const sortedBids = useMemo(() => {
+        return [...myBids].sort((a, b) => {
+            const timeA = BigInt(a.created_at);
+            const timeB = BigInt(b.created_at);
+            return timeB > timeA ? 1 : timeB < timeA ? -1 : 0;
+        });
+    }, [myBids]);
+    
+    const paginatedBids = useMemo(() => {
+        const startIndex = (bidsPage - 1) * ITEMS_PER_PAGE;
+        return sortedBids.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [sortedBids, bidsPage]);
+    
+    const totalBidsPages = useMemo(() => Math.ceil(sortedBids.length / ITEMS_PER_PAGE), [sortedBids.length]);
+    
+    // Reset pagination when tab changes
+    useEffect(() => {
+        setOffersPage(1);
+        setBidsPage(1);
+    }, [activeTab]);
     
     // Fetch escrow balances for all bids that have tokens escrowed
     // Calls the ledger directly for better performance
@@ -623,6 +666,34 @@ function SneedexMy() {
             color: theme.colors.error || '#ff4444',
             marginBottom: '2rem',
         },
+        pagination: {
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '1rem',
+            marginTop: '2rem',
+            paddingTop: '1.5rem',
+            borderTop: `1px solid ${theme.colors.border}`,
+            gridColumn: '1 / -1',
+        },
+        paginationButton: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '0.9rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        paginationInfo: {
+            color: theme.colors.mutedText,
+            fontSize: '0.9rem',
+        },
     };
 
     if (!isAuthenticated) {
@@ -699,18 +770,49 @@ function SneedexMy() {
                         Loading your data...
                     </div>
                 ) : activeTab === 'offers' ? (
-                    <div style={styles.grid}>
-                        {myOffers.length === 0 ? (
-                            <div style={styles.emptyState}>
-                                <div style={styles.emptyIcon}>📭</div>
-                                <h3 style={styles.emptyTitle}>No Offers Yet</h3>
-                                <p style={styles.emptyText}>You haven't created any offers. Start selling your assets!</p>
-                                <Link to="/sneedex_create" style={styles.createButton}>
-                                    <FaPlus /> Create Your First Offer
-                                </Link>
+                    <>
+                        {/* Top Pagination for Offers */}
+                        {sortedOffers.length > ITEMS_PER_PAGE && (
+                            <div style={{ ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: offersPage === 1 ? 0.5 : 1,
+                                        cursor: offersPage === 1 ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    disabled={offersPage === 1}
+                                >
+                                    <FaChevronLeft /> Previous
+                                </button>
+                                <span style={styles.paginationInfo}>
+                                    Page {offersPage} of {totalOffersPages} ({sortedOffers.length} offers)
+                                </span>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: offersPage === totalOffersPages ? 0.5 : 1,
+                                        cursor: offersPage === totalOffersPages ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setOffersPage(p => Math.min(totalOffersPages, p + 1))}
+                                    disabled={offersPage === totalOffersPages}
+                                >
+                                    Next <FaChevronRight />
+                                </button>
                             </div>
-                        ) : (
-                            myOffers.map((offer) => {
+                        )}
+                        <div style={styles.grid}>
+                            {sortedOffers.length === 0 ? (
+                                <div style={styles.emptyState}>
+                                    <div style={styles.emptyIcon}>📭</div>
+                                    <h3 style={styles.emptyTitle}>No Offers Yet</h3>
+                                    <p style={styles.emptyText}>You haven't created any offers. Start selling your assets!</p>
+                                    <Link to="/sneedex_create" style={styles.createButton}>
+                                        <FaPlus /> Create Your First Offer
+                                    </Link>
+                                </div>
+                            ) : (
+                                paginatedOffers.map((offer) => {
                                 const bidInfo = offersWithBids[Number(offer.id)] || {};
                                 const tokenInfo = getTokenInfo(offer.price_token_ledger.toString());
                                 const stateStr = getOfferStateString(offer.state);
@@ -802,20 +904,83 @@ function SneedexMy() {
                                 );
                             })
                         )}
-                    </div>
-                ) : (
-                    <div style={styles.grid}>
-                        {myBids.length === 0 ? (
-                            <div style={styles.emptyState}>
-                                <div style={styles.emptyIcon}>🎯</div>
-                                <h3 style={styles.emptyTitle}>No Bids Yet</h3>
-                                <p style={styles.emptyText}>You haven't placed any bids. Browse the marketplace to find offers!</p>
-                                <Link to="/sneedex_offers" style={{ ...styles.createButton, background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)` }}>
-                                    <FaGavel /> Browse Marketplace
-                                </Link>
+                        
+                        {/* Bottom Offers Pagination */}
+                        {sortedOffers.length > ITEMS_PER_PAGE && (
+                            <div style={styles.pagination}>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: offersPage === 1 ? 0.5 : 1,
+                                        cursor: offersPage === 1 ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    disabled={offersPage === 1}
+                                >
+                                    <FaChevronLeft /> Previous
+                                </button>
+                                <span style={styles.paginationInfo}>
+                                    Page {offersPage} of {totalOffersPages} ({sortedOffers.length} offers)
+                                </span>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: offersPage === totalOffersPages ? 0.5 : 1,
+                                        cursor: offersPage === totalOffersPages ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setOffersPage(p => Math.min(totalOffersPages, p + 1))}
+                                    disabled={offersPage === totalOffersPages}
+                                >
+                                    Next <FaChevronRight />
+                                </button>
                             </div>
-                        ) : (
-                            myBids.map((bid) => {
+                        )}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        {/* Top Pagination for Bids */}
+                        {sortedBids.length > ITEMS_PER_PAGE && (
+                            <div style={{ ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: bidsPage === 1 ? 0.5 : 1,
+                                        cursor: bidsPage === 1 ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setBidsPage(p => Math.max(1, p - 1))}
+                                    disabled={bidsPage === 1}
+                                >
+                                    <FaChevronLeft /> Previous
+                                </button>
+                                <span style={styles.paginationInfo}>
+                                    Page {bidsPage} of {totalBidsPages} ({sortedBids.length} bids)
+                                </span>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: bidsPage === totalBidsPages ? 0.5 : 1,
+                                        cursor: bidsPage === totalBidsPages ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setBidsPage(p => Math.min(totalBidsPages, p + 1))}
+                                    disabled={bidsPage === totalBidsPages}
+                                >
+                                    Next <FaChevronRight />
+                                </button>
+                            </div>
+                        )}
+                        <div style={styles.grid}>
+                            {sortedBids.length === 0 ? (
+                                <div style={styles.emptyState}>
+                                    <div style={styles.emptyIcon}>🎯</div>
+                                    <h3 style={styles.emptyTitle}>No Bids Yet</h3>
+                                    <p style={styles.emptyText}>You haven't placed any bids. Browse the marketplace to find offers!</p>
+                                    <Link to="/sneedex_offers" style={{ ...styles.createButton, background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)` }}>
+                                        <FaGavel /> Browse Marketplace
+                                    </Link>
+                                </div>
+                            ) : (
+                                paginatedBids.map((bid) => {
                                 const stateStr = getBidStateString(bid.state);
                                 const isWon = 'Won' in bid.state;
                                 const isLost = 'Lost' in bid.state;
@@ -931,7 +1096,39 @@ function SneedexMy() {
                                 );
                             })
                         )}
-                    </div>
+                        
+                            {/* Bottom Bids Pagination */}
+                            {sortedBids.length > ITEMS_PER_PAGE && (
+                                <div style={styles.pagination}>
+                                    <button
+                                        style={{
+                                            ...styles.paginationButton,
+                                            opacity: bidsPage === 1 ? 0.5 : 1,
+                                            cursor: bidsPage === 1 ? 'not-allowed' : 'pointer'
+                                        }}
+                                        onClick={() => setBidsPage(p => Math.max(1, p - 1))}
+                                        disabled={bidsPage === 1}
+                                    >
+                                        <FaChevronLeft /> Previous
+                                    </button>
+                                    <span style={styles.paginationInfo}>
+                                        Page {bidsPage} of {totalBidsPages} ({sortedBids.length} bids)
+                                    </span>
+                                    <button
+                                        style={{
+                                            ...styles.paginationButton,
+                                            opacity: bidsPage === totalBidsPages ? 0.5 : 1,
+                                            cursor: bidsPage === totalBidsPages ? 'not-allowed' : 'pointer'
+                                        }}
+                                        onClick={() => setBidsPage(p => Math.min(totalBidsPages, p + 1))}
+                                        disabled={bidsPage === totalBidsPages}
+                                    >
+                                        Next <FaChevronRight />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </>
                 )}
             </main>
             
