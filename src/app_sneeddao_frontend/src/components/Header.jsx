@@ -255,7 +255,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Partners', path: '/admin/partners' },
                 { name: 'Names', path: '/admin/names' },
                 { name: 'Projects', path: '/admin/projects' },
-                { name: 'SneedLock', path: '/admin/sneedlock' }
+                { name: 'SneedLock', path: '/admin/sneedlock' },
+                { name: 'Sneedex', path: '/admin/sneedex' }
             ]
         };
     }

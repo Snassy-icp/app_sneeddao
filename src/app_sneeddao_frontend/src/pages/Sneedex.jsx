@@ -3,44 +3,21 @@ import Header from '../components/Header';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaExchangeAlt, FaGavel, FaShieldAlt, FaCubes, FaCoins, FaBrain, FaCog, FaPercent, FaWallet, FaSave, FaSpinner } from 'react-icons/fa';
-import { createSneedexActor, formatAmount, formatFeeRate } from '../utils/SneedexUtils';
-import { Principal } from '@dfinity/principal';
-import { PrincipalDisplay } from '../utils/PrincipalUtils';
-import InfoModal from '../components/InfoModal';
+import { FaExchangeAlt, FaGavel, FaShieldAlt, FaCubes, FaCoins, FaBrain, FaCog } from 'react-icons/fa';
+import { createSneedexActor, formatFeeRate } from '../utils/SneedexUtils';
 
 function Sneedex() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     const [stats, setStats] = useState(null);
     const [feeRate, setFeeRate] = useState(null);
-    const [feeRecipient, setFeeRecipient] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
-    const [showAdminSettings, setShowAdminSettings] = useState(false);
-    const [newFeeRate, setNewFeeRate] = useState('');
-    const [newFeeRecipientPrincipal, setNewFeeRecipientPrincipal] = useState('');
-    const [newFeeRecipientSubaccount, setNewFeeRecipientSubaccount] = useState('');
-    const [savingFeeRate, setSavingFeeRate] = useState(false);
-    const [savingFeeRecipient, setSavingFeeRecipient] = useState(false);
-    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
-    
-    const showInfo = (title, message, type = 'info') => {
-        setInfoModal({ show: true, title, message, type });
-    };
-    
-    const closeInfoModal = () => {
-        setInfoModal({ ...infoModal, show: false });
-    };
     
     const fetchFeeSettings = useCallback(async () => {
         try {
             const actor = createSneedexActor(identity);
-            const [rate, recipient] = await Promise.all([
-                actor.getMarketplaceFeeRate(),
-                actor.getFeeRecipient(),
-            ]);
+            const rate = await actor.getMarketplaceFeeRate();
             setFeeRate(Number(rate));
-            setFeeRecipient(recipient);
         } catch (e) {
             console.error('Failed to fetch fee settings:', e);
         }
@@ -77,81 +54,6 @@ function Sneedex() {
         fetchFeeSettings();
         checkAdminStatus();
     }, [identity, fetchFeeSettings, checkAdminStatus]);
-    
-    const handleSaveFeeRate = async () => {
-        const rateBps = Math.round(parseFloat(newFeeRate) * 100);
-        if (isNaN(rateBps) || rateBps < 0 || rateBps > 5000) {
-            showInfo('Invalid Fee Rate', 'Fee rate must be between 0% and 50%', 'error');
-            return;
-        }
-        
-        setSavingFeeRate(true);
-        try {
-            const actor = createSneedexActor(identity);
-            const result = await actor.setMarketplaceFeeRate(BigInt(rateBps));
-            if ('ok' in result) {
-                showInfo('Success', `Fee rate updated to ${formatFeeRate(rateBps)}`, 'success');
-                setFeeRate(rateBps);
-                setNewFeeRate('');
-            } else {
-                showInfo('Error', 'Failed to update fee rate: ' + JSON.stringify(result.err), 'error');
-            }
-        } catch (e) {
-            showInfo('Error', 'Failed to update fee rate: ' + e.message, 'error');
-        }
-        setSavingFeeRate(false);
-    };
-    
-    const handleSaveFeeRecipient = async () => {
-        let principal;
-        try {
-            principal = Principal.fromText(newFeeRecipientPrincipal);
-        } catch (e) {
-            showInfo('Invalid Principal', 'Please enter a valid principal ID', 'error');
-            return;
-        }
-        
-        let subaccount = null;
-        if (newFeeRecipientSubaccount.trim()) {
-            try {
-                // Parse hex subaccount
-                const hex = newFeeRecipientSubaccount.replace(/^0x/, '');
-                const bytes = [];
-                for (let i = 0; i < hex.length; i += 2) {
-                    bytes.push(parseInt(hex.substr(i, 2), 16));
-                }
-                if (bytes.length !== 32) {
-                    throw new Error('Subaccount must be 32 bytes');
-                }
-                subaccount = [bytes];
-            } catch (e) {
-                showInfo('Invalid Subaccount', 'Subaccount must be a 64-character hex string (32 bytes)', 'error');
-                return;
-            }
-        } else {
-            subaccount = [];
-        }
-        
-        setSavingFeeRecipient(true);
-        try {
-            const actor = createSneedexActor(identity);
-            const result = await actor.setFeeRecipient({
-                owner: principal,
-                subaccount: subaccount,
-            });
-            if ('ok' in result) {
-                showInfo('Success', 'Fee recipient updated successfully', 'success');
-                fetchFeeSettings();
-                setNewFeeRecipientPrincipal('');
-                setNewFeeRecipientSubaccount('');
-            } else {
-                showInfo('Error', 'Failed to update fee recipient: ' + JSON.stringify(result.err), 'error');
-            }
-        } catch (e) {
-            showInfo('Error', 'Failed to update fee recipient: ' + e.message, 'error');
-        }
-        setSavingFeeRecipient(false);
-    };
     
     const styles = {
         container: {
@@ -630,182 +532,29 @@ function Sneedex() {
                     </section>
                 )}
                 
-                {/* Admin Settings */}
+                {/* Admin Link */}
                 {isAdmin && (
                     <section style={{ ...styles.section, borderColor: theme.colors.warning }}>
-                        <h2 
-                            style={{ ...styles.sectionTitle, cursor: 'pointer' }}
-                            onClick={() => setShowAdminSettings(!showAdminSettings)}
+                        <Link
+                            to="/admin/sneedex"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                textDecoration: 'none',
+                                color: theme.colors.primaryText,
+                            }}
                         >
-                            <FaCog style={{ color: theme.colors.warning }} />
-                            Admin Settings
-                            <span style={{ marginLeft: 'auto', fontSize: '1rem', color: theme.colors.mutedText }}>
-                                {showAdminSettings ? '▼' : '▶'}
-                            </span>
-                        </h2>
-                        
-                        {showAdminSettings && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                {/* Fee Rate Setting */}
-                                <div style={{
-                                    background: theme.colors.tertiaryBg,
-                                    padding: '1.5rem',
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                }}>
-                                    <h3 style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        marginBottom: '1rem',
-                                        color: theme.colors.primaryText,
-                                        fontSize: '1.2rem',
-                                    }}>
-                                        <FaPercent style={{ color: theme.colors.accent }} />
-                                        Marketplace Fee Rate
-                                    </h3>
-                                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem', fontSize: '0.95rem' }}>
-                                        Current fee: <strong style={{ color: theme.colors.warning }}>{feeRate !== null ? formatFeeRate(feeRate) : 'Loading...'}</strong>
-                                        <br />
-                                        <span style={{ fontSize: '0.85rem' }}>
-                                            This fee is taken from the winning bid when an offer completes. New offers will use the rate set at the time of creation.
-                                        </span>
-                                    </p>
-                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            max="50"
-                                            placeholder="Enter % (e.g., 2.5)"
-                                            value={newFeeRate}
-                                            onChange={(e) => setNewFeeRate(e.target.value)}
-                                            style={{
-                                                padding: '10px 14px',
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                background: theme.colors.secondaryBg,
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1rem',
-                                                width: '160px',
-                                            }}
-                                        />
-                                        <span style={{ color: theme.colors.mutedText }}>%</span>
-                                        <button
-                                            onClick={handleSaveFeeRate}
-                                            disabled={savingFeeRate || !newFeeRate}
-                                            style={{
-                                                padding: '10px 20px',
-                                                borderRadius: '8px',
-                                                border: 'none',
-                                                background: theme.colors.accent,
-                                                color: theme.colors.primaryBg,
-                                                fontWeight: '600',
-                                                cursor: savingFeeRate || !newFeeRate ? 'not-allowed' : 'pointer',
-                                                opacity: savingFeeRate || !newFeeRate ? 0.5 : 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem',
-                                            }}
-                                        >
-                                            {savingFeeRate ? <FaSpinner className="spin" /> : <FaSave />}
-                                            Save
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                {/* Fee Recipient Setting */}
-                                <div style={{
-                                    background: theme.colors.tertiaryBg,
-                                    padding: '1.5rem',
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                }}>
-                                    <h3 style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        marginBottom: '1rem',
-                                        color: theme.colors.primaryText,
-                                        fontSize: '1.2rem',
-                                    }}>
-                                        <FaWallet style={{ color: theme.colors.success }} />
-                                        Fee Recipient Account
-                                    </h3>
-                                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem', fontSize: '0.95rem' }}>
-                                        Current recipient: {feeRecipient ? (
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <PrincipalDisplay principal={feeRecipient.owner.toString()} />
-                                                {feeRecipient.subaccount?.[0] && (
-                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
-                                                        (subaccount: 0x{Array.from(feeRecipient.subaccount[0]).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16)}...)
-                                                    </span>
-                                                )}
-                                            </span>
-                                        ) : 'Loading...'}
-                                        <br />
-                                        <span style={{ fontSize: '0.85rem' }}>
-                                            This account receives the marketplace fees from completed sales.
-                                        </span>
-                                    </p>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                        <input
-                                            type="text"
-                                            placeholder="Principal ID"
-                                            value={newFeeRecipientPrincipal}
-                                            onChange={(e) => setNewFeeRecipientPrincipal(e.target.value)}
-                                            style={{
-                                                padding: '10px 14px',
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                background: theme.colors.secondaryBg,
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1rem',
-                                                width: '100%',
-                                                maxWidth: '500px',
-                                            }}
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Subaccount (optional, 64-char hex)"
-                                            value={newFeeRecipientSubaccount}
-                                            onChange={(e) => setNewFeeRecipientSubaccount(e.target.value)}
-                                            style={{
-                                                padding: '10px 14px',
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                background: theme.colors.secondaryBg,
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1rem',
-                                                width: '100%',
-                                                maxWidth: '500px',
-                                            }}
-                                        />
-                                        <button
-                                            onClick={handleSaveFeeRecipient}
-                                            disabled={savingFeeRecipient || !newFeeRecipientPrincipal}
-                                            style={{
-                                                padding: '10px 20px',
-                                                borderRadius: '8px',
-                                                border: 'none',
-                                                background: theme.colors.success,
-                                                color: theme.colors.primaryBg,
-                                                fontWeight: '600',
-                                                cursor: savingFeeRecipient || !newFeeRecipientPrincipal ? 'not-allowed' : 'pointer',
-                                                opacity: savingFeeRecipient || !newFeeRecipientPrincipal ? 0.5 : 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem',
-                                                width: 'fit-content',
-                                            }}
-                                        >
-                                            {savingFeeRecipient ? <FaSpinner className="spin" /> : <FaSave />}
-                                            Save Recipient
-                                        </button>
-                                    </div>
-                                </div>
+                            <FaCog style={{ color: theme.colors.warning, fontSize: '1.5rem' }} />
+                            <div>
+                                <h2 style={{ ...styles.sectionTitle, marginBottom: '0.25rem' }}>
+                                    Admin Settings
+                                </h2>
+                                <p style={{ color: theme.colors.mutedText, margin: 0, fontSize: '0.95rem' }}>
+                                    Manage marketplace fees, admins, and configuration →
+                                </p>
                             </div>
-                        )}
+                        </Link>
                     </section>
                 )}
 

@@ -1656,15 +1656,15 @@ function SneedexCreate() {
                                 <span style={{ fontSize: '1.5rem' }}>💰</span>
                                 <div>
                                     <strong style={{ color: theme.colors.warning }}>
-                                        Marketplace Fee: {formatFeeRate(marketplaceFeeRate)}
+                                        Sneedex Marketplace Fee: {formatFeeRate(marketplaceFeeRate)}
                                     </strong>
                                     <p style={{ 
                                         fontSize: '0.85rem', 
                                         color: theme.colors.mutedText, 
                                         margin: '4px 0 0 0' 
                                     }}>
-                                        This fee will be deducted from the winning bid when your offer completes.
-                                        The rate is locked when the offer is created.
+                                        When your offer sells, Sneedex will take a {formatFeeRate(marketplaceFeeRate)} cut from the winning bid.
+                                        The remaining amount goes to you. This rate is locked when the offer is created.
                                     </p>
                                 </div>
                             </div>
@@ -2333,11 +2333,11 @@ function SneedexCreate() {
                         
                         {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && (
                             <div style={styles.reviewSection}>
-                                <div style={styles.reviewLabel}>Marketplace Fee</div>
+                                <div style={styles.reviewLabel}>Sneedex Cut</div>
                                 <div style={{ ...styles.reviewValue, color: theme.colors.warning }}>
                                     {formatFeeRate(marketplaceFeeRate)}
                                     <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontWeight: 'normal' }}>
-                                        (deducted from winning bid)
+                                        (taken from the winning bid when the sale completes)
                                     </span>
                                 </div>
                             </div>

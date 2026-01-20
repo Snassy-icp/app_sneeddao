@@ -44,6 +44,7 @@ import AdminForum from './pages/admin/Forum';
 import SmsAdmin from './pages/SmsAdmin';
 import SneedLockAdmin from './pages/admin/SneedLock';
 import IcpNeuronManagerFactoryAdmin from './pages/admin/IcpNeuronManagerFactory';
+import SneedexAdmin from './pages/admin/Sneedex';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -188,6 +189,7 @@ function App() {
                     <Route path="/admin/sms" element={<SmsAdmin />} />
                     <Route path="/admin/sneedlock" element={<SneedLockAdmin />} />
                     <Route path="/admin/neuron-manager-factory" element={<IcpNeuronManagerFactoryAdmin />} />
+                    <Route path="/admin/sneedex" element={<SneedexAdmin />} />
                   </Routes>
                   </Layout>
                 </NamingProvider>
