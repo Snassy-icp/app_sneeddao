@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -44,6 +45,7 @@ function SneedexOffers() {
     const [snsSymbols, setSnsSymbols] = useState(new Map()); // governance_id -> token symbol
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
     const [tokenLogos, setTokenLogos] = useState(new Map()); // ledger_id -> logo URL
+    const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // canister_id -> { totalStake, neuronCount }
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -204,6 +206,37 @@ function SneedexOffers() {
         }
     }, [tokenLogos, identity]);
     
+    // Fetch ICP Neuron Manager info (total staked across all neurons)
+    const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
+        if (neuronManagerInfo[canisterId]) return;
+        
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            
+            if ('Ok' in result) {
+                const info = result.Ok;
+                // Calculate total staked across all neurons
+                let totalStakeE8s = BigInt(0);
+                if (info.neurons && info.neurons.length > 0) {
+                    for (const neuron of info.neurons) {
+                        totalStakeE8s += BigInt(neuron.cached_neuron_stake_e8s);
+                    }
+                }
+                
+                setNeuronManagerInfo(prev => ({
+                    ...prev,
+                    [canisterId]: {
+                        totalStake: Number(totalStakeE8s) / 1e8,
+                        neuronCount: Number(info.neuron_count)
+                    }
+                }));
+            }
+        } catch (e) {
+            console.warn('Failed to fetch neuron manager info:', e);
+        }
+    }, [neuronManagerInfo, identity]);
+    
     const fetchOffers = useCallback(async () => {
         setLoading(true);
         setError('');
@@ -253,7 +286,7 @@ function SneedexOffers() {
         fetchOffers();
     }, [fetchOffers]);
     
-    // Fetch SNS logos, symbols, neuron info, and token logos when offers change
+    // Fetch SNS logos, symbols, neuron info, token logos, and neuron manager info when offers change
     useEffect(() => {
         if (offers.length === 0) return;
         
@@ -272,10 +305,15 @@ function SneedexOffers() {
                 } else if (details.type === 'ICRC1Token') {
                     // Fetch token logo
                     fetchTokenLogo(details.ledger_id);
+                } else if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                    // Fetch neuron manager info (only for escrowed assets)
+                    if (assetEntry.escrowed) {
+                        fetchNeuronManagerInfo(details.canister_id);
+                    }
                 }
             });
         });
-    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo, fetchTokenLogo]);
+    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo, fetchTokenLogo, fetchNeuronManagerInfo]);
     
     const filteredOffers = offers.filter(offer => {
         if (filterType !== 'all') {
@@ -780,8 +818,29 @@ function SneedexOffers() {
                                                 <span key={idx} style={styles.assetBadge}>
                                                     {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                         <>
-                                                            <FaRobot style={{ color: theme.colors.accent }} />
-                                                            Neuron Manager
+                                                            <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
+                                                                <FaRobot style={{ color: theme.colors.accent, fontSize: '16px' }} />
+                                                                <img 
+                                                                    src="/icp_symbol.svg" 
+                                                                    alt="ICP" 
+                                                                    style={{ 
+                                                                        width: 12, 
+                                                                        height: 12, 
+                                                                        borderRadius: '50%',
+                                                                        position: 'absolute',
+                                                                        bottom: -2,
+                                                                        right: -4,
+                                                                        border: `1px solid ${theme.colors.tertiaryBg}`,
+                                                                        background: theme.colors.tertiaryBg,
+                                                                    }}
+                                                                />
+                                                            </span>
+                                                            {neuronManagerInfo[details.canister_id] 
+                                                                ? `${neuronManagerInfo[details.canister_id].totalStake.toFixed(2)} ICP`
+                                                                : details.escrowed 
+                                                                    ? 'Loading...'
+                                                                    : 'Neuron Manager'
+                                                            }
                                                         </>
                                                     )}
                                                     {details.type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER && (
