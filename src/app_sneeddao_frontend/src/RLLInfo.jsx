@@ -3287,7 +3287,7 @@ function RLLInfo() {
 
                             {/* Market Cap Card */}
                             <div style={{
-                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.success}`,
@@ -3318,7 +3318,7 @@ function RLLInfo() {
 
                                         {/* Fully Diluted Valuation */}
                                         <div style={{
-                                            background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
                                             padding: '15px',
                                             borderRadius: '6px',
                                             border: `1px solid ${theme.colors.success}`,
@@ -3416,7 +3416,7 @@ function RLLInfo() {
 
                             {/* ICP Assets */}
                             <div style={{
-                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.accent}`,
@@ -3665,7 +3665,7 @@ function RLLInfo() {
 
                             {/* SNEED Assets */}
                             <div style={{
-                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.success}`,
@@ -3825,7 +3825,7 @@ function RLLInfo() {
 
                             {/* Other Tokens */}
                             <div style={{
-                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: '1px solid #9b59b6',
@@ -3969,7 +3969,7 @@ function RLLInfo() {
 
                             {/* Other Positions */}
                             <div style={{
-                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: '1px solid #9b59b6',

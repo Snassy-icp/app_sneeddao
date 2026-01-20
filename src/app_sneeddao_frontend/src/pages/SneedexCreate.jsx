@@ -14,6 +14,7 @@ import {
     daysToExpirationNs,
     createAssetVariant,
     getErrorMessage,
+    formatFeeRate,
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
@@ -120,6 +121,9 @@ function SneedexCreate() {
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(true);
     
+    // Marketplace fee rate
+    const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
+    
     // User's registered canisters and neuron managers
     const [userCanisters, setUserCanisters] = useState([]); // Array of canister ID strings
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of canister ID strings
@@ -146,6 +150,20 @@ function SneedexCreate() {
             }
         };
         fetchTokens();
+    }, [identity]);
+    
+    // Fetch marketplace fee rate on mount
+    useEffect(() => {
+        const fetchFeeRate = async () => {
+            try {
+                const sneedexActor = createSneedexActor(identity);
+                const rate = await sneedexActor.getMarketplaceFeeRate();
+                setMarketplaceFeeRate(Number(rate));
+            } catch (e) {
+                console.error('Failed to fetch marketplace fee rate:', e);
+            }
+        };
+        fetchFeeRate();
     }, [identity]);
     
     // Fetch user's registered canisters and neuron managers
@@ -1623,6 +1641,35 @@ function SneedexCreate() {
                             )}
                         </div>
                         
+                        {/* Marketplace Fee Info */}
+                        {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && (
+                            <div style={{
+                                background: `${theme.colors.warning}10`,
+                                border: `1px solid ${theme.colors.warning}40`,
+                                borderRadius: '10px',
+                                padding: '16px',
+                                marginBottom: '24px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                            }}>
+                                <span style={{ fontSize: '1.5rem' }}>💰</span>
+                                <div>
+                                    <strong style={{ color: theme.colors.warning }}>
+                                        Marketplace Fee: {formatFeeRate(marketplaceFeeRate)}
+                                    </strong>
+                                    <p style={{ 
+                                        fontSize: '0.85rem', 
+                                        color: theme.colors.mutedText, 
+                                        margin: '4px 0 0 0' 
+                                    }}>
+                                        This fee will be deducted from the winning bid when your offer completes.
+                                        The rate is locked when the offer is created.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                        
                         <div style={styles.buttonRow}>
                             <div />
                             <button style={styles.nextBtn} onClick={handleNext}>
@@ -2280,6 +2327,18 @@ function SneedexCreate() {
                                             ({(parseInt(minBidIncrementMultiple) * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} {selectedPriceToken.symbol})
                                         </span>
                                     )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && (
+                            <div style={styles.reviewSection}>
+                                <div style={styles.reviewLabel}>Marketplace Fee</div>
+                                <div style={{ ...styles.reviewValue, color: theme.colors.warning }}>
+                                    {formatFeeRate(marketplaceFeeRate)}
+                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontWeight: 'normal' }}>
+                                        (deducted from winning bid)
+                                    </span>
                                 </div>
                             </div>
                         )}

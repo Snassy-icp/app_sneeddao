@@ -18,6 +18,8 @@ import {
     getAssetDetails,
     parseAmount,
     getErrorMessage,
+    formatFeeRate,
+    calculateMarketplaceFee,
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
@@ -3600,6 +3602,17 @@ function SneedexOffer() {
                                                 ({formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenFee, tokenInfo.decimals)} {tokenInfo.symbol})
                                             </span>
                                         )}
+                                    </span>
+                                </div>
+                            )}
+                            {offer.fee_rate_bps !== undefined && Number(offer.fee_rate_bps) > 0 && (
+                                <div style={styles.priceRow}>
+                                    <span style={styles.priceLabel}>Marketplace Fee</span>
+                                    <span style={{ ...styles.priceValue, color: theme.colors.warning }}>
+                                        {formatFeeRate(offer.fee_rate_bps)}
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                            (deducted from winning bid)
+                                        </span>
                                     </span>
                                 </div>
                             )}

@@ -336,3 +336,39 @@ export const getErrorMessage = (error) => {
     return 'Unknown error';
 };
 
+/**
+ * Format fee rate from basis points to percentage
+ * @param {number|BigInt} bps - Fee rate in basis points
+ * @returns {string} Formatted percentage string (e.g., "2.5%")
+ */
+export const formatFeeRate = (bps) => {
+    const rate = Number(bps) / 100;
+    return `${rate}%`;
+};
+
+/**
+ * Calculate marketplace fee from bid amount
+ * @param {BigInt|number} bidAmount - Bid amount in e8s
+ * @param {number|BigInt} feeRateBps - Fee rate in basis points
+ * @returns {BigInt} Fee amount in e8s
+ */
+export const calculateMarketplaceFee = (bidAmount, feeRateBps) => {
+    const amount = BigInt(bidAmount);
+    const rate = BigInt(feeRateBps);
+    return amount * rate / 10000n;
+};
+
+/**
+ * Get offer details including fee rate
+ * @param {Object} offer - Offer object from backend
+ * @returns {Object} Parsed offer details
+ */
+export const getOfferFeeInfo = (offer) => {
+    const feeRateBps = Number(offer.fee_rate_bps || 0);
+    return {
+        feeRateBps,
+        feeRatePercent: feeRateBps / 100,
+        feeRateFormatted: formatFeeRate(feeRateBps),
+    };
+};
+
