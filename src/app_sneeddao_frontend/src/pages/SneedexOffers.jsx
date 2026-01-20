@@ -43,6 +43,7 @@ function SneedexOffers() {
     const [snsList, setSnsList] = useState([]); // List of all SNSes
     const [snsSymbols, setSnsSymbols] = useState(new Map()); // governance_id -> token symbol
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
+    const [tokenLogos, setTokenLogos] = useState(new Map()); // ledger_id -> logo URL
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -180,6 +181,29 @@ function SneedexOffers() {
         }
     }, [neuronInfo, identity]);
     
+    // Fetch token logo from ledger metadata
+    const fetchTokenLogo = useCallback(async (ledgerId) => {
+        if (tokenLogos.has(ledgerId)) return;
+        
+        try {
+            const agent = new HttpAgent({ host: getHost(), identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Find logo in metadata
+            const logoEntry = metadata.find(([key]) => key === 'icrc1:logo');
+            if (logoEntry && logoEntry[1] && 'Text' in logoEntry[1]) {
+                setTokenLogos(prev => new Map(prev).set(ledgerId, logoEntry[1].Text));
+            }
+        } catch (e) {
+            console.warn('Failed to fetch token logo:', e);
+        }
+    }, [tokenLogos, identity]);
+    
     const fetchOffers = useCallback(async () => {
         setLoading(true);
         setError('');
@@ -229,7 +253,7 @@ function SneedexOffers() {
         fetchOffers();
     }, [fetchOffers]);
     
-    // Fetch SNS logos, symbols, and neuron info when offers change
+    // Fetch SNS logos, symbols, neuron info, and token logos when offers change
     useEffect(() => {
         if (offers.length === 0) return;
         
@@ -245,10 +269,13 @@ function SneedexOffers() {
                     if (details.neuron_id) {
                         fetchNeuronInfo(details.governance_id, details.neuron_id);
                     }
+                } else if (details.type === 'ICRC1Token') {
+                    // Fetch token logo
+                    fetchTokenLogo(details.ledger_id);
                 }
             });
         });
-    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo]);
+    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo, fetchTokenLogo]);
     
     const filteredOffers = offers.filter(offer => {
         if (filterType !== 'all') {
@@ -788,11 +815,19 @@ function SneedexOffers() {
                                                     )}
                                                     {details.type === 'ICRC1Token' && (
                                                         <>
-                                                            {assetTokenInfo?.logo ? (
+                                                            {tokenLogos.get(details.ledger_id) ? (
+                                                                <img 
+                                                                    src={tokenLogos.get(details.ledger_id)} 
+                                                                    alt={assetTokenInfo?.symbol || 'Token'} 
+                                                                    style={{ width: 18, height: 18, borderRadius: '50%' }}
+                                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                                />
+                                                            ) : assetTokenInfo?.logo ? (
                                                                 <img 
                                                                     src={assetTokenInfo.logo} 
                                                                     alt={assetTokenInfo.symbol} 
                                                                     style={{ width: 18, height: 18, borderRadius: '50%' }}
+                                                                    onError={(e) => { e.target.style.display = 'none'; }}
                                                                 />
                                                             ) : (
                                                                 <FaCoins style={{ color: theme.colors.warning }} />
