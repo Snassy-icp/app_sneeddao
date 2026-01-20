@@ -5,6 +5,16 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 // Sneedex canister ID (staging)
 export const SNEEDEX_CANISTER_ID = 'igm46-laaaa-aaaae-qgwra-cai';
 
+// Canister kind IDs (must match backend)
+export const CANISTER_KIND_UNKNOWN = 0;
+export const CANISTER_KIND_ICP_NEURON_MANAGER = 1;
+
+// Canister kind names for display
+export const CANISTER_KIND_NAMES = {
+    [CANISTER_KIND_UNKNOWN]: 'Generic Canister',
+    [CANISTER_KIND_ICP_NEURON_MANAGER]: 'ICP Neuron Manager',
+};
+
 // ICRC-1 Ledger IDL for basic operations
 const icrc1IdlFactory = ({ IDL: idl }) => {
     const Account = idl.Record({
@@ -200,6 +210,7 @@ export const getAssetDetails = (assetEntry) => {
         return {
             type: 'Canister',
             canister_id: asset.Canister.canister_id.toString(),
+            canister_kind: asset.Canister.canister_kind[0] ?? 0, // 0 = unknown, 1 = ICP Neuron Manager
             controllers_snapshot: asset.Canister.controllers_snapshot[0]?.map(p => p.toString()) || [],
             escrowed,
         };
@@ -253,6 +264,7 @@ export const createAssetVariant = (type, details) => {
             return {
                 Canister: {
                     canister_id: Principal.fromText(details.canister_id),
+                    canister_kind: details.canister_kind !== undefined ? [details.canister_kind] : [], // Optional nat
                     controllers_snapshot: [],
                 }
             };

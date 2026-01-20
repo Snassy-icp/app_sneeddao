@@ -32,6 +32,23 @@ module {
     public let ASSET_TYPE_ICRC1_TOKEN : AssetTypeId = 2;
     
     // ============================================
+    // CANISTER KINDS - Extensible System for known canister types
+    // ============================================
+    
+    public type CanisterKindId = Nat;
+    
+    public type CanisterKind = {
+        id : CanisterKindId;
+        name : Text;
+        description : Text;
+        active : Bool;
+    };
+    
+    // Canister kind IDs (well-known)
+    public let CANISTER_KIND_UNKNOWN : CanisterKindId = 0;
+    public let CANISTER_KIND_ICP_NEURON_MANAGER : CanisterKindId = 1;
+    
+    // ============================================
     // ICRC1 TYPES
     // ============================================
     
@@ -183,6 +200,60 @@ module {
         update_settings : shared (UpdateSettingsArgs) -> async ();
     };
     
+    // ============================================
+    // ICP NEURON MANAGER TYPES (for verification and display)
+    // ============================================
+    
+    public type NeuronManagerVersion = {
+        major : Nat;
+        minor : Nat;
+        patch : Nat;
+    };
+    
+    // NNS Neuron ID for ICP neurons
+    public type ICPNeuronId = { id : Nat64 };
+    
+    // Amount in e8s
+    public type ICPAmount = { e8s : Nat64 };
+    
+    // Dissolve state of an ICP neuron
+    public type ICPDissolveState = {
+        #DissolveDelaySeconds : Nat64;
+        #WhenDissolvedTimestampSeconds : Nat64;
+    };
+    
+    // Simplified neuron info for display
+    public type ICPNeuronInfo = {
+        neuron_id : ICPNeuronId;
+        cached_neuron_stake_e8s : Nat64;
+        dissolve_delay_seconds : Nat64;
+        state : Int32; // 1 = locked, 2 = dissolving, 3 = dissolved
+        age_seconds : Nat64;
+        voting_power : Nat64;
+        maturity_e8s_equivalent : Nat64;
+    };
+    
+    // Summary of neuron manager status
+    public type NeuronManagerInfo = {
+        version : NeuronManagerVersion;
+        neuron_count : Nat;
+        neurons : [ICPNeuronInfo];
+    };
+    
+    // Actor interface for ICP Neuron Manager verification
+    public type ICPNeuronManagerActor = actor {
+        getVersion : shared query () -> async NeuronManagerVersion;
+        getNeuronCount : shared () -> async Nat;
+        getAllNeuronsInfo : shared () -> async [(ICPNeuronId, ?{
+            dissolve_delay_seconds : Nat64;
+            neuron_id : Nat64;
+            cached_neuron_stake_e8s : Nat64;
+            state : Int32;
+            age_seconds : Nat64;
+            voting_power : Nat64;
+        })];
+    };
+    
     // Canister info response for frontend display
     public type CanisterInfo = {
         canister_id : Principal;
@@ -204,6 +275,7 @@ module {
     // Canister asset - stores controllers snapshot when escrowed
     public type CanisterAsset = {
         canister_id : Principal;
+        canister_kind : ?CanisterKindId; // Optional known canister type (0 = unknown, 1 = ICP Neuron Manager, etc.)
         controllers_snapshot : ?[Principal]; // Populated when escrowed
     };
     

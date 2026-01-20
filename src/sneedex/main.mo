@@ -33,6 +33,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         { id = T.ASSET_TYPE_ICRC1_TOKEN; name = "ICRC1 Token"; description = "ICRC1 fungible token"; active = true },
     ];
     
+    // Canister kinds registry (for known canister types with enhanced display)
+    var canisterKinds : [T.CanisterKind] = [
+        { id = T.CANISTER_KIND_UNKNOWN; name = "Unknown"; description = "Generic canister"; active = true },
+        { id = T.CANISTER_KIND_ICP_NEURON_MANAGER; name = "ICP Neuron Manager"; description = "Sneed ICP Neuron Manager canister"; active = true },
+    ];
+    var nextCanisterKindId : T.CanisterKindId = 2; // 0, 1 are reserved
+    
     // Offers storage
     var offers : [T.Offer] = [];
     
@@ -448,6 +455,81 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         assetTypes;
     };
     
+    /// Get all canister kinds
+    public query func getCanisterKinds() : async [T.CanisterKind] {
+        canisterKinds;
+    };
+    
+    /// Verify if a canister is an ICP Neuron Manager by calling getVersion()
+    public shared func verifyICPNeuronManager(canisterId : Principal) : async { #Ok : T.NeuronManagerVersion; #Err : Text } {
+        try {
+            let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
+            let version = await manager.getVersion();
+            #Ok(version);
+        } catch (_e) {
+            #Err("Failed to verify canister as ICP Neuron Manager. getVersion() call failed.");
+        };
+    };
+    
+    /// Get info about an escrowed ICP Neuron Manager canister
+    public shared func getNeuronManagerInfo(canisterId : Principal) : async { #Ok : T.NeuronManagerInfo; #Err : Text } {
+        // First verify we have this canister in escrow
+        var foundInEscrow = false;
+        label escrowCheck for (offer in offers.vals()) {
+            for (assetEntry in offer.assets.vals()) {
+                switch (assetEntry.asset) {
+                    case (#Canister(c)) {
+                        if (c.canister_id == canisterId and assetEntry.escrowed) {
+                            foundInEscrow := true;
+                            break escrowCheck;
+                        };
+                    };
+                    case (_) {};
+                };
+            };
+        };
+        
+        if (not foundInEscrow) {
+            return #Err("Canister is not in escrow");
+        };
+        
+        try {
+            let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
+            let version = await manager.getVersion();
+            let neuronCount = await manager.getNeuronCount();
+            let neuronsInfoRaw = await manager.getAllNeuronsInfo();
+            
+            // Convert neuron info to our format
+            let neurons = Array.mapFilter<(T.ICPNeuronId, ?{ dissolve_delay_seconds : Nat64; neuron_id : Nat64; cached_neuron_stake_e8s : Nat64; state : Int32; age_seconds : Nat64; voting_power : Nat64 }), T.ICPNeuronInfo>(
+                neuronsInfoRaw,
+                func((nid, infoOpt)) : ?T.ICPNeuronInfo {
+                    switch (infoOpt) {
+                        case null { null };
+                        case (?info) {
+                            ?{
+                                neuron_id = nid;
+                                cached_neuron_stake_e8s = info.cached_neuron_stake_e8s;
+                                dissolve_delay_seconds = info.dissolve_delay_seconds;
+                                state = info.state;
+                                age_seconds = info.age_seconds;
+                                voting_power = info.voting_power;
+                                maturity_e8s_equivalent = 0; // Not available from getAllNeuronsInfo
+                            };
+                        };
+                    };
+                }
+            );
+            
+            #Ok({
+                version = version;
+                neuron_count = neuronCount;
+                neurons = neurons;
+            });
+        } catch (_e) {
+            #Err("Failed to get neuron manager info");
+        };
+    };
+    
     // ============================================
     // OFFER CREATION AND MANAGEMENT
     // ============================================
@@ -666,9 +748,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 switch (escrowResult) {
                                     case (#err(e)) { return #err(e) };
                                     case (#ok(snapshot)) {
-                                        // Update asset with snapshot
+                                        // Update asset with snapshot, preserving canister_kind
                                         let updatedAsset : T.Asset = #Canister({
                                             canister_id = canisterAsset.canister_id;
+                                            canister_kind = canisterAsset.canister_kind;
                                             controllers_snapshot = ?snapshot;
                                         });
                                         
