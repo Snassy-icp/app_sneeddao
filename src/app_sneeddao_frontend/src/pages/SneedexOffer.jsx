@@ -1688,9 +1688,11 @@ function SneedexOffer() {
             display: 'flex',
             gap: '0.5rem',
             marginBottom: '0.75rem',
+            flexWrap: 'wrap',
         },
         bidInput: {
-            flex: 1,
+            flex: '1 1 150px',
+            minWidth: '120px',
             padding: '12px 16px',
             borderRadius: '10px',
             border: `1px solid ${theme.colors.border}`,
@@ -1702,9 +1704,11 @@ function SneedexOffer() {
         bidButton: {
             background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)`,
             color: theme.colors.primaryBg,
-            padding: '12px 24px',
+            padding: '12px 16px',
             borderRadius: '10px',
             border: 'none',
+            minWidth: '100px',
+            whiteSpace: 'nowrap',
             fontSize: '1rem',
             fontWeight: '600',
             cursor: 'pointer',
@@ -3625,15 +3629,16 @@ function SneedexOffer() {
                                     <div style={styles.bidInputRow}>
                                         <button
                                             style={{
-                                                padding: '0.75rem 1rem',
+                                                padding: '12px 12px',
                                                 background: theme.colors.secondaryBg,
                                                 color: theme.colors.accent,
                                                 border: `1px solid ${theme.colors.accent}`,
-                                                borderRadius: '8px',
+                                                borderRadius: '10px',
                                                 cursor: 'pointer',
                                                 fontWeight: '600',
-                                                fontSize: '0.9rem',
+                                                fontSize: '0.85rem',
                                                 whiteSpace: 'nowrap',
+                                                flexShrink: 0,
                                             }}
                                             onClick={() => setBidAmount(formatAmount(getMinimumBidE8s(), tokenInfo.decimals))}
                                             title={`Set to minimum bid: ${formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} ${tokenInfo.symbol}`}
