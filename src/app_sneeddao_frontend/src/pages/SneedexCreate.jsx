@@ -437,7 +437,7 @@ function SneedexCreate() {
         }
     }, [identity]);
     
-    // Verify if a canister is an ICP Neuron Manager
+    // Verify if a canister is an ICP Neuron Manager with wasm hash verification
     const verifyICPNeuronManager = useCallback(async (canisterId) => {
         if (!canisterId) return { verified: false, message: 'No canister ID' };
         
@@ -445,16 +445,77 @@ function SneedexCreate() {
             setVerifyingCanisterKind(true);
             setCanisterKindVerified(null);
             
-            const actor = await createSneedexActor(identity);
-            const result = await actor.verifyICPNeuronManager(Principal.fromText(canisterId));
-            
-            if ('Ok' in result) {
-                setCanisterKindVerified(true);
-                return { verified: true, version: result.Ok };
-            } else {
-                setCanisterKindVerified(result.Err);
-                return { verified: false, message: result.Err };
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
             }
+            
+            // Step 1: Get canister's module_hash via management canister
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const managementCanister = Actor.createActor(managementIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            let moduleHash = null;
+            try {
+                const status = await managementCanister.canister_status({ canister_id: canisterPrincipal });
+                if (status.module_hash && status.module_hash.length > 0) {
+                    moduleHash = uint8ArrayToHex(status.module_hash[0]);
+                }
+            } catch (e) {
+                // User might not be controller - continue anyway since wasm hash is public info
+                console.log('Could not get canister status (may not be controller):', e.message);
+            }
+            
+            // Step 2: Call getVersion() on the neuron manager to verify it responds correctly
+            const sneedexActor = await createSneedexActor(identity);
+            const versionResult = await sneedexActor.verifyICPNeuronManager(canisterPrincipal);
+            
+            if ('Err' in versionResult) {
+                setCanisterKindVerified(versionResult.Err);
+                return { verified: false, message: versionResult.Err };
+            }
+            
+            const version = versionResult.Ok;
+            const versionStr = `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`;
+            
+            // Step 3: Verify wasm hash against official versions if we have it
+            let officialVersion = null;
+            let wasmVerified = false;
+            
+            if (moduleHash) {
+                try {
+                    const factory = createFactoryActor(factoryCanisterId, { agent });
+                    const officialVersionResult = await factory.getOfficialVersionByHash(moduleHash);
+                    if (officialVersionResult && officialVersionResult.length > 0) {
+                        officialVersion = officialVersionResult[0];
+                        const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
+                        wasmVerified = (officialVersionStr === versionStr);
+                    }
+                } catch (e) {
+                    console.log('Could not check official versions:', e.message);
+                }
+            }
+            
+            // Build verification result
+            const verificationInfo = {
+                verified: true,
+                version: version,
+                versionStr: versionStr,
+                moduleHash: moduleHash,
+                officialVersion: officialVersion,
+                wasmVerified: wasmVerified,
+            };
+            
+            setCanisterKindVerified(verificationInfo);
+            return verificationInfo;
+            
         } catch (e) {
             const msg = 'Failed to verify: ' + (e.message || 'Unknown error');
             setCanisterKindVerified(msg);
@@ -648,7 +709,7 @@ function SneedexCreate() {
                 Principal.fromText(newAssetCanisterId.trim());
                 
                 // If ICP Neuron Manager selected but not verified, show error
-                if (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && canisterKindVerified !== true) {
+                if (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && !canisterKindVerified?.verified) {
                     setError('Please verify the canister is an ICP Neuron Manager first');
                     return;
                 }
@@ -1805,17 +1866,48 @@ function SneedexCreate() {
                                             
                                             {newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                 <div style={{ marginTop: '8px' }}>
-                                                    {canisterKindVerified === true ? (
+                                                    {canisterKindVerified?.verified ? (
                                                         <div style={{ 
-                                                            display: 'flex', 
-                                                            alignItems: 'center', 
-                                                            gap: '8px',
-                                                            color: '#10B981',
-                                                            fontSize: '0.9rem'
+                                                            background: theme.colors.secondaryBg,
+                                                            borderRadius: '8px',
+                                                            padding: '12px',
+                                                            marginTop: '8px',
                                                         }}>
-                                                            <FaCheck /> Verified as ICP Neuron Manager
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: '#10B981',
+                                                                fontSize: '0.9rem',
+                                                                marginBottom: '8px',
+                                                            }}>
+                                                                <FaCheck /> Verified as ICP Neuron Manager
+                                                            </div>
+                                                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                                                                <div>Version: <strong>{canisterKindVerified.versionStr}</strong></div>
+                                                                {canisterKindVerified.moduleHash && (
+                                                                    <div style={{ marginTop: '4px' }}>
+                                                                        {canisterKindVerified.wasmVerified ? (
+                                                                            <span style={{ color: '#10B981' }}>
+                                                                                <FaCheck style={{ marginRight: '4px' }} />
+                                                                                Official WASM (v{Number(canisterKindVerified.officialVersion.major)}.{Number(canisterKindVerified.officialVersion.minor)}.{Number(canisterKindVerified.officialVersion.patch)})
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span style={{ color: '#F59E0B' }}>
+                                                                                <FaExclamationTriangle style={{ marginRight: '4px' }} />
+                                                                                Unknown WASM hash (not in official registry)
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {!canisterKindVerified.moduleHash && (
+                                                                    <div style={{ marginTop: '4px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                                        (Could not verify WASM - not a controller)
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    ) : canisterKindVerified ? (
+                                                    ) : typeof canisterKindVerified === 'string' ? (
                                                         <div style={{ 
                                                             display: 'flex', 
                                                             alignItems: 'center', 

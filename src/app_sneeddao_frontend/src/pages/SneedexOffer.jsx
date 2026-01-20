@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -24,6 +24,7 @@ import {
     CANISTER_KIND_NAMES
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
@@ -124,6 +125,7 @@ function SneedexOffer() {
     const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // {assetIndex: neuronManagerInfo}
     const [loadingNeuronManagerInfo, setLoadingNeuronManagerInfo] = useState({}); // {assetIndex: boolean}
+    const [managerWasmVerification, setManagerWasmVerification] = useState({}); // {assetIndex: {verified, officialVersion}}
     const [neuronInfo, setNeuronInfo] = useState({}); // {assetIndex: neuronInfo}
     const [loadingNeuronInfo, setLoadingNeuronInfo] = useState({}); // {assetIndex: boolean}
     const [tokenMetadata, setTokenMetadata] = useState({}); // {ledgerId: metadata}
@@ -371,6 +373,54 @@ function SneedexOffer() {
             
             if ('Ok' in result) {
                 setNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: result.Ok }));
+                
+                // Also verify wasm hash against official versions
+                // First get canister info (which includes module_hash)
+                const canisterInfoResult = canisterInfo[assetIndex];
+                if (canisterInfoResult?.module_hash?.[0]) {
+                    const moduleHashHex = Array.from(canisterInfoResult.module_hash[0])
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
+                    
+                    try {
+                        const host = getHost();
+                        const agent = HttpAgent.createSync({ host, identity });
+                        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                            await agent.fetchRootKey();
+                        }
+                        
+                        const factory = createFactoryActor(factoryCanisterId, { agent });
+                        const officialVersionResult = await factory.getOfficialVersionByHash(moduleHashHex);
+                        
+                        if (officialVersionResult && officialVersionResult.length > 0) {
+                            const officialVersion = officialVersionResult[0];
+                            const managerVersion = result.Ok.version;
+                            const managerVersionStr = `${Number(managerVersion.major)}.${Number(managerVersion.minor)}.${Number(managerVersion.patch)}`;
+                            const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
+                            
+                            setManagerWasmVerification(prev => ({
+                                ...prev,
+                                [assetIndex]: {
+                                    verified: true,
+                                    versionMatch: managerVersionStr === officialVersionStr,
+                                    officialVersion: officialVersion,
+                                    moduleHash: moduleHashHex,
+                                }
+                            }));
+                        } else {
+                            setManagerWasmVerification(prev => ({
+                                ...prev,
+                                [assetIndex]: {
+                                    verified: false,
+                                    moduleHash: moduleHashHex,
+                                    message: 'Unknown WASM hash',
+                                }
+                            }));
+                        }
+                    } catch (e) {
+                        console.error('Failed to verify wasm hash:', e);
+                    }
+                }
             } else {
                 console.error('Failed to get neuron manager info:', result.Err);
             }
@@ -379,7 +429,7 @@ function SneedexOffer() {
         } finally {
             setLoadingNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: false }));
         }
-    }, [identity]);
+    }, [identity, canisterInfo]);
     
     // Fetch SNS neuron info directly from governance canister
     const fetchNeuronInfo = useCallback(async (assetIndex, governanceId, neuronIdHex) => {
@@ -2357,7 +2407,7 @@ function SneedexOffer() {
                                                         </div>
                                                     ) : neuronManagerInfo[idx] ? (
                                                         <div>
-                                                            {/* Version */}
+                                                            {/* Version & Verification */}
                                                             <div style={{
                                                                 display: 'flex',
                                                                 gap: '12px',
@@ -2371,10 +2421,13 @@ function SneedexOffer() {
                                                                     minWidth: '100px',
                                                                 }}>
                                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Version</div>
-                                                                    <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                    <div style={{ fontWeight: '600', color: theme.colors.text, display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                         v{neuronManagerInfo[idx].version.major.toString()}.
                                                                         {neuronManagerInfo[idx].version.minor.toString()}.
                                                                         {neuronManagerInfo[idx].version.patch.toString()}
+                                                                        {managerWasmVerification[idx]?.verified && managerWasmVerification[idx]?.versionMatch && (
+                                                                            <FaCheck style={{ color: '#10B981', fontSize: '0.8rem' }} title="Official version verified" />
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 <div style={{
@@ -2386,6 +2439,45 @@ function SneedexOffer() {
                                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Neurons</div>
                                                                     <div style={{ fontWeight: '600', color: theme.colors.text }}>
                                                                         {neuronManagerInfo[idx].neuron_count.toString()}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{
+                                                                    background: managerWasmVerification[idx]?.verified 
+                                                                        ? `${managerWasmVerification[idx]?.versionMatch ? '#10B981' : '#F59E0B'}15`
+                                                                        : `${theme.colors.tertiaryBg}`,
+                                                                    padding: '8px 12px',
+                                                                    borderRadius: '8px',
+                                                                    minWidth: '150px',
+                                                                    border: managerWasmVerification[idx]?.verified 
+                                                                        ? `1px solid ${managerWasmVerification[idx]?.versionMatch ? '#10B981' : '#F59E0B'}30`
+                                                                        : 'none',
+                                                                }}>
+                                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>WASM Status</div>
+                                                                    <div style={{ 
+                                                                        fontWeight: '600', 
+                                                                        color: managerWasmVerification[idx]?.verified 
+                                                                            ? (managerWasmVerification[idx]?.versionMatch ? '#10B981' : '#F59E0B')
+                                                                            : theme.colors.mutedText,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        fontSize: '0.85rem',
+                                                                    }}>
+                                                                        {managerWasmVerification[idx]?.verified ? (
+                                                                            <>
+                                                                                <FaCheck />
+                                                                                Official v{Number(managerWasmVerification[idx].officialVersion.major)}.
+                                                                                {Number(managerWasmVerification[idx].officialVersion.minor)}.
+                                                                                {Number(managerWasmVerification[idx].officialVersion.patch)}
+                                                                            </>
+                                                                        ) : managerWasmVerification[idx]?.moduleHash ? (
+                                                                            <>
+                                                                                <FaExclamationTriangle style={{ color: '#F59E0B' }} />
+                                                                                Unknown WASM
+                                                                            </>
+                                                                        ) : (
+                                                                            'Checking...'
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>
