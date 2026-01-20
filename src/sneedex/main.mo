@@ -12,62 +12,6 @@ import T "Types";
 import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 
-
-// Migration expression to add public_note and note_to_buyer fields to existing offers
-(with migration = func (old : { var offers : [{
-    id : Nat;
-    creator : Principal;
-    min_bid_price : ?Nat;
-    buyout_price : ?Nat;
-    expiration : ?Time.Time;
-    price_token_ledger : Principal;
-    min_bid_increment_fee_multiple : ?Nat;
-    assets : [T.AssetEntry];
-    state : T.OfferState;
-    approved_bidders : ?[Principal];
-    fee_rate_bps : Nat;
-    created_at : Time.Time;
-    activated_at : ?Time.Time;
-}] }) : { var offers : [T.Offer] } {
-    {
-        var offers = Array.map(
-            old.offers,
-            func (o : {
-                id : Nat;
-                creator : Principal;
-                min_bid_price : ?Nat;
-                buyout_price : ?Nat;
-                expiration : ?Time.Time;
-                price_token_ledger : Principal;
-                min_bid_increment_fee_multiple : ?Nat;
-                assets : [T.AssetEntry];
-                state : T.OfferState;
-                approved_bidders : ?[Principal];
-                fee_rate_bps : Nat;
-                created_at : Time.Time;
-                activated_at : ?Time.Time;
-            }) : T.Offer {
-                {
-                    id = o.id;
-                    creator = o.creator;
-                    min_bid_price = o.min_bid_price;
-                    buyout_price = o.buyout_price;
-                    expiration = o.expiration;
-                    price_token_ledger = o.price_token_ledger;
-                    min_bid_increment_fee_multiple = o.min_bid_increment_fee_multiple;
-                    assets = o.assets;
-                    state = o.state;
-                    approved_bidders = o.approved_bidders;
-                    fee_rate_bps = o.fee_rate_bps;
-                    public_note = null;
-                    note_to_buyer = null;
-                    created_at = o.created_at;
-                    activated_at = o.activated_at;
-                }
-            }
-        );
-    }
-})
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
