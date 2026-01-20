@@ -58,6 +58,8 @@ function SneedexOffers() {
     const [minPriceFilter, setMinPriceFilter] = useState(''); // Min price filter
     const [maxPriceFilter, setMaxPriceFilter] = useState(''); // Max price filter
     const [assetTokenFilter, setAssetTokenFilter] = useState(''); // Filter by asset token (for tokens, SNS neurons, neuron managers)
+    const [minAssetAmountFilter, setMinAssetAmountFilter] = useState(''); // Min asset amount filter
+    const [maxAssetAmountFilter, setMaxAssetAmountFilter] = useState(''); // Max asset amount filter
     
     // ICP ledger canister ID constant
     const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -352,7 +354,7 @@ function SneedexOffers() {
     }, [snsList]);
     
     // Check if any advanced filters are active
-    const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter;
+    const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter;
     
     // Clear all advanced filters
     const clearAdvancedFilters = () => {
@@ -360,6 +362,8 @@ function SneedexOffers() {
         setMinPriceFilter('');
         setMaxPriceFilter('');
         setAssetTokenFilter('');
+        setMinAssetAmountFilter('');
+        setMaxAssetAmountFilter('');
     };
     
     const filteredOffers = offers.filter(offer => {
@@ -412,29 +416,89 @@ function SneedexOffers() {
             }
         }
         
-        // Advanced filter: asset token
-        if (assetTokenFilter) {
+        // Advanced filter: asset token and amount
+        if (assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter) {
             const hasMatchingAsset = offer.assets.some(a => {
                 const type = getAssetType(a.asset);
                 const details = getAssetDetails(a);
                 
-                // For ICRC1Token assets, match ledger directly
-                if (type === 'ICRC1Token' && details.ledger_id === assetTokenFilter) {
+                // Helper to check amount range
+                const checkAmountRange = (amount, decimals = 8) => {
+                    if (!minAssetAmountFilter && !maxAssetAmountFilter) return true;
+                    const amountValue = Number(amount) / Math.pow(10, decimals);
+                    
+                    if (minAssetAmountFilter) {
+                        const minAmount = parseFloat(minAssetAmountFilter);
+                        if (!isNaN(minAmount) && amountValue < minAmount) return false;
+                    }
+                    
+                    if (maxAssetAmountFilter) {
+                        const maxAmount = parseFloat(maxAssetAmountFilter);
+                        if (!isNaN(maxAmount) && amountValue > maxAmount) return false;
+                    }
+                    
                     return true;
+                };
+                
+                // For ICRC1Token assets, match ledger directly
+                if (type === 'ICRC1Token') {
+                    const tokenMatches = !assetTokenFilter || details.ledger_id === assetTokenFilter;
+                    if (tokenMatches) {
+                        const tokenInfo = getTokenInfo(details.ledger_id);
+                        return checkAmountRange(details.amount, tokenInfo.decimals || 8);
+                    }
                 }
                 
                 // For SNS neurons, match if the SNS uses this token ledger
                 if (type === 'SNSNeuron') {
                     const snsLedger = getSnsLedgerFromGovernance(details.governance_id);
-                    if (snsLedger === assetTokenFilter) {
-                        return true;
+                    const tokenMatches = !assetTokenFilter || snsLedger === assetTokenFilter;
+                    if (tokenMatches) {
+                        // For neurons, check the staked amount from neuronInfo
+                        const neuronInfoKey = `${details.governance_id}_${details.neuron_id}`;
+                        const nInfo = neuronInfo[neuronInfoKey];
+                        if (nInfo && nInfo.stake !== undefined) {
+                            // neuronInfo stake is already in human-readable format
+                            if (minAssetAmountFilter || maxAssetAmountFilter) {
+                                const stakeValue = nInfo.stake;
+                                if (minAssetAmountFilter) {
+                                    const minAmount = parseFloat(minAssetAmountFilter);
+                                    if (!isNaN(minAmount) && stakeValue < minAmount) return false;
+                                }
+                                if (maxAssetAmountFilter) {
+                                    const maxAmount = parseFloat(maxAssetAmountFilter);
+                                    if (!isNaN(maxAmount) && stakeValue > maxAmount) return false;
+                                }
+                            }
+                            return true;
+                        }
+                        // If we don't have neuron info yet but token matches, include it (amount filter won't apply)
+                        return !minAssetAmountFilter && !maxAssetAmountFilter;
                     }
                 }
                 
                 // For ICP Neuron Managers, match if ICP is selected
                 if (type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
-                    if (assetTokenFilter === ICP_LEDGER_ID) {
-                        return true;
+                    const tokenMatches = !assetTokenFilter || assetTokenFilter === ICP_LEDGER_ID;
+                    if (tokenMatches) {
+                        // Check total ICP amount from neuronManagerInfo
+                        const mInfo = neuronManagerInfo[details.canister_id];
+                        if (mInfo && mInfo.totalIcp !== undefined) {
+                            if (minAssetAmountFilter || maxAssetAmountFilter) {
+                                const totalValue = mInfo.totalIcp;
+                                if (minAssetAmountFilter) {
+                                    const minAmount = parseFloat(minAssetAmountFilter);
+                                    if (!isNaN(minAmount) && totalValue < minAmount) return false;
+                                }
+                                if (maxAssetAmountFilter) {
+                                    const maxAmount = parseFloat(maxAssetAmountFilter);
+                                    if (!isNaN(maxAmount) && totalValue > maxAmount) return false;
+                                }
+                            }
+                            return true;
+                        }
+                        // If we don't have manager info yet but token matches, include it (amount filter won't apply)
+                        return !minAssetAmountFilter && !maxAssetAmountFilter;
                     }
                 }
                 
@@ -478,7 +542,7 @@ function SneedexOffers() {
     // Reset to page 1 when filters/search/tab change
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, searchTerm, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter]);
+    }, [filterType, searchTerm, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter]);
 
     const styles = {
         container: {
@@ -820,18 +884,29 @@ function SneedexOffers() {
         },
         advancedFilterGrid: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1.25rem',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '1.5rem',
         },
         filterGroup: {
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
         },
+        filterGroupWide: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            gridColumn: '1 / -1',
+        },
         filterLabel: {
             fontSize: '0.85rem',
             fontWeight: '500',
             color: theme.colors.secondaryText,
+        },
+        filterLabelHint: {
+            fontWeight: 'normal',
+            color: theme.colors.mutedText,
+            fontSize: '0.8rem',
         },
         filterInput: {
             padding: '10px 14px',
@@ -842,21 +917,30 @@ function SneedexOffers() {
             fontSize: '0.9rem',
             outline: 'none',
             transition: 'border-color 0.2s ease',
+            width: '100%',
+            boxSizing: 'border-box',
         },
-        priceRangeRow: {
+        rangeInputsRow: {
             display: 'flex',
-            gap: '12px',
-            alignItems: 'center',
+            gap: '8px',
+            alignItems: 'flex-end',
         },
-        priceInputWrapper: {
+        rangeInputWrapper: {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
             gap: '4px',
         },
-        priceInputLabel: {
-            fontSize: '0.75rem',
+        rangeInputLabel: {
+            fontSize: '0.7rem',
             color: theme.colors.mutedText,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+        },
+        rangeSeparator: {
+            color: theme.colors.mutedText,
+            fontSize: '1rem',
+            paddingBottom: '10px',
         },
         activeFilterBadge: {
             display: 'inline-flex',
@@ -981,7 +1065,7 @@ function SneedexOffers() {
                         Advanced
                         {hasActiveAdvancedFilters && (
                             <span style={styles.activeFilterBadge}>
-                                {[bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter].filter(Boolean).length}
+                                {[bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter, minAssetAmountFilter || maxAssetAmountFilter].filter(Boolean).length}
                             </span>
                         )}
                         {showAdvancedFilters ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
@@ -1008,7 +1092,7 @@ function SneedexOffers() {
                         <div style={styles.advancedFilterGrid}>
                             {/* Payment Token Filter */}
                             <div style={styles.filterGroup}>
-                                <label style={styles.filterLabel}>Payment Token (Bid Currency)</label>
+                                <label style={styles.filterLabel}>Payment Token <span style={styles.filterLabelHint}>(Bid Currency)</span></label>
                                 <TokenSelector
                                     value={bidTokenFilter}
                                     onChange={(ledgerId) => setBidTokenFilter(ledgerId)}
@@ -1031,10 +1115,10 @@ function SneedexOffers() {
                             
                             {/* Price Range Filter */}
                             <div style={styles.filterGroup}>
-                                <label style={styles.filterLabel}>Price Range</label>
-                                <div style={styles.priceRangeRow}>
-                                    <div style={styles.priceInputWrapper}>
-                                        <span style={styles.priceInputLabel}>Min</span>
+                                <label style={styles.filterLabel}>Price Range <span style={styles.filterLabelHint}>(Min Bid / Buyout)</span></label>
+                                <div style={styles.rangeInputsRow}>
+                                    <div style={styles.rangeInputWrapper}>
+                                        <span style={styles.rangeInputLabel}>Min</span>
                                         <input
                                             type="number"
                                             placeholder="0"
@@ -1043,11 +1127,13 @@ function SneedexOffers() {
                                             style={styles.filterInput}
                                             min="0"
                                             step="any"
+                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
                                         />
                                     </div>
-                                    <span style={{ color: theme.colors.mutedText, marginTop: '16px' }}>—</span>
-                                    <div style={styles.priceInputWrapper}>
-                                        <span style={styles.priceInputLabel}>Max</span>
+                                    <span style={styles.rangeSeparator}>–</span>
+                                    <div style={styles.rangeInputWrapper}>
+                                        <span style={styles.rangeInputLabel}>Max</span>
                                         <input
                                             type="number"
                                             placeholder="∞"
@@ -1056,6 +1142,8 @@ function SneedexOffers() {
                                             style={styles.filterInput}
                                             min="0"
                                             step="any"
+                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
                                         />
                                     </div>
                                 </div>
@@ -1064,10 +1152,7 @@ function SneedexOffers() {
                             {/* Asset Token Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>
-                                    Asset Token
-                                    <span style={{ fontWeight: 'normal', color: theme.colors.mutedText, marginLeft: '4px' }}>
-                                        (Tokens, SNS Neurons, ICP Neuron Managers)
-                                    </span>
+                                    Asset Token <span style={styles.filterLabelHint}>(Tokens, SNS Neurons, Neuron Managers)</span>
                                 </label>
                                 <TokenSelector
                                     value={assetTokenFilter}
@@ -1078,10 +1163,12 @@ function SneedexOffers() {
                                 {assetTokenFilter && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                                         <button
-                                            onClick={() => setAssetTokenFilter('')}
-                                            style={{
-                                                ...styles.clearFiltersButton,
+                                            onClick={() => {
+                                                setAssetTokenFilter('');
+                                                setMinAssetAmountFilter('');
+                                                setMaxAssetAmountFilter('');
                                             }}
+                                            style={styles.clearFiltersButton}
                                         >
                                             <FaTimes size={10} /> Clear
                                         </button>
@@ -1092,6 +1179,42 @@ function SneedexOffers() {
                                         )}
                                     </div>
                                 )}
+                            </div>
+                            
+                            {/* Asset Amount Range Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Asset Amount <span style={styles.filterLabelHint}>(Token amount / Stake)</span></label>
+                                <div style={styles.rangeInputsRow}>
+                                    <div style={styles.rangeInputWrapper}>
+                                        <span style={styles.rangeInputLabel}>Min</span>
+                                        <input
+                                            type="number"
+                                            placeholder="0"
+                                            value={minAssetAmountFilter}
+                                            onChange={(e) => setMinAssetAmountFilter(e.target.value)}
+                                            style={styles.filterInput}
+                                            min="0"
+                                            step="any"
+                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                        />
+                                    </div>
+                                    <span style={styles.rangeSeparator}>–</span>
+                                    <div style={styles.rangeInputWrapper}>
+                                        <span style={styles.rangeInputLabel}>Max</span>
+                                        <input
+                                            type="number"
+                                            placeholder="∞"
+                                            value={maxAssetAmountFilter}
+                                            onChange={(e) => setMaxAssetAmountFilter(e.target.value)}
+                                            style={styles.filterInput}
+                                            min="0"
+                                            step="any"
+                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
