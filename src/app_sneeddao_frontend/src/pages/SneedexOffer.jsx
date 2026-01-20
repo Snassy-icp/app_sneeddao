@@ -28,6 +28,8 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
+import InfoModal from '../components/InfoModal';
+import ConfirmationModal from '../ConfirmationModal';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
@@ -134,6 +136,17 @@ function SneedexOffer() {
     const [snsData, setSnsData] = useState([]); // All SNS data
     const [snsLogos, setSnsLogos] = useState({}); // {governanceId: logoUrl}
     const [tokenLogos, setTokenLogos] = useState({}); // {ledgerId: logoUrl}
+    
+    // InfoModal state
+    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
+    
+    const showInfo = (message, type = 'info', title = '') => {
+        setInfoModal({ show: true, title, message, type });
+    };
+    const closeInfoModal = () => setInfoModal({ ...infoModal, show: false });
+    
+    // ConfirmationModal state
+    const [confirmModal, setConfirmModal] = useState({ show: false, message: '', action: null });
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -945,7 +958,7 @@ function SneedexOffer() {
             // Success! Clear pending bid and refresh
             setPendingBid(null);
             setBidProgress('');
-            alert('Bid placed successfully!');
+            showInfo('Bid placed successfully!', 'success');
             await fetchOffer();
             fetchUserBalance(); // Refresh balance
             
@@ -978,7 +991,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Bid confirmed successfully! Your bid is now active.');
+            showInfo('Bid confirmed successfully! Your bid is now active.', 'success');
             setPendingBid(null);
             await fetchOffer();
         } catch (e) {
@@ -1059,7 +1072,7 @@ function SneedexOffer() {
             // Refresh balance
             await fetchEscrowBalance();
             
-            alert(`Payment successful! Transaction ID: ${result.Ok}\n\nYou can now click "Confirm Bid" to activate your bid.`);
+            showInfo(`Payment successful! Transaction ID: ${result.Ok}\n\nYou can now click "Confirm Bid" to activate your bid.`, 'success', 'Payment Complete');
         } catch (e) {
             console.error('Failed to make payment:', e);
             setError(e.message || 'Failed to make payment');
@@ -1109,7 +1122,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert(`Withdrawal successful! Transaction ID: ${result.ok}`);
+            showInfo(`Withdrawal successful! Transaction ID: ${result.ok}`, 'success');
             await fetchEscrowBalance();
         } catch (e) {
             console.error('Failed to withdraw:', e);
@@ -1205,7 +1218,7 @@ function SneedexOffer() {
             // Success! Clear pending bid and refresh
             setPendingBid(null);
             setBuyoutProgress('');
-            alert('Buyout successful! You now own the assets.');
+            showInfo('Buyout successful! You now own the assets.', 'success');
             await fetchOffer();
             fetchUserBalance(); // Refresh balance
             
@@ -1237,7 +1250,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Bid accepted! The offer is now completed.');
+            showInfo('Bid accepted! The offer is now completed.', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to accept bid:', e);
@@ -1247,29 +1260,33 @@ function SneedexOffer() {
         }
     };
     
-    const handleCancelOffer = async () => {
+    const handleCancelOffer = () => {
         if (!identity || !offer) return;
         
-        if (!window.confirm('Are you sure you want to cancel this offer?')) return;
-        
-        setActionLoading(true);
-        setError('');
-        try {
-            const actor = createSneedexActor(identity);
-            const result = await actor.cancelOffer(BigInt(id));
-            
-            if ('err' in result) {
-                throw new Error(getErrorMessage(result.err));
+        setConfirmModal({
+            show: true,
+            message: 'Are you sure you want to cancel this offer?',
+            action: async () => {
+                setActionLoading(true);
+                setError('');
+                try {
+                    const actor = createSneedexActor(identity);
+                    const result = await actor.cancelOffer(BigInt(id));
+                    
+                    if ('err' in result) {
+                        throw new Error(getErrorMessage(result.err));
+                    }
+                    
+                    showInfo('Offer cancelled.', 'success');
+                    navigate('/sneedex_my');
+                } catch (e) {
+                    console.error('Failed to cancel offer:', e);
+                    setError(e.message || 'Failed to cancel offer');
+                } finally {
+                    setActionLoading(false);
+                }
             }
-            
-            alert('Offer cancelled.');
-            navigate('/sneedex_my');
-        } catch (e) {
-            console.error('Failed to cancel offer:', e);
-            setError(e.message || 'Failed to cancel offer');
-        } finally {
-            setActionLoading(false);
-        }
+        });
     };
     
     const handleClaimAssets = async () => {
@@ -1285,7 +1302,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Assets claimed successfully!');
+            showInfo('Assets claimed successfully!', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to claim assets:', e);
@@ -1308,7 +1325,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Payment claimed successfully!');
+            showInfo('Payment claimed successfully!', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to claim payment:', e);
@@ -1331,7 +1348,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Assets finalized! You can now verify and escrow each asset.');
+            showInfo('Assets finalized! You can now verify and escrow each asset.', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to finalize assets:', e);
@@ -1408,7 +1425,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Canister escrowed successfully! Sneedex is now a controller.');
+            showInfo('Canister escrowed successfully! Sneedex is now a controller.', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow canister:', e);
@@ -1431,7 +1448,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('SNS Neuron escrowed successfully!');
+            showInfo('SNS Neuron escrowed successfully!', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow neuron:', e);
@@ -1497,7 +1514,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Tokens escrowed successfully!');
+            showInfo('Tokens escrowed successfully!', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow tokens:', e);
@@ -1520,7 +1537,7 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Offer activated! It is now live on the marketplace.');
+            showInfo('Offer activated! It is now live on the marketplace.', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to activate offer:', e);
@@ -4053,6 +4070,24 @@ function SneedexOffer() {
                     to { transform: rotate(360deg); }
                 }
             `}</style>
+            
+            {/* Info Modal */}
+            <InfoModal
+                show={infoModal.show}
+                onClose={closeInfoModal}
+                title={infoModal.title}
+                message={infoModal.message}
+                type={infoModal.type}
+            />
+            
+            {/* Confirmation Modal */}
+            <ConfirmationModal
+                show={confirmModal.show}
+                onClose={() => setConfirmModal({ ...confirmModal, show: false })}
+                onSubmit={confirmModal.action}
+                message={confirmModal.message}
+                doAwait={true}
+            />
         </div>
     );
 }

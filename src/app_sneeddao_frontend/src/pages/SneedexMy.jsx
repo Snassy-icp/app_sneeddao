@@ -16,6 +16,8 @@ import {
     parseAmount
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import InfoModal from '../components/InfoModal';
+import ConfirmationModal from '../ConfirmationModal';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
@@ -33,6 +35,17 @@ function SneedexMy() {
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    
+    // InfoModal state
+    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
+    
+    const showInfo = (message, type = 'info', title = '') => {
+        setInfoModal({ show: true, title, message, type });
+    };
+    const closeInfoModal = () => setInfoModal({ ...infoModal, show: false });
+    
+    // ConfirmationModal state
+    const [confirmModal, setConfirmModal] = useState({ show: false, message: '', action: null });
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -146,38 +159,42 @@ function SneedexMy() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Bid accepted successfully!');
+            showInfo('Bid accepted successfully!', 'success');
             await fetchData();
         } catch (e) {
             console.error('Failed to accept bid:', e);
-            alert(`Error: ${e.message}`);
+            showInfo(`Error: ${e.message}`, 'error');
         } finally {
             setActionLoading(null);
         }
     };
     
-    const handleCancelOffer = async (offerId) => {
+    const handleCancelOffer = (offerId) => {
         if (!identity) return;
         
-        if (!window.confirm('Are you sure you want to cancel this offer?')) return;
-        
-        setActionLoading(`cancel-${offerId}`);
-        try {
-            const actor = createSneedexActor(identity);
-            const result = await actor.cancelOffer(BigInt(offerId));
-            
-            if ('err' in result) {
-                throw new Error(getErrorMessage(result.err));
+        setConfirmModal({
+            show: true,
+            message: 'Are you sure you want to cancel this offer?',
+            action: async () => {
+                setActionLoading(`cancel-${offerId}`);
+                try {
+                    const actor = createSneedexActor(identity);
+                    const result = await actor.cancelOffer(BigInt(offerId));
+                    
+                    if ('err' in result) {
+                        throw new Error(getErrorMessage(result.err));
+                    }
+                    
+                    showInfo('Offer cancelled successfully!', 'success');
+                    await fetchData();
+                } catch (e) {
+                    console.error('Failed to cancel offer:', e);
+                    showInfo(`Error: ${e.message}`, 'error');
+                } finally {
+                    setActionLoading(null);
+                }
             }
-            
-            alert('Offer cancelled successfully!');
-            await fetchData();
-        } catch (e) {
-            console.error('Failed to cancel offer:', e);
-            alert(`Error: ${e.message}`);
-        } finally {
-            setActionLoading(null);
-        }
+        });
     };
     
     const handleClaimPayment = async (offerId) => {
@@ -192,11 +209,11 @@ function SneedexMy() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Payment claimed successfully!');
+            showInfo('Payment claimed successfully!', 'success');
             await fetchData();
         } catch (e) {
             console.error('Failed to claim payment:', e);
-            alert(`Error: ${e.message}`);
+            showInfo(`Error: ${e.message}`, 'error');
         } finally {
             setActionLoading(null);
         }
@@ -214,11 +231,11 @@ function SneedexMy() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Assets claimed successfully!');
+            showInfo('Assets claimed successfully!', 'success');
             await fetchData();
         } catch (e) {
             console.error('Failed to claim assets:', e);
-            alert(`Error: ${e.message}`);
+            showInfo(`Error: ${e.message}`, 'error');
         } finally {
             setActionLoading(null);
         }
@@ -236,11 +253,11 @@ function SneedexMy() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Bid refunded successfully!');
+            showInfo('Bid refunded successfully!', 'success');
             await fetchData();
         } catch (e) {
             console.error('Failed to refund bid:', e);
-            alert(`Error: ${e.message}`);
+            showInfo(`Error: ${e.message}`, 'error');
         } finally {
             setActionLoading(null);
         }
@@ -251,7 +268,7 @@ function SneedexMy() {
         
         const excess = escrowBalance - bid.amount;
         if (excess <= 0n) {
-            alert('No excess funds to withdraw');
+            showInfo('No excess funds to withdraw', 'warning');
             return;
         }
         
@@ -266,7 +283,7 @@ function SneedexMy() {
         
         const withdrawAmount = parseAmount(parseFloat(amountStr), 8);
         if (withdrawAmount <= 0n || withdrawAmount > excess) {
-            alert(`Invalid amount. Max: ${maxWithdrawable.toFixed(8)}`);
+            showInfo(`Invalid amount. Max: ${maxWithdrawable.toFixed(8)}`, 'error');
             return;
         }
         
@@ -279,11 +296,11 @@ function SneedexMy() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            alert('Withdrawal successful!');
+            showInfo('Withdrawal successful!', 'success');
             await fetchData();
         } catch (e) {
             console.error('Failed to withdraw:', e);
-            alert(`Error: ${e.message}`);
+            showInfo(`Error: ${e.message}`, 'error');
         } finally {
             setActionLoading(null);
         }
@@ -857,6 +874,24 @@ function SneedexMy() {
                     to { transform: rotate(360deg); }
                 }
             `}</style>
+            
+            {/* Info Modal */}
+            <InfoModal
+                show={infoModal.show}
+                onClose={closeInfoModal}
+                title={infoModal.title}
+                message={infoModal.message}
+                type={infoModal.type}
+            />
+            
+            {/* Confirmation Modal */}
+            <ConfirmationModal
+                show={confirmModal.show}
+                onClose={() => setConfirmModal({ ...confirmModal, show: false })}
+                onSubmit={confirmModal.action}
+                message={confirmModal.message}
+                doAwait={true}
+            />
         </div>
     );
 }
