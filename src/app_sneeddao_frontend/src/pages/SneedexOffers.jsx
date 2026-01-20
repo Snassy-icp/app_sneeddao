@@ -823,8 +823,30 @@ function SneedexOffers() {
                                                 : null;
                                             const nInfo = neuronInfoKey ? neuronInfo[neuronInfoKey] : null;
                                             
+                                            // Generate tooltip text based on asset type
+                                            const getTooltip = () => {
+                                                if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                                                    const mInfo = neuronManagerInfo[details.canister_id];
+                                                    if (mInfo) {
+                                                        return `ICP Neuron Manager\nCanister: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
+                                                    }
+                                                    return `ICP Neuron Manager\nCanister: ${details.canister_id}`;
+                                                }
+                                                if (details.type === 'Canister') {
+                                                    return `Canister: ${details.canister_id}`;
+                                                }
+                                                if (details.type === 'SNSNeuron') {
+                                                    const stakeText = nInfo ? `\nStake: ${nInfo.stake.toFixed(4)} ${snsInfo?.symbol || 'tokens'}` : '';
+                                                    return `${snsInfo?.name || 'SNS'} Neuron\nGovernance: ${details.governance_id}\nNeuron ID: ${details.neuron_id?.slice(0, 16)}...${stakeText}`;
+                                                }
+                                                if (details.type === 'ICRC1Token') {
+                                                    return `${assetTokenInfo?.name || assetTokenInfo?.symbol || 'Token'}\nLedger: ${details.ledger_id}\nAmount: ${formatAmount(details.amount, assetTokenInfo?.decimals || 8)} ${assetTokenInfo?.symbol || 'tokens'}`;
+                                                }
+                                                return '';
+                                            };
+                                            
                                             return (
-                                                <span key={idx} style={styles.assetBadge}>
+                                                <span key={idx} style={styles.assetBadge} title={getTooltip()}>
                                                     {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                         <>
                                                             <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>

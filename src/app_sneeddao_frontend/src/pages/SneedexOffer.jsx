@@ -2338,49 +2338,74 @@ function SneedexOffer() {
                                                             </div>
                                                             
                                                             {/* Controllers */}
-                                                            <div style={{ marginTop: '0.5rem' }}>
-                                                                <div style={{ 
-                                                                    fontSize: '0.75rem', 
-                                                                    color: theme.colors.mutedText,
-                                                                    marginBottom: '6px',
-                                                                }}>
-                                                                    Controllers ({info.controllers.length})
-                                                                </div>
-                                                                <div style={{ 
-                                                                    display: 'flex', 
-                                                                    flexDirection: 'column', 
-                                                                    gap: '4px',
-                                                                }}>
-                                                                    {info.controllers.map((ctrl, i) => (
-                                                                        <div key={i} style={{
-                                                                            fontSize: '0.75rem',
-                                                                            fontFamily: 'monospace',
-                                                                            color: ctrl.toString() === SNEEDEX_CANISTER_ID 
-                                                                                ? theme.colors.accent 
-                                                                                : theme.colors.secondaryText,
-                                                                            background: theme.colors.tertiaryBg,
-                                                                            padding: '4px 8px',
-                                                                            borderRadius: '4px',
+                                                            {(() => {
+                                                                const isSneedexOnlyController = info.controllers.length === 1 && 
+                                                                    info.controllers[0].toString() === SNEEDEX_CANISTER_ID;
+                                                                return (
+                                                                    <div style={{ marginTop: '0.5rem' }}>
+                                                                        <div style={{ 
+                                                                            fontSize: '0.75rem', 
+                                                                            color: theme.colors.mutedText,
+                                                                            marginBottom: '6px',
                                                                             display: 'flex',
                                                                             alignItems: 'center',
-                                                                            gap: '6px',
+                                                                            gap: '8px',
                                                                         }}>
-                                                                            {ctrl.toString() === SNEEDEX_CANISTER_ID && (
-                                                                                <span style={{ 
-                                                                                    fontSize: '0.65rem',
-                                                                                    background: theme.colors.accent,
-                                                                                    color: '#fff',
-                                                                                    padding: '1px 5px',
-                                                                                    borderRadius: '3px',
+                                                                            Controllers ({info.controllers.length})
+                                                                            {isSneedexOnlyController && (
+                                                                                <span style={{
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '4px',
+                                                                                    fontSize: '0.7rem',
+                                                                                    color: theme.colors.success,
+                                                                                    background: `${theme.colors.success}15`,
+                                                                                    padding: '2px 8px',
+                                                                                    borderRadius: '10px',
+                                                                                    fontWeight: '600',
                                                                                 }}>
-                                                                                    SNEEDEX
+                                                                                    <FaCheck style={{ fontSize: '0.6rem' }} />
+                                                                                    Fully escrowed
                                                                                 </span>
                                                                             )}
-                                                                            {ctrl.toString()}
                                                                         </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
+                                                                        <div style={{ 
+                                                                            display: 'flex', 
+                                                                            flexDirection: 'column', 
+                                                                            gap: '4px',
+                                                                        }}>
+                                                                            {info.controllers.map((ctrl, i) => (
+                                                                                <div key={i} style={{
+                                                                                    fontSize: '0.75rem',
+                                                                                    fontFamily: 'monospace',
+                                                                                    color: ctrl.toString() === SNEEDEX_CANISTER_ID 
+                                                                                        ? theme.colors.accent 
+                                                                                        : theme.colors.secondaryText,
+                                                                                    background: theme.colors.tertiaryBg,
+                                                                                    padding: '4px 8px',
+                                                                                    borderRadius: '4px',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '6px',
+                                                                                }}>
+                                                                                    {ctrl.toString() === SNEEDEX_CANISTER_ID && (
+                                                                                        <span style={{ 
+                                                                                            fontSize: '0.65rem',
+                                                                                            background: isSneedexOnlyController ? theme.colors.success : theme.colors.accent,
+                                                                                            color: '#fff',
+                                                                                            padding: '1px 5px',
+                                                                                            borderRadius: '3px',
+                                                                                        }}>
+                                                                                            SNEEDEX
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {ctrl.toString()}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                             
                                                             {/* Module Hash */}
                                                             {info.module_hash && info.module_hash.length > 0 && (
