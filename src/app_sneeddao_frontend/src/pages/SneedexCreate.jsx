@@ -1037,9 +1037,14 @@ function SneedexCreate() {
         }
     };
     
-    const getAssetIcon = (type) => {
-        switch (type) {
-            case 'canister': return <FaCubes style={{ color: theme.colors.accent }} />;
+    const getAssetIcon = (asset) => {
+        switch (asset.type) {
+            case 'canister': 
+                // Show robot icon for ICP Neuron Manager
+                if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                    return <FaRobot style={{ color: theme.colors.accent }} />;
+                }
+                return <FaCubes style={{ color: theme.colors.accent }} />;
             case 'neuron': return <FaBrain style={{ color: theme.colors.success }} />;
             case 'token': return <FaCoins style={{ color: theme.colors.warning }} />;
             default: return <FaCubes />;
@@ -1583,10 +1588,10 @@ function SneedexCreate() {
                                     return (
                                         <div key={idx} style={styles.assetItem}>
                                             <div style={styles.assetInfo}>
-                                                {getAssetIcon(asset.type)}
+                                                {getAssetIcon(asset)}
                                                 <div style={styles.assetDetails}>
                                                     <div style={styles.assetType}>
-                                                        {asset.type === 'canister' && 'Canister'}
+                                                        {asset.type === 'canister' && (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'Canister')}
                                                         {asset.type === 'neuron' && 'SNS Neuron'}
                                                         {asset.type === 'token' && `${asset.amount} ${asset.symbol}`}
                                                     </div>
@@ -2170,7 +2175,7 @@ function SneedexCreate() {
                                     return (
                                         <div key={idx} style={{ ...styles.assetItem, background: theme.colors.secondaryBg }}>
                                             <div style={styles.assetInfo}>
-                                                {getAssetIcon(asset.type)}
+                                                {getAssetIcon(asset)}
                                                 <div style={styles.assetDetails}>
                                                     <div style={styles.assetType}>{asset.display}</div>
                                                 </div>
