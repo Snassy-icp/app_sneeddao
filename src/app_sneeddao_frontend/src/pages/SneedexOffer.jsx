@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -18,7 +18,10 @@ import {
     getAssetDetails,
     parseAmount,
     getErrorMessage,
-    SNEEDEX_CANISTER_ID 
+    SNEEDEX_CANISTER_ID,
+    CANISTER_KIND_UNKNOWN,
+    CANISTER_KIND_ICP_NEURON_MANAGER,
+    CANISTER_KIND_NAMES
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
@@ -119,6 +122,8 @@ function SneedexOffer() {
     const [expandedAssets, setExpandedAssets] = useState({}); // {assetIndex: boolean}
     const [canisterInfo, setCanisterInfo] = useState({}); // {assetIndex: canisterInfo}
     const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
+    const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // {assetIndex: neuronManagerInfo}
+    const [loadingNeuronManagerInfo, setLoadingNeuronManagerInfo] = useState({}); // {assetIndex: boolean}
     const [neuronInfo, setNeuronInfo] = useState({}); // {assetIndex: neuronInfo}
     const [loadingNeuronInfo, setLoadingNeuronInfo] = useState({}); // {assetIndex: boolean}
     const [tokenMetadata, setTokenMetadata] = useState({}); // {ledgerId: metadata}
@@ -354,6 +359,28 @@ function SneedexOffer() {
         }
     }, [identity, offer, id]);
     
+    // Fetch neuron manager info for an escrowed ICP Neuron Manager canister
+    const fetchNeuronManagerInfo = useCallback(async (assetIndex, canisterId) => {
+        if (!identity) return;
+        
+        setLoadingNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: true }));
+        
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            
+            if ('Ok' in result) {
+                setNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: result.Ok }));
+            } else {
+                console.error('Failed to get neuron manager info:', result.Err);
+            }
+        } catch (e) {
+            console.error('Failed to fetch neuron manager info:', e);
+        } finally {
+            setLoadingNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: false }));
+        }
+    }, [identity]);
+    
     // Fetch SNS neuron info directly from governance canister
     const fetchNeuronInfo = useCallback(async (assetIndex, governanceId, neuronIdHex) => {
         if (!identity) return;
@@ -551,15 +578,22 @@ function SneedexOffer() {
         
         if (isExpanding && assetEntry.escrowed) {
             // Fetch appropriate info based on asset type
-            if ('Canister' in assetEntry.asset && !canisterInfo[assetIndex]) {
-                fetchCanisterInfo(assetIndex);
+            if ('Canister' in assetEntry.asset) {
+                // Always fetch canister info
+                if (!canisterInfo[assetIndex]) {
+                    fetchCanisterInfo(assetIndex);
+                }
+                // If it's an ICP Neuron Manager, also fetch neuron manager info
+                if (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && !neuronManagerInfo[assetIndex]) {
+                    fetchNeuronManagerInfo(assetIndex, details.canister_id);
+                }
             } else if ('SNSNeuron' in assetEntry.asset && !neuronInfo[assetIndex]) {
                 fetchNeuronInfo(assetIndex, details.governance_id, details.neuron_id);
             } else if ('ICRC1Token' in assetEntry.asset && !tokenMetadata[details.ledger_id]) {
                 fetchTokenMetadata(assetIndex, details.ledger_id);
             }
         }
-    }, [expandedAssets, canisterInfo, neuronInfo, tokenMetadata, fetchCanisterInfo, fetchNeuronInfo, fetchTokenMetadata]);
+    }, [expandedAssets, canisterInfo, neuronManagerInfo, neuronInfo, tokenMetadata, fetchCanisterInfo, fetchNeuronManagerInfo, fetchNeuronInfo, fetchTokenMetadata]);
     
     // Format bytes to human readable
     const formatBytes = (bytes) => {
@@ -654,9 +688,14 @@ function SneedexOffer() {
         return Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
     };
     
-    const getAssetTypeIcon = (type) => {
+    const getAssetTypeIcon = (type, canisterKind) => {
         switch (type) {
-            case 'Canister': return <FaCubes style={{ color: theme.colors.accent }} />;
+            case 'Canister': 
+                // Show robot icon for ICP Neuron Manager, otherwise cubes
+                if (canisterKind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                    return <FaRobot style={{ color: theme.colors.accent }} />;
+                }
+                return <FaCubes style={{ color: theme.colors.accent }} />;
             case 'SNSNeuron': return <FaBrain style={{ color: theme.colors.success }} />;
             case 'ICRC1Token': return <FaCoins style={{ color: theme.colors.warning }} />;
             default: return <FaCubes />;
@@ -1871,9 +1910,9 @@ function SneedexOffer() {
                                                                 )}
                                                             </div>
                                                         )}
-                                                        {details.type === 'Canister' && getAssetTypeIcon(details.type)}
+                                                        {details.type === 'Canister' && getAssetTypeIcon(details.type, details.canister_kind)}
                                                         <span style={styles.assetType}>
-                                                            {details.type === 'Canister' && 'Canister'}
+                                                            {details.type === 'Canister' && (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'Canister')}
                                                             {details.type === 'SNSNeuron' && (() => {
                                                                 // Find SNS name from snsData
                                                                 const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
@@ -2277,6 +2316,201 @@ function SneedexOffer() {
                                                             padding: '1rem',
                                                         }}>
                                                             Failed to load canister info
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* ICP Neuron Manager Info Section */}
+                                            {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && details.escrowed && isExpanded && (
+                                                <div style={{
+                                                    marginTop: '1rem',
+                                                    padding: '1rem',
+                                                    background: `linear-gradient(135deg, ${theme.colors.accent}10, ${theme.colors.secondaryBg})`,
+                                                    borderRadius: '10px',
+                                                    border: `1px solid ${theme.colors.accent}30`,
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        marginBottom: '1rem',
+                                                        color: theme.colors.accent,
+                                                        fontWeight: '600',
+                                                    }}>
+                                                        <FaRobot /> ICP Neuron Manager Details
+                                                    </div>
+                                                    
+                                                    {loadingNeuronManagerInfo[idx] ? (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            justifyContent: 'center',
+                                                            gap: '10px',
+                                                            padding: '1rem',
+                                                            color: theme.colors.mutedText,
+                                                        }}>
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                            Loading neuron manager info...
+                                                        </div>
+                                                    ) : neuronManagerInfo[idx] ? (
+                                                        <div>
+                                                            {/* Version */}
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                gap: '12px',
+                                                                flexWrap: 'wrap',
+                                                                marginBottom: '1rem',
+                                                            }}>
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    padding: '8px 12px',
+                                                                    borderRadius: '8px',
+                                                                    minWidth: '100px',
+                                                                }}>
+                                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Version</div>
+                                                                    <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                        v{neuronManagerInfo[idx].version.major.toString()}.
+                                                                        {neuronManagerInfo[idx].version.minor.toString()}.
+                                                                        {neuronManagerInfo[idx].version.patch.toString()}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{
+                                                                    background: theme.colors.tertiaryBg,
+                                                                    padding: '8px 12px',
+                                                                    borderRadius: '8px',
+                                                                    minWidth: '100px',
+                                                                }}>
+                                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Neurons</div>
+                                                                    <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                        {neuronManagerInfo[idx].neuron_count.toString()}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Neurons List */}
+                                                            {neuronManagerInfo[idx].neurons && neuronManagerInfo[idx].neurons.length > 0 && (
+                                                                <div>
+                                                                    <div style={{ 
+                                                                        fontSize: '0.85rem', 
+                                                                        fontWeight: '600',
+                                                                        marginBottom: '8px',
+                                                                        color: theme.colors.text,
+                                                                    }}>
+                                                                        Managed ICP Neurons
+                                                                    </div>
+                                                                    {neuronManagerInfo[idx].neurons.map((neuron, neuronIdx) => {
+                                                                        const stakeIcp = Number(neuron.cached_neuron_stake_e8s) / 1e8;
+                                                                        const dissolveDelayDays = Number(neuron.dissolve_delay_seconds) / (24 * 60 * 60);
+                                                                        const ageDays = Number(neuron.age_seconds) / (24 * 60 * 60);
+                                                                        const stateText = neuron.state === 1 ? 'Locked' : neuron.state === 2 ? 'Dissolving' : neuron.state === 3 ? 'Dissolved' : 'Unknown';
+                                                                        const stateColor = neuron.state === 1 ? '#10B981' : neuron.state === 2 ? '#F59E0B' : neuron.state === 3 ? '#EF4444' : theme.colors.mutedText;
+                                                                        
+                                                                        return (
+                                                                            <div 
+                                                                                key={neuronIdx}
+                                                                                style={{
+                                                                                    background: theme.colors.secondaryBg,
+                                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                                    borderRadius: '8px',
+                                                                                    padding: '12px',
+                                                                                    marginBottom: '8px',
+                                                                                }}
+                                                                            >
+                                                                                <div style={{ 
+                                                                                    display: 'flex', 
+                                                                                    justifyContent: 'space-between', 
+                                                                                    alignItems: 'center',
+                                                                                    marginBottom: '8px',
+                                                                                }}>
+                                                                                    <span style={{ 
+                                                                                        fontFamily: 'monospace', 
+                                                                                        fontSize: '0.8rem',
+                                                                                        color: theme.colors.secondaryText,
+                                                                                    }}>
+                                                                                        ID: {neuron.neuron_id.id.toString()}
+                                                                                    </span>
+                                                                                    <span style={{
+                                                                                        padding: '2px 8px',
+                                                                                        borderRadius: '12px',
+                                                                                        fontSize: '0.75rem',
+                                                                                        fontWeight: '600',
+                                                                                        background: `${stateColor}20`,
+                                                                                        color: stateColor,
+                                                                                    }}>
+                                                                                        {stateText}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div style={{
+                                                                                    display: 'grid',
+                                                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+                                                                                    gap: '8px',
+                                                                                    fontSize: '0.8rem',
+                                                                                }}>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Stake</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                                            {stakeIcp.toFixed(4)} ICP
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Dissolve Delay</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                                            {dissolveDelayDays.toFixed(0)} days
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Age</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                                            {ageDays.toFixed(0)} days
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Voting Power</div>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.text }}>
+                                                                                            {(Number(neuron.voting_power) / 1e8).toFixed(2)}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Refresh button */}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    fetchNeuronManagerInfo(idx, details.canister_id);
+                                                                }}
+                                                                style={{
+                                                                    marginTop: '0.5rem',
+                                                                    background: 'transparent',
+                                                                    border: `1px solid ${theme.colors.accent}50`,
+                                                                    color: theme.colors.accent,
+                                                                    padding: '6px 12px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '0.75rem',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    width: 'fit-content',
+                                                                }}
+                                                            >
+                                                                <FaSync /> Refresh Neuron Info
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            textAlign: 'center',
+                                                            padding: '1rem',
+                                                        }}>
+                                                            Failed to load neuron manager info
                                                         </div>
                                                     )}
                                                 </div>
