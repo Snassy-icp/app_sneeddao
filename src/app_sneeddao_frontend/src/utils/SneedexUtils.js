@@ -114,18 +114,13 @@ export const createSneedexActor = (identity = null) => {
 export const formatAmount = (amount, decimals = 8) => {
     if (!amount && amount !== 0n && amount !== 0) return '—';
     const num = Number(amount) / Math.pow(10, decimals);
-    // Show full precision, trim trailing zeros but keep at least 4 decimals
+    // Show full precision, then trim trailing zeros
     const formatted = num.toFixed(decimals);
-    // Remove trailing zeros
-    let trimmed = formatted.replace(/0+$/, '').replace(/\.$/, '');
-    // Ensure at least 4 decimal places for readability
-    const parts = trimmed.split('.');
-    if (parts.length === 1) {
-        return parts[0] + '.0000';
-    }
-    const fracLen = parts[1].length;
-    if (fracLen < 4) {
-        return trimmed + '0'.repeat(4 - fracLen);
+    // Remove trailing zeros and trailing decimal point
+    let trimmed = formatted.replace(/\.?0+$/, '');
+    // If it's a whole number, just return it
+    if (!trimmed.includes('.')) {
+        return trimmed;
     }
     return trimmed;
 };

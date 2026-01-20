@@ -2106,7 +2106,7 @@ function SneedexOffer() {
                                                                 const decimals = meta?.decimals || 8;
                                                                 const symbol = meta?.symbol || 'Tokens';
                                                                 const displayAmount = Number(details.amount) / Math.pow(10, decimals);
-                                                                return `${displayAmount.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${symbol}`;
+                                                                return `Token: ${displayAmount.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${symbol}`;
                                                             })()}
                                                         </span>
                                                     </div>
@@ -3873,64 +3873,89 @@ function SneedexOffer() {
                             
                             {isActive && isAuthenticated && !pendingBid && (
                                 <div style={styles.bidSection}>
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center',
-                                        marginBottom: '0.75rem',
-                                        fontSize: '0.85rem'
-                                    }}>
-                                        <span style={{ color: theme.colors.mutedText }}>
-                                            Min: {formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} {tokenInfo.symbol}
-                                        </span>
-                                        <span style={{ color: theme.colors.text }}>
-                                            <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
-                                            {userBalance !== null ? (
-                                                <span style={{ fontWeight: '600' }}>
-                                                    {formatAmount(userBalance, tokenInfo.decimals)} {tokenInfo.symbol}
+                                    {/* Only show bid input if there's a min_bid_price (auction mode) */}
+                                    {offer.min_bid_price[0] ? (
+                                        <>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '0.75rem',
+                                                fontSize: '0.85rem'
+                                            }}>
+                                                <span style={{ color: theme.colors.mutedText }}>
+                                                    Min: {formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} {tokenInfo.symbol}
                                                 </span>
-                                            ) : (
-                                                <span style={{ opacity: 0.5 }}>Loading...</span>
-                                            )}
-                                        </span>
-                                    </div>
-                                    <div style={styles.bidInputRow}>
-                                        <button
-                                            style={{
-                                                padding: '12px 12px',
-                                                background: theme.colors.secondaryBg,
-                                                color: theme.colors.accent,
-                                                border: `1px solid ${theme.colors.accent}`,
-                                                borderRadius: '10px',
-                                                cursor: 'pointer',
-                                                fontWeight: '600',
-                                                fontSize: '0.85rem',
-                                                whiteSpace: 'nowrap',
-                                                flexShrink: 0,
-                                            }}
-                                            onClick={() => setBidAmount(formatAmount(getMinimumBidE8s(), tokenInfo.decimals))}
-                                            title={`Set to minimum bid: ${formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} ${tokenInfo.symbol}`}
-                                        >
-                                            Min
-                                        </button>
-                                        <input
-                                            type="number"
-                                            step="0.0001"
-                                            placeholder={`Amount in ${tokenInfo.symbol}`}
-                                            style={styles.bidInput}
-                                            value={bidAmount}
-                                            onChange={(e) => setBidAmount(e.target.value)}
-                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                                        />
-                                        <button
-                                            style={styles.bidButton}
-                                            onClick={handlePlaceBid}
-                                            disabled={bidding}
-                                        >
-                                            {bidding ? (bidProgress || 'Processing...') : 'Place Bid'}
-                                        </button>
-                                    </div>
+                                                <span style={{ color: theme.colors.text }}>
+                                                    <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
+                                                    {userBalance !== null ? (
+                                                        <span style={{ fontWeight: '600' }}>
+                                                            {formatAmount(userBalance, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ opacity: 0.5 }}>Loading...</span>
+                                                    )}
+                                                </span>
+                                            </div>
+                                            <div style={styles.bidInputRow}>
+                                                <button
+                                                    style={{
+                                                        padding: '12px 12px',
+                                                        background: theme.colors.secondaryBg,
+                                                        color: theme.colors.accent,
+                                                        border: `1px solid ${theme.colors.accent}`,
+                                                        borderRadius: '10px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.85rem',
+                                                        whiteSpace: 'nowrap',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    onClick={() => setBidAmount(formatAmount(getMinimumBidE8s(), tokenInfo.decimals))}
+                                                    title={`Set to minimum bid: ${formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} ${tokenInfo.symbol}`}
+                                                >
+                                                    Min
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    step="0.0001"
+                                                    placeholder={`Amount in ${tokenInfo.symbol}`}
+                                                    style={styles.bidInput}
+                                                    value={bidAmount}
+                                                    onChange={(e) => setBidAmount(e.target.value)}
+                                                    onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                                    onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                                />
+                                                <button
+                                                    style={styles.bidButton}
+                                                    onClick={handlePlaceBid}
+                                                    disabled={bidding}
+                                                >
+                                                    {bidding ? (bidProgress || 'Processing...') : 'Place Bid'}
+                                                </button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        /* Buyout-only mode - show wallet balance */
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'flex-end', 
+                                            alignItems: 'center',
+                                            marginBottom: '0.75rem',
+                                            fontSize: '0.85rem'
+                                        }}>
+                                            <span style={{ color: theme.colors.text }}>
+                                                <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
+                                                {userBalance !== null ? (
+                                                    <span style={{ fontWeight: '600' }}>
+                                                        {formatAmount(userBalance, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ opacity: 0.5 }}>Loading...</span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    )}
                                     {offer.buyout_price[0] && (
                                         <button
                                             style={styles.buyoutButton}
