@@ -812,9 +812,27 @@ function SneedexOffer() {
     const getAssetTypeIcon = (type, canisterKind) => {
         switch (type) {
             case 'Canister': 
-                // Show robot icon for ICP Neuron Manager, otherwise cubes
+                // Show robot icon with ICP logo overlay for ICP Neuron Manager, otherwise cubes
                 if (canisterKind === CANISTER_KIND_ICP_NEURON_MANAGER) {
-                    return <FaRobot style={{ color: theme.colors.accent }} />;
+                    return (
+                        <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
+                            <FaRobot style={{ color: theme.colors.accent, fontSize: '20px' }} />
+                            <img 
+                                src="/icp_symbol.svg" 
+                                alt="ICP" 
+                                style={{ 
+                                    width: 12, 
+                                    height: 12, 
+                                    borderRadius: '50%',
+                                    position: 'absolute',
+                                    bottom: -2,
+                                    right: -4,
+                                    border: `1px solid ${theme.colors.cardBg}`,
+                                    background: theme.colors.cardBg,
+                                }}
+                            />
+                        </span>
+                    );
                 }
                 return <FaCubes style={{ color: theme.colors.accent }} />;
             case 'SNSNeuron': return <FaBrain style={{ color: theme.colors.success }} />;
@@ -2696,24 +2714,27 @@ function SneedexOffer() {
                                                                                     alignItems: 'center',
                                                                                     marginBottom: '8px',
                                                                                 }}>
-                                                                                    <a 
-                                                                                        href={dashboardUrl}
-                                                                                        target="_blank"
-                                                                                        rel="noopener noreferrer"
-                                                                                        onClick={(e) => e.stopPropagation()}
-                                                                                        style={{ 
-                                                                                            fontFamily: 'monospace', 
-                                                                                            fontSize: '0.8rem',
-                                                                                            color: theme.colors.accent,
-                                                                                            textDecoration: 'none',
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            gap: '4px',
-                                                                                        }}
-                                                                                    >
-                                                                                        <FaExternalLinkAlt style={{ fontSize: '0.65rem' }} />
-                                                                                        {neuronId}
-                                                                                    </a>
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                        <FaBrain style={{ color: theme.colors.success, fontSize: '16px' }} />
+                                                                                        <a 
+                                                                                            href={dashboardUrl}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                            style={{ 
+                                                                                                fontFamily: 'monospace', 
+                                                                                                fontSize: '0.8rem',
+                                                                                                color: theme.colors.accent,
+                                                                                                textDecoration: 'none',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                gap: '4px',
+                                                                                            }}
+                                                                                        >
+                                                                                            <FaExternalLinkAlt style={{ fontSize: '0.65rem' }} />
+                                                                                            {neuronId}
+                                                                                        </a>
+                                                                                    </div>
                                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                                         <span style={{
                                                                                             fontSize: '0.8rem',
