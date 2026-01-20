@@ -3,7 +3,8 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes } from 'react-icons/fa';
+import TokenSelector from '../components/TokenSelector';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { 
@@ -50,6 +51,16 @@ function SneedexOffers() {
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 12;
+    
+    // Advanced filter state
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+    const [bidTokenFilter, setBidTokenFilter] = useState(''); // Filter by payment token
+    const [minPriceFilter, setMinPriceFilter] = useState(''); // Min price filter
+    const [maxPriceFilter, setMaxPriceFilter] = useState(''); // Max price filter
+    const [assetTokenFilter, setAssetTokenFilter] = useState(''); // Filter by asset token (for tokens, SNS neurons, neuron managers)
+    
+    // ICP ledger canister ID constant
+    const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -328,6 +339,29 @@ function SneedexOffers() {
         });
     }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo, fetchTokenLogo, fetchNeuronManagerInfo]);
     
+    // Helper to get SNS ledger from governance ID
+    const getSnsLedgerFromGovernance = useCallback((governanceId) => {
+        const sns = snsList.find(s => {
+            const govId = s.governance_canister_id?.[0]?.toString() || s.governance_canister_id?.toString();
+            return govId === governanceId;
+        });
+        if (sns) {
+            return sns.ledger_canister_id?.[0]?.toString() || sns.ledger_canister_id?.toString();
+        }
+        return null;
+    }, [snsList]);
+    
+    // Check if any advanced filters are active
+    const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter;
+    
+    // Clear all advanced filters
+    const clearAdvancedFilters = () => {
+        setBidTokenFilter('');
+        setMinPriceFilter('');
+        setMaxPriceFilter('');
+        setAssetTokenFilter('');
+    };
+    
     const filteredOffers = offers.filter(offer => {
         if (filterType !== 'all') {
             const hasType = offer.assets.some(a => {
@@ -348,6 +382,65 @@ function SneedexOffers() {
             const matchId = offer.id.toString().includes(term);
             const matchCreator = offer.creator.toString().toLowerCase().includes(term);
             if (!matchId && !matchCreator) return false;
+        }
+        
+        // Advanced filter: bid token
+        if (bidTokenFilter) {
+            const offerBidToken = offer.price_token_ledger.toString();
+            if (offerBidToken !== bidTokenFilter) return false;
+        }
+        
+        // Advanced filter: price range
+        if (minPriceFilter || maxPriceFilter) {
+            const tokenInfo = getTokenInfo(offer.price_token_ledger.toString());
+            const decimals = tokenInfo.decimals || 8;
+            
+            // Get the relevant price (min bid or buyout)
+            const offerPrice = offer.min_bid_price[0] || offer.buyout_price[0];
+            if (!offerPrice && (minPriceFilter || maxPriceFilter)) return false;
+            
+            const priceValue = Number(offerPrice) / Math.pow(10, decimals);
+            
+            if (minPriceFilter) {
+                const minPrice = parseFloat(minPriceFilter);
+                if (!isNaN(minPrice) && priceValue < minPrice) return false;
+            }
+            
+            if (maxPriceFilter) {
+                const maxPrice = parseFloat(maxPriceFilter);
+                if (!isNaN(maxPrice) && priceValue > maxPrice) return false;
+            }
+        }
+        
+        // Advanced filter: asset token
+        if (assetTokenFilter) {
+            const hasMatchingAsset = offer.assets.some(a => {
+                const type = getAssetType(a.asset);
+                const details = getAssetDetails(a);
+                
+                // For ICRC1Token assets, match ledger directly
+                if (type === 'ICRC1Token' && details.ledger_id === assetTokenFilter) {
+                    return true;
+                }
+                
+                // For SNS neurons, match if the SNS uses this token ledger
+                if (type === 'SNSNeuron') {
+                    const snsLedger = getSnsLedgerFromGovernance(details.governance_id);
+                    if (snsLedger === assetTokenFilter) {
+                        return true;
+                    }
+                }
+                
+                // For ICP Neuron Managers, match if ICP is selected
+                if (type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                    if (assetTokenFilter === ICP_LEDGER_ID) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            });
+            if (!hasMatchingAsset) return false;
         }
         
         return true;
@@ -385,7 +478,7 @@ function SneedexOffers() {
     // Reset to page 1 when filters/search/tab change
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, searchTerm, sortBy, offerTab]);
+    }, [filterType, searchTerm, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter]);
 
     const styles = {
         container: {
@@ -675,6 +768,107 @@ function SneedexOffers() {
             color: theme.colors.mutedText,
             fontSize: '0.9rem',
         },
+        advancedFilterToggle: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '0.9rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        advancedFilterSection: {
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+            animation: 'fadeIn 0.2s ease',
+        },
+        advancedFilterHeader: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.25rem',
+        },
+        advancedFilterTitle: {
+            fontSize: '1rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+        },
+        clearFiltersButton: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 12px',
+            borderRadius: '6px',
+            border: 'none',
+            background: `${theme.colors.error || '#ff4444'}20`,
+            color: theme.colors.error || '#ff4444',
+            fontSize: '0.8rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        advancedFilterGrid: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gap: '1.25rem',
+        },
+        filterGroup: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+        },
+        filterLabel: {
+            fontSize: '0.85rem',
+            fontWeight: '500',
+            color: theme.colors.secondaryText,
+        },
+        filterInput: {
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '0.9rem',
+            outline: 'none',
+            transition: 'border-color 0.2s ease',
+        },
+        priceRangeRow: {
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center',
+        },
+        priceInputWrapper: {
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+        },
+        priceInputLabel: {
+            fontSize: '0.75rem',
+            color: theme.colors.mutedText,
+        },
+        activeFilterBadge: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            background: `${theme.colors.accent}30`,
+            color: theme.colors.accent,
+            fontSize: '0.75rem',
+            fontWeight: '600',
+        },
     };
 
     return (
@@ -775,7 +969,133 @@ function SneedexOffers() {
                         <option value="highest_bid">Highest Bid</option>
                         <option value="lowest_price">Lowest Price</option>
                     </select>
+                    <button
+                        style={{
+                            ...styles.advancedFilterToggle,
+                            borderColor: showAdvancedFilters ? theme.colors.accent : theme.colors.border,
+                            background: hasActiveAdvancedFilters ? `${theme.colors.accent}15` : theme.colors.secondaryBg,
+                        }}
+                        onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                    >
+                        <FaFilter />
+                        Advanced
+                        {hasActiveAdvancedFilters && (
+                            <span style={styles.activeFilterBadge}>
+                                {[bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter].filter(Boolean).length}
+                            </span>
+                        )}
+                        {showAdvancedFilters ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                    </button>
                 </div>
+                
+                {/* Advanced Filters Section */}
+                {showAdvancedFilters && (
+                    <div style={styles.advancedFilterSection}>
+                        <div style={styles.advancedFilterHeader}>
+                            <div style={styles.advancedFilterTitle}>
+                                <FaFilter /> Advanced Filters
+                            </div>
+                            {hasActiveAdvancedFilters && (
+                                <button
+                                    style={styles.clearFiltersButton}
+                                    onClick={clearAdvancedFilters}
+                                >
+                                    <FaTimes size={12} /> Clear All
+                                </button>
+                            )}
+                        </div>
+                        
+                        <div style={styles.advancedFilterGrid}>
+                            {/* Payment Token Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Payment Token (Bid Currency)</label>
+                                <TokenSelector
+                                    value={bidTokenFilter}
+                                    onChange={(ledgerId) => setBidTokenFilter(ledgerId)}
+                                    placeholder="Any token..."
+                                    style={{ width: '100%' }}
+                                />
+                                {bidTokenFilter && (
+                                    <button
+                                        onClick={() => setBidTokenFilter('')}
+                                        style={{
+                                            ...styles.clearFiltersButton,
+                                            alignSelf: 'flex-start',
+                                            marginTop: '4px',
+                                        }}
+                                    >
+                                        <FaTimes size={10} /> Clear
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {/* Price Range Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Price Range</label>
+                                <div style={styles.priceRangeRow}>
+                                    <div style={styles.priceInputWrapper}>
+                                        <span style={styles.priceInputLabel}>Min</span>
+                                        <input
+                                            type="number"
+                                            placeholder="0"
+                                            value={minPriceFilter}
+                                            onChange={(e) => setMinPriceFilter(e.target.value)}
+                                            style={styles.filterInput}
+                                            min="0"
+                                            step="any"
+                                        />
+                                    </div>
+                                    <span style={{ color: theme.colors.mutedText, marginTop: '16px' }}>—</span>
+                                    <div style={styles.priceInputWrapper}>
+                                        <span style={styles.priceInputLabel}>Max</span>
+                                        <input
+                                            type="number"
+                                            placeholder="∞"
+                                            value={maxPriceFilter}
+                                            onChange={(e) => setMaxPriceFilter(e.target.value)}
+                                            style={styles.filterInput}
+                                            min="0"
+                                            step="any"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Asset Token Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>
+                                    Asset Token
+                                    <span style={{ fontWeight: 'normal', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                        (Tokens, SNS Neurons, ICP Neuron Managers)
+                                    </span>
+                                </label>
+                                <TokenSelector
+                                    value={assetTokenFilter}
+                                    onChange={(ledgerId) => setAssetTokenFilter(ledgerId)}
+                                    placeholder="Any asset token..."
+                                    style={{ width: '100%' }}
+                                />
+                                {assetTokenFilter && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                        <button
+                                            onClick={() => setAssetTokenFilter('')}
+                                            style={{
+                                                ...styles.clearFiltersButton,
+                                            }}
+                                        >
+                                            <FaTimes size={10} /> Clear
+                                        </button>
+                                        {assetTokenFilter === ICP_LEDGER_ID && (
+                                            <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                                Includes ICP Neuron Managers
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
                 
                 {loading && offers.length === 0 ? (
                     <div style={styles.loadingState}>
@@ -1093,6 +1413,10 @@ function SneedexOffers() {
                 @keyframes spin {
                     from { transform: rotate(0deg); }
                     to { transform: rotate(360deg); }
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-8px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
             `}</style>
         </div>
