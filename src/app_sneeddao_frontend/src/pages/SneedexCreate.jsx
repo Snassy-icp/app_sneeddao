@@ -27,6 +27,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -1657,9 +1658,35 @@ function SneedexCreate() {
                                                         {asset.type === 'token' && `${asset.amount} ${asset.symbol}`}
                                                     </div>
                                                     <div style={styles.assetId}>
-                                                        {asset.type === 'canister' && asset.canister_id}
-                                                        {asset.type === 'neuron' && `${asset.governance_id.slice(0, 10)}... / ${asset.neuron_id.slice(0, 10)}...`}
-                                                        {asset.type === 'token' && asset.ledger_id}
+                                                        {asset.type === 'canister' && (
+                                                            <PrincipalDisplay 
+                                                                principal={asset.canister_id}
+                                                                short={true}
+                                                                showCopyButton={false}
+                                                                style={{ fontSize: 'inherit', color: 'inherit' }}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                        )}
+                                                        {asset.type === 'neuron' && (
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                                <PrincipalDisplay 
+                                                                    principal={asset.governance_id}
+                                                                    short={true}
+                                                                    showCopyButton={false}
+                                                                    style={{ fontSize: 'inherit', color: 'inherit' }}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                /> / {asset.neuron_id.slice(0, 10)}...
+                                                            </span>
+                                                        )}
+                                                        {asset.type === 'token' && (
+                                                            <PrincipalDisplay 
+                                                                principal={asset.ledger_id}
+                                                                short={true}
+                                                                showCopyButton={false}
+                                                                style={{ fontSize: 'inherit', color: 'inherit' }}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>

@@ -28,6 +28,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import InfoModal from '../components/InfoModal';
 import ConfirmationModal from '../ConfirmationModal';
 
@@ -1916,7 +1917,13 @@ function SneedexOffer() {
                     <div style={styles.titleSection}>
                         <h1 style={styles.title}>Offer #{Number(offer.id)}</h1>
                         <div style={styles.subtitle}>
-                            <FaUser /> Created by {offer.creator.toString().slice(0, 12)}...
+                            <FaUser /> Created by <PrincipalDisplay 
+                                principal={offer.creator} 
+                                short={true}
+                                showCopyButton={false}
+                                style={{ display: 'inline-flex' }}
+                                isAuthenticated={isAuthenticated}
+                            />
                         </div>
                     </div>
                     <button style={styles.refreshButton} onClick={fetchOffer}>
@@ -2095,18 +2102,40 @@ function SneedexOffer() {
                                                         </span>
                                                     </div>
                                                     {details.type === 'Canister' && (
-                                                        <div style={styles.assetDetail}>
-                                                            ID: {details.canister_id}
+                                                        <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
+                                                            ID: <PrincipalDisplay 
+                                                                principal={details.canister_id}
+                                                                short={true}
+                                                                showCopyButton={false}
+                                                                style={{ fontSize: 'inherit' }}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
                                                         </div>
                                                     )}
                                                     {details.type === 'SNSNeuron' && !details.escrowed && (
                                                         <>
-                                                            <div style={styles.assetDetail}>Governance: {details.governance_id}</div>
+                                                            <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
+                                                                Governance: <PrincipalDisplay 
+                                                                    principal={details.governance_id}
+                                                                    short={true}
+                                                                    showCopyButton={false}
+                                                                    style={{ fontSize: 'inherit' }}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                />
+                                                            </div>
                                                             <div style={styles.assetDetail}>Neuron: {details.neuron_id}</div>
                                                         </>
                                                     )}
                                                     {details.type === 'ICRC1Token' && !details.escrowed && (
-                                                        <div style={styles.assetDetail}>Ledger: {details.ledger_id}</div>
+                                                        <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px'}}>
+                                                            Ledger: <PrincipalDisplay 
+                                                                principal={details.ledger_id}
+                                                                short={true}
+                                                                showCopyButton={false}
+                                                                style={{ fontSize: 'inherit' }}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                        </div>
                                                     )}
                                                 </div>
                                                 
@@ -2413,34 +2442,42 @@ function SneedexOffer() {
                                                                             flexDirection: 'column', 
                                                                             gap: '4px',
                                                                         }}>
-                                                                            {info.controllers.map((ctrl, i) => (
-                                                                                <div key={i} style={{
-                                                                                    fontSize: '0.75rem',
-                                                                                    fontFamily: 'monospace',
-                                                                                    color: ctrl.toString() === SNEEDEX_CANISTER_ID 
-                                                                                        ? theme.colors.accent 
-                                                                                        : theme.colors.secondaryText,
-                                                                                    background: theme.colors.tertiaryBg,
-                                                                                    padding: '4px 8px',
-                                                                                    borderRadius: '4px',
-                                                                                    display: 'flex',
-                                                                                    alignItems: 'center',
-                                                                                    gap: '6px',
-                                                                                }}>
-                                                                                    {ctrl.toString() === SNEEDEX_CANISTER_ID && (
-                                                                                        <span style={{ 
-                                                                                            fontSize: '0.65rem',
-                                                                                            background: isSneedexOnlyController ? theme.colors.success : theme.colors.accent,
-                                                                                            color: '#fff',
-                                                                                            padding: '1px 5px',
-                                                                                            borderRadius: '3px',
-                                                                                        }}>
-                                                                                            SNEEDEX
-                                                                                        </span>
-                                                                                    )}
-                                                                                    {ctrl.toString()}
-                                                                                </div>
-                                                                            ))}
+                                                                            {info.controllers.map((ctrl, i) => {
+                                                                                const isSneedex = ctrl.toString() === SNEEDEX_CANISTER_ID;
+                                                                                return (
+                                                                                    <div key={i} style={{
+                                                                                        fontSize: '0.75rem',
+                                                                                        background: theme.colors.tertiaryBg,
+                                                                                        padding: '4px 8px',
+                                                                                        borderRadius: '4px',
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'center',
+                                                                                        gap: '6px',
+                                                                                    }}>
+                                                                                        {isSneedex && (
+                                                                                            <span style={{ 
+                                                                                                fontSize: '0.65rem',
+                                                                                                background: isSneedexOnlyController ? theme.colors.success : theme.colors.accent,
+                                                                                                color: '#fff',
+                                                                                                padding: '1px 5px',
+                                                                                                borderRadius: '3px',
+                                                                                            }}>
+                                                                                                SNEEDEX
+                                                                                            </span>
+                                                                                        )}
+                                                                                        <PrincipalDisplay 
+                                                                                            principal={ctrl}
+                                                                                            short={true}
+                                                                                            showCopyButton={false}
+                                                                                            style={{ 
+                                                                                                fontSize: 'inherit',
+                                                                                                color: isSneedex ? theme.colors.accent : theme.colors.secondaryText 
+                                                                                            }}
+                                                                                            isAuthenticated={isAuthenticated}
+                                                                                        />
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     </div>
                                                                 );
@@ -3075,43 +3112,53 @@ function SneedexOffer() {
                                                                         maxHeight: '150px',
                                                                         overflowY: 'auto',
                                                                     }}>
-                                                                        {nInfo.permissions.map((perm, i) => (
-                                                                            <div key={i} style={{
-                                                                                fontSize: '0.75rem',
-                                                                                fontFamily: 'monospace',
-                                                                                color: perm.principal?.[0]?.toString() === SNEEDEX_CANISTER_ID 
-                                                                                    ? theme.colors.accent 
-                                                                                    : theme.colors.secondaryText,
-                                                                                background: theme.colors.tertiaryBg,
-                                                                                padding: '4px 8px',
-                                                                                borderRadius: '4px',
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                justifyContent: 'space-between',
-                                                                                gap: '6px',
-                                                                            }}>
-                                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                    {perm.principal?.[0]?.toString() === SNEEDEX_CANISTER_ID && (
-                                                                                        <span style={{ 
-                                                                                            fontSize: '0.65rem',
-                                                                                            background: theme.colors.accent,
-                                                                                            color: '#fff',
-                                                                                            padding: '1px 5px',
-                                                                                            borderRadius: '3px',
-                                                                                        }}>
-                                                                                            SNEEDEX
-                                                                                        </span>
-                                                                                    )}
-                                                                                    {perm.principal?.[0]?.toString()?.slice(0, 15)}...
-                                                                                </span>
-                                                                                <span style={{
-                                                                                    fontSize: '0.65rem',
-                                                                                    color: theme.colors.mutedText,
+                                                                        {nInfo.permissions.map((perm, i) => {
+                                                                            const isSneedex = perm.principal?.[0]?.toString() === SNEEDEX_CANISTER_ID;
+                                                                            return (
+                                                                                <div key={i} style={{
+                                                                                    fontSize: '0.75rem',
+                                                                                    background: theme.colors.tertiaryBg,
+                                                                                    padding: '4px 8px',
+                                                                                    borderRadius: '4px',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'space-between',
+                                                                                    gap: '6px',
                                                                                 }}>
-                                                                                    [{perm.permission_type?.length || 0} perms]
-                                                                                </span>
-                                                                            </div>
-                                                                        ))}
+                                                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                        {isSneedex && (
+                                                                                            <span style={{ 
+                                                                                                fontSize: '0.65rem',
+                                                                                                background: theme.colors.accent,
+                                                                                                color: '#fff',
+                                                                                                padding: '1px 5px',
+                                                                                                borderRadius: '3px',
+                                                                                            }}>
+                                                                                                SNEEDEX
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {perm.principal?.[0] && (
+                                                                                            <PrincipalDisplay 
+                                                                                                principal={perm.principal[0]}
+                                                                                                short={true}
+                                                                                                showCopyButton={false}
+                                                                                                style={{ 
+                                                                                                    fontSize: 'inherit',
+                                                                                                    color: isSneedex ? theme.colors.accent : theme.colors.secondaryText
+                                                                                                }}
+                                                                                                isAuthenticated={isAuthenticated}
+                                                                                            />
+                                                                                        )}
+                                                                                    </span>
+                                                                                    <span style={{
+                                                                                        fontSize: '0.65rem',
+                                                                                        color: theme.colors.mutedText,
+                                                                                    }}>
+                                                                                        [{perm.permission_type?.length || 0} perms]
+                                                                                    </span>
+                                                                                </div>
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -3484,7 +3531,13 @@ function SneedexOffer() {
                                                 {/* Bidder Info */}
                                                 <div style={styles.bidInfo}>
                                                     <div style={styles.bidder}>
-                                                        {bid.bidder.toString().slice(0, 8)}...{bid.bidder.toString().slice(-4)}
+                                                        <PrincipalDisplay 
+                                                            principal={bid.bidder}
+                                                            short={true}
+                                                            showCopyButton={false}
+                                                            style={{ fontSize: 'inherit', color: 'inherit' }}
+                                                            isAuthenticated={isAuthenticated}
+                                                        />
                                                     </div>
                                                     <div style={styles.bidMeta}>
                                                         <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
@@ -3600,7 +3653,6 @@ function SneedexOffer() {
                                         maxHeight: '150px', 
                                         overflowY: 'auto',
                                         fontSize: '0.8rem',
-                                        fontFamily: 'monospace',
                                     }}>
                                         {offer.approved_bidders[0].map((principal, idx) => (
                                             <div 
@@ -3609,11 +3661,15 @@ function SneedexOffer() {
                                                     padding: '6px 8px',
                                                     background: idx % 2 === 0 ? theme.colors.tertiaryBg : 'transparent',
                                                     borderRadius: '4px',
-                                                    color: theme.colors.secondaryText,
-                                                    wordBreak: 'break-all',
                                                 }}
                                             >
-                                                {principal.toString()}
+                                                <PrincipalDisplay 
+                                                    principal={principal}
+                                                    short={false}
+                                                    showCopyButton={true}
+                                                    style={{ fontSize: 'inherit' }}
+                                                    isAuthenticated={isAuthenticated}
+                                                />
                                             </div>
                                         ))}
                                     </div>
@@ -4055,8 +4111,14 @@ function SneedexOffer() {
                                 <div style={{ marginBottom: '0.5rem' }}>
                                     <strong>Price Token:</strong> {tokenInfo.symbol}
                                 </div>
-                                <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                                    <strong>Ledger:</strong> {offer.price_token_ledger.toString()}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <strong>Ledger:</strong> 
+                                    <PrincipalDisplay 
+                                        principal={offer.price_token_ledger}
+                                        short={true}
+                                        showCopyButton={true}
+                                        isAuthenticated={isAuthenticated}
+                                    />
                                 </div>
                             </div>
                         </div>
