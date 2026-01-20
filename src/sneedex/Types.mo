@@ -246,11 +246,12 @@ module {
         getNeuronCount : shared () -> async Nat;
         getAllNeuronsInfo : shared () -> async [(ICPNeuronId, ?{
             dissolve_delay_seconds : Nat64;
-            neuron_id : Nat64;
-            cached_neuron_stake_e8s : Nat64;
             state : Int32;
+            stake_e8s : Nat64;
             age_seconds : Nat64;
             voting_power : Nat64;
+            // Additional fields from NeuronInfo that we don't use:
+            // recent_ballots, neuron_type, created_timestamp_seconds, etc.
         })];
     };
     

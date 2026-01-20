@@ -495,12 +495,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         
         try {
             let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
+            
+            // Only make 2 calls instead of 3 - derive count from neurons array
             let version = await manager.getVersion();
-            let neuronCount = await manager.getNeuronCount();
             let neuronsInfoRaw = await manager.getAllNeuronsInfo();
             
             // Convert neuron info to our format
-            let neurons = Array.mapFilter<(T.ICPNeuronId, ?{ dissolve_delay_seconds : Nat64; neuron_id : Nat64; cached_neuron_stake_e8s : Nat64; state : Int32; age_seconds : Nat64; voting_power : Nat64 }), T.ICPNeuronInfo>(
+            let neurons = Array.mapFilter<(T.ICPNeuronId, ?{ dissolve_delay_seconds : Nat64; state : Int32; stake_e8s : Nat64; age_seconds : Nat64; voting_power : Nat64 }), T.ICPNeuronInfo>(
                 neuronsInfoRaw,
                 func((nid, infoOpt)) : ?T.ICPNeuronInfo {
                     switch (infoOpt) {
@@ -508,7 +509,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         case (?info) {
                             ?{
                                 neuron_id = nid;
-                                cached_neuron_stake_e8s = info.cached_neuron_stake_e8s;
+                                cached_neuron_stake_e8s = info.stake_e8s; // Map from stake_e8s to cached_neuron_stake_e8s
                                 dissolve_delay_seconds = info.dissolve_delay_seconds;
                                 state = info.state;
                                 age_seconds = info.age_seconds;
@@ -522,7 +523,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             
             #Ok({
                 version = version;
-                neuron_count = neuronCount;
+                neuron_count = neurons.size(); // Derive from actual array
                 neurons = neurons;
             });
         } catch (_e) {
