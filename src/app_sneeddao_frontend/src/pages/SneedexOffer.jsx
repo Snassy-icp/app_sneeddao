@@ -625,27 +625,33 @@ function SneedexOffer() {
     
     const tokenFee = tokenInfo.fee;
     
-    const getMinimumBid = () => {
-        if (!offer) return 0;
+    // Returns minimum bid in e8s as BigInt - all math done in integers, no floating point
+    const getMinimumBidE8s = () => {
+        if (!offer) return BigInt(0);
         if (highestBid) {
             // Calculate minimum increment based on min_bid_increment_fee_multiple if set
             let minIncrement;
             if (offer.min_bid_increment_fee_multiple?.[0] && tokenFee) {
-                // Increment = multiple × fee
-                minIncrement = Number(offer.min_bid_increment_fee_multiple[0]) * Number(tokenFee) / Math.pow(10, tokenInfo.decimals);
+                // Increment = multiple × fee (all BigInt math)
+                minIncrement = BigInt(offer.min_bid_increment_fee_multiple[0]) * tokenFee;
             } else {
                 // Default: 1 smallest unit
-                minIncrement = 1 / Math.pow(10, tokenInfo.decimals);
+                minIncrement = BigInt(1);
             }
-            return Number(highestBid.amount) / Math.pow(10, tokenInfo.decimals) + minIncrement;
+            return BigInt(highestBid.amount) + minIncrement;
         }
         if (offer.min_bid_price[0]) {
-            return Number(offer.min_bid_price[0]) / Math.pow(10, tokenInfo.decimals);
+            return BigInt(offer.min_bid_price[0]);
         }
         if (offer.buyout_price[0]) {
-            return Number(offer.buyout_price[0]) / Math.pow(10, tokenInfo.decimals);
+            return BigInt(offer.buyout_price[0]);
         }
-        return 0;
+        return BigInt(0);
+    };
+    
+    // Convert e8s to decimal for display
+    const getMinimumBid = () => {
+        return Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
     };
     
     const getAssetTypeIcon = (type) => {

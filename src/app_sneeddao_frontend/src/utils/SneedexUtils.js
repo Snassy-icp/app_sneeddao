@@ -93,22 +93,9 @@ export const formatAmount = (amount, decimals = 8) => {
  * @returns {BigInt} Amount in e8s
  */
 export const parseAmount = (amount, decimals = 8) => {
-    // Use string manipulation to avoid floating point precision issues
-    const str = String(amount);
-    const parts = str.split('.');
-    const wholePart = parts[0] || '0';
-    let fracPart = parts[1] || '';
-    
-    // Pad or truncate fractional part to match decimals
-    if (fracPart.length < decimals) {
-        fracPart = fracPart.padEnd(decimals, '0');
-    } else if (fracPart.length > decimals) {
-        fracPart = fracPart.slice(0, decimals);
-    }
-    
-    // Combine and convert to BigInt
-    const combined = wholePart + fracPart;
-    return BigInt(combined);
+    // Use Math.round to avoid floating point precision issues
+    const num = parseFloat(amount) * Math.pow(10, decimals);
+    return BigInt(Math.round(num));
 };
 
 /**
