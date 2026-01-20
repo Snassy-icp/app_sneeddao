@@ -18,7 +18,9 @@ import {
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
-    CANISTER_KIND_NAMES
+    CANISTER_KIND_NAMES,
+    MAX_CANISTER_TITLE_LENGTH,
+    MAX_CANISTER_DESCRIPTION_LENGTH
 } from '../utils/SneedexUtils';
 import { getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
 import TokenSelector from '../components/TokenSelector';
@@ -237,6 +239,8 @@ function SneedexCreate() {
     const [newAssetType, setNewAssetType] = useState('canister');
     const [newAssetCanisterId, setNewAssetCanisterId] = useState('');
     const [newAssetCanisterKind, setNewAssetCanisterKind] = useState(0); // 0 = unknown, 1 = ICP Neuron Manager
+    const [newAssetCanisterTitle, setNewAssetCanisterTitle] = useState('');
+    const [newAssetCanisterDescription, setNewAssetCanisterDescription] = useState('');
     const [verifyingCanisterKind, setVerifyingCanisterKind] = useState(false);
     const [canisterKindVerified, setCanisterKindVerified] = useState(null); // null, true, or error message
     const [newAssetGovernanceId, setNewAssetGovernanceId] = useState('');
@@ -733,12 +737,25 @@ function SneedexCreate() {
                     return;
                 }
                 
+                // Validate title and description lengths
+                if (newAssetCanisterTitle.length > MAX_CANISTER_TITLE_LENGTH) {
+                    setError(`Title exceeds maximum length of ${MAX_CANISTER_TITLE_LENGTH} characters`);
+                    return;
+                }
+                if (newAssetCanisterDescription.length > MAX_CANISTER_DESCRIPTION_LENGTH) {
+                    setError(`Description exceeds maximum length of ${MAX_CANISTER_DESCRIPTION_LENGTH} characters`);
+                    return;
+                }
+                
                 const kindName = CANISTER_KIND_NAMES[newAssetCanisterKind] || 'Canister';
+                const displayTitle = newAssetCanisterTitle.trim() || `${newAssetCanisterId.trim().slice(0, 10)}...`;
                 asset = { 
                     type: 'canister', 
                     canister_id: newAssetCanisterId.trim(),
                     canister_kind: newAssetCanisterKind,
-                    display: `${kindName}: ${newAssetCanisterId.trim().slice(0, 10)}...`
+                    title: newAssetCanisterTitle.trim() || null,
+                    description: newAssetCanisterDescription.trim() || null,
+                    display: `${kindName}: ${displayTitle}`
                 };
             } else if (newAssetType === 'neuron') {
                 if (!selectedSnsRoot || !newAssetGovernanceId.trim()) {
@@ -793,6 +810,8 @@ function SneedexCreate() {
         setShowAddAsset(false);
         setNewAssetCanisterId('');
         setNewAssetCanisterKind(0);
+        setNewAssetCanisterTitle('');
+        setNewAssetCanisterDescription('');
         setCanisterKindVerified(null);
         setNewAssetGovernanceId('');
         setNewAssetNeuronId('');
@@ -2027,6 +2046,56 @@ function SneedexCreate() {
                                                     </div>
                                                 </div>
                                             )}
+                                        </div>
+                                        
+                                        {/* Title and Description */}
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>
+                                                Title (optional)
+                                                <span style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontWeight: 'normal',
+                                                    fontSize: '0.8rem',
+                                                    marginLeft: '8px'
+                                                }}>
+                                                    {newAssetCanisterTitle.length}/{MAX_CANISTER_TITLE_LENGTH}
+                                                </span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                placeholder="Give your canister a name"
+                                                maxLength={MAX_CANISTER_TITLE_LENGTH}
+                                                value={newAssetCanisterTitle}
+                                                onChange={(e) => setNewAssetCanisterTitle(e.target.value)}
+                                                style={styles.input}
+                                            />
+                                        </div>
+                                        
+                                        <div style={styles.formGroup}>
+                                            <label style={styles.label}>
+                                                Description (optional)
+                                                <span style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontWeight: 'normal',
+                                                    fontSize: '0.8rem',
+                                                    marginLeft: '8px'
+                                                }}>
+                                                    {newAssetCanisterDescription.length}/{MAX_CANISTER_DESCRIPTION_LENGTH}
+                                                </span>
+                                            </label>
+                                            <textarea
+                                                placeholder="Describe what this canister does, its features, why it's valuable..."
+                                                maxLength={MAX_CANISTER_DESCRIPTION_LENGTH}
+                                                value={newAssetCanisterDescription}
+                                                onChange={(e) => setNewAssetCanisterDescription(e.target.value)}
+                                                rows={4}
+                                                style={{
+                                                    ...styles.input,
+                                                    resize: 'vertical',
+                                                    minHeight: '80px',
+                                                    fontFamily: 'inherit',
+                                                }}
+                                            />
                                         </div>
                                     </div>
                                 )}

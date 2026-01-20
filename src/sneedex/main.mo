@@ -13,6 +13,113 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 
 
+// Migration to add title and description fields to CanisterAsset
+(with migration = func (old : { var offers : [{
+    id : Nat;
+    creator : Principal;
+    min_bid_price : ?Nat;
+    buyout_price : ?Nat;
+    expiration : ?Time.Time;
+    price_token_ledger : Principal;
+    min_bid_increment_fee_multiple : ?Nat;
+    assets : [{
+        asset : {
+            #Canister : {
+                canister_id : Principal;
+                canister_kind : ?Nat;
+                controllers_snapshot : ?[Principal];
+                cached_total_stake_e8s : ?Nat64;
+            };
+            #SNSNeuron : T.SNSNeuronAsset;
+            #ICRC1Token : T.ICRC1TokenAsset;
+        };
+        escrowed : Bool;
+    }];
+    state : T.OfferState;
+    approved_bidders : ?[Principal];
+    fee_rate_bps : Nat;
+    created_at : Time.Time;
+    activated_at : ?Time.Time;
+}] }) : { var offers : [T.Offer] } {
+    {
+        var offers = Array.map(
+            old.offers,
+            func (o : {
+                id : Nat;
+                creator : Principal;
+                min_bid_price : ?Nat;
+                buyout_price : ?Nat;
+                expiration : ?Time.Time;
+                price_token_ledger : Principal;
+                min_bid_increment_fee_multiple : ?Nat;
+                assets : [{
+                    asset : {
+                        #Canister : {
+                            canister_id : Principal;
+                            canister_kind : ?Nat;
+                            controllers_snapshot : ?[Principal];
+                            cached_total_stake_e8s : ?Nat64;
+                        };
+                        #SNSNeuron : T.SNSNeuronAsset;
+                        #ICRC1Token : T.ICRC1TokenAsset;
+                    };
+                    escrowed : Bool;
+                }];
+                state : T.OfferState;
+                approved_bidders : ?[Principal];
+                fee_rate_bps : Nat;
+                created_at : Time.Time;
+                activated_at : ?Time.Time;
+            }) : T.Offer {
+                {
+                    id = o.id;
+                    creator = o.creator;
+                    min_bid_price = o.min_bid_price;
+                    buyout_price = o.buyout_price;
+                    expiration = o.expiration;
+                    price_token_ledger = o.price_token_ledger;
+                    min_bid_increment_fee_multiple = o.min_bid_increment_fee_multiple;
+                    assets = Array.map(o.assets, func (entry : {
+                        asset : {
+                            #Canister : {
+                                canister_id : Principal;
+                                canister_kind : ?Nat;
+                                controllers_snapshot : ?[Principal];
+                                cached_total_stake_e8s : ?Nat64;
+                            };
+                            #SNSNeuron : T.SNSNeuronAsset;
+                            #ICRC1Token : T.ICRC1TokenAsset;
+                        };
+                        escrowed : Bool;
+                    }) : T.AssetEntry {
+                        {
+                            asset = switch (entry.asset) {
+                                case (#Canister(c)) {
+                                    #Canister({
+                                        canister_id = c.canister_id;
+                                        canister_kind = c.canister_kind;
+                                        controllers_snapshot = c.controllers_snapshot;
+                                        cached_total_stake_e8s = c.cached_total_stake_e8s;
+                                        title = null;
+                                        description = null;
+                                    });
+                                };
+                                case (#SNSNeuron(n)) { #SNSNeuron(n) };
+                                case (#ICRC1Token(t)) { #ICRC1Token(t) };
+                            };
+                            escrowed = entry.escrowed;
+                        }
+                    });
+                    state = o.state;
+                    approved_bidders = o.approved_bidders;
+                    fee_rate_bps = o.fee_rate_bps;
+                    created_at = o.created_at;
+                    activated_at = o.activated_at;
+                }
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
@@ -500,6 +607,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             canister_kind = canisterAsset.canister_kind;
                                             controllers_snapshot = canisterAsset.controllers_snapshot;
                                             cached_total_stake_e8s = ?totalStake;
+                                            title = canisterAsset.title;
+                                            description = canisterAsset.description;
                                         });
                                         updatedAssets.add({ asset = updatedAsset; escrowed = true });
                                     } catch (_e) {
@@ -817,6 +926,29 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     return #err(#InvalidAsset("Maximum number of assets reached"));
                 };
                 
+                // Validate canister title and description lengths
+                switch (request.asset) {
+                    case (#Canister(canisterAsset)) {
+                        switch (canisterAsset.title) {
+                            case (?t) {
+                                if (Text.size(t) > T.MAX_CANISTER_TITLE_LENGTH) {
+                                    return #err(#InvalidAsset("Canister title exceeds maximum length of " # Nat.toText(T.MAX_CANISTER_TITLE_LENGTH) # " characters"));
+                                };
+                            };
+                            case null {};
+                        };
+                        switch (canisterAsset.description) {
+                            case (?d) {
+                                if (Text.size(d) > T.MAX_CANISTER_DESCRIPTION_LENGTH) {
+                                    return #err(#InvalidAsset("Canister description exceeds maximum length of " # Nat.toText(T.MAX_CANISTER_DESCRIPTION_LENGTH) # " characters"));
+                                };
+                            };
+                            case null {};
+                        };
+                    };
+                    case _ {};
+                };
+                
                 // Check for duplicate asset
                 if (assetExists(offer.assets, request.asset)) {
                     return #err(#InvalidAsset("This asset has already been added to the offer"));
@@ -938,12 +1070,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 switch (escrowResult) {
                                     case (#err(e)) { return #err(e) };
                                     case (#ok(snapshot)) {
-                                        // Update asset with snapshot, preserving canister_kind
+                                        // Update asset with snapshot, preserving canister_kind, title, description
                                         let updatedAsset : T.Asset = #Canister({
                                             canister_id = canisterAsset.canister_id;
                                             canister_kind = canisterAsset.canister_kind;
                                             controllers_snapshot = ?snapshot;
                                             cached_total_stake_e8s = null; // Will be populated after activation for neuron managers
+                                            title = canisterAsset.title;
+                                            description = canisterAsset.description;
                                         });
                                         
                                         let updatedEntry : T.AssetEntry = {

@@ -2081,7 +2081,11 @@ function SneedexOffer() {
                                                         )}
                                                         {details.type === 'Canister' && getAssetTypeIcon(details.type, details.canister_kind)}
                                                         <span style={styles.assetType}>
-                                                            {details.type === 'Canister' && (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'Canister')}
+                                                            {details.type === 'Canister' && (
+                                                                details.title 
+                                                                    ? details.title 
+                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'Canister')
+                                                            )}
                                                             {details.type === 'SNSNeuron' && (() => {
                                                                 // Find SNS name from snsData
                                                                 const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
@@ -2265,6 +2269,28 @@ function SneedexOffer() {
                                                     </button>
                                                 )}
                                             </div>
+                                            
+                                            {/* Canister Description (shown if present, regardless of escrow status) */}
+                                            {details.type === 'Canister' && details.description && (
+                                                <div style={{
+                                                    marginTop: '0.75rem',
+                                                    padding: '0.75rem 1rem',
+                                                    background: theme.colors.tertiaryBg,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                }}>
+                                                    <div style={{
+                                                        fontSize: '0.85rem',
+                                                        color: theme.colors.secondaryText,
+                                                        lineHeight: '1.5',
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-word',
+                                                    }}>
+                                                        {/* React automatically escapes text, preventing XSS */}
+                                                        {details.description}
+                                                    </div>
+                                                </div>
+                                            )}
                                             
                                             {/* Expanded Canister Info Section */}
                                             {details.type === 'Canister' && details.escrowed && isExpanded && (

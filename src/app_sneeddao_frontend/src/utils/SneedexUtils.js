@@ -15,6 +15,27 @@ export const CANISTER_KIND_NAMES = {
     [CANISTER_KIND_ICP_NEURON_MANAGER]: 'ICP Neuron Manager',
 };
 
+// Validation constants (must match backend)
+export const MAX_CANISTER_TITLE_LENGTH = 100;
+export const MAX_CANISTER_DESCRIPTION_LENGTH = 4000;
+
+/**
+ * Sanitize text for safe display (prevents XSS)
+ * React already escapes text in JSX, but this provides additional safety
+ * for cases where we might need to render HTML or use dangerouslySetInnerHTML
+ * @param {string} text - Text to sanitize
+ * @returns {string} Sanitized text
+ */
+export const sanitizeText = (text) => {
+    if (!text) return '';
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
 // ICRC-1 Ledger IDL for basic operations
 const icrc1IdlFactory = ({ IDL: idl }) => {
     const Account = idl.Record({
@@ -215,12 +236,18 @@ export const getAssetDetails = (assetEntry) => {
         const rawCachedStake = asset.Canister.cached_total_stake_e8s?.[0];
         const cachedTotalStakeE8s = rawCachedStake !== undefined ? Number(rawCachedStake) : null;
         
+        // Get title and description (optional fields)
+        const title = asset.Canister.title?.[0] || null;
+        const description = asset.Canister.description?.[0] || null;
+        
         return {
             type: 'Canister',
             canister_id: asset.Canister.canister_id.toString(),
             canister_kind: canisterKind, // 0 = unknown, 1 = ICP Neuron Manager
             controllers_snapshot: asset.Canister.controllers_snapshot[0]?.map(p => p.toString()) || [],
             cached_total_stake_e8s: cachedTotalStakeE8s, // For neuron managers: total staked ICP (no maturity)
+            title,
+            description,
             escrowed,
         };
     }
@@ -282,6 +309,8 @@ export const createAssetVariant = (type, details) => {
                     canister_kind: details.canister_kind !== undefined ? [details.canister_kind] : [], // Optional nat
                     controllers_snapshot: [],
                     cached_total_stake_e8s: [], // Optional, populated by backend after activation
+                    title: details.title ? [details.title] : [], // Optional text
+                    description: details.description ? [details.description] : [], // Optional text
                 }
             };
         case 'neuron':

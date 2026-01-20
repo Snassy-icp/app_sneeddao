@@ -290,7 +290,13 @@ module {
         canister_kind : ?CanisterKindId; // Optional known canister type (0 = unknown, 1 = ICP Neuron Manager, etc.)
         controllers_snapshot : ?[Principal]; // Populated when escrowed
         cached_total_stake_e8s : ?Nat64; // For neuron managers: total staked ICP (no maturity), cached on activation
+        title : ?Text; // Optional title for the canister (max 100 chars)
+        description : ?Text; // Optional description (max 4000 chars)
     };
+    
+    // Validation constants
+    public let MAX_CANISTER_TITLE_LENGTH : Nat = 100;
+    public let MAX_CANISTER_DESCRIPTION_LENGTH : Nat = 4000;
     
     // SNS Neuron asset - stores governance canister and neuron id
     public type SNSNeuronAsset = {
