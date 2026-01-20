@@ -32,6 +32,7 @@ export default function SneedexAdmin() {
     const [adminList, setAdminList] = useState([]);
     const [feeRate, setFeeRate] = useState(null);
     const [feeRecipient, setFeeRecipient] = useState(null);
+    const [ledgerFeeRecipients, setLedgerFeeRecipients] = useState([]);
     const [assetTypes, setAssetTypes] = useState([]);
     const [stats, setStats] = useState(null);
     
@@ -39,6 +40,9 @@ export default function SneedexAdmin() {
     const [newFeeRate, setNewFeeRate] = useState('');
     const [newFeeRecipientPrincipal, setNewFeeRecipientPrincipal] = useState('');
     const [newFeeRecipientSubaccount, setNewFeeRecipientSubaccount] = useState('');
+    const [newLedgerOverrideLedger, setNewLedgerOverrideLedger] = useState('');
+    const [newLedgerOverridePrincipal, setNewLedgerOverridePrincipal] = useState('');
+    const [newLedgerOverrideSubaccount, setNewLedgerOverrideSubaccount] = useState('');
     const [newAdminPrincipal, setNewAdminPrincipal] = useState('');
     const [newAssetTypeName, setNewAssetTypeName] = useState('');
     const [newAssetTypeDescription, setNewAssetTypeDescription] = useState('');
@@ -48,6 +52,8 @@ export default function SneedexAdmin() {
     // Loading states
     const [savingFeeRate, setSavingFeeRate] = useState(false);
     const [savingFeeRecipient, setSavingFeeRecipient] = useState(false);
+    const [addingLedgerOverride, setAddingLedgerOverride] = useState(false);
+    const [removingLedgerOverride, setRemovingLedgerOverride] = useState(null);
     const [addingAdmin, setAddingAdmin] = useState(false);
     const [removingAdmin, setRemovingAdmin] = useState(null);
     const [addingAssetType, setAddingAssetType] = useState(false);
@@ -89,10 +95,11 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             if (!actor) return;
             
-            const [configResult, feeRateResult, feeRecipientResult, assetTypesResult, statsResult] = await Promise.all([
+            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getMarketplaceFeeRate(),
                 actor.getFeeRecipient(),
+                actor.getLedgerFeeRecipients(),
                 actor.getAssetTypes(),
                 actor.getMarketStats(),
             ]);
@@ -101,6 +108,7 @@ export default function SneedexAdmin() {
             setAdminList(configResult.admins || []);
             setFeeRate(Number(feeRateResult));
             setFeeRecipient(feeRecipientResult);
+            setLedgerFeeRecipients(ledgerRecipientsResult || []);
             setAssetTypes(assetTypesResult);
             setStats(statsResult);
             
@@ -199,6 +207,88 @@ export default function SneedexAdmin() {
             showInfo('Error', 'Failed to update fee recipient: ' + e.message, 'error');
         }
         setSavingFeeRecipient(false);
+    };
+    
+    // Ledger-specific fee recipient handlers
+    const handleAddLedgerOverride = async () => {
+        let ledger;
+        try {
+            ledger = Principal.fromText(newLedgerOverrideLedger);
+        } catch (e) {
+            showInfo('Invalid Ledger', 'Please enter a valid ledger canister ID', 'error');
+            return;
+        }
+        
+        let principal;
+        try {
+            principal = Principal.fromText(newLedgerOverridePrincipal);
+        } catch (e) {
+            showInfo('Invalid Principal', 'Please enter a valid principal ID', 'error');
+            return;
+        }
+        
+        let subaccount = [];
+        if (newLedgerOverrideSubaccount.trim()) {
+            try {
+                const hex = newLedgerOverrideSubaccount.replace(/^0x/, '');
+                const bytes = [];
+                for (let i = 0; i < hex.length; i += 2) {
+                    bytes.push(parseInt(hex.substr(i, 2), 16));
+                }
+                if (bytes.length !== 32) {
+                    throw new Error('Subaccount must be 32 bytes');
+                }
+                subaccount = [bytes];
+            } catch (e) {
+                showInfo('Invalid Subaccount', 'Subaccount must be a 64-character hex string (32 bytes)', 'error');
+                return;
+            }
+        }
+        
+        setAddingLedgerOverride(true);
+        try {
+            const actor = getSneedexActor();
+            const result = await actor.setLedgerFeeRecipient(ledger, {
+                owner: principal,
+                subaccount: subaccount,
+            });
+            if ('ok' in result) {
+                showInfo('Success', 'Ledger fee recipient override added', 'success');
+                fetchData();
+                setNewLedgerOverrideLedger('');
+                setNewLedgerOverridePrincipal('');
+                setNewLedgerOverrideSubaccount('');
+            } else {
+                showInfo('Error', 'Failed to add override: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to add override: ' + e.message, 'error');
+        }
+        setAddingLedgerOverride(false);
+    };
+    
+    const handleRemoveLedgerOverride = async (ledger) => {
+        showConfirm(
+            'Remove Override',
+            `Are you sure you want to remove the fee recipient override for this ledger?\n\nFees in this token will go to the default recipient.`,
+            async () => {
+                closeConfirmModal();
+                setRemovingLedgerOverride(ledger.toString());
+                try {
+                    const actor = getSneedexActor();
+                    const result = await actor.removeLedgerFeeRecipient(ledger);
+                    if ('ok' in result) {
+                        showInfo('Success', 'Override removed successfully', 'success');
+                        fetchData();
+                    } else {
+                        showInfo('Error', 'Failed to remove override: ' + JSON.stringify(result.err), 'error');
+                    }
+                } catch (e) {
+                    showInfo('Error', 'Failed to remove override: ' + e.message, 'error');
+                }
+                setRemovingLedgerOverride(null);
+            }
+        );
     };
     
     // Admin management handlers
@@ -639,9 +729,11 @@ export default function SneedexAdmin() {
                 <section style={styles.section}>
                     <h2 style={styles.sectionTitle}>
                         <FaWallet style={{ color: theme.colors.success }} />
-                        Fee Recipient Account
+                        Default Fee Recipient Account
                     </h2>
                     <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        This is the fallback account for fees. You can add per-token overrides below.
+                        <br />
                         Current recipient: {feeRecipient ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <PrincipalDisplay principal={feeRecipient.owner.toString()} />
@@ -681,6 +773,102 @@ export default function SneedexAdmin() {
                             {savingFeeRecipient ? <FaSpinner className="spin" /> : <FaSave />}
                             Save Recipient
                         </button>
+                    </div>
+                </section>
+                
+                {/* Per-Ledger Fee Recipient Overrides */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaWallet style={{ color: theme.colors.accent }} />
+                        Per-Token Fee Recipient Overrides
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Override where fees go for specific tokens. If a bid is paid in ICP, send fees to one account; if in SNEED, send to another.
+                        Ledgers without an override will use the default recipient above.
+                    </p>
+                    
+                    {ledgerFeeRecipients.length > 0 && (
+                        <div style={styles.list}>
+                            {ledgerFeeRecipients.map(([ledger, account], index) => (
+                                <div key={index} style={{ ...styles.listItem, flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Ledger:</span>{' '}
+                                            <PrincipalDisplay principal={ledger.toString()} />
+                                        </div>
+                                        <button
+                                            onClick={() => handleRemoveLedgerOverride(ledger)}
+                                            disabled={removingLedgerOverride === ledger.toString()}
+                                            style={{
+                                                ...styles.buttonDanger,
+                                                opacity: removingLedgerOverride === ledger.toString() ? 0.5 : 1,
+                                                cursor: removingLedgerOverride === ledger.toString() ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            {removingLedgerOverride === ledger.toString() ? <FaSpinner className="spin" /> : <FaTrash />}
+                                        </button>
+                                    </div>
+                                    <div style={{ fontSize: '0.9rem' }}>
+                                        <span style={{ color: theme.colors.mutedText }}>→ Fees go to:</span>{' '}
+                                        <PrincipalDisplay principal={account.owner.toString()} />
+                                        {account.subaccount?.[0] && (
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                (sub: 0x{Array.from(account.subaccount[0]).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12)}...)
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {ledgerFeeRecipients.length === 0 && (
+                        <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', marginBottom: '1rem' }}>
+                            No overrides configured. All fees go to the default recipient.
+                        </p>
+                    )}
+                    
+                    <div style={{ marginTop: '1rem', padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                        <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: theme.colors.primaryText }}>
+                            <FaPlus style={{ marginRight: '8px' }} />
+                            Add Override
+                        </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <input
+                                type="text"
+                                placeholder="Token Ledger Canister ID (e.g., ICP ledger)"
+                                value={newLedgerOverrideLedger}
+                                onChange={(e) => setNewLedgerOverrideLedger(e.target.value)}
+                                style={styles.input}
+                            />
+                            <input
+                                type="text"
+                                placeholder="Fee Recipient Principal ID"
+                                value={newLedgerOverridePrincipal}
+                                onChange={(e) => setNewLedgerOverridePrincipal(e.target.value)}
+                                style={styles.input}
+                            />
+                            <input
+                                type="text"
+                                placeholder="Subaccount (optional, 64-char hex)"
+                                value={newLedgerOverrideSubaccount}
+                                onChange={(e) => setNewLedgerOverrideSubaccount(e.target.value)}
+                                style={styles.input}
+                            />
+                            <button
+                                onClick={handleAddLedgerOverride}
+                                disabled={addingLedgerOverride || !newLedgerOverrideLedger || !newLedgerOverridePrincipal}
+                                style={{
+                                    ...styles.buttonSuccess,
+                                    width: 'fit-content',
+                                    opacity: addingLedgerOverride || !newLedgerOverrideLedger || !newLedgerOverridePrincipal ? 0.5 : 1,
+                                    cursor: addingLedgerOverride || !newLedgerOverrideLedger || !newLedgerOverridePrincipal ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {addingLedgerOverride ? <FaSpinner className="spin" /> : <FaPlus />}
+                                Add Override
+                            </button>
+                        </div>
                     </div>
                 </section>
                 

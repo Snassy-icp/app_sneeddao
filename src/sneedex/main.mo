@@ -53,15 +53,29 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Fee rate in basis points (100 = 1%, 250 = 2.5%, etc.)
     var marketplaceFeeRateBps : Nat = 0; // Default 0% - admin must set
     
-    // Account to receive marketplace fees
+    // Account to receive marketplace fees (default/fallback)
     var feeRecipient : T.Account = {
         owner = Principal.fromText("aaaaa-aa"); // Default to management canister (will fail transfers until set)
         subaccount = null;
     };
     
+    // Per-ledger fee recipient overrides
+    // Maps ledger principal to override account
+    var ledgerFeeRecipients : [(Principal, T.Account)] = [];
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
+    
+    // Get the fee recipient for a specific ledger (checks overrides first, then falls back to default)
+    func getFeeRecipientForLedger(ledger : Principal) : T.Account {
+        for ((l, account) in ledgerFeeRecipients.vals()) {
+            if (Principal.equal(l, ledger)) {
+                return account;
+            };
+        };
+        feeRecipient; // Return default
+    };
     
     func isAdmin(caller : Principal) : Bool {
         Utils.principalInList(caller, config.admins);
@@ -261,7 +275,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         let feeTransferResult = await* AssetHandlers.transferTokens(
                                             offer.price_token_ledger,
                                             ?subaccount,
-                                            feeRecipient,
+                                            getFeeRecipientForLedger(offer.price_token_ledger),
                                             feeTransferAmount
                                         );
                                         switch (feeTransferResult) {
@@ -1735,7 +1749,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         let feeTransferResult = await* AssetHandlers.transferTokens(
                                             offer.price_token_ledger,
                                             ?subaccount,
-                                            feeRecipient,
+                                            getFeeRecipientForLedger(offer.price_token_ledger),
                                             feeTransferAmount
                                         );
                                         switch (feeTransferResult) {
@@ -2384,6 +2398,57 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         
         feeRecipient := account;
+        #ok();
+    };
+    
+    /// Get all per-ledger fee recipient overrides
+    public query func getLedgerFeeRecipients() : async [(Principal, T.Account)] {
+        ledgerFeeRecipients;
+    };
+    
+    /// Set a fee recipient override for a specific ledger (admin only)
+    /// When fees are collected in this ledger's token, they will go to this account instead of the default
+    public shared ({ caller }) func setLedgerFeeRecipient(ledger : Principal, account : T.Account) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        // Update or add the ledger-specific recipient
+        var found = false;
+        ledgerFeeRecipients := Array.map<(Principal, T.Account), (Principal, T.Account)>(
+            ledgerFeeRecipients,
+            func ((l, a) : (Principal, T.Account)) : (Principal, T.Account) {
+                if (Principal.equal(l, ledger)) {
+                    found := true;
+                    (l, account);
+                } else {
+                    (l, a);
+                };
+            }
+        );
+        
+        // If not found, add new entry
+        if (not found) {
+            ledgerFeeRecipients := Array.append(ledgerFeeRecipients, [(ledger, account)]);
+        };
+        
+        #ok();
+    };
+    
+    /// Remove a fee recipient override for a specific ledger (admin only)
+    /// Fees will fall back to the default fee recipient
+    public shared ({ caller }) func removeLedgerFeeRecipient(ledger : Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        ledgerFeeRecipients := Array.filter<(Principal, T.Account)>(
+            ledgerFeeRecipients,
+            func ((l, _) : (Principal, T.Account)) : Bool {
+                not Principal.equal(l, ledger);
+            }
+        );
+        
         #ok();
     };
 };
