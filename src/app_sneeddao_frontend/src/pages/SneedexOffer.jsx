@@ -628,8 +628,16 @@ function SneedexOffer() {
     const getMinimumBid = () => {
         if (!offer) return 0;
         if (highestBid) {
-            // Must beat highest bid by at least 1 smallest unit
-            return Number(highestBid.amount) / Math.pow(10, tokenInfo.decimals) + 0.0001;
+            // Calculate minimum increment based on min_bid_increment_fee_multiple if set
+            let minIncrement;
+            if (offer.min_bid_increment_fee_multiple?.[0] && tokenFee) {
+                // Increment = multiple × fee
+                minIncrement = Number(offer.min_bid_increment_fee_multiple[0]) * Number(tokenFee) / Math.pow(10, tokenInfo.decimals);
+            } else {
+                // Default: 1 smallest unit
+                minIncrement = 1 / Math.pow(10, tokenInfo.decimals);
+            }
+            return Number(highestBid.amount) / Math.pow(10, tokenInfo.decimals) + minIncrement;
         }
         if (offer.min_bid_price[0]) {
             return Number(offer.min_bid_price[0]) / Math.pow(10, tokenInfo.decimals);
