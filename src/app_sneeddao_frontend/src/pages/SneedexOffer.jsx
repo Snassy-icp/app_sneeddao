@@ -3623,6 +3623,23 @@ function SneedexOffer() {
                                         </span>
                                     </div>
                                     <div style={styles.bidInputRow}>
+                                        <button
+                                            style={{
+                                                padding: '0.75rem 1rem',
+                                                background: theme.colors.secondaryBg,
+                                                color: theme.colors.accent,
+                                                border: `1px solid ${theme.colors.accent}`,
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                fontWeight: '600',
+                                                fontSize: '0.9rem',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                            onClick={() => setBidAmount(formatAmount(getMinimumBidE8s(), tokenInfo.decimals))}
+                                            title={`Set to minimum bid: ${formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} ${tokenInfo.symbol}`}
+                                        >
+                                            Min
+                                        </button>
                                         <input
                                             type="number"
                                             step="0.0001"
