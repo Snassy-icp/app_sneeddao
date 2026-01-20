@@ -2573,10 +2573,31 @@ function SneedexOffer() {
                                                                     </div>
                                                                     {neuronManagerInfo[idx].neurons.map((neuron, neuronIdx) => {
                                                                         const stakeIcp = Number(neuron.cached_neuron_stake_e8s) / 1e8;
-                                                                        const dissolveDelayDays = Number(neuron.dissolve_delay_seconds) / (24 * 60 * 60);
+                                                                        const dissolveDelaySeconds = Number(neuron.dissolve_delay_seconds);
+                                                                        const dissolveDelayDays = dissolveDelaySeconds / (24 * 60 * 60);
+                                                                        const dissolveDelayYears = dissolveDelayDays / 365;
                                                                         const ageDays = Number(neuron.age_seconds) / (24 * 60 * 60);
+                                                                        const ageYears = ageDays / 365;
                                                                         const stateText = neuron.state === 1 ? 'Locked' : neuron.state === 2 ? 'Dissolving' : neuron.state === 3 ? 'Dissolved' : 'Unknown';
                                                                         const stateColor = neuron.state === 1 ? '#10B981' : neuron.state === 2 ? '#F59E0B' : neuron.state === 3 ? '#EF4444' : theme.colors.mutedText;
+                                                                        const neuronId = neuron.neuron_id.id.toString();
+                                                                        const dashboardUrl = `https://dashboard.internetcomputer.org/neuron/${neuronId}`;
+                                                                        
+                                                                        // Format dissolve delay nicely
+                                                                        const formatDelay = () => {
+                                                                            if (dissolveDelayYears >= 1) {
+                                                                                return `${dissolveDelayYears.toFixed(1)} years`;
+                                                                            }
+                                                                            return `${dissolveDelayDays.toFixed(0)} days`;
+                                                                        };
+                                                                        
+                                                                        // Format age nicely
+                                                                        const formatAge = () => {
+                                                                            if (ageYears >= 1) {
+                                                                                return `${ageYears.toFixed(1)} years`;
+                                                                            }
+                                                                            return `${ageDays.toFixed(0)} days`;
+                                                                        };
                                                                         
                                                                         return (
                                                                             <div 
@@ -2595,13 +2616,24 @@ function SneedexOffer() {
                                                                                     alignItems: 'center',
                                                                                     marginBottom: '8px',
                                                                                 }}>
-                                                                                    <span style={{ 
-                                                                                        fontFamily: 'monospace', 
-                                                                                        fontSize: '0.8rem',
-                                                                                        color: theme.colors.secondaryText,
-                                                                                    }}>
-                                                                                        ID: {neuron.neuron_id.id.toString()}
-                                                                                    </span>
+                                                                                    <a 
+                                                                                        href={dashboardUrl}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        onClick={(e) => e.stopPropagation()}
+                                                                                        style={{ 
+                                                                                            fontFamily: 'monospace', 
+                                                                                            fontSize: '0.8rem',
+                                                                                            color: theme.colors.accent,
+                                                                                            textDecoration: 'none',
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '4px',
+                                                                                        }}
+                                                                                    >
+                                                                                        <FaExternalLinkAlt style={{ fontSize: '0.65rem' }} />
+                                                                                        {neuronId}
+                                                                                    </a>
                                                                                     <span style={{
                                                                                         padding: '2px 8px',
                                                                                         borderRadius: '12px',
@@ -2628,13 +2660,13 @@ function SneedexOffer() {
                                                                                     <div>
                                                                                         <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Dissolve Delay</div>
                                                                                         <div style={{ fontWeight: '600', color: theme.colors.text }}>
-                                                                                            {dissolveDelayDays.toFixed(0)} days
+                                                                                            {formatDelay()}
                                                                                         </div>
                                                                                     </div>
                                                                                     <div>
                                                                                         <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Age</div>
                                                                                         <div style={{ fontWeight: '600', color: theme.colors.text }}>
-                                                                                            {ageDays.toFixed(0)} days
+                                                                                            {formatAge()}
                                                                                         </div>
                                                                                     </div>
                                                                                     <div>
@@ -2644,6 +2676,20 @@ function SneedexOffer() {
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
+                                                                                {/* Dissolve status details */}
+                                                                                {neuron.state === 2 && (
+                                                                                    <div style={{
+                                                                                        marginTop: '8px',
+                                                                                        padding: '8px',
+                                                                                        background: `${stateColor}10`,
+                                                                                        borderRadius: '6px',
+                                                                                        fontSize: '0.75rem',
+                                                                                        color: stateColor,
+                                                                                    }}>
+                                                                                        <FaClock style={{ marginRight: '6px' }} />
+                                                                                        Dissolving - {formatDelay()} remaining
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         );
                                                                     })}
