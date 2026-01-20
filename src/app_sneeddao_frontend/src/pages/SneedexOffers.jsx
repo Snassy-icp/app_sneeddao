@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { 
@@ -46,6 +46,10 @@ function SneedexOffers() {
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
     const [tokenLogos, setTokenLogos] = useState(new Map()); // ledger_id -> logo URL
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // canister_id -> { totalStake, neuronCount }
+    
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 12;
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -369,6 +373,19 @@ function SneedexOffers() {
             default: return 0;
         }
     });
+    
+    // Paginate the filtered offers
+    const paginatedOffers = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        return filteredOffers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [filteredOffers, currentPage]);
+    
+    const totalPages = useMemo(() => Math.ceil(filteredOffers.length / ITEMS_PER_PAGE), [filteredOffers.length]);
+    
+    // Reset to page 1 when filters/search/tab change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filterType, searchTerm, sortBy, offerTab]);
 
     const styles = {
         container: {
@@ -630,6 +647,34 @@ function SneedexOffers() {
             color: theme.colors.error || '#ff4444',
             marginBottom: '2rem',
         },
+        pagination: {
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '1rem',
+            marginTop: '2rem',
+            paddingTop: '1.5rem',
+            borderTop: `1px solid ${theme.colors.border}`,
+            gridColumn: '1 / -1',
+        },
+        paginationButton: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '0.9rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        paginationInfo: {
+            color: theme.colors.mutedText,
+            fontSize: '0.9rem',
+        },
     };
 
     return (
@@ -758,8 +803,40 @@ function SneedexOffers() {
                         )}
                     </div>
                 ) : (
-                    <div style={styles.grid}>
-                        {filteredOffers.map((offer) => {
+                    <>
+                        {/* Top Pagination */}
+                        {filteredOffers.length > ITEMS_PER_PAGE && (
+                            <div style={{ ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: currentPage === 1 ? 0.5 : 1,
+                                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    <FaChevronLeft /> Previous
+                                </button>
+                                <span style={styles.paginationInfo}>
+                                    Page {currentPage} of {totalPages} ({filteredOffers.length} offers)
+                                </span>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: currentPage === totalPages ? 0.5 : 1,
+                                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    Next <FaChevronRight />
+                                </button>
+                            </div>
+                        )}
+                        
+                        <div style={styles.grid}>
+                        {paginatedOffers.map((offer) => {
                             const bidInfo = offersWithBids[Number(offer.id)] || {};
                             const tokenInfo = getTokenInfo(offer.price_token_ledger.toString());
                             
@@ -976,7 +1053,39 @@ function SneedexOffers() {
                                 </div>
                             );
                         })}
+                        
+                        {/* Bottom Pagination */}
+                        {filteredOffers.length > ITEMS_PER_PAGE && (
+                            <div style={styles.pagination}>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: currentPage === 1 ? 0.5 : 1,
+                                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    <FaChevronLeft /> Previous
+                                </button>
+                                <span style={styles.paginationInfo}>
+                                    Page {currentPage} of {totalPages} ({filteredOffers.length} offers)
+                                </span>
+                                <button
+                                    style={{
+                                        ...styles.paginationButton,
+                                        opacity: currentPage === totalPages ? 0.5 : 1,
+                                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                                    }}
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    Next <FaChevronRight />
+                                </button>
+                            </div>
+                        )}
                     </div>
+                    </>
                 )}
             </main>
             
