@@ -363,19 +363,27 @@ function SneedexOffer() {
     
     // Fetch neuron manager info for an escrowed ICP Neuron Manager canister
     const fetchNeuronManagerInfo = useCallback(async (assetIndex, canisterId) => {
-        if (!identity) return;
+        if (!identity || !offer) return;
         
         setLoadingNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: true }));
         
         try {
             const actor = createSneedexActor(identity);
+            console.log('Fetching neuron manager info for canister:', canisterId);
             const result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            console.log('Neuron manager info result:', result);
             
             if ('Ok' in result) {
-                setNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: result.Ok }));
+                const info = result.Ok;
+                console.log('Neuron manager info details:', {
+                    version: info.version,
+                    neuron_count: Number(info.neuron_count),
+                    neurons: info.neurons,
+                });
+                setNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: info }));
                 
                 // Verify wasm hash against official versions
-                // Get module_hash from canisterInfo if already loaded, otherwise from the canister info we already fetched
+                // Get module_hash from canisterInfo if already loaded, otherwise fetch via Sneedex backend
                 let moduleHashHex = null;
                 
                 // Try to get from already loaded canister info
@@ -384,14 +392,19 @@ function SneedexOffer() {
                     moduleHashHex = Array.from(existingCanisterInfo.module_hash[0])
                         .map(b => b.toString(16).padStart(2, '0'))
                         .join('');
+                    console.log('Got module hash from existing canister info:', moduleHashHex);
                 } else {
                     // Fetch canister info directly via Sneedex backend
+                    // Note: getCanisterInfo takes (offerId, assetIndex) not canisterId
                     try {
-                        const canisterInfoResult = await actor.getCanisterInfo(Principal.fromText(canisterId));
+                        console.log('Fetching canister info via backend for offer', offer.id, 'asset', assetIndex);
+                        const canisterInfoResult = await actor.getCanisterInfo(offer.id, BigInt(assetIndex));
+                        console.log('Canister info result:', canisterInfoResult);
                         if ('ok' in canisterInfoResult && canisterInfoResult.ok.module_hash?.[0]) {
                             moduleHashHex = Array.from(canisterInfoResult.ok.module_hash[0])
                                 .map(b => b.toString(16).padStart(2, '0'))
                                 .join('');
+                            console.log('Got module hash from backend:', moduleHashHex);
                         }
                     } catch (e) {
                         console.log('Could not get canister info for wasm verification:', e);
@@ -407,17 +420,20 @@ function SneedexOffer() {
                         }
                         
                         const factory = createFactoryActor(factoryCanisterId, { agent });
+                        console.log('Checking official version by hash:', moduleHashHex);
                         const officialVersionResult = await factory.getOfficialVersionByHash(moduleHashHex);
+                        console.log('Official version result:', officialVersionResult);
                         
                         if (officialVersionResult && officialVersionResult.length > 0) {
                             const officialVersion = officialVersionResult[0];
-                            const managerVersion = result.Ok.version;
+                            const managerVersion = info.version;
                             const managerVersionStr = `${Number(managerVersion.major)}.${Number(managerVersion.minor)}.${Number(managerVersion.patch)}`;
                             const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
                             
                             setManagerWasmVerification(prev => ({
                                 ...prev,
                                 [assetIndex]: {
+                                    checked: true,
                                     verified: true,
                                     versionMatch: managerVersionStr === officialVersionStr,
                                     officialVersion: officialVersion,
@@ -428,6 +444,7 @@ function SneedexOffer() {
                             setManagerWasmVerification(prev => ({
                                 ...prev,
                                 [assetIndex]: {
+                                    checked: true,
                                     verified: false,
                                     moduleHash: moduleHashHex,
                                     message: 'Unknown WASM hash',
@@ -439,6 +456,7 @@ function SneedexOffer() {
                         setManagerWasmVerification(prev => ({
                             ...prev,
                             [assetIndex]: {
+                                checked: true,
                                 verified: false,
                                 moduleHash: moduleHashHex,
                                 message: 'Verification failed',
@@ -449,6 +467,7 @@ function SneedexOffer() {
                     setManagerWasmVerification(prev => ({
                         ...prev,
                         [assetIndex]: {
+                            checked: true,
                             verified: false,
                             moduleHash: null,
                             message: 'Could not get module hash',
@@ -457,13 +476,31 @@ function SneedexOffer() {
                 }
             } else {
                 console.error('Failed to get neuron manager info:', result.Err);
+                setManagerWasmVerification(prev => ({
+                    ...prev,
+                    [assetIndex]: {
+                        checked: true,
+                        verified: false,
+                        moduleHash: null,
+                        message: 'Failed to get neuron manager info',
+                    }
+                }));
             }
         } catch (e) {
             console.error('Failed to fetch neuron manager info:', e);
+            setManagerWasmVerification(prev => ({
+                ...prev,
+                [assetIndex]: {
+                    checked: true,
+                    verified: false,
+                    moduleHash: null,
+                    message: e.message || 'Error fetching info',
+                }
+            }));
         } finally {
             setLoadingNeuronManagerInfo(prev => ({ ...prev, [assetIndex]: false }));
         }
-    }, [identity, canisterInfo]);
+    }, [identity, canisterInfo, offer]);
     
     // Fetch SNS neuron info directly from governance canister
     const fetchNeuronInfo = useCallback(async (assetIndex, governanceId, neuronIdHex) => {
@@ -677,7 +714,7 @@ function SneedexOffer() {
                 fetchTokenMetadata(assetIndex, details.ledger_id);
             }
         }
-    }, [expandedAssets, canisterInfo, neuronManagerInfo, neuronInfo, tokenMetadata, fetchCanisterInfo, fetchNeuronManagerInfo, fetchNeuronInfo, fetchTokenMetadata]);
+    }, [expandedAssets, canisterInfo, neuronManagerInfo, neuronInfo, tokenMetadata, fetchCanisterInfo, fetchNeuronManagerInfo, fetchNeuronInfo, fetchTokenMetadata, offer]);
     
     // Format bytes to human readable
     const formatBytes = (bytes) => {
@@ -2504,11 +2541,18 @@ function SneedexOffer() {
                                                                                 {Number(managerWasmVerification[idx].officialVersion.minor)}.
                                                                                 {Number(managerWasmVerification[idx].officialVersion.patch)}
                                                                             </>
-                                                                        ) : managerWasmVerification[idx]?.moduleHash ? (
-                                                                            <>
-                                                                                <FaExclamationTriangle style={{ color: '#F59E0B' }} />
-                                                                                Unknown WASM
-                                                                            </>
+                                                                        ) : managerWasmVerification[idx]?.checked ? (
+                                                                            managerWasmVerification[idx]?.moduleHash ? (
+                                                                                <>
+                                                                                    <FaExclamationTriangle style={{ color: '#F59E0B' }} />
+                                                                                    Unknown WASM
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <FaExclamationTriangle style={{ color: theme.colors.mutedText }} />
+                                                                                    {managerWasmVerification[idx]?.message || 'Could not verify'}
+                                                                                </>
+                                                                            )
                                                                         ) : (
                                                                             'Checking...'
                                                                         )}
