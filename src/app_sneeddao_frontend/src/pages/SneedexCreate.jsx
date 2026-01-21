@@ -2298,7 +2298,7 @@ function SneedexCreate() {
                                                     <>
                                                         <FaExclamationTriangle style={{ color: theme.colors.warning }} />
                                                         <span style={{ color: theme.colors.warning }}>
-                                                            {canisterControllerStatus.message || 'Not a controller'} - you'll need to add Sneedex ({SNEEDEX_CANISTER_ID.slice(0, 8)}...) as a controller manually
+                                                            You are not a controller of this canister. Only canisters you control can be added to offers.
                                                         </span>
                                                     </>
                                                 ) : (
