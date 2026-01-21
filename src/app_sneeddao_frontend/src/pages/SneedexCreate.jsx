@@ -3693,12 +3693,22 @@ function SneedexCreate() {
                                 <div style={styles.reviewLabel}>Minimum Bid</div>
                                 <div style={styles.reviewValue}>
                                     {minBidPrice ? `${minBidPrice} ${priceTokenSymbol}` : 'Not set'}
+                                    {minBidPrice && paymentTokenPrice && (
+                                        <span style={{ color: theme.colors.success, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                            ≈ {formatUsd(parseFloat(minBidPrice) * paymentTokenPrice)}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div style={styles.reviewSection}>
                                 <div style={styles.reviewLabel}>Buyout Price</div>
                                 <div style={styles.reviewValue}>
                                     {buyoutPrice ? `${buyoutPrice} ${priceTokenSymbol}` : 'Not set'}
+                                    {buyoutPrice && paymentTokenPrice && (
+                                        <span style={{ color: theme.colors.success, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                            ≈ {formatUsd(parseFloat(buyoutPrice) * paymentTokenPrice)}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
