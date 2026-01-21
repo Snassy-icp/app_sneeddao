@@ -353,6 +353,7 @@ function SneedexCreate() {
     const [canisterControllerStatus, setCanisterControllerStatus] = useState(null); // null, {checking: true}, {verified: true/false, message: string}
     const [newAssetGovernanceId, setNewAssetGovernanceId] = useState('');
     const [newAssetNeuronId, setNewAssetNeuronId] = useState('');
+    const [neuronVerificationStatus, setNeuronVerificationStatus] = useState(null); // null, {checking: true}, {verified: true/false, message: string}
     
     // SNS and Neuron selection state
     const [snsList, setSnsList] = useState([]);
@@ -875,6 +876,22 @@ function SneedexCreate() {
         }
     }, [identity]);
     
+    // Verify neuron when one is selected (debounced)
+    useEffect(() => {
+        if (!newAssetGovernanceId || !newAssetNeuronId || newAssetNeuronId.length < 10) {
+            setNeuronVerificationStatus(null);
+            return;
+        }
+        
+        const timeoutId = setTimeout(async () => {
+            setNeuronVerificationStatus({ checking: true });
+            const result = await verifyNeuronHotkey(newAssetGovernanceId, newAssetNeuronId);
+            setNeuronVerificationStatus(result);
+        }, 500); // Debounce 500ms
+        
+        return () => clearTimeout(timeoutId);
+    }, [newAssetGovernanceId, newAssetNeuronId, verifyNeuronHotkey]);
+    
     // Verify an asset and update verification state
     const verifyAsset = useCallback(async (asset) => {
         const key = getAssetKey(asset);
@@ -1153,6 +1170,7 @@ function SneedexCreate() {
         setCanisterControllerStatus(null);
         setNewAssetGovernanceId('');
         setNewAssetNeuronId('');
+        setNeuronVerificationStatus(null);
         setSelectedSnsRoot('');
         setSnsNeurons([]);
         setNewAssetTokenLedger('');
@@ -2917,6 +2935,7 @@ function SneedexCreate() {
                                                     onChange={(e) => {
                                                         setSelectedSnsRoot(e.target.value);
                                                         setNewAssetNeuronId('');
+                                                        setNeuronVerificationStatus(null);
                                                         fetchNeuronsForSelectedSns(e.target.value);
                                                     }}
                                                 >
@@ -3010,54 +3029,122 @@ function SneedexCreate() {
                                                 {/* Hidden input to store governance ID */}
                                                 <input type="hidden" value={newAssetGovernanceId} />
                                                 
-                                                {/* USD estimate for selected neuron */}
-                                                {newAssetNeuronId && (() => {
-                                                    const selectedNeuron = snsNeurons.find(n => extractNeuronId(n) === newAssetNeuronId);
-                                                    const stakeE8s = selectedNeuron?.cached_neuron_stake_e8s;
-                                                    const snsLedger = getSnsLedgerFromGovernance(newAssetGovernanceId);
-                                                    const price = snsLedger ? assetPrices[snsLedger] : null;
-                                                    
-                                                    if (stakeE8s && price) {
-                                                        const decimals = getSnsDecimals(newAssetGovernanceId);
-                                                        const stake = Number(stakeE8s) / Math.pow(10, decimals);
-                                                        const usdValue = stake * price;
-                                                        const sns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
-                                                        const symbol = sns?.tokenSymbol || 'tokens';
-                                                        
-                                                        return (
-                                                            <div style={{
-                                                                marginTop: '12px',
-                                                                padding: '12px',
-                                                                background: `${theme.colors.success}10`,
-                                                                borderRadius: '8px',
-                                                                fontSize: '0.85rem',
+                                                {/* Neuron verification status */}
+                                                {newAssetNeuronId && (
+                                                    <div style={{
+                                                        marginTop: '12px',
+                                                        padding: '12px',
+                                                        background: neuronVerificationStatus?.checking 
+                                                            ? `${theme.colors.accent}10`
+                                                            : neuronVerificationStatus?.verified 
+                                                                ? `${theme.colors.success}10` 
+                                                                : neuronVerificationStatus?.verified === false
+                                                                    ? `${theme.colors.warning}10`
+                                                                    : theme.colors.secondaryBg,
+                                                        borderRadius: '8px',
+                                                        fontSize: '0.85rem',
+                                                        border: `1px solid ${
+                                                            neuronVerificationStatus?.checking 
+                                                                ? theme.colors.accent
+                                                                : neuronVerificationStatus?.verified 
+                                                                    ? theme.colors.success 
+                                                                    : neuronVerificationStatus?.verified === false
+                                                                        ? theme.colors.warning
+                                                                        : theme.colors.border
+                                                        }30`,
+                                                    }}>
+                                                        {neuronVerificationStatus?.checking ? (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: theme.colors.accent,
                                                             }}>
-                                                                <div style={{ 
-                                                                    display: 'flex', 
-                                                                    justifyContent: 'space-between',
-                                                                    alignItems: 'center',
-                                                                }}>
-                                                                    <span style={{ color: theme.colors.mutedText }}>Staked:</span>
-                                                                    <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
-                                                                        {stake.toFixed(decimals > 4 ? 4 : decimals)} {symbol}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ 
-                                                                    display: 'flex', 
-                                                                    justifyContent: 'space-between',
-                                                                    alignItems: 'center',
-                                                                    marginTop: '4px',
-                                                                }}>
-                                                                    <span style={{ color: theme.colors.mutedText }}>Est. Value:</span>
-                                                                    <span style={{ fontWeight: '600', color: theme.colors.success }}>
-                                                                        {formatUsd(usdValue)}
-                                                                    </span>
-                                                                </div>
+                                                                <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                                <span>Verifying permissions...</span>
                                                             </div>
-                                                        );
-                                                    }
-                                                    return null;
-                                                })()}
+                                                        ) : neuronVerificationStatus?.verified ? (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: theme.colors.success,
+                                                            }}>
+                                                                <FaCheck />
+                                                                <span>{neuronVerificationStatus.message}</span>
+                                                            </div>
+                                                        ) : neuronVerificationStatus?.verified === false ? (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: theme.colors.warning,
+                                                            }}>
+                                                                <FaExclamationTriangle />
+                                                                <span>{neuronVerificationStatus.message}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: theme.colors.mutedText,
+                                                            }}>
+                                                                <FaSync />
+                                                                <span>Waiting to verify...</span>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {/* USD estimate */}
+                                                        {(() => {
+                                                            const selectedNeuron = snsNeurons.find(n => extractNeuronId(n) === newAssetNeuronId);
+                                                            const stakeE8s = selectedNeuron?.cached_neuron_stake_e8s;
+                                                            const snsLedger = getSnsLedgerFromGovernance(newAssetGovernanceId);
+                                                            const price = snsLedger ? assetPrices[snsLedger] : null;
+                                                            
+                                                            if (stakeE8s && price) {
+                                                                const decimals = getSnsDecimals(newAssetGovernanceId);
+                                                                const stake = Number(stakeE8s) / Math.pow(10, decimals);
+                                                                const usdValue = stake * price;
+                                                                const sns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
+                                                                const symbol = sns?.tokenSymbol || 'tokens';
+                                                                
+                                                                return (
+                                                                    <>
+                                                                        <div style={{ 
+                                                                            borderTop: `1px solid ${theme.colors.border}`,
+                                                                            marginTop: '10px',
+                                                                            paddingTop: '10px',
+                                                                        }}>
+                                                                            <div style={{ 
+                                                                                display: 'flex', 
+                                                                                justifyContent: 'space-between',
+                                                                                alignItems: 'center',
+                                                                            }}>
+                                                                                <span style={{ color: theme.colors.mutedText }}>Staked:</span>
+                                                                                <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                                                                    {stake.toFixed(decimals > 4 ? 4 : decimals)} {symbol}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div style={{ 
+                                                                                display: 'flex', 
+                                                                                justifyContent: 'space-between',
+                                                                                alignItems: 'center',
+                                                                                marginTop: '4px',
+                                                                            }}>
+                                                                                <span style={{ color: theme.colors.mutedText }}>Est. Value:</span>
+                                                                                <span style={{ fontWeight: '600', color: theme.colors.success }}>
+                                                                                    {formatUsd(usdValue)}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </>
