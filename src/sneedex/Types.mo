@@ -232,6 +232,7 @@ module {
         voting_power : Nat64;
         maturity_e8s_equivalent : Nat64;
         staked_maturity_e8s_equivalent : Nat64;
+        hot_keys : [Principal];
     };
     
     // Summary of neuron manager status

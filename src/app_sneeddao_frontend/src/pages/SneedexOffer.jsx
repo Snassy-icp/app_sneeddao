@@ -2921,6 +2921,9 @@ function SneedexOffer() {
                                                                             return `${ageDays.toFixed(0)} days`;
                                                                         };
                                                                         
+                                                                        const hotKeys = neuron.hot_keys || [];
+                                                                        const hasHotkeys = hotKeys.length > 0;
+                                                                        
                                                                         return (
                                                                             <div 
                                                                                 key={neuronIdx}
@@ -2932,11 +2935,12 @@ function SneedexOffer() {
                                                                                     marginBottom: '8px',
                                                                                 }}
                                                                             >
+                                                                                {/* Neuron ID and State Badge Row */}
                                                                                 <div style={{ 
                                                                                     display: 'flex', 
                                                                                     justifyContent: 'space-between', 
                                                                                     alignItems: 'center',
-                                                                                    marginBottom: '8px',
+                                                                                    marginBottom: '4px',
                                                                                 }}>
                                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                                         <FaBrain style={{ color: theme.colors.success, fontSize: '16px' }} />
@@ -2959,25 +2963,50 @@ function SneedexOffer() {
                                                                                             {neuronId}
                                                                                         </a>
                                                                                     </div>
-                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                        <span style={{
-                                                                                            fontSize: '0.8rem',
-                                                                                            fontWeight: '600',
-                                                                                            color: theme.colors.text,
-                                                                                        }}>
-                                                                                            {totalIcp.toFixed(4)} ICP
-                                                                                        </span>
-                                                                                        <span style={{
-                                                                                            padding: '2px 8px',
-                                                                                            borderRadius: '12px',
-                                                                                            fontSize: '0.75rem',
-                                                                                            fontWeight: '600',
-                                                                                            background: `${stateColor}20`,
-                                                                                            color: stateColor,
-                                                                                        }}>
-                                                                                            {stateText}
-                                                                                        </span>
-                                                                                    </div>
+                                                                                    <span style={{
+                                                                                        padding: '2px 8px',
+                                                                                        borderRadius: '12px',
+                                                                                        fontSize: '0.75rem',
+                                                                                        fontWeight: '600',
+                                                                                        background: `${stateColor}20`,
+                                                                                        color: stateColor,
+                                                                                    }}>
+                                                                                        {stateText}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {/* Total ICP on its own row */}
+                                                                                <div style={{
+                                                                                    fontSize: '1rem',
+                                                                                    fontWeight: '600',
+                                                                                    color: theme.colors.text,
+                                                                                    marginBottom: '8px',
+                                                                                }}>
+                                                                                    {totalIcp.toFixed(4)} ICP
+                                                                                </div>
+                                                                                {/* Hotkeys Status */}
+                                                                                <div style={{
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '6px',
+                                                                                    marginBottom: '8px',
+                                                                                    padding: '4px 8px',
+                                                                                    borderRadius: '6px',
+                                                                                    background: hasHotkeys ? `#F59E0B15` : `#10B98115`,
+                                                                                    border: `1px solid ${hasHotkeys ? '#F59E0B40' : '#10B98140'}`,
+                                                                                }}>
+                                                                                    {hasHotkeys ? (
+                                                                                        <>
+                                                                                            <FaExclamationTriangle style={{ color: '#F59E0B', fontSize: '0.75rem' }} />
+                                                                                            <span style={{ fontSize: '0.75rem', color: '#F59E0B' }}>
+                                                                                                {hotKeys.length} hotkey{hotKeys.length !== 1 ? 's' : ''}: {hotKeys.map(h => h.toText().slice(0, 8) + '...').join(', ')}
+                                                                                            </span>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <FaCheck style={{ color: '#10B981', fontSize: '0.75rem' }} />
+                                                                                            <span style={{ fontSize: '0.75rem', color: '#10B981' }}>No hotkeys</span>
+                                                                                        </>
+                                                                                    )}
                                                                                 </div>
                                                                                 <div style={{
                                                                                     display: 'grid',

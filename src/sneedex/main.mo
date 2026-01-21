@@ -815,16 +815,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 switch (infoOpt) {
                     case null {};
                     case (?info) {
-                        // Get full neuron to get maturity data
+                        // Get full neuron to get maturity data and hotkeys
                         let fullNeuronOpt = await manager.getFullNeuron(nid);
-                        let (maturity, stakedMaturity) = switch (fullNeuronOpt) {
-                            case null { (0 : Nat64, 0 : Nat64) };
+                        let (maturity, stakedMaturity, hotKeys) = switch (fullNeuronOpt) {
+                            case null { (0 : Nat64, 0 : Nat64, [] : [Principal]) };
                             case (?fullNeuron) {
                                 let staked = switch (fullNeuron.staked_maturity_e8s_equivalent) {
                                     case null { 0 : Nat64 };
                                     case (?s) { s };
                                 };
-                                (fullNeuron.maturity_e8s_equivalent, staked);
+                                (fullNeuron.maturity_e8s_equivalent, staked, fullNeuron.hot_keys);
                             };
                         };
                         
@@ -837,6 +837,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             voting_power = info.voting_power;
                             maturity_e8s_equivalent = maturity;
                             staked_maturity_e8s_equivalent = stakedMaturity;
+                            hot_keys = hotKeys;
                         });
                     };
                 };

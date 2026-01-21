@@ -14,7 +14,7 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
-import { FaGasPump } from 'react-icons/fa';
+import { FaGasPump, FaRobot, FaBrain } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
@@ -2112,7 +2112,16 @@ function IcpNeuronManager() {
             <Header />
             <main className="wallet-container">
                 <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '32px' }}>🧠</span>
+                    <span style={{ position: 'relative', display: 'inline-flex' }}>
+                        <FaRobot style={{ color: theme.colors.accent, fontSize: '32px' }} />
+                        <FaBrain style={{ 
+                            color: '#10B981', 
+                            fontSize: '18px',
+                            position: 'absolute',
+                            bottom: -2,
+                            right: -6,
+                        }} />
+                    </span>
                     <PrincipalDisplay
                         principal={canisterId}
                         displayInfo={displayInfo}
