@@ -23,6 +23,7 @@ import { createActor as createBackendActor } from 'declarations/app_sneeddao_bac
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import priceService from '../services/PriceService';
 import { Principal } from '@dfinity/principal';
+import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
 
 // Generate bid escrow subaccount (matches backend Utils.bidEscrowSubaccount)
 // Structure: byte 0 = principal length, bytes 1-N = principal, byte 23 = 0x42 ('B'), bytes 24-31 = bidId big-endian
@@ -77,6 +78,7 @@ function SneedexMy() {
     
     // USD pricing state
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
+    const [snsData, setSnsData] = useState([]); // SNS data for looking up ledger IDs
     
     // Filter state
     const [offerFilter, setOfferFilter] = useState('all'); // all, active, completed, draft, cancelled, expired, reclaimed, claimed
@@ -315,6 +317,38 @@ function SneedexMy() {
         }
     }, [isAuthenticated, identity, fetchData]);
     
+    // Fetch SNS data for looking up ledger IDs from governance IDs
+    useEffect(() => {
+        const fetchSnsDataForPrices = async () => {
+            try {
+                let data = getAllSnses();
+                if (!data || data.length === 0) {
+                    data = await fetchAndCacheSnsData(identity);
+                }
+                setSnsData(data || []);
+            } catch (e) {
+                console.error('Failed to fetch SNS data:', e);
+            }
+        };
+        fetchSnsDataForPrices();
+    }, [identity]);
+    
+    // Helper to get SNS ledger from governance ID
+    const getSnsLedgerFromGovernance = useCallback((governanceId) => {
+        const sns = snsData.find(s => {
+            const govId = s.governance_canister_id?.[0]?.toString() || 
+                          s.governance_canister_id?.toString() ||
+                          s.canisters?.governance;
+            return govId === governanceId;
+        });
+        if (sns) {
+            return sns.ledger_canister_id?.[0]?.toString() || 
+                   sns.ledger_canister_id?.toString() ||
+                   sns.canisters?.ledger;
+        }
+        return null;
+    }, [snsData]);
+    
     // Fetch token prices for USD display
     useEffect(() => {
         const fetchPrices = async () => {
@@ -323,6 +357,21 @@ function SneedexMy() {
             
             myOffers.forEach(offer => {
                 ledgerIds.add(offer.price_token_ledger.toString());
+                
+                // Also add SNS ledgers for SNS neuron assets
+                if (offer.assets) {
+                    offer.assets.forEach(assetEntry => {
+                        if (assetEntry.asset?.SNSNeuron) {
+                            const govId = assetEntry.asset.SNSNeuron.governance_canister_id?.toString();
+                            if (govId) {
+                                const snsLedger = getSnsLedgerFromGovernance(govId);
+                                if (snsLedger) {
+                                    ledgerIds.add(snsLedger);
+                                }
+                            }
+                        }
+                    });
+                }
             });
             
             // Add ledgers from bid offers
@@ -350,10 +399,10 @@ function SneedexMy() {
             setTokenPrices(prices);
         };
         
-        if (myOffers.length > 0 || Object.keys(bidOfferInfo).length > 0) {
+        if ((myOffers.length > 0 || Object.keys(bidOfferInfo).length > 0) && snsData.length > 0) {
             fetchPrices();
         }
-    }, [myOffers, bidOfferInfo, whitelistedTokens]);
+    }, [myOffers, bidOfferInfo, whitelistedTokens, snsData, getSnsLedgerFromGovernance]);
     
     const handleAcceptBid = async (offerId) => {
         if (!identity) return;

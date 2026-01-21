@@ -913,6 +913,13 @@ function SneedexOffer() {
                     const details = getAssetDetails(assetEntry);
                     if (details.type === 'ICRC1Token') {
                         ledgerIds.add(details.ledger_id);
+                    } else if (details.type === 'SNSNeuron') {
+                        // Add SNS ledger for neuron assets
+                        const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
+                        const snsLedger = sns?.canisters?.ledger;
+                        if (snsLedger) {
+                            ledgerIds.add(snsLedger);
+                        }
                     }
                 });
                 
@@ -935,7 +942,7 @@ function SneedexOffer() {
         };
         
         fetchPrices();
-    }, [offer, whitelistedTokens]);
+    }, [offer, whitelistedTokens, snsData]);
     
     // Get token info from whitelisted tokens
     const tokenInfo = (() => {

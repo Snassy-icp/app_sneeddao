@@ -327,6 +327,18 @@ function SneedexOffers() {
         fetchOffers();
     }, [fetchOffers]);
     
+    // Helper to get SNS ledger from governance ID (defined here for use in price fetching)
+    const getSnsLedgerFromGovernanceForPrices = useCallback((governanceId) => {
+        const sns = snsList.find(s => {
+            const govId = s.governance_canister_id?.[0]?.toString() || s.governance_canister_id?.toString();
+            return govId === governanceId;
+        });
+        if (sns) {
+            return sns.ledger_canister_id?.[0]?.toString() || sns.ledger_canister_id?.toString();
+        }
+        return null;
+    }, [snsList]);
+    
     // Fetch token prices for USD display
     useEffect(() => {
         const fetchPrices = async () => {
@@ -347,6 +359,12 @@ function SneedexOffers() {
                         const details = getAssetDetails(assetEntry);
                         if (details.type === 'ICRC1Token') {
                             ledgerIds.add(details.ledger_id);
+                        } else if (details.type === 'SNSNeuron') {
+                            // Add SNS ledger for neuron assets
+                            const snsLedger = getSnsLedgerFromGovernanceForPrices(details.governance_id);
+                            if (snsLedger) {
+                                ledgerIds.add(snsLedger);
+                            }
                         }
                     });
                 });
@@ -368,10 +386,10 @@ function SneedexOffers() {
             }
         };
         
-        if (offers.length > 0) {
+        if (offers.length > 0 && snsList.length > 0) {
             fetchPrices();
         }
-    }, [offers, getTokenInfo]);
+    }, [offers, snsList, getTokenInfo, getSnsLedgerFromGovernanceForPrices]);
     
     // Fetch SNS logos, symbols, neuron info, token logos, and neuron manager info when offers change
     useEffect(() => {
