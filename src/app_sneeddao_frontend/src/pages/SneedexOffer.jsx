@@ -146,6 +146,9 @@ function SneedexOffer() {
     const [snsSymbols, setSnsSymbols] = useState({}); // {governanceId: tokenSymbol}
     const [tokenLogos, setTokenLogos] = useState({}); // {ledgerId: logoUrl}
     
+    // Countdown timer state
+    const [timeRemainingMs, setTimeRemainingMs] = useState(null); // Milliseconds remaining
+    
     // InfoModal state
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     
@@ -172,6 +175,67 @@ function SneedexOffer() {
         };
         fetchTokens();
     }, [identity]);
+    
+    // Countdown timer for offer expiration
+    useEffect(() => {
+        if (!offer?.expiration?.[0]) {
+            setTimeRemainingMs(null);
+            return;
+        }
+        
+        const expirationMs = Number(offer.expiration[0]) / 1_000_000;
+        
+        const updateRemaining = () => {
+            const remaining = expirationMs - Date.now();
+            setTimeRemainingMs(remaining > 0 ? remaining : 0);
+        };
+        
+        // Initial update
+        updateRemaining();
+        
+        // Only set up interval if less than 1 hour remaining (or close to it)
+        const remaining = expirationMs - Date.now();
+        if (remaining > 0 && remaining <= 3600000) { // 1 hour in ms
+            const intervalId = setInterval(updateRemaining, 1000);
+            return () => clearInterval(intervalId);
+        } else if (remaining > 3600000) {
+            // For longer times, check every minute to see if we should start the countdown
+            const intervalId = setInterval(() => {
+                const r = expirationMs - Date.now();
+                if (r <= 3600000) {
+                    updateRemaining();
+                }
+            }, 60000);
+            return () => clearInterval(intervalId);
+        }
+    }, [offer?.expiration]);
+    
+    // Format time remaining with seconds when < 1 hour
+    const formatCountdown = useCallback(() => {
+        if (timeRemainingMs === null || timeRemainingMs === undefined) {
+            return formatTimeRemaining(offer?.expiration?.[0]);
+        }
+        
+        if (timeRemainingMs <= 0) {
+            return 'Expired';
+        }
+        
+        const totalSeconds = Math.floor(timeRemainingMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${seconds}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+        } else {
+            return `${seconds}s`;
+        }
+    }, [timeRemainingMs, offer?.expiration]);
+    
+    // Check if offer is expired based on countdown
+    const isCountdownExpired = timeRemainingMs !== null && timeRemainingMs <= 0;
     
     // Check if the user is a controller of a specific canister
     const checkCanisterController = useCallback(async (canisterId) => {
@@ -3990,9 +4054,18 @@ function SneedexOffer() {
                             </div>
                             <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
                                 <span style={styles.priceLabel}>Time Remaining</span>
-                                <span style={{ ...styles.priceValue, color: theme.colors.warning }}>
+                                <span style={{ 
+                                    ...styles.priceValue, 
+                                    color: isCountdownExpired ? theme.colors.error : 
+                                           (timeRemainingMs !== null && timeRemainingMs < 300000) ? theme.colors.error : // < 5 min = red
+                                           (timeRemainingMs !== null && timeRemainingMs < 3600000) ? theme.colors.warning : // < 1 hour = warning
+                                           theme.colors.warning,
+                                    fontFamily: (timeRemainingMs !== null && timeRemainingMs <= 3600000) ? 'monospace' : 'inherit',
+                                }}>
                                     <FaClock style={{ marginRight: '8px' }} />
-                                    {formatTimeRemaining(offer.expiration[0])}
+                                    {timeRemainingMs !== null && timeRemainingMs <= 3600000 
+                                        ? formatCountdown() 
+                                        : formatTimeRemaining(offer.expiration[0])}
                                 </span>
                             </div>
                             
@@ -4494,7 +4567,7 @@ function SneedexOffer() {
                             )}
                             
                             {/* Process Expiration - visible to anyone when offer is Active and past expiration */}
-                            {isActive && isAuthenticated && offer.expiration[0] && isOfferPastExpiration(offer.expiration[0]) && (
+                            {isActive && isAuthenticated && offer.expiration[0] && (isCountdownExpired || isOfferPastExpiration(offer.expiration[0])) && (
                                 <div style={{
                                     background: `${theme.colors.warning}15`,
                                     border: `1px solid ${theme.colors.warning}50`,
