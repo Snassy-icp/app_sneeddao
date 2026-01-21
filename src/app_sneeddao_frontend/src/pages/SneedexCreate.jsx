@@ -2336,18 +2336,85 @@ function SneedexCreate() {
                                         <><FaPlus /> Add New Asset</>
                                     )}
                                 </div>
-                                <div style={styles.formGroup}>
-                                    <label style={styles.label}>Asset Type</label>
-                                    <select
-                                        style={styles.select}
-                                        value={newAssetType}
-                                        onChange={(e) => setNewAssetType(e.target.value)}
-                                        disabled={editingAssetIndex !== null} // Can't change type when editing
-                                    >
-                                        <option value="canister">Canister</option>
-                                        <option value="neuron">SNS Neuron</option>
-                                        <option value="token">ICRC1 Token</option>
-                                    </select>
+                                {/* Asset Type Tabs */}
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '12px',
+                                    marginBottom: '1.5rem',
+                                    padding: '8px',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '16px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                }}>
+                                    {[
+                                        { type: 'canister', icon: FaServer, label: 'Canister', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                                        { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                                        { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                                    ].map(({ type, icon: Icon, label, gradient }) => {
+                                        const isSelected = newAssetType === type;
+                                        const isDisabled = editingAssetIndex !== null; // Can't change type when editing
+                                        return (
+                                            <button
+                                                key={type}
+                                                onClick={() => !isDisabled && setNewAssetType(type)}
+                                                disabled={isDisabled}
+                                                style={{
+                                                    flex: 1,
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    padding: '16px 12px',
+                                                    border: 'none',
+                                                    borderRadius: '12px',
+                                                    background: isSelected ? gradient : 'transparent',
+                                                    color: isSelected ? '#fff' : theme.colors.mutedText,
+                                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                                    opacity: isDisabled ? 0.5 : 1,
+                                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                    transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+                                                    boxShadow: isSelected 
+                                                        ? '0 8px 24px rgba(0, 0, 0, 0.2)' 
+                                                        : 'none',
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (!isSelected && !isDisabled) {
+                                                        e.currentTarget.style.background = `${theme.colors.border}50`;
+                                                        e.currentTarget.style.color = theme.colors.primaryText;
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (!isSelected && !isDisabled) {
+                                                        e.currentTarget.style.background = 'transparent';
+                                                        e.currentTarget.style.color = theme.colors.mutedText;
+                                                    }
+                                                }}
+                                            >
+                                                <div style={{
+                                                    width: '48px',
+                                                    height: '48px',
+                                                    borderRadius: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    background: isSelected 
+                                                        ? 'rgba(255, 255, 255, 0.2)' 
+                                                        : `${theme.colors.border}40`,
+                                                    backdropFilter: isSelected ? 'blur(8px)' : 'none',
+                                                    transition: 'all 0.3s ease',
+                                                }}>
+                                                    <Icon size={24} />
+                                                </div>
+                                                <span style={{
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: isSelected ? '600' : '500',
+                                                    letterSpacing: '0.02em',
+                                                }}>
+                                                    {label}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                                 
                                 {newAssetType === 'canister' && (
