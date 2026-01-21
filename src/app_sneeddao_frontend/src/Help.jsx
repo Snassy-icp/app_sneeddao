@@ -123,6 +123,16 @@ function Help() {
                                 Canister Manager
                             </Link>
                         </li>
+                        <li style={styles.linkItem}>
+                            <Link 
+                                to="/help/sneedex" 
+                                style={styles.link}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Sneedex Marketplace
+                            </Link>
+                        </li>
                     </ul>
                 </div>
             </main>
