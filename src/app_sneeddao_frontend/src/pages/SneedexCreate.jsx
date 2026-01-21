@@ -250,18 +250,25 @@ function SneedexCreate() {
         fetchUserCanisters();
     }, [identity]);
     
-    // Helper to get canister display name (prefer nickname, then public name, then shortened ID)
+    // Helper to get canister display name (show nickname + name if both exist)
     const getCanisterName = useCallback((canisterId) => {
-        // Check for private nickname first
         const nickname = principalNicknames?.get(canisterId);
-        if (nickname) return `🏷️ ${nickname}`;
-        
-        // Then check for public name
         const name = principalNames?.get(canisterId);
-        if (name) return name;
+        const shortId = canisterId.slice(0, 10) + '...' + canisterId.slice(-5);
+        
+        if (nickname && name) {
+            // Show both nickname and public name
+            return `🏷️ ${nickname} (${name})`;
+        } else if (nickname) {
+            // Just nickname
+            return `🏷️ ${nickname}`;
+        } else if (name) {
+            // Just public name
+            return name;
+        }
         
         // Fallback to shortened ID
-        return canisterId.slice(0, 10) + '...' + canisterId.slice(-5);
+        return shortId;
     }, [principalNames, principalNicknames]);
     
     // Assets
