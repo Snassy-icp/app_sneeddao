@@ -103,7 +103,7 @@ const managementIdlFactory = () => {
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
-    const { principalNames } = useNaming();
+    const { principalNames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
     const navigate = useNavigate();
     
     // Offer settings
@@ -135,7 +135,8 @@ function SneedexCreate() {
     const { isAdmin } = useAdminCheck({ identity, isAuthenticated, redirectPath: null });
     
     // User's registered canisters and neuron managers
-    const [userCanisters, setUserCanisters] = useState([]); // Array of canister ID strings
+    const [userCanisters, setUserCanisters] = useState([]); // Array of canister ID strings (from canister groups)
+    const [walletCanisters, setWalletCanisters] = useState([]); // Array of canister ID strings (from tracked_canisters)
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of canister ID strings
     const [loadingCanisters, setLoadingCanisters] = useState(true);
     
@@ -211,6 +212,22 @@ function SneedexCreate() {
                     }
                 }
                 setUserCanisters(canisters);
+                
+                // Fetch wallet canisters (tracked_canisters)
+                try {
+                    const backendActor = createBackendActor(backendCanisterId, {
+                        agentOptions: { identity }
+                    });
+                    const trackedCanisters = await backendActor.get_tracked_canisters();
+                    // Filter out any that are already in userCanisters
+                    const uniqueTracked = trackedCanisters
+                        .map(p => p.toString())
+                        .filter(id => !canisters.includes(id));
+                    setWalletCanisters(uniqueTracked);
+                } catch (e) {
+                    console.error('Failed to fetch tracked canisters:', e);
+                    setWalletCanisters([]);
+                }
                 
                 // Fetch neuron managers
                 const host = getHost();
@@ -368,14 +385,29 @@ function SneedexCreate() {
         return getNeuronId(neuron);
     }, []);
     
-    // Get display name for a neuron
-    const getNeuronDisplayName = useCallback((neuron) => {
+    // Get display name for a neuron (with name/nickname if available)
+    const getNeuronDisplayName = useCallback((neuron, snsRoot) => {
         const idHex = extractNeuronId(neuron) || '';
         const shortId = idHex.length > 16 ? idHex.slice(0, 8) + '...' + idHex.slice(-8) : (idHex || '???');
         const stake = neuron.cached_neuron_stake_e8s ? 
             (Number(neuron.cached_neuron_stake_e8s) / 1e8).toFixed(2) : '0';
-        return `${shortId} (${stake} tokens)`;
-    }, [extractNeuronId]);
+        
+        // Try to get name/nickname from naming context
+        let displayName = shortId;
+        if (snsRoot && idHex && getNeuronNameInfo) {
+            const nameInfo = getNeuronNameInfo(idHex, snsRoot);
+            if (nameInfo) {
+                // Prefer nickname, then public name
+                if (nameInfo.nickname) {
+                    displayName = `🏷️ ${nameInfo.nickname}`;
+                } else if (nameInfo.name) {
+                    displayName = nameInfo.name;
+                }
+            }
+        }
+        
+        return `${displayName} (${stake} tokens)`;
+    }, [extractNeuronId, getNeuronNameInfo]);
     
     const [newAssetTokenLedger, setNewAssetTokenLedger] = useState('');
     const [newAssetTokenAmount, setNewAssetTokenAmount] = useState('');
@@ -2065,7 +2097,7 @@ function SneedexCreate() {
                                             }}>
                                                 Loading your canisters...
                                             </div>
-                                        ) : (userCanisters.length > 0 || neuronManagers.length > 0) ? (
+                                        ) : (userCanisters.length > 0 || walletCanisters.length > 0 || neuronManagers.length > 0) ? (
                                             <>
                                                 <select
                                                     style={{
@@ -2094,6 +2126,18 @@ function SneedexCreate() {
                                                     {userCanisters.length > 0 && (
                                                         <optgroup label="📦 Registered Canisters">
                                                             {userCanisters.map(canisterId => (
+                                                                <option key={canisterId} value={canisterId}>
+                                                                    {getCanisterName(canisterId)}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+                                                    
+                                                    {walletCanisters.filter(id => !neuronManagers.includes(id)).length > 0 && (
+                                                        <optgroup label="💼 Wallet Canisters">
+                                                            {walletCanisters
+                                                                .filter(id => !neuronManagers.includes(id))
+                                                                .map(canisterId => (
                                                                 <option key={canisterId} value={canisterId}>
                                                                     {getCanisterName(canisterId)}
                                                                 </option>
@@ -2381,7 +2425,7 @@ function SneedexCreate() {
                                                                     const hexId = extractNeuronId(neuron);
                                                                     return (
                                                                         <option key={hexId} value={hexId}>
-                                                                            {getNeuronDisplayName(neuron)}
+                                                                            {getNeuronDisplayName(neuron, selectedSnsRoot)}
                                                                         </option>
                                                                     );
                                                                 })}
