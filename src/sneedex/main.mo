@@ -468,6 +468,27 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     };
                 };
                 
+                // Re-register reclaimed assets to seller's wallet (best effort)
+                for (entry in offer.assets.vals()) {
+                    if (entry.escrowed) {
+                        switch (entry.asset) {
+                            case (#Canister(asset)) {
+                                let isNeuronManager = switch (asset.canister_kind) {
+                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                    case null { false };
+                                };
+                                await registerCanisterToWallet(offer.creator, asset.canister_id, isNeuronManager);
+                            };
+                            case (#SNSNeuron(_asset)) {
+                                // SNS neurons are shown via SNS governance, no registration needed
+                            };
+                            case (#ICRC1Token(_asset)) {
+                                // Tokens don't need re-registration (user already has it in their wallet)
+                            };
+                        };
+                    };
+                };
+                
                 // Update state to Reclaimed
                 let updatedOffer : T.Offer = {
                     id = offer.id;
@@ -2129,6 +2150,26 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         };
                     };
                 };
+                
+                // Re-register reclaimed assets to seller's wallet (best effort, non-blocking)
+                let creatorPrincipal = caller;
+                ignore Timer.setTimer<system>(#seconds 0, func () : async () {
+                    for (entry in offer.assets.vals()) {
+                        if (entry.escrowed) {
+                            switch (entry.asset) {
+                                case (#Canister(asset)) {
+                                    let isNeuronManager = switch (asset.canister_kind) {
+                                        case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                        case null { false };
+                                    };
+                                    await registerCanisterToWallet(creatorPrincipal, asset.canister_id, isNeuronManager);
+                                };
+                                case (#SNSNeuron(_asset)) {};
+                                case (#ICRC1Token(_asset)) {};
+                            };
+                        };
+                    };
+                });
                 
                 // Update state
                 let updatedOffer : T.Offer = {
