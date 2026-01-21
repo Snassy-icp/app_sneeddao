@@ -103,7 +103,7 @@ const managementIdlFactory = () => {
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
-    const { principalNames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
+    const { principalNames, principalNicknames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
     const navigate = useNavigate();
     
     // Offer settings
@@ -250,12 +250,19 @@ function SneedexCreate() {
         fetchUserCanisters();
     }, [identity]);
     
-    // Helper to get canister display name
+    // Helper to get canister display name (prefer nickname, then public name, then shortened ID)
     const getCanisterName = useCallback((canisterId) => {
+        // Check for private nickname first
+        const nickname = principalNicknames?.get(canisterId);
+        if (nickname) return `🏷️ ${nickname}`;
+        
+        // Then check for public name
         const name = principalNames?.get(canisterId);
         if (name) return name;
+        
+        // Fallback to shortened ID
         return canisterId.slice(0, 10) + '...' + canisterId.slice(-5);
-    }, [principalNames]);
+    }, [principalNames, principalNicknames]);
     
     // Assets
     const [assets, setAssets] = useState([]);
@@ -270,6 +277,7 @@ function SneedexCreate() {
     const [newAssetCanisterDescription, setNewAssetCanisterDescription] = useState('');
     const [verifyingCanisterKind, setVerifyingCanisterKind] = useState(false);
     const [canisterKindVerified, setCanisterKindVerified] = useState(null); // null, true, or error message
+    const [canisterControllerStatus, setCanisterControllerStatus] = useState(null); // null, {checking: true}, {verified: true/false, message: string}
     const [newAssetGovernanceId, setNewAssetGovernanceId] = useState('');
     const [newAssetNeuronId, setNewAssetNeuronId] = useState('');
     
@@ -501,6 +509,50 @@ function SneedexCreate() {
             return { verified: false, message: 'Not a controller - add Sneedex manually' };
         }
     }, [identity]);
+    
+    // Check canister controller status and update state
+    const checkCanisterControllerStatus = useCallback(async (canisterId) => {
+        if (!canisterId) {
+            setCanisterControllerStatus(null);
+            return;
+        }
+        
+        // Validate canister ID format
+        try {
+            Principal.fromText(canisterId);
+        } catch (e) {
+            setCanisterControllerStatus({ verified: false, message: 'Invalid canister ID format' });
+            return;
+        }
+        
+        setCanisterControllerStatus({ checking: true });
+        const result = await verifyCanister(canisterId);
+        setCanisterControllerStatus(result);
+    }, [verifyCanister]);
+    
+    // Debounced effect to check controller status when canister ID changes
+    useEffect(() => {
+        if (!newAssetCanisterId || newAssetType !== 'canister') {
+            setCanisterControllerStatus(null);
+            return;
+        }
+        
+        // Validate canister ID format before checking
+        try {
+            Principal.fromText(newAssetCanisterId);
+        } catch (e) {
+            // Invalid format, don't check yet
+            setCanisterControllerStatus(null);
+            return;
+        }
+        
+        // Debounce the check
+        const timer = setTimeout(() => {
+            checkCanisterControllerStatus(newAssetCanisterId);
+        }, 500);
+        
+        return () => clearTimeout(timer);
+    }, [newAssetCanisterId, newAssetType, checkCanisterControllerStatus]);
     
     // Verify if a canister is an ICP Neuron Manager with wasm hash verification
     const verifyICPNeuronManager = useCallback(async (canisterId) => {
@@ -871,6 +923,7 @@ function SneedexCreate() {
         setNewAssetCanisterTitle('');
         setNewAssetCanisterDescription('');
         setCanisterKindVerified(null);
+        setCanisterControllerStatus(null);
         setNewAssetGovernanceId('');
         setNewAssetNeuronId('');
         setSelectedSnsRoot('');
@@ -936,6 +989,7 @@ function SneedexCreate() {
         setNewAssetCanisterTitle('');
         setNewAssetCanisterDescription('');
         setCanisterKindVerified(null);
+        setCanisterControllerStatus(null);
         setNewAssetGovernanceId('');
         setNewAssetNeuronId('');
         setSelectedSnsRoot('');
@@ -2119,6 +2173,7 @@ function SneedexCreate() {
                                                             setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
                                                             setCanisterKindVerified(null);
                                                         }
+                                                        // Controller status will be checked by debounced useEffect
                                                     }}
                                                 >
                                                     <option value="">Select a canister...</option>
@@ -2193,6 +2248,59 @@ function SneedexCreate() {
                                                     onChange={(e) => setNewAssetCanisterId(e.target.value)}
                                                 />
                                             </>
+                                        )}
+                                        
+                                        {/* Controller Status Display */}
+                                        {newAssetCanisterId && (
+                                            <div style={{ 
+                                                marginTop: '10px', 
+                                                padding: '10px 12px',
+                                                borderRadius: '8px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                fontSize: '0.85rem',
+                                                background: canisterControllerStatus?.checking 
+                                                    ? `${theme.colors.accent}10`
+                                                    : canisterControllerStatus?.verified 
+                                                        ? `${theme.colors.success}15`
+                                                        : canisterControllerStatus 
+                                                            ? `${theme.colors.warning}15`
+                                                            : `${theme.colors.accent}10`,
+                                                border: `1px solid ${
+                                                    canisterControllerStatus?.checking 
+                                                        ? theme.colors.border
+                                                        : canisterControllerStatus?.verified 
+                                                            ? theme.colors.success
+                                                            : canisterControllerStatus 
+                                                                ? theme.colors.warning
+                                                                : theme.colors.border
+                                                }`,
+                                            }}>
+                                                {canisterControllerStatus?.checking ? (
+                                                    <>
+                                                        <FaSync style={{ animation: 'spin 1s linear infinite', color: theme.colors.accent }} />
+                                                        <span style={{ color: theme.colors.secondaryText }}>Checking controller status...</span>
+                                                    </>
+                                                ) : canisterControllerStatus?.verified ? (
+                                                    <>
+                                                        <FaCheck style={{ color: theme.colors.success }} />
+                                                        <span style={{ color: theme.colors.success }}>You are a controller - can escrow automatically</span>
+                                                    </>
+                                                ) : canisterControllerStatus ? (
+                                                    <>
+                                                        <FaExclamationTriangle style={{ color: theme.colors.warning }} />
+                                                        <span style={{ color: theme.colors.warning }}>
+                                                            {canisterControllerStatus.message || 'Not a controller'} - you'll need to add Sneedex ({SNEEDEX_CANISTER_ID.slice(0, 8)}...) as a controller manually
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <FaSync style={{ animation: 'spin 1s linear infinite', color: theme.colors.mutedText }} />
+                                                        <span style={{ color: theme.colors.mutedText }}>Verifying...</span>
+                                                    </>
+                                                )}
+                                            </div>
                                         )}
                                         
                                         {/* Canister Kind Selection */}
