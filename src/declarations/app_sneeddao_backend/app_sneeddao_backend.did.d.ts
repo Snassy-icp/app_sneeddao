@@ -4,6 +4,7 @@ import type { IDL } from '@dfinity/candid';
 
 export interface AppSneedDaoBackend {
   'add_admin' : ActorMethod<[Principal], undefined>,
+  'add_authorized_for_caller' : ActorMethod<[Principal], undefined>,
   'add_blacklisted_word' : ActorMethod<[string], Result_1>,
   'add_partner' : ActorMethod<
     [string, string, string, Array<PartnerLink>, [] | [bigint]],
@@ -36,6 +37,7 @@ export interface AppSneedDaoBackend {
     Array<[Principal, [string, boolean]]>
   >,
   'get_all_principal_nicknames' : ActorMethod<[], Array<[Principal, string]>>,
+  'get_authorized_for_callers' : ActorMethod<[], Array<Principal>>,
   'get_ban_log' : ActorMethod<[], Result_3>,
   'get_banned_users' : ActorMethod<[], Result_5>,
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
@@ -58,13 +60,21 @@ export interface AppSneedDaoBackend {
   'get_tracked_canisters' : ActorMethod<[], Array<Principal>>,
   'get_user_ban_history' : ActorMethod<[Principal], Result_3>,
   'get_user_neurons' : ActorMethod<[], Result_2>,
+  'get_user_tokens' : ActorMethod<[], Array<Principal>>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
   'register_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'register_swap_canister_id' : ActorMethod<[Principal], undefined>,
   'register_tracked_canister' : ActorMethod<[Principal], undefined>,
+  'register_tracked_canister_for' : ActorMethod<
+    [Principal, Principal],
+    undefined
+  >,
+  'register_user_token' : ActorMethod<[Principal], undefined>,
+  'register_user_token_for' : ActorMethod<[Principal, Principal], undefined>,
   'remove_admin' : ActorMethod<[Principal], undefined>,
+  'remove_authorized_for_caller' : ActorMethod<[Principal], undefined>,
   'remove_blacklisted_word' : ActorMethod<[string], Result_1>,
   'remove_partner' : ActorMethod<[bigint], Result_1>,
   'remove_project' : ActorMethod<[bigint], Result_1>,
@@ -90,6 +100,12 @@ export interface AppSneedDaoBackend {
   'unregister_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'unregister_swap_canister_id' : ActorMethod<[Principal], undefined>,
   'unregister_tracked_canister' : ActorMethod<[Principal], undefined>,
+  'unregister_tracked_canister_for' : ActorMethod<
+    [Principal, Principal],
+    undefined
+  >,
+  'unregister_user_token' : ActorMethod<[Principal], undefined>,
+  'unregister_user_token_for' : ActorMethod<[Principal, Principal], undefined>,
   'unverify_neuron_name' : ActorMethod<[Principal, NeuronId], Result>,
   'unverify_principal_name' : ActorMethod<[Principal], Result>,
   'update_partner' : ActorMethod<

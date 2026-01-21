@@ -71,27 +71,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // PRIVATE HELPERS
     // ============================================
     
-    // Get backend actor for wallet registration
-    func getBackendActor() : ?T.BackendActor {
-        switch (backendCanisterId) {
-            case (?id) { ?actor(Principal.toText(id)) : T.BackendActor };
-            case null { null };
-        };
-    };
-    
-    // Get neuron manager factory actor
-    func getNeuronManagerFactoryActor() : ?T.NeuronManagerFactoryActor {
-        switch (neuronManagerFactoryCanisterId) {
-            case (?id) { ?actor(Principal.toText(id)) : T.NeuronManagerFactoryActor };
-            case null { null };
-        };
-    };
-    
     // Helper to deregister canister from seller's wallet (best effort, non-blocking)
     func deregisterCanisterFromWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
         // Deregister from tracked canisters
-        switch (getBackendActor()) {
-            case (?backend) {
+        switch (backendCanisterId) {
+            case (?id) {
+                let backend : T.BackendActor = actor(Principal.toText(id));
                 try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
             };
             case null {};
@@ -99,8 +84,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         
         // If it's a neuron manager, also deregister from factory
         if (isNeuronManager) {
-            switch (getNeuronManagerFactoryActor()) {
-                case (?factory) {
+            switch (neuronManagerFactoryCanisterId) {
+                case (?id) {
+                    let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
                     try { ignore await factory.deregisterManagerFor(user, canisterId); } catch (_) {};
                 };
                 case null {};
@@ -111,8 +97,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Helper to register canister to buyer's wallet (best effort, non-blocking)
     func registerCanisterToWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
         // Register to tracked canisters
-        switch (getBackendActor()) {
-            case (?backend) {
+        switch (backendCanisterId) {
+            case (?id) {
+                let backend : T.BackendActor = actor(Principal.toText(id));
                 try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
             };
             case null {};
@@ -120,8 +107,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         
         // If it's a neuron manager, also register with factory
         if (isNeuronManager) {
-            switch (getNeuronManagerFactoryActor()) {
-                case (?factory) {
+            switch (neuronManagerFactoryCanisterId) {
+                case (?id) {
+                    let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
                     try { ignore await factory.registerManagerFor(user, canisterId); } catch (_) {};
                 };
                 case null {};
@@ -131,26 +119,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     // Helper to register token to buyer's wallet (best effort, non-blocking)
     func registerTokenToWallet(user : Principal, ledgerId : Principal) : async () {
-        switch (getBackendActor()) {
-            case (?backend) {
+        switch (backendCanisterId) {
+            case (?id) {
+                let backend : T.BackendActor = actor(Principal.toText(id));
                 try { await backend.register_user_token_for(user, ledgerId); } catch (_) {};
             };
             case null {};
-        };
-    };
-    
-    // Helper to get SNS ledger from governance canister
-    func getSnsLedgerFromGovernance(governanceCanisterId : Principal) : async ?Principal {
-        // Query the SNS governance for its ledger
-        // For simplicity, we'll use the same pattern as AssetHandlers
-        let governance = AssetHandlers.getSNSGovernance(governanceCanisterId);
-        try {
-            let metadata = await governance.get_metadata({});
-            // SNS ledger is typically in the nervous system parameters
-            // For now, return null - we'll need to update this when SNS provides a direct way to get ledger
-            null;
-        } catch (_) {
-            null;
         };
     };
     

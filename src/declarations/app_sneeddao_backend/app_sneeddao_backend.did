@@ -176,6 +176,7 @@ type Balance = nat;
 type AppSneedDaoBackend = 
  service {
    add_admin: ("principal": principal) -> ();
+   add_authorized_for_caller: (canister_id: principal) -> ();
    add_blacklisted_word: (word: text) -> (Result_1);
    add_partner: (name: text, logo_url: text, description: text, links:
     vec PartnerLink, index: opt nat) -> (Result_6);
@@ -213,6 +214,7 @@ type AppSneedDaoBackend =
                                              principal;
                                              text;
                                            }) query;
+   get_authorized_for_callers: () -> (vec principal) query;
    get_ban_log: () -> (Result_3) query;
    get_banned_users: () -> (Result_5) query;
    get_blacklisted_words: () -> (vec text) query;
@@ -242,13 +244,19 @@ type AppSneedDaoBackend =
    get_tracked_canisters: () -> (vec principal) query;
    get_user_ban_history: (user: principal) -> (Result_3) query;
    get_user_neurons: () -> (Result_2);
+   get_user_tokens: () -> (vec principal) query;
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
    register_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    register_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
    register_tracked_canister: (canister_id: principal) -> ();
+   register_tracked_canister_for: (user: principal, canister_id:
+    principal) -> ();
+   register_user_token: (ledger_id: principal) -> ();
+   register_user_token_for: (user: principal, ledger_id: principal) -> ();
    remove_admin: ("principal": principal) -> ();
+   remove_authorized_for_caller: (canister_id: principal) -> ();
    remove_blacklisted_word: (word: text) -> (Result_1);
    remove_partner: (id: nat) -> (Result_1);
    remove_project: (id: nat) -> (Result_1);
@@ -275,6 +283,10 @@ type AppSneedDaoBackend =
    unregister_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    unregister_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
    unregister_tracked_canister: (canister_id: principal) -> ();
+   unregister_tracked_canister_for: (user: principal, canister_id:
+    principal) -> ();
+   unregister_user_token: (ledger_id: principal) -> ();
+   unregister_user_token_for: (user: principal, ledger_id: principal) -> ();
    unverify_neuron_name: (sns_root_canister_id: principal, neuron_id:
     NeuronId) -> (Result);
    unverify_principal_name: ("principal": principal) -> (Result);
