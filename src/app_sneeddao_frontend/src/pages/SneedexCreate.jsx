@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
+import { useAdminCheck } from '../hooks/useAdminCheck';
 import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
@@ -129,6 +130,9 @@ function SneedexCreate() {
     
     // Marketplace fee rate
     const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
+    
+    // Admin status (admins can create offers with unverified assets)
+    const { isAdmin } = useAdminCheck({ identity, isAuthenticated, redirectPath: null });
     
     // User's registered canisters and neuron managers
     const [userCanisters, setUserCanisters] = useState([]); // Array of canister ID strings
@@ -2601,7 +2605,7 @@ function SneedexCreate() {
                                     <li>Activate the offer and make it live</li>
                                 </ol>
                             </div>
-                        ) : (
+                        ) : isAdmin ? (
                             <div style={{ 
                                 background: `${theme.colors.warning}15`, 
                                 border: `1px solid ${theme.colors.warning}`,
@@ -2617,6 +2621,26 @@ function SneedexCreate() {
                                     <li>For neurons: Add Sneedex as a hotkey with full permissions</li>
                                     <li>For tokens: Ensure sufficient balance (amount + fee)</li>
                                 </ul>
+                                <div style={{ marginTop: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                    ℹ️ <em>Admin mode: You can create the offer anyway and escrow assets later.</em>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ 
+                                background: `${theme.colors.error}15`, 
+                                border: `1px solid ${theme.colors.error}`,
+                                borderRadius: '10px',
+                                padding: '1rem',
+                                marginBottom: '1.5rem',
+                                fontSize: '0.9rem',
+                                color: theme.colors.error,
+                            }}>
+                                <strong>🚫 Cannot create offer yet.</strong> All assets must be ready for escrow before creating an offer. Please ensure:
+                                <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
+                                    <li>For canisters: You must be a controller</li>
+                                    <li>For neurons: You must have a hotkey with ManagePrincipals permission</li>
+                                    <li>For tokens: You must have sufficient balance (amount + fee)</li>
+                                </ul>
                             </div>
                         )}
                         
@@ -2625,12 +2649,20 @@ function SneedexCreate() {
                                 ← Back
                             </button>
                             <button
-                                style={styles.createBtn}
+                                style={{
+                                    ...styles.createBtn,
+                                    ...((!allAssetsReady && !isAdmin) ? {
+                                        opacity: 0.5,
+                                        cursor: 'not-allowed',
+                                    } : {})
+                                }}
                                 onClick={handleCreate}
-                                disabled={creating}
+                                disabled={creating || (!allAssetsReady && !isAdmin)}
                                 onMouseEnter={(e) => {
-                                    e.target.style.transform = 'translateY(-2px)';
-                                    e.target.style.boxShadow = `0 8px 25px ${theme.colors.success}40`;
+                                    if (!creating && (allAssetsReady || isAdmin)) {
+                                        e.target.style.transform = 'translateY(-2px)';
+                                        e.target.style.boxShadow = `0 8px 25px ${theme.colors.success}40`;
+                                    }
                                 }}
                                 onMouseLeave={(e) => {
                                     e.target.style.transform = 'translateY(0)';

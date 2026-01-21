@@ -7,8 +7,6 @@ import Text "mo:base/Text";
 import Timer "mo:base/Timer";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
-import Debug "mo:base/Debug";
-import Error "mo:base/Error";
 
 import T "Types";
 import Utils "Utils";
@@ -102,37 +100,19 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         switch (backendCanisterId) {
             case (?id) {
                 let backend : T.BackendActor = actor(Principal.toText(id));
-                try { 
-                    await backend.register_tracked_canister_for(user, canisterId); 
-                    Debug.print("registerCanisterToWallet: backend.register_tracked_canister_for succeeded");
-                } catch (e) {
-                    Debug.print("registerCanisterToWallet: backend.register_tracked_canister_for failed: " # Error.message(e));
-                };
+                try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
             };
-            case null {
-                Debug.print("registerCanisterToWallet: backendCanisterId is null");
-            };
+            case null {};
         };
         
         // If it's a neuron manager, also register with factory
         if (isNeuronManager) {
             switch (neuronManagerFactoryCanisterId) {
                 case (?id) {
-                    Debug.print("registerCanisterToWallet: Calling factory.registerManagerFor");
                     let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
-                    try { 
-                        let result = await factory.registerManagerFor(user, canisterId); 
-                        switch (result) {
-                            case (#Ok) { Debug.print("registerCanisterToWallet: factory.registerManagerFor succeeded"); };
-                            case (#Err(msg)) { Debug.print("registerCanisterToWallet: factory.registerManagerFor returned error: " # msg); };
-                        };
-                    } catch (e) {
-                        Debug.print("registerCanisterToWallet: factory.registerManagerFor threw: " # Error.message(e));
-                    };
+                    try { ignore await factory.registerManagerFor(user, canisterId); } catch (_) {};
                 };
-                case null {
-                    Debug.print("registerCanisterToWallet: neuronManagerFactoryCanisterId is null");
-                };
+                case null {};
             };
         };
     };
