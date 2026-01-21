@@ -561,5 +561,23 @@ module {
         min_offer_duration_ns = 3600_000_000_000; // 1 hour minimum
         max_assets_per_offer = 10;
     };
+    
+    // ============================================
+    // EXTERNAL ACTORS FOR WALLET REGISTRATION
+    // ============================================
+    
+    // Backend actor for canister and token wallet registration
+    public type BackendActor = actor {
+        register_tracked_canister_for : (user: Principal, canister_id: Principal) -> async ();
+        unregister_tracked_canister_for : (user: Principal, canister_id: Principal) -> async ();
+        register_user_token_for : (user: Principal, ledger_id: Principal) -> async ();
+        unregister_user_token_for : (user: Principal, ledger_id: Principal) -> async ();
+    };
+    
+    // Neuron manager factory actor for manager registration
+    public type NeuronManagerFactoryActor = actor {
+        registerManagerFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
+        deregisterManagerFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
+    };
 };
 

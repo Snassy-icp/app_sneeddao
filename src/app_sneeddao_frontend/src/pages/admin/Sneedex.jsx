@@ -36,6 +36,10 @@ export default function SneedexAdmin() {
     const [assetTypes, setAssetTypes] = useState([]);
     const [stats, setStats] = useState(null);
     
+    // Wallet registration settings
+    const [backendCanisterId, setBackendCanisterId] = useState(null);
+    const [factoryCanisterId, setFactoryCanisterId] = useState(null);
+    
     // Form states
     const [newFeeRate, setNewFeeRate] = useState('');
     const [newFeeRecipientPrincipal, setNewFeeRecipientPrincipal] = useState('');
@@ -48,6 +52,8 @@ export default function SneedexAdmin() {
     const [newAssetTypeDescription, setNewAssetTypeDescription] = useState('');
     const [newMinDuration, setNewMinDuration] = useState('');
     const [newMaxAssets, setNewMaxAssets] = useState('');
+    const [newBackendCanisterId, setNewBackendCanisterId] = useState('');
+    const [newFactoryCanisterId, setNewFactoryCanisterId] = useState('');
     
     // Loading states
     const [savingFeeRate, setSavingFeeRate] = useState(false);
@@ -59,6 +65,8 @@ export default function SneedexAdmin() {
     const [addingAssetType, setAddingAssetType] = useState(false);
     const [deactivatingAssetType, setDeactivatingAssetType] = useState(null);
     const [savingConfig, setSavingConfig] = useState(false);
+    const [savingBackendCanisterId, setSavingBackendCanisterId] = useState(false);
+    const [savingFactoryCanisterId, setSavingFactoryCanisterId] = useState(false);
     
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
@@ -95,13 +103,15 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             if (!actor) return;
             
-            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult] = await Promise.all([
+            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getMarketplaceFeeRate(),
                 actor.getFeeRecipient(),
                 actor.getLedgerFeeRecipients(),
                 actor.getAssetTypes(),
                 actor.getMarketStats(),
+                actor.getBackendCanisterId(),
+                actor.getNeuronManagerFactoryCanisterId(),
             ]);
             
             setConfig(configResult);
@@ -111,6 +121,10 @@ export default function SneedexAdmin() {
             setLedgerFeeRecipients(ledgerRecipientsResult || []);
             setAssetTypes(assetTypesResult);
             setStats(statsResult);
+            
+            // Wallet registration settings
+            setBackendCanisterId(backendIdResult && backendIdResult.length > 0 ? backendIdResult[0] : null);
+            setFactoryCanisterId(factoryIdResult && factoryIdResult.length > 0 ? factoryIdResult[0] : null);
             
             // Pre-fill form with current values
             setNewMinDuration(String(Number(configResult.min_offer_duration_ns) / 1_000_000_000 / 3600)); // Convert ns to hours
@@ -424,6 +438,75 @@ export default function SneedexAdmin() {
             showInfo('Error', 'Failed to update configuration: ' + e.message, 'error');
         }
         setSavingConfig(false);
+    };
+    
+    // Wallet registration settings handlers
+    const handleSaveBackendCanisterId = async () => {
+        setSavingBackendCanisterId(true);
+        try {
+            const actor = getSneedexActor();
+            let principal = null;
+            
+            if (newBackendCanisterId.trim()) {
+                try {
+                    principal = [Principal.fromText(newBackendCanisterId.trim())];
+                } catch (e) {
+                    showInfo('Invalid Principal', 'Please enter a valid canister ID', 'error');
+                    setSavingBackendCanisterId(false);
+                    return;
+                }
+            } else {
+                principal = []; // Clear the setting
+            }
+            
+            const result = await actor.setBackendCanisterId(principal);
+            if ('ok' in result) {
+                showInfo('Success', principal.length > 0 
+                    ? 'Backend canister ID set successfully' 
+                    : 'Backend canister ID cleared', 'success');
+                setBackendCanisterId(principal.length > 0 ? principal[0] : null);
+                setNewBackendCanisterId('');
+            } else {
+                showInfo('Error', 'Failed to set backend canister ID: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to set backend canister ID: ' + e.message, 'error');
+        }
+        setSavingBackendCanisterId(false);
+    };
+    
+    const handleSaveFactoryCanisterId = async () => {
+        setSavingFactoryCanisterId(true);
+        try {
+            const actor = getSneedexActor();
+            let principal = null;
+            
+            if (newFactoryCanisterId.trim()) {
+                try {
+                    principal = [Principal.fromText(newFactoryCanisterId.trim())];
+                } catch (e) {
+                    showInfo('Invalid Principal', 'Please enter a valid canister ID', 'error');
+                    setSavingFactoryCanisterId(false);
+                    return;
+                }
+            } else {
+                principal = []; // Clear the setting
+            }
+            
+            const result = await actor.setNeuronManagerFactoryCanisterId(principal);
+            if ('ok' in result) {
+                showInfo('Success', principal.length > 0 
+                    ? 'Neuron Manager Factory canister ID set successfully' 
+                    : 'Neuron Manager Factory canister ID cleared', 'success');
+                setFactoryCanisterId(principal.length > 0 ? principal[0] : null);
+                setNewFactoryCanisterId('');
+            } else {
+                showInfo('Error', 'Failed to set factory canister ID: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to set factory canister ID: ' + e.message, 'error');
+        }
+        setSavingFactoryCanisterId(false);
     };
     
     const styles = {
@@ -1064,6 +1147,91 @@ export default function SneedexAdmin() {
                                 {addingAssetType ? <FaSpinner className="spin" /> : <FaPlus />}
                                 Add Asset Type
                             </button>
+                        </div>
+                    </div>
+                </section>
+                
+                {/* Wallet Registration Settings */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaCubes style={{ color: theme.colors.info || theme.colors.accent }} />
+                        Wallet Registration Integration
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Configure canister IDs for automatic wallet registration of delivered assets.
+                        When set, Sneedex will automatically register canisters, tokens, and neuron managers 
+                        to buyers' wallets upon delivery. Leave empty to disable.
+                    </p>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                        {/* Backend Canister ID */}
+                        <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                            <label style={styles.label}>Backend Canister ID</label>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                                Used for registering canisters and tokens to user wallets
+                            </p>
+                            {backendCanisterId && (
+                                <div style={{ marginBottom: '0.75rem', padding: '0.5rem', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
+                                    <span style={{ color: theme.colors.success, marginRight: '8px' }}>✓ Current:</span>
+                                    <PrincipalDisplay principal={backendCanisterId.toString()} short={true} />
+                                </div>
+                            )}
+                            <div style={{ ...styles.row, gap: '0.5rem' }}>
+                                <input
+                                    type="text"
+                                    placeholder={backendCanisterId ? "New canister ID (or leave empty to clear)" : "Enter canister ID"}
+                                    value={newBackendCanisterId}
+                                    onChange={(e) => setNewBackendCanisterId(e.target.value)}
+                                    style={{ ...styles.input, flex: 1 }}
+                                />
+                                <button
+                                    onClick={handleSaveBackendCanisterId}
+                                    disabled={savingBackendCanisterId}
+                                    style={{
+                                        ...styles.button,
+                                        opacity: savingBackendCanisterId ? 0.5 : 1,
+                                        cursor: savingBackendCanisterId ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {savingBackendCanisterId ? <FaSpinner className="spin" /> : <FaSave />}
+                                    {newBackendCanisterId.trim() ? 'Set' : (backendCanisterId ? 'Clear' : 'Set')}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Neuron Manager Factory Canister ID */}
+                        <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                            <label style={styles.label}>Neuron Manager Factory Canister ID</label>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                                Used for registering ICP neuron managers to users
+                            </p>
+                            {factoryCanisterId && (
+                                <div style={{ marginBottom: '0.75rem', padding: '0.5rem', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
+                                    <span style={{ color: theme.colors.success, marginRight: '8px' }}>✓ Current:</span>
+                                    <PrincipalDisplay principal={factoryCanisterId.toString()} short={true} />
+                                </div>
+                            )}
+                            <div style={{ ...styles.row, gap: '0.5rem' }}>
+                                <input
+                                    type="text"
+                                    placeholder={factoryCanisterId ? "New canister ID (or leave empty to clear)" : "Enter canister ID"}
+                                    value={newFactoryCanisterId}
+                                    onChange={(e) => setNewFactoryCanisterId(e.target.value)}
+                                    style={{ ...styles.input, flex: 1 }}
+                                />
+                                <button
+                                    onClick={handleSaveFactoryCanisterId}
+                                    disabled={savingFactoryCanisterId}
+                                    style={{
+                                        ...styles.button,
+                                        opacity: savingFactoryCanisterId ? 0.5 : 1,
+                                        cursor: savingFactoryCanisterId ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {savingFactoryCanisterId ? <FaSpinner className="spin" /> : <FaSave />}
+                                    {newFactoryCanisterId.trim() ? 'Set' : (factoryCanisterId ? 'Clear' : 'Set')}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </section>

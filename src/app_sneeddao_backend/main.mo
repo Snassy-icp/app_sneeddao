@@ -95,6 +95,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
   // Stable storage for projects
   stable var stable_projects : [Project] = [];
+  
+  // Stable storage for user token registrations (user -> list of ledger IDs)
+  stable var stable_user_tokens : [(Principal, [Principal])] = [];
+  
+  // Authorized callers for "for" methods (e.g., Sneedex)
+  stable var stable_authorized_for_callers : [Principal] = [];
 
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
@@ -110,6 +116,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   var cached_token_meta : HashMap.HashMap<Principal, T.TokenMeta> = HashMap.HashMap<Principal, T.TokenMeta>(100, Principal.equal, Principal.hash);
   var whitelisted_tokens : HashMap.HashMap<Principal, WhitelistedToken> = HashMap.HashMap<Principal, WhitelistedToken>(10, Principal.equal, Principal.hash);
   var admins : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+  
+  // User token registrations (user -> list of ledger IDs they've registered)
+  var user_tokens : HashMap.HashMap<Principal, [Principal]> = HashMap.HashMap<Principal, [Principal]>(100, Principal.equal, Principal.hash);
+  
+  // Authorized callers for "for" methods
+  var authorized_for_callers : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
   private var blacklisted_words = HashMap.fromIter<Text, Bool>(
@@ -341,6 +353,139 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     switch (state.principal_tracked_canisters.get(principal)) {
       case (?existingTrackedCanisters) List.toArray<Principal>(existingTrackedCanisters);
       case _ [] : [Principal];
+    };
+  };
+  
+  // ============================================
+  // USER TOKEN REGISTRATION
+  // ============================================
+  
+  public shared ({ caller }) func register_user_token(ledger_id : Principal) : async () {
+    if (Principal.isAnonymous(caller)) { return };
+    
+    switch (user_tokens.get(caller)) {
+      case null {
+        user_tokens.put(caller, [ledger_id]);
+      };
+      case (?existingTokens) {
+        // Check if already registered (dedup)
+        let alreadyExists = Array.find<Principal>(existingTokens, func(p) { Principal.equal(p, ledger_id) });
+        if (alreadyExists != null) { return };
+        user_tokens.put(caller, Array.append(existingTokens, [ledger_id]));
+      };
+    };
+  };
+  
+  public shared ({ caller }) func unregister_user_token(ledger_id : Principal) : async () {
+    if (Principal.isAnonymous(caller)) { return };
+    
+    switch (user_tokens.get(caller)) {
+      case null { };
+      case (?existingTokens) {
+        let newTokens = Array.filter<Principal>(existingTokens, func(p) { not Principal.equal(p, ledger_id) });
+        if (newTokens.size() == 0) {
+          user_tokens.delete(caller);
+        } else {
+          user_tokens.put(caller, newTokens);
+        };
+      };
+    };
+  };
+  
+  public query ({ caller }) func get_user_tokens() : async [Principal] {
+    switch (user_tokens.get(caller)) {
+      case (?tokens) tokens;
+      case null [] : [Principal];
+    };
+  };
+  
+  // ============================================
+  // "FOR" METHODS (callable by authorized canisters like Sneedex)
+  // ============================================
+  
+  func isAuthorizedForCaller(caller : Principal) : Bool {
+    authorized_for_callers.get(caller) != null or is_admin(caller);
+  };
+  
+  public shared ({ caller }) func add_authorized_for_caller(canister_id : Principal) : async () {
+    assert(is_admin(caller));
+    authorized_for_callers.put(canister_id, true);
+  };
+  
+  public shared ({ caller }) func remove_authorized_for_caller(canister_id : Principal) : async () {
+    assert(is_admin(caller));
+    authorized_for_callers.delete(canister_id);
+  };
+  
+  public query func get_authorized_for_callers() : async [Principal] {
+    Iter.toArray(authorized_for_callers.keys());
+  };
+  
+  // Register a canister to a user's wallet (callable by authorized canisters)
+  public shared ({ caller }) func register_tracked_canister_for(user : Principal, canister_id : Principal) : async () {
+    if (not isAuthorizedForCaller(caller)) { return };
+    if (Principal.isAnonymous(user)) { return };
+    
+    let trackedCanisters = switch (state.principal_tracked_canisters.get(user)) {
+      case (?existingTrackedCanisters) existingTrackedCanisters;
+      case _ List.nil<Principal>();
+    };
+    
+    // Check if already tracked (dedup)
+    if (List.some<Principal>(trackedCanisters, func trackedCanister { trackedCanister == canister_id; } )) {
+      return;
+    };
+    
+    let newTrackedCanisters = List.push<Principal>(canister_id, trackedCanisters);
+    state.principal_tracked_canisters.put(user, newTrackedCanisters);
+  };
+  
+  // Unregister a canister from a user's wallet (callable by authorized canisters)
+  public shared ({ caller }) func unregister_tracked_canister_for(user : Principal, canister_id : Principal) : async () {
+    if (not isAuthorizedForCaller(caller)) { return };
+    if (Principal.isAnonymous(user)) { return };
+    
+    let trackedCanisters = switch (state.principal_tracked_canisters.get(user)) {
+      case (?existingTrackedCanisters) existingTrackedCanisters;
+      case _ List.nil<Principal>();
+    };
+    
+    let newTrackedCanisters = List.filter<Principal>(trackedCanisters, func test_canister { test_canister != canister_id; });
+    state.principal_tracked_canisters.put(user, newTrackedCanisters);
+  };
+  
+  // Register a token to a user's wallet (callable by authorized canisters)
+  public shared ({ caller }) func register_user_token_for(user : Principal, ledger_id : Principal) : async () {
+    if (not isAuthorizedForCaller(caller)) { return };
+    if (Principal.isAnonymous(user)) { return };
+    
+    switch (user_tokens.get(user)) {
+      case null {
+        user_tokens.put(user, [ledger_id]);
+      };
+      case (?existingTokens) {
+        let alreadyExists = Array.find<Principal>(existingTokens, func(p) { Principal.equal(p, ledger_id) });
+        if (alreadyExists != null) { return };
+        user_tokens.put(user, Array.append(existingTokens, [ledger_id]));
+      };
+    };
+  };
+  
+  // Unregister a token from a user's wallet (callable by authorized canisters)
+  public shared ({ caller }) func unregister_user_token_for(user : Principal, ledger_id : Principal) : async () {
+    if (not isAuthorizedForCaller(caller)) { return };
+    if (Principal.isAnonymous(user)) { return };
+    
+    switch (user_tokens.get(user)) {
+      case null { };
+      case (?existingTokens) {
+        let newTokens = Array.filter<Principal>(existingTokens, func(p) { not Principal.equal(p, ledger_id) });
+        if (newTokens.size() == 0) {
+          user_tokens.delete(user);
+        } else {
+          user_tokens.put(user, newTokens);
+        };
+      };
     };
   };
 
@@ -1839,6 +1984,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
     // Save projects to stable storage
     stable_projects := Buffer.toArray(projects);
+    
+    // Save user tokens to stable storage
+    stable_user_tokens := Iter.toArray(user_tokens.entries());
+    
+    // Save authorized_for_callers to stable storage
+    stable_authorized_for_callers := Iter.toArray(authorized_for_callers.keys());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -1959,6 +2110,17 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         projects.add(project);
       };
       stable_projects := [];
+      
+      // Restore user tokens from stable storage
+      for ((user, tokens) in stable_user_tokens.vals()) {
+        user_tokens.put(user, tokens);
+      };
+      stable_user_tokens := [];
+      
+      // Restore authorized_for_callers from stable storage
+      for (caller in stable_authorized_for_callers.vals()) {
+        authorized_for_callers.put(caller, true);
+      };
 
       // Update next_project_id to be one more than the highest existing ID
       var max_project_id : Nat = 0;

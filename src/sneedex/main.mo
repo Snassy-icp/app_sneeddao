@@ -62,9 +62,97 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Maps ledger principal to override account
     var ledgerFeeRecipients : [(Principal, T.Account)] = [];
     
+    // Wallet registration settings (for auto-registering delivered assets)
+    // These are optional - if not set, wallet registration is skipped
+    var backendCanisterId : ?Principal = null;
+    var neuronManagerFactoryCanisterId : ?Principal = null;
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
+    
+    // Get backend actor for wallet registration
+    func getBackendActor() : ?T.BackendActor {
+        switch (backendCanisterId) {
+            case (?id) { ?actor(Principal.toText(id)) : T.BackendActor };
+            case null { null };
+        };
+    };
+    
+    // Get neuron manager factory actor
+    func getNeuronManagerFactoryActor() : ?T.NeuronManagerFactoryActor {
+        switch (neuronManagerFactoryCanisterId) {
+            case (?id) { ?actor(Principal.toText(id)) : T.NeuronManagerFactoryActor };
+            case null { null };
+        };
+    };
+    
+    // Helper to deregister canister from seller's wallet (best effort, non-blocking)
+    func deregisterCanisterFromWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
+        // Deregister from tracked canisters
+        switch (getBackendActor()) {
+            case (?backend) {
+                try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
+            };
+            case null {};
+        };
+        
+        // If it's a neuron manager, also deregister from factory
+        if (isNeuronManager) {
+            switch (getNeuronManagerFactoryActor()) {
+                case (?factory) {
+                    try { ignore await factory.deregisterManagerFor(user, canisterId); } catch (_) {};
+                };
+                case null {};
+            };
+        };
+    };
+    
+    // Helper to register canister to buyer's wallet (best effort, non-blocking)
+    func registerCanisterToWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
+        // Register to tracked canisters
+        switch (getBackendActor()) {
+            case (?backend) {
+                try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
+            };
+            case null {};
+        };
+        
+        // If it's a neuron manager, also register with factory
+        if (isNeuronManager) {
+            switch (getNeuronManagerFactoryActor()) {
+                case (?factory) {
+                    try { ignore await factory.registerManagerFor(user, canisterId); } catch (_) {};
+                };
+                case null {};
+            };
+        };
+    };
+    
+    // Helper to register token to buyer's wallet (best effort, non-blocking)
+    func registerTokenToWallet(user : Principal, ledgerId : Principal) : async () {
+        switch (getBackendActor()) {
+            case (?backend) {
+                try { await backend.register_user_token_for(user, ledgerId); } catch (_) {};
+            };
+            case null {};
+        };
+    };
+    
+    // Helper to get SNS ledger from governance canister
+    func getSnsLedgerFromGovernance(governanceCanisterId : Principal) : async ?Principal {
+        // Query the SNS governance for its ledger
+        // For simplicity, we'll use the same pattern as AssetHandlers
+        let governance = AssetHandlers.getSNSGovernance(governanceCanisterId);
+        try {
+            let metadata = await governance.get_metadata({});
+            // SNS ledger is typically in the nervous system parameters
+            // For now, return null - we'll need to update this when SNS provides a direct way to get ledger
+            null;
+        } catch (_) {
+            null;
+        };
+    };
     
     // Get the fee recipient for a specific ledger (checks overrides first, then falls back to default)
     func getFeeRecipientForLedger(ledger : Principal) : T.Account {
@@ -203,6 +291,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 { owner = bid.bidder; subaccount = null },
                                                 asset.amount
                                             );
+                                        };
+                                    };
+                                };
+                                
+                                // Register delivered assets to buyer's wallet (best effort)
+                                for (entry in offer.assets.vals()) {
+                                    switch (entry.asset) {
+                                        case (#Canister(asset)) {
+                                            let isNeuronManager = switch (asset.canister_kind) {
+                                                case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                                case null { false };
+                                            };
+                                            await registerCanisterToWallet(bid.bidder, asset.canister_id, isNeuronManager);
+                                        };
+                                        case (#SNSNeuron(_asset)) {
+                                            // For SNS neurons, frontend handles display
+                                        };
+                                        case (#ICRC1Token(asset)) {
+                                            await registerTokenToWallet(bid.bidder, asset.ledger_canister_id);
                                         };
                                     };
                                 };
@@ -1028,6 +1135,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                         
                                         updateOffer(offerId, updatedOffer);
+                                        
+                                        // Deregister canister from seller's wallet (best effort, non-blocking)
+                                        let isNeuronManager = switch (canisterAsset.canister_kind) {
+                                            case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                            case null { false };
+                                        };
+                                        ignore Timer.setTimer<system>(#seconds 0, func () : async () {
+                                            await deregisterCanisterFromWallet(caller, canisterAsset.canister_id, isNeuronManager);
+                                        });
+                                        
                                         #ok();
                                     };
                                 };
@@ -1738,6 +1855,31 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                     };
                                 };
+                                
+                                // Register delivered assets to buyer's wallet (best effort, non-blocking)
+                                let buyerPrincipal = caller;
+                                ignore Timer.setTimer<system>(#seconds 0, func () : async () {
+                                    for (entry in offer.assets.vals()) {
+                                        switch (entry.asset) {
+                                            case (#Canister(asset)) {
+                                                let isNeuronManager = switch (asset.canister_kind) {
+                                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                                    case null { false };
+                                                };
+                                                await registerCanisterToWallet(buyerPrincipal, asset.canister_id, isNeuronManager);
+                                            };
+                                            case (#SNSNeuron(asset)) {
+                                                // For SNS neurons, register the SNS token ledger
+                                                // The neurons will show in the token card in /wallet
+                                                // Note: We'd need to get the SNS ledger from governance
+                                                // For now, skip - frontend handles SNS neuron display
+                                            };
+                                            case (#ICRC1Token(asset)) {
+                                                await registerTokenToWallet(buyerPrincipal, asset.ledger_canister_id);
+                                            };
+                                        };
+                                    };
+                                });
                                 
                                 // Update state to claimed
                                 let updatedOffer : T.Offer = {
@@ -2569,6 +2711,38 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         );
         
         #ok();
+    };
+    
+    // ============================================
+    // WALLET REGISTRATION SETTINGS (Admin)
+    // ============================================
+    
+    /// Set the backend canister ID for wallet registration (admin only)
+    public shared ({ caller }) func setBackendCanisterId(canisterId : ?Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        backendCanisterId := canisterId;
+        #ok();
+    };
+    
+    /// Get the backend canister ID
+    public query func getBackendCanisterId() : async ?Principal {
+        backendCanisterId;
+    };
+    
+    /// Set the neuron manager factory canister ID (admin only)
+    public shared ({ caller }) func setNeuronManagerFactoryCanisterId(canisterId : ?Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        neuronManagerFactoryCanisterId := canisterId;
+        #ok();
+    };
+    
+    /// Get the neuron manager factory canister ID
+    public query func getNeuronManagerFactoryCanisterId() : async ?Principal {
+        neuronManagerFactoryCanisterId;
     };
 };
 

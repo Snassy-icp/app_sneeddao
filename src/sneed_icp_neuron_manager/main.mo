@@ -47,6 +47,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var userRegistrationsStable: [(Principal, [Principal])] = [];
     transient var userRegistrations = HashMap.HashMap<Principal, [Principal]>(10, Principal.equal, Principal.hash);
     
+    // Authorized callers for "for" methods (e.g., Sneedex)
+    var authorizedForCallersStable: [Principal] = [];
+    transient var authorizedForCallers = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+    
     // Current manager version (set by admin when uploading WASM)
     var currentVersion: T.Version = { major = 0; minor = 0; patch = 0 };
     
@@ -98,6 +102,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     system func preupgrade() {
         // Save new userRegistrations to stable storage
         userRegistrationsStable := Iter.toArray(userRegistrations.entries());
+        // Save authorized callers
+        authorizedForCallersStable := Iter.toArray(authorizedForCallers.keys());
         // Note: We no longer save to managersStable (deprecated)
     };
 
@@ -105,6 +111,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         // First, restore userRegistrations from stable storage (if any)
         userRegistrations := HashMap.fromIter(userRegistrationsStable.vals(), userRegistrationsStable.size(), Principal.equal, Principal.hash);
         userRegistrationsStable := [];
+        
+        // Restore authorized callers
+        for (caller in authorizedForCallersStable.vals()) {
+            authorizedForCallers.put(caller, true);
+        };
+        authorizedForCallersStable := [];
         
         // Migration: If there's data in old managersStable, migrate it to userRegistrations
         if (managersStable.size() > 0) {
@@ -841,6 +853,66 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     };
                 };
                 
+                #Ok;
+            };
+        };
+    };
+
+    // ============================================
+    // "FOR" METHODS (callable by authorized canisters like Sneedex)
+    // ============================================
+    
+    func isAuthorizedForCaller(caller: Principal): Bool {
+        authorizedForCallers.get(caller) != null or isAdmin(caller);
+    };
+    
+    public shared ({ caller }) func addAuthorizedForCaller(canisterId: Principal): async () {
+        assert(isAdminOrGovernance(caller));
+        authorizedForCallers.put(canisterId, true);
+    };
+    
+    public shared ({ caller }) func removeAuthorizedForCaller(canisterId: Principal): async () {
+        assert(isAdminOrGovernance(caller));
+        authorizedForCallers.delete(canisterId);
+    };
+    
+    public query func getAuthorizedForCallers(): async [Principal] {
+        Iter.toArray(authorizedForCallers.keys());
+    };
+    
+    // Register a manager canister to a user's bookmarks (callable by authorized canisters)
+    public shared ({ caller }) func registerManagerFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
+        if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized"); };
+        if (Principal.isAnonymous(user)) { return #Err("Cannot register for anonymous"); };
+        
+        switch (userRegistrations.get(user)) {
+            case null {
+                userRegistrations.put(user, [canisterId]);
+                #Ok;
+            };
+            case (?existingList) {
+                let alreadyExists = Array.find<Principal>(existingList, func(p) { Principal.equal(p, canisterId) });
+                if (alreadyExists != null) { return #Ok; };
+                userRegistrations.put(user, Array.append(existingList, [canisterId]));
+                #Ok;
+            };
+        };
+    };
+    
+    // Deregister a manager canister from a user's bookmarks (callable by authorized canisters)
+    public shared ({ caller }) func deregisterManagerFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
+        if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized"); };
+        if (Principal.isAnonymous(user)) { return #Err("Cannot deregister for anonymous"); };
+        
+        switch (userRegistrations.get(user)) {
+            case null { #Ok; }; // Nothing to remove
+            case (?existingList) {
+                let newList = Array.filter<Principal>(existingList, func(p) { not Principal.equal(p, canisterId) });
+                if (newList.size() == 0) {
+                    userRegistrations.delete(user);
+                } else {
+                    userRegistrations.put(user, newList);
+                };
                 #Ok;
             };
         };
