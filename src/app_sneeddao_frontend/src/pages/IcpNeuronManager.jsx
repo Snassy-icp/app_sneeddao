@@ -2112,15 +2112,15 @@ function IcpNeuronManager() {
             <Header />
             <main className="wallet-container">
                 <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ position: 'relative', display: 'inline-flex' }}>
-                        <FaRobot style={{ color: theme.colors.accent, fontSize: '32px' }} />
-                        <FaBrain style={{ 
-                            color: '#10B981', 
-                            fontSize: '18px',
+                    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                        <FaRobot style={{ 
+                            color: theme.colors.mutedText, 
+                            fontSize: '32px',
                             position: 'absolute',
-                            bottom: -2,
-                            right: -6,
+                            left: -12,
+                            opacity: 0.7,
                         }} />
+                        <span style={{ fontSize: '32px', position: 'relative', zIndex: 1 }}>🧠</span>
                     </span>
                     <PrincipalDisplay
                         principal={canisterId}
