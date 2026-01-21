@@ -32,6 +32,7 @@ import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import PrincipalInput from '../components/PrincipalInput';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -118,7 +119,8 @@ function SneedexCreate() {
     
     // Private offer / Approved bidders
     const [isPrivateOffer, setIsPrivateOffer] = useState(false);
-    const [approvedBiddersText, setApprovedBiddersText] = useState(''); // Comma-separated principals
+    const [approvedBidders, setApprovedBidders] = useState([]); // Array of principal strings
+    const [newBidderInput, setNewBidderInput] = useState(''); // Current input for adding new bidder
     
     // Notes
     const [publicNote, setPublicNote] = useState(''); // Visible to everyone
@@ -1085,25 +1087,15 @@ function SneedexCreate() {
             // Step 1: Create the offer
             updateProgressStep(0, 'in_progress');
             
-            // Parse approved bidders if this is a private offer
-            let approvedBidders = [];
-            if (isPrivateOffer && approvedBiddersText.trim()) {
-                const lines = approvedBiddersText.split('\n').map(l => l.trim()).filter(l => l);
-                for (const line of lines) {
-                    try {
-                        approvedBidders.push(Principal.fromText(line));
-                    } catch (e) {
-                        throw new Error(`Invalid principal ID: ${line}`);
-                    }
-                }
-            }
+            // Convert approved bidders to principals
+            const approvedBidderPrincipals = approvedBidders.map(str => Principal.fromText(str));
             
             const createRequest = {
                 price_token_ledger: Principal.fromText(priceTokenLedger),
                 min_bid_price: minBidPrice ? [parseAmount(minBidPrice, priceTokenDecimals)] : [],
                 buyout_price: buyoutPrice ? [parseAmount(buyoutPrice, priceTokenDecimals)] : [],
                 expiration: hasExpiration ? [daysToExpirationNs(parseInt(expirationDays))] : [],
-                approved_bidders: isPrivateOffer && approvedBidders.length > 0 ? [approvedBidders] : [],
+                approved_bidders: isPrivateOffer && approvedBidderPrincipals.length > 0 ? [approvedBidderPrincipals] : [],
                 min_bid_increment_fee_multiple: minBidIncrementMultiple ? [BigInt(parseInt(minBidIncrementMultiple))] : [],
                 public_note: publicNote.trim() ? [publicNote.trim()] : [],
                 note_to_buyer: noteToBuyer.trim() ? [noteToBuyer.trim()] : [],
@@ -1826,28 +1818,123 @@ function SneedexCreate() {
                                 <div style={styles.formGroup}>
                                     <label style={styles.label}>
                                         Approved Bidders
-                                        <span style={styles.labelHint}> — Enter Principal IDs, one per line</span>
+                                        <span style={styles.labelHint}> — Add principals who can bid</span>
                                     </label>
-                                    <textarea
-                                        style={{
-                                            ...styles.input,
-                                            minHeight: '100px',
-                                            resize: 'vertical',
-                                            fontFamily: 'monospace',
-                                            fontSize: '0.9rem',
-                                        }}
-                                        placeholder="Enter principal IDs, one per line:&#10;xxxxx-xxxxx-xxxxx-xxxxx-cai&#10;yyyyy-yyyyy-yyyyy-yyyyy-cai"
-                                        value={approvedBiddersText}
-                                        onChange={(e) => setApprovedBiddersText(e.target.value)}
-                                    />
-                                    <p style={{ 
-                                        fontSize: '0.85rem', 
-                                        color: theme.colors.mutedText, 
-                                        marginTop: '8px' 
-                                    }}>
-                                        Only these principals will be able to bid on your offer.
-                                        You can add multiple principals, one per line.
-                                    </p>
+                                    
+                                    {/* Add new bidder input */}
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                        <PrincipalInput
+                                            value={newBidderInput}
+                                            onChange={setNewBidderInput}
+                                            placeholder="Enter principal ID or search by name"
+                                            style={{ flex: 1, maxWidth: 'none' }}
+                                            isAuthenticated={isAuthenticated}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (!newBidderInput.trim()) return;
+                                                try {
+                                                    // Validate principal format
+                                                    Principal.fromText(newBidderInput.trim());
+                                                    // Check for duplicates
+                                                    if (approvedBidders.includes(newBidderInput.trim())) {
+                                                        setError('This principal is already in the list');
+                                                        return;
+                                                    }
+                                                    setApprovedBidders([...approvedBidders, newBidderInput.trim()]);
+                                                    setNewBidderInput('');
+                                                    setError('');
+                                                } catch (e) {
+                                                    setError('Invalid principal ID format');
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '8px 16px',
+                                                background: theme.colors.accent,
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                fontWeight: '500',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            <FaPlus /> Add
+                                        </button>
+                                    </div>
+                                    
+                                    {/* List of approved bidders */}
+                                    {approvedBidders.length > 0 ? (
+                                        <div style={{
+                                            background: theme.colors.secondaryBg,
+                                            borderRadius: '8px',
+                                            padding: '12px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '8px',
+                                        }}>
+                                            <div style={{ 
+                                                fontSize: '0.8rem', 
+                                                color: theme.colors.mutedText,
+                                                marginBottom: '4px',
+                                            }}>
+                                                {approvedBidders.length} approved bidder{approvedBidders.length !== 1 ? 's' : ''}:
+                                            </div>
+                                            {approvedBidders.map((bidderStr, idx) => (
+                                                <div 
+                                                    key={bidderStr} 
+                                                    style={{
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        padding: '8px 12px',
+                                                        background: theme.colors.tertiaryBg,
+                                                        borderRadius: '6px',
+                                                    }}
+                                                >
+                                                    <PrincipalDisplay
+                                                        principal={bidderStr}
+                                                        displayInfo={getPrincipalDisplayInfoFromContext(bidderStr, principalNames, principalNicknames)}
+                                                        short={false}
+                                                        showCopyButton={true}
+                                                        isAuthenticated={isAuthenticated}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setApprovedBidders(approvedBidders.filter((_, i) => i !== idx));
+                                                        }}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: theme.colors.error,
+                                                            cursor: 'pointer',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '4px',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                        }}
+                                                        title="Remove bidder"
+                                                    >
+                                                        <FaTrash />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p style={{ 
+                                            fontSize: '0.85rem', 
+                                            color: theme.colors.mutedText, 
+                                            margin: 0,
+                                            fontStyle: 'italic',
+                                        }}>
+                                            No approved bidders added yet. Add principals who will be allowed to bid on your offer.
+                                        </p>
+                                    )}
                                 </div>
                             )}
                         </div>
