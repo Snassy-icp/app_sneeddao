@@ -73,6 +73,7 @@ function SneedexMy() {
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const [bidOfferInfo, setBidOfferInfo] = useState({}); // offer_id -> { price_token_ledger, tokenInfo }
     
     // USD pricing state
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
@@ -234,6 +235,24 @@ function SneedexMy() {
             // Fetch escrow balances for bids
             fetchBidEscrowBalances(bids);
             
+            // Fetch offer info for each unique offer_id in bids (to get token info)
+            const uniqueOfferIds = [...new Set(bids.map(b => Number(b.offer_id)))];
+            const offerInfo = {};
+            for (const offerId of uniqueOfferIds) {
+                try {
+                    const offerView = await actor.getOfferView(BigInt(offerId));
+                    if (offerView && offerView.length > 0) {
+                        const offer = offerView[0].offer;
+                        offerInfo[offerId] = {
+                            price_token_ledger: offer.price_token_ledger.toString()
+                        };
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch offer info for ${offerId}:`, e);
+                }
+            }
+            setBidOfferInfo(offerInfo);
+            
             // Fetch bid info for each offer
             const bidInfo = {};
             for (const offer of offers) {
@@ -267,11 +286,18 @@ function SneedexMy() {
     // Fetch token prices for USD display
     useEffect(() => {
         const fetchPrices = async () => {
-            // Only collect ledger IDs from actual offers (not all whitelisted tokens)
+            // Collect ledger IDs from offers and bid offers
             const ledgerIds = new Set();
             
             myOffers.forEach(offer => {
                 ledgerIds.add(offer.price_token_ledger.toString());
+            });
+            
+            // Add ledgers from bid offers
+            Object.values(bidOfferInfo).forEach(info => {
+                if (info.price_token_ledger) {
+                    ledgerIds.add(info.price_token_ledger);
+                }
             });
             
             // If no ledgers to fetch, skip
@@ -292,10 +318,10 @@ function SneedexMy() {
             setTokenPrices(prices);
         };
         
-        if (myOffers.length > 0) {
+        if (myOffers.length > 0 || Object.keys(bidOfferInfo).length > 0) {
             fetchPrices();
         }
-    }, [myOffers, whitelistedTokens]);
+    }, [myOffers, bidOfferInfo, whitelistedTokens]);
     
     const handleAcceptBid = async (offerId) => {
         if (!identity) return;
@@ -1110,6 +1136,11 @@ function SneedexMy() {
                                 const hasExcess = escrowBalance !== undefined && escrowBalance > bid.amount;
                                 const excessAmount = hasExcess ? escrowBalance - bid.amount : 0n;
                                 
+                                // Get token info for this bid's offer
+                                const offerInfo = bidOfferInfo[Number(bid.offer_id)];
+                                const bidTokenInfo = offerInfo ? getTokenInfo(offerInfo.price_token_ledger) : { symbol: 'tokens', decimals: 8 };
+                                const bidTokenPrice = offerInfo ? tokenPrices[offerInfo.price_token_ledger] : null;
+                                
                                 return (
                                     <div
                                         key={Number(bid.id)}
@@ -1135,7 +1166,12 @@ function SneedexMy() {
                                             <div style={styles.infoItem}>
                                                 <div style={styles.infoLabel}>Your Bid</div>
                                                 <div style={styles.infoValue}>
-                                                    {formatAmount(bid.amount)} tokens
+                                                    {formatAmount(bid.amount, bidTokenInfo.decimals)} {bidTokenInfo.symbol}
+                                                    {bidTokenPrice && (
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '4px' }}>
+                                                            ({formatUsd(calculateUsdValue(bid.amount, bidTokenInfo.decimals, bidTokenPrice))})
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div style={styles.infoItem}>
@@ -1143,8 +1179,8 @@ function SneedexMy() {
                                                 <div style={styles.infoValue}>
                                                     {escrowBalance !== undefined ? (
                                                         <span style={{ color: hasExcess ? theme.colors.success : theme.colors.primaryText }}>
-                                                            {formatAmount(escrowBalance)} tokens
-                                                            {hasExcess && <span style={{ fontSize: '0.8rem' }}> (+{formatAmount(excessAmount)} excess)</span>}
+                                                            {formatAmount(escrowBalance, bidTokenInfo.decimals)} {bidTokenInfo.symbol}
+                                                            {hasExcess && <span style={{ fontSize: '0.8rem' }}> (+{formatAmount(excessAmount, bidTokenInfo.decimals)} excess)</span>}
                                                         </span>
                                                     ) : (
                                                         bid.tokens_escrowed ? 'Loading...' : '—'
@@ -1172,7 +1208,7 @@ function SneedexMy() {
                                                 color: theme.colors.success
                                             }} onClick={(e) => e.stopPropagation()}>
                                                 <FaWallet />
-                                                <span>You have {formatAmount(excessAmount)} excess tokens in escrow</span>
+                                                <span>You have {formatAmount(excessAmount, bidTokenInfo.decimals)} excess {bidTokenInfo.symbol} in escrow</span>
                                                 <button
                                                     style={{
                                                         ...styles.actionButton,
