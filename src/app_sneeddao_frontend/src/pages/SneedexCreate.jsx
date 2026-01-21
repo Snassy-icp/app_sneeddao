@@ -12,7 +12,6 @@ import { IDL } from '@dfinity/candid';
 import { 
     createSneedexActor, 
     parseAmount, 
-    daysToExpirationNs,
     createAssetVariant,
     getErrorMessage,
     formatFeeRate,
@@ -112,6 +111,8 @@ function SneedexCreate() {
     const [buyoutPrice, setBuyoutPrice] = useState('');
     const [hasExpiration, setHasExpiration] = useState(true);
     const [expirationDays, setExpirationDays] = useState('7');
+    const [expirationHours, setExpirationHours] = useState('0');
+    const [expirationMinutes, setExpirationMinutes] = useState('0');
     const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
     
     // Minimum bid increment (as multiple of token fee)
@@ -178,6 +179,30 @@ function SneedexCreate() {
         };
         fetchFeeRate();
     }, [identity]);
+    
+    // Helper to calculate expiration timestamp in nanoseconds from days, hours, minutes
+    const getExpirationNs = useCallback(() => {
+        const days = parseInt(expirationDays) || 0;
+        const hours = parseInt(expirationHours) || 0;
+        const minutes = parseInt(expirationMinutes) || 0;
+        const totalMs = (days * 24 * 60 * 60 * 1000) + (hours * 60 * 60 * 1000) + (minutes * 60 * 1000);
+        const expirationMs = Date.now() + totalMs;
+        return BigInt(expirationMs) * 1_000_000n;
+    }, [expirationDays, expirationHours, expirationMinutes]);
+    
+    // Format expiration time for display
+    const formatExpirationTime = useCallback(() => {
+        const days = parseInt(expirationDays) || 0;
+        const hours = parseInt(expirationHours) || 0;
+        const minutes = parseInt(expirationMinutes) || 0;
+        
+        const parts = [];
+        if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+        if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+        if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
+        
+        return parts.length > 0 ? parts.join(', ') : '0 minutes';
+    }, [expirationDays, expirationHours, expirationMinutes]);
     
     // Fetch user's registered canisters and neuron managers
     useEffect(() => {
@@ -1019,6 +1044,17 @@ function SneedexCreate() {
             setError('If there is no expiration, you must set a buyout price');
             return false;
         }
+        // Validate expiration time is at least 1 minute
+        if (hasExpiration) {
+            const days = parseInt(expirationDays) || 0;
+            const hours = parseInt(expirationHours) || 0;
+            const minutes = parseInt(expirationMinutes) || 0;
+            const totalMinutes = (days * 24 * 60) + (hours * 60) + minutes;
+            if (totalMinutes < 1) {
+                setError('Expiration time must be at least 1 minute');
+                return false;
+            }
+        }
         if (minBidPrice && buyoutPrice && parseFloat(minBidPrice) > parseFloat(buyoutPrice)) {
             setError('Minimum bid cannot be higher than buyout price');
             return false;
@@ -1094,7 +1130,7 @@ function SneedexCreate() {
                 price_token_ledger: Principal.fromText(priceTokenLedger),
                 min_bid_price: minBidPrice ? [parseAmount(minBidPrice, priceTokenDecimals)] : [],
                 buyout_price: buyoutPrice ? [parseAmount(buyoutPrice, priceTokenDecimals)] : [],
-                expiration: hasExpiration ? [daysToExpirationNs(parseInt(expirationDays))] : [],
+                expiration: hasExpiration ? [getExpirationNs()] : [],
                 approved_bidders: isPrivateOffer && approvedBidderPrincipals.length > 0 ? [approvedBidderPrincipals] : [],
                 min_bid_increment_fee_multiple: minBidIncrementMultiple ? [BigInt(parseInt(minBidIncrementMultiple))] : [],
                 public_note: publicNote.trim() ? [publicNote.trim()] : [],
@@ -1756,17 +1792,47 @@ function SneedexCreate() {
                         {hasExpiration && (
                             <div style={styles.formGroup}>
                                 <label style={styles.label}>Expires in</label>
-                                <select
-                                    style={styles.select}
-                                    value={expirationDays}
-                                    onChange={(e) => setExpirationDays(e.target.value)}
-                                >
-                                    <option value="1">1 day</option>
-                                    <option value="3">3 days</option>
-                                    <option value="7">7 days</option>
-                                    <option value="14">14 days</option>
-                                    <option value="30">30 days</option>
-                                </select>
+                                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <input
+                                            type="number"
+                                            style={{ ...styles.input, width: '70px', textAlign: 'center' }}
+                                            value={expirationDays}
+                                            onChange={(e) => setExpirationDays(e.target.value)}
+                                            min="0"
+                                            max="365"
+                                            placeholder="0"
+                                        />
+                                        <span style={{ color: theme.colors.mutedText }}>days</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <input
+                                            type="number"
+                                            style={{ ...styles.input, width: '70px', textAlign: 'center' }}
+                                            value={expirationHours}
+                                            onChange={(e) => setExpirationHours(e.target.value)}
+                                            min="0"
+                                            max="23"
+                                            placeholder="0"
+                                        />
+                                        <span style={{ color: theme.colors.mutedText }}>hours</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <input
+                                            type="number"
+                                            style={{ ...styles.input, width: '70px', textAlign: 'center' }}
+                                            value={expirationMinutes}
+                                            onChange={(e) => setExpirationMinutes(e.target.value)}
+                                            min="0"
+                                            max="59"
+                                            placeholder="0"
+                                        />
+                                        <span style={{ color: theme.colors.mutedText }}>min</span>
+                                    </div>
+                                </div>
+                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '8px' }}>
+                                    Total: {formatExpirationTime()}
+                                </div>
                             </div>
                         )}
                         
@@ -2843,7 +2909,7 @@ function SneedexCreate() {
                         <div style={styles.reviewSection}>
                             <div style={styles.reviewLabel}>Expiration</div>
                             <div style={styles.reviewValue}>
-                                {hasExpiration ? `${expirationDays} days from activation` : 'No expiration'}
+                                {hasExpiration ? `${formatExpirationTime()} from activation` : 'No expiration'}
                             </div>
                         </div>
                         

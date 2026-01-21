@@ -1121,13 +1121,13 @@ export default function SneedexAdmin() {
                             <input
                                 type="number"
                                 min="0"
-                                step="0.5"
+                                step="0.01"
                                 value={newMinDuration}
                                 onChange={(e) => setNewMinDuration(e.target.value)}
                                 style={{ ...styles.input, width: '100%' }}
                             />
                             <small style={{ color: theme.colors.mutedText }}>
-                                Minimum time an offer must remain active
+                                Minimum time an offer must remain active (e.g., 0.017 ≈ 1 minute, for testing)
                             </small>
                         </div>
                         <div>
