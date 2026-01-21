@@ -15,10 +15,13 @@ import {
     getAssetType,
     getErrorMessage,
     parseAmount,
+    formatUsd,
+    calculateUsdValue,
     SNEEDEX_CANISTER_ID
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import priceService from '../services/PriceService';
 import { Principal } from '@dfinity/principal';
 
 // Generate bid escrow subaccount (matches backend Utils.bidEscrowSubaccount)
@@ -70,6 +73,9 @@ function SneedexMy() {
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    
+    // USD pricing state
+    const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
     
     // Pagination state
     const [offersPage, setOffersPage] = useState(1);
@@ -257,6 +263,50 @@ function SneedexMy() {
             fetchData();
         }
     }, [isAuthenticated, identity, fetchData]);
+    
+    // Fetch token prices for USD display
+    useEffect(() => {
+        const fetchPrices = async () => {
+            try {
+                // Collect unique ledger IDs from offers and bids
+                const ledgerIds = new Set();
+                
+                myOffers.forEach(offer => {
+                    ledgerIds.add(offer.price_token_ledger.toString());
+                });
+                
+                myBids.forEach(bid => {
+                    // Bid has offer_id, we need to look up the offer's payment token
+                    // For now, fetch price for all whitelisted tokens
+                });
+                
+                // Add all whitelisted tokens
+                whitelistedTokens.forEach(token => {
+                    ledgerIds.add(token.ledger_id.toString());
+                });
+                
+                // Fetch prices for each ledger
+                const prices = {};
+                for (const ledgerId of ledgerIds) {
+                    try {
+                        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                        const decimals = token ? Number(token.decimals) : 8;
+                        const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
+                        prices[ledgerId] = price;
+                    } catch (e) {
+                        console.warn(`Failed to fetch price for ${ledgerId}:`, e);
+                    }
+                }
+                setTokenPrices(prices);
+            } catch (e) {
+                console.warn('Failed to fetch token prices:', e);
+            }
+        };
+        
+        if (myOffers.length > 0 || myBids.length > 0 || whitelistedTokens.length > 0) {
+            fetchPrices();
+        }
+    }, [myOffers, myBids, whitelistedTokens]);
     
     const handleAcceptBid = async (offerId) => {
         if (!identity) return;
@@ -885,7 +935,21 @@ function SneedexMy() {
                                             <div style={styles.infoItem}>
                                                 <div style={styles.infoLabel}>Highest Bid</div>
                                                 <div style={styles.infoValue}>
-                                                    {bidInfo.highest_bid ? `${formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)} ${tokenInfo.symbol}` : 'No bids'}
+                                                    {bidInfo.highest_bid ? (
+                                                        <>
+                                                            {formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                            {(() => {
+                                                                const paymentLedger = offer.price_token_ledger.toString();
+                                                                const paymentPrice = tokenPrices[paymentLedger];
+                                                                const bidUsd = paymentPrice ? calculateUsdValue(bidInfo.highest_bid.amount, tokenInfo.decimals, paymentPrice) : null;
+                                                                return bidUsd > 0 ? (
+                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '4px' }}>
+                                                                        ({formatUsd(bidUsd)})
+                                                                    </span>
+                                                                ) : null;
+                                                            })()}
+                                                        </>
+                                                    ) : 'No bids'}
                                                 </div>
                                             </div>
                                             <div style={styles.infoItem}>

@@ -22,12 +22,15 @@ import {
     getErrorMessage,
     formatFeeRate,
     calculateMarketplaceFee,
+    formatUsd,
+    calculateUsdValue,
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
     CANISTER_KIND_NAMES
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import priceService from '../services/PriceService';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
@@ -145,6 +148,10 @@ function SneedexOffer() {
     const [snsLogos, setSnsLogos] = useState({}); // {governanceId: logoUrl}
     const [snsSymbols, setSnsSymbols] = useState({}); // {governanceId: tokenSymbol}
     const [tokenLogos, setTokenLogos] = useState({}); // {ledgerId: logoUrl}
+    
+    // USD pricing state
+    const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
+    const [icpPrice, setIcpPrice] = useState(null); // ICP/USD price
     
     // Countdown timer state
     const [timeRemainingMs, setTimeRemainingMs] = useState(null); // Milliseconds remaining
@@ -883,6 +890,52 @@ function SneedexOffer() {
     useEffect(() => {
         fetchOffer();
     }, [fetchOffer]);
+    
+    // Fetch token prices for USD display
+    useEffect(() => {
+        const fetchPrices = async () => {
+            if (!offer) return;
+            
+            try {
+                // Get ICP price first
+                const icp = await priceService.getICPUSDPrice();
+                setIcpPrice(icp);
+                
+                // Collect unique ledger IDs
+                const ledgerIds = new Set();
+                
+                // Add payment token
+                const paymentLedger = offer.price_token_ledger.toString();
+                ledgerIds.add(paymentLedger);
+                
+                // Add asset tokens
+                offer.assets.forEach(assetEntry => {
+                    const details = getAssetDetails(assetEntry);
+                    if (details.type === 'ICRC1Token') {
+                        ledgerIds.add(details.ledger_id);
+                    }
+                });
+                
+                // Fetch prices for each ledger
+                const prices = {};
+                for (const ledgerId of ledgerIds) {
+                    try {
+                        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                        const decimals = token ? Number(token.decimals) : 8;
+                        const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
+                        prices[ledgerId] = price;
+                    } catch (e) {
+                        console.warn(`Failed to fetch price for ${ledgerId}:`, e);
+                    }
+                }
+                setTokenPrices(prices);
+            } catch (e) {
+                console.warn('Failed to fetch token prices:', e);
+            }
+        };
+        
+        fetchPrices();
+    }, [offer, whitelistedTokens]);
     
     // Get token info from whitelisted tokens
     const tokenInfo = (() => {
@@ -4006,6 +4059,16 @@ function SneedexOffer() {
                                                     }}>
                                                         {tokenInfo.symbol}
                                                     </span>
+                                                    {(() => {
+                                                        const paymentLedger = offer.price_token_ledger.toString();
+                                                        const paymentPrice = tokenPrices[paymentLedger];
+                                                        const bidUsd = paymentPrice ? calculateUsdValue(bid.amount, tokenInfo.decimals, paymentPrice) : null;
+                                                        return bidUsd > 0 ? (
+                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                                {formatUsd(bidUsd)}
+                                                            </div>
+                                                        ) : null;
+                                                    })()}
                                                 </div>
                                             </div>
                                         );
@@ -4018,18 +4081,43 @@ function SneedexOffer() {
                     {/* Right Column - Pricing & Actions */}
                     <div style={styles.rightColumn}>
                         <div style={styles.priceCard}>
-                            <div style={styles.priceRow}>
-                                <span style={styles.priceLabel}>Minimum Bid</span>
-                                <span style={styles.priceValue}>
-                                    {offer.min_bid_price[0] ? `${formatAmount(offer.min_bid_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
-                                </span>
-                            </div>
-                            <div style={styles.priceRow}>
-                                <span style={styles.priceLabel}>Buyout Price</span>
-                                <span style={styles.priceValue}>
-                                    {offer.buyout_price[0] ? `${formatAmount(offer.buyout_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
-                                </span>
-                            </div>
+                            {(() => {
+                                const paymentLedger = offer.price_token_ledger.toString();
+                                const paymentPrice = tokenPrices[paymentLedger];
+                                const minBidUsd = offer.min_bid_price[0] && paymentPrice 
+                                    ? calculateUsdValue(offer.min_bid_price[0], tokenInfo.decimals, paymentPrice) : null;
+                                const buyoutUsd = offer.buyout_price[0] && paymentPrice 
+                                    ? calculateUsdValue(offer.buyout_price[0], tokenInfo.decimals, paymentPrice) : null;
+                                const highestBidUsd = highestBid?.amount && paymentPrice 
+                                    ? calculateUsdValue(highestBid.amount, tokenInfo.decimals, paymentPrice) : null;
+                                
+                                return (
+                                    <>
+                                        <div style={styles.priceRow}>
+                                            <span style={styles.priceLabel}>Minimum Bid</span>
+                                            <span style={styles.priceValue}>
+                                                {offer.min_bid_price[0] ? `${formatAmount(offer.min_bid_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
+                                                {minBidUsd > 0 && (
+                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                                        ({formatUsd(minBidUsd)})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div style={styles.priceRow}>
+                                            <span style={styles.priceLabel}>Buyout Price</span>
+                                            <span style={styles.priceValue}>
+                                                {offer.buyout_price[0] ? `${formatAmount(offer.buyout_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
+                                                {buyoutUsd > 0 && (
+                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                                        ({formatUsd(buyoutUsd)})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    </>
+                                );
+                            })()}
                             {offer.min_bid_increment_fee_multiple?.[0] && (
                                 <div style={styles.priceRow}>
                                     <span style={styles.priceLabel}>Min Bid Increment</span>
@@ -4057,7 +4145,22 @@ function SneedexOffer() {
                             <div style={styles.priceRow}>
                                 <span style={styles.priceLabel}>Current Highest Bid</span>
                                 <span style={{ ...styles.priceValue, color: theme.colors.success }}>
-                                    {highestBid ? `${formatAmount(highestBid.amount, tokenInfo.decimals)} ${tokenInfo.symbol}` : 'No bids'}
+                                    {highestBid ? (
+                                        <>
+                                            {formatAmount(highestBid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
+                                            {(() => {
+                                                const paymentLedger = offer.price_token_ledger.toString();
+                                                const paymentPrice = tokenPrices[paymentLedger];
+                                                const highestBidUsd = highestBid?.amount && paymentPrice 
+                                                    ? calculateUsdValue(highestBid.amount, tokenInfo.decimals, paymentPrice) : null;
+                                                return highestBidUsd > 0 ? (
+                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                                        ({formatUsd(highestBidUsd)})
+                                                    </span>
+                                                ) : null;
+                                            })()}
+                                        </>
+                                    ) : 'No bids'}
                                 </span>
                             </div>
                             <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>

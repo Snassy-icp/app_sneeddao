@@ -15,6 +15,8 @@ import {
     createAssetVariant,
     getErrorMessage,
     formatFeeRate,
+    formatUsd,
+    calculateUsdValue,
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
@@ -24,6 +26,7 @@ import {
 } from '../utils/SneedexUtils';
 import { getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
 import TokenSelector from '../components/TokenSelector';
+import priceService from '../services/PriceService';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -131,6 +134,9 @@ function SneedexCreate() {
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(true);
     
+    // USD price for selected payment token
+    const [paymentTokenPrice, setPaymentTokenPrice] = useState(null);
+    
     // Marketplace fee rate
     const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
     
@@ -165,6 +171,22 @@ function SneedexCreate() {
         };
         fetchTokens();
     }, [identity]);
+    
+    // Fetch USD price for selected payment token
+    useEffect(() => {
+        const fetchPrice = async () => {
+            if (!priceTokenLedger) return;
+            try {
+                const decimals = selectedPriceToken?.decimals || 8;
+                const price = await priceService.getTokenUSDPrice(priceTokenLedger, Number(decimals));
+                setPaymentTokenPrice(price);
+            } catch (e) {
+                console.warn('Failed to fetch payment token price:', e);
+                setPaymentTokenPrice(null);
+            }
+        };
+        fetchPrice();
+    }, [priceTokenLedger, selectedPriceToken]);
     
     // Fetch marketplace fee rate on mount
     useEffect(() => {
@@ -1778,6 +1800,11 @@ function SneedexCreate() {
                                 value={minBidPrice}
                                 onChange={(e) => setMinBidPrice(e.target.value)}
                             />
+                            {minBidPrice && paymentTokenPrice && (
+                                <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                    ≈ {formatUsd(parseFloat(minBidPrice) * paymentTokenPrice)}
+                                </div>
+                            )}
                         </div>
                         
                         <div style={styles.formGroup}>
@@ -1793,6 +1820,11 @@ function SneedexCreate() {
                                 value={buyoutPrice}
                                 onChange={(e) => setBuyoutPrice(e.target.value)}
                             />
+                            {buyoutPrice && paymentTokenPrice && (
+                                <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                    ≈ {formatUsd(parseFloat(buyoutPrice) * paymentTokenPrice)}
+                                </div>
+                            )}
                         </div>
                         
                         <div style={styles.formGroup}>

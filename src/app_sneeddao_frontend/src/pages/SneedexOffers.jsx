@@ -15,12 +15,15 @@ import {
     getOfferStateString,
     getAssetType,
     getAssetDetails,
-    CANISTER_KIND_ICP_NEURON_MANAGER
+    CANISTER_KIND_ICP_NEURON_MANAGER,
+    formatUsd,
+    calculateUsdValue
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/SnsUtils';
+import priceService from '../services/PriceService';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -48,6 +51,10 @@ function SneedexOffers() {
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
     const [tokenLogos, setTokenLogos] = useState(new Map()); // ledger_id -> logo URL
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // canister_id -> { totalStake, neuronCount }
+    
+    // USD pricing state
+    const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
+    const [icpPrice, setIcpPrice] = useState(null); // ICP/USD price
     
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -313,6 +320,52 @@ function SneedexOffers() {
         fetchOffers();
     }, [fetchOffers]);
     
+    // Fetch token prices for USD display
+    useEffect(() => {
+        const fetchPrices = async () => {
+            try {
+                // Get ICP price first
+                const icp = await priceService.getICPUSDPrice();
+                setIcpPrice(icp);
+                
+                // Collect unique ledger IDs from offers
+                const ledgerIds = new Set();
+                offers.forEach(offer => {
+                    // Add payment token
+                    const paymentLedger = offer.price_token_ledger.toString();
+                    ledgerIds.add(paymentLedger);
+                    
+                    // Add asset tokens
+                    offer.assets.forEach(assetEntry => {
+                        const details = getAssetDetails(assetEntry);
+                        if (details.type === 'ICRC1Token') {
+                            ledgerIds.add(details.ledger_id);
+                        }
+                    });
+                });
+                
+                // Fetch prices for each ledger
+                const prices = {};
+                for (const ledgerId of ledgerIds) {
+                    try {
+                        const tokenInfo = getTokenInfo(ledgerId);
+                        const price = await priceService.getTokenUSDPrice(ledgerId, tokenInfo.decimals);
+                        prices[ledgerId] = price;
+                    } catch (e) {
+                        console.warn(`Failed to fetch price for ${ledgerId}:`, e);
+                    }
+                }
+                setTokenPrices(prices);
+            } catch (e) {
+                console.warn('Failed to fetch token prices:', e);
+            }
+        };
+        
+        if (offers.length > 0) {
+            fetchPrices();
+        }
+    }, [offers, getTokenInfo]);
+    
     // Fetch SNS logos, symbols, neuron info, token logos, and neuron manager info when offers change
     useEffect(() => {
         if (offers.length === 0) return;
@@ -355,6 +408,53 @@ function SneedexOffers() {
         }
         return null;
     }, [snsList]);
+    
+    // Calculate estimated USD value of an offer's assets
+    const getOfferEstimatedValue = useCallback((offer) => {
+        let totalUsd = 0;
+        
+        for (const assetEntry of offer.assets) {
+            const details = getAssetDetails(assetEntry);
+            
+            if (details.type === 'ICRC1Token') {
+                // Token asset - use token price
+                const price = tokenPrices[details.ledger_id];
+                if (price && details.amount) {
+                    const tokenInfo = getTokenInfo(details.ledger_id);
+                    totalUsd += calculateUsdValue(details.amount, tokenInfo.decimals, price);
+                }
+            } else if (details.type === 'SNSNeuron') {
+                // SNS Neuron - use cached stake or live neuron info
+                const stakeE8s = details.cached_stake_e8s !== null 
+                    ? details.cached_stake_e8s 
+                    : neuronInfo[`${details.governance_id}_${details.neuron_id}`]?.stake;
+                
+                if (stakeE8s) {
+                    // Get the SNS ledger for this neuron to look up price
+                    const snsLedger = getSnsLedgerFromGovernance(details.governance_id);
+                    if (snsLedger && tokenPrices[snsLedger]) {
+                        const snsInfo = getSnsInfo(details.governance_id);
+                        const decimals = snsInfo?.decimals || 8;
+                        totalUsd += calculateUsdValue(stakeE8s, decimals, tokenPrices[snsLedger]);
+                    }
+                }
+            } else if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                // ICP Neuron Manager - use cached total stake or live info
+                const totalIcpE8s = details.cached_total_stake_e8s !== null
+                    ? details.cached_total_stake_e8s
+                    : (neuronManagerInfo[details.canister_id]?.totalIcp 
+                        ? BigInt(Math.round(neuronManagerInfo[details.canister_id].totalIcp * 1e8))
+                        : null);
+                
+                if (totalIcpE8s && icpPrice) {
+                    totalUsd += calculateUsdValue(totalIcpE8s, 8, icpPrice);
+                }
+            }
+            // Canisters without a known kind don't have an estimated value
+        }
+        
+        return totalUsd;
+    }, [tokenPrices, icpPrice, neuronInfo, neuronManagerInfo, getTokenInfo, getSnsLedgerFromGovernance, getSnsInfo]);
     
     // Check if any advanced filters are active
     const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter;
@@ -1285,6 +1385,27 @@ function SneedexOffers() {
                         {paginatedOffers.map((offer) => {
                             const bidInfo = offersWithBids[Number(offer.id)] || {};
                             const tokenInfo = getTokenInfo(offer.price_token_ledger.toString());
+                            const paymentTokenPrice = tokenPrices[offer.price_token_ledger.toString()];
+                            
+                            // Calculate estimated asset value
+                            const estimatedValue = getOfferEstimatedValue(offer);
+                            
+                            // Calculate prices in USD
+                            const minBidUsd = offer.min_bid_price[0] && paymentTokenPrice
+                                ? calculateUsdValue(offer.min_bid_price[0], tokenInfo.decimals, paymentTokenPrice)
+                                : null;
+                            const buyoutUsd = offer.buyout_price[0] && paymentTokenPrice
+                                ? calculateUsdValue(offer.buyout_price[0], tokenInfo.decimals, paymentTokenPrice)
+                                : null;
+                            const highestBidUsd = bidInfo.highest_bid?.amount && paymentTokenPrice
+                                ? calculateUsdValue(bidInfo.highest_bid.amount, tokenInfo.decimals, paymentTokenPrice)
+                                : null;
+                            
+                            // Determine if this is a "good deal"
+                            const isGoodDeal = estimatedValue > 0 && (
+                                (buyoutUsd && estimatedValue > buyoutUsd * 1.2) || // 20%+ undervalued vs buyout
+                                (highestBidUsd && estimatedValue > highestBidUsd * 1.5) // 50%+ undervalued vs current bid
+                            );
                             
                             // Check if there's exactly one canister asset with a title
                             const canisterAssets = offer.assets.filter(a => a.asset && a.asset.Canister);
@@ -1505,6 +1626,11 @@ function SneedexOffers() {
                                                 {offer.min_bid_price[0] ? formatAmount(offer.min_bid_price[0], tokenInfo.decimals) : '—'}
                                             </div>
                                             <div style={styles.priceToken}>{tokenInfo.symbol}</div>
+                                            {minBidUsd > 0 && (
+                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                    {formatUsd(minBidUsd)}
+                                                </div>
+                                            )}
                                         </div>
                                         <div style={styles.priceItem}>
                                             <div style={styles.priceLabel}>Buyout</div>
@@ -1512,8 +1638,44 @@ function SneedexOffers() {
                                                 {offer.buyout_price[0] ? formatAmount(offer.buyout_price[0], tokenInfo.decimals) : '—'}
                                             </div>
                                             <div style={styles.priceToken}>{tokenInfo.symbol}</div>
+                                            {buyoutUsd > 0 && (
+                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                    {formatUsd(buyoutUsd)}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
+                                    
+                                    {/* Estimated Value and Good Deal badge */}
+                                    {estimatedValue > 0 && (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '8px',
+                                            marginBottom: '0.5rem',
+                                            padding: '4px 8px',
+                                            background: isGoodDeal ? `${theme.colors.success}15` : `${theme.colors.accent}10`,
+                                            borderRadius: '6px',
+                                            fontSize: '0.75rem',
+                                        }}>
+                                            <span style={{ color: theme.colors.mutedText }}>
+                                                Est. Value: <strong style={{ color: theme.colors.primaryText }}>{formatUsd(estimatedValue)}</strong>
+                                            </span>
+                                            {isGoodDeal && (
+                                                <span style={{
+                                                    background: theme.colors.success,
+                                                    color: '#fff',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: '600',
+                                                    fontSize: '0.65rem',
+                                                }}>
+                                                    🔥 GOOD DEAL
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                     {offer.min_bid_increment_fee_multiple?.[0] && (
                                         <div style={{ 
                                             fontSize: '0.75rem', 
@@ -1553,6 +1715,11 @@ function SneedexOffers() {
                                             {bidInfo.highest_bid && (
                                                 <div style={styles.highestBid}>
                                                     {formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                    {highestBidUsd > 0 && (
+                                                        <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                            ({formatUsd(highestBidUsd)})
+                                                        </span>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

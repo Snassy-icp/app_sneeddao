@@ -407,3 +407,41 @@ export const getOfferFeeInfo = (offer) => {
     };
 };
 
+/**
+ * Format a number as USD currency
+ * @param {number} value - The USD value to format
+ * @param {boolean} showDecimals - Whether to show decimal places (default: true)
+ * @returns {string} Formatted USD string (e.g., "$1,234.56")
+ */
+export const formatUsd = (value, showDecimals = true) => {
+    if (value === null || value === undefined || isNaN(value)) return '';
+    if (value === 0) return '$0.00';
+    
+    // For very small values, show more precision
+    if (value > 0 && value < 0.01) {
+        return `$${value.toFixed(4)}`;
+    }
+    
+    return value.toLocaleString('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: showDecimals ? 2 : 0,
+        maximumFractionDigits: showDecimals ? 2 : 0,
+    });
+};
+
+/**
+ * Calculate USD value from token amount and price
+ * @param {BigInt|number|string} amount - Amount in smallest units (e8s)
+ * @param {number} decimals - Token decimals
+ * @param {number} pricePerToken - USD price per token
+ * @returns {number} USD value
+ */
+export const calculateUsdValue = (amount, decimals, pricePerToken) => {
+    if (!amount || !pricePerToken) return 0;
+    const amountBigInt = BigInt(amount);
+    const divisor = 10n ** BigInt(decimals);
+    const tokenAmount = Number(amountBigInt) / Number(divisor);
+    return tokenAmount * pricePerToken;
+};
+
