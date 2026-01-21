@@ -63,11 +63,18 @@ function SneedexOffers() {
     // Advanced filter state
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [bidTokenFilter, setBidTokenFilter] = useState(''); // Filter by payment token
-    const [minPriceFilter, setMinPriceFilter] = useState(''); // Min price filter
-    const [maxPriceFilter, setMaxPriceFilter] = useState(''); // Max price filter
+    const [minPriceFilter, setMinPriceFilter] = useState(''); // Min price filter (in token)
+    const [maxPriceFilter, setMaxPriceFilter] = useState(''); // Max price filter (in token)
     const [assetTokenFilter, setAssetTokenFilter] = useState(''); // Filter by asset token (for tokens, SNS neurons, neuron managers)
     const [minAssetAmountFilter, setMinAssetAmountFilter] = useState(''); // Min asset amount filter
     const [maxAssetAmountFilter, setMaxAssetAmountFilter] = useState(''); // Max asset amount filter
+    
+    // USD-based filter state
+    const [minPriceUsdFilter, setMinPriceUsdFilter] = useState(''); // Min price in USD
+    const [maxPriceUsdFilter, setMaxPriceUsdFilter] = useState(''); // Max price in USD
+    const [minEstValueUsdFilter, setMinEstValueUsdFilter] = useState(''); // Min estimated value in USD
+    const [maxEstValueUsdFilter, setMaxEstValueUsdFilter] = useState(''); // Max estimated value in USD
+    const [valueRatioFilter, setValueRatioFilter] = useState(''); // Min value/price ratio as percentage (e.g., 100 = value >= price)
     
     // ICP ledger canister ID constant
     const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -457,7 +464,7 @@ function SneedexOffers() {
     }, [tokenPrices, icpPrice, neuronInfo, neuronManagerInfo, getTokenInfo, getSnsLedgerFromGovernance, getSnsInfo]);
     
     // Check if any advanced filters are active
-    const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter;
+    const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter || minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter;
     
     // Clear all advanced filters
     const clearAdvancedFilters = () => {
@@ -467,6 +474,11 @@ function SneedexOffers() {
         setAssetTokenFilter('');
         setMinAssetAmountFilter('');
         setMaxAssetAmountFilter('');
+        setMinPriceUsdFilter('');
+        setMaxPriceUsdFilter('');
+        setMinEstValueUsdFilter('');
+        setMaxEstValueUsdFilter('');
+        setValueRatioFilter('');
     };
     
     const filteredOffers = offers.filter(offer => {
@@ -623,6 +635,51 @@ function SneedexOffers() {
                 return false;
             });
             if (!hasMatchingAsset) return false;
+        }
+        
+        // USD-based filters
+        if (minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter) {
+            const paymentLedger = offer.price_token_ledger.toString();
+            const paymentPrice = tokenPrices[paymentLedger];
+            const tokenInfo = getTokenInfo(paymentLedger);
+            
+            // Calculate price in USD
+            const offerPrice = offer.min_bid_price[0] || offer.buyout_price[0];
+            const priceUsd = offerPrice && paymentPrice 
+                ? calculateUsdValue(offerPrice, tokenInfo.decimals, paymentPrice) 
+                : null;
+            
+            // Calculate estimated value
+            const estimatedValue = getOfferEstimatedValue(offer);
+            
+            // Filter by price USD range
+            if (minPriceUsdFilter && priceUsd !== null) {
+                const minUsd = parseFloat(minPriceUsdFilter);
+                if (!isNaN(minUsd) && priceUsd < minUsd) return false;
+            }
+            if (maxPriceUsdFilter && priceUsd !== null) {
+                const maxUsd = parseFloat(maxPriceUsdFilter);
+                if (!isNaN(maxUsd) && priceUsd > maxUsd) return false;
+            }
+            
+            // Filter by estimated value USD range
+            if (minEstValueUsdFilter && estimatedValue > 0) {
+                const minUsd = parseFloat(minEstValueUsdFilter);
+                if (!isNaN(minUsd) && estimatedValue < minUsd) return false;
+            }
+            if (maxEstValueUsdFilter && estimatedValue > 0) {
+                const maxUsd = parseFloat(maxEstValueUsdFilter);
+                if (!isNaN(maxUsd) && estimatedValue > maxUsd) return false;
+            }
+            
+            // Filter by value/price ratio
+            if (valueRatioFilter && priceUsd !== null && priceUsd > 0 && estimatedValue > 0) {
+                const minRatio = parseFloat(valueRatioFilter);
+                if (!isNaN(minRatio)) {
+                    const actualRatio = (estimatedValue / priceUsd) * 100;
+                    if (actualRatio < minRatio) return false;
+                }
+            }
         }
         
         return true;
@@ -1317,6 +1374,91 @@ function SneedexOffers() {
                                         onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
                                         onBlur={(e) => e.target.style.borderColor = theme.colors.border}
                                     />
+                                </div>
+                            </div>
+                            
+                            {/* USD Price Range Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Price in USD <span style={styles.filterLabelHint}>($ value)</span></label>
+                                <div style={styles.rangeInputsRow}>
+                                    <input
+                                        type="number"
+                                        placeholder="Min $"
+                                        value={minPriceUsdFilter}
+                                        onChange={(e) => setMinPriceUsdFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
+                                    <span style={styles.rangeSeparator}>–</span>
+                                    <input
+                                        type="number"
+                                        placeholder="Max $"
+                                        value={maxPriceUsdFilter}
+                                        onChange={(e) => setMaxPriceUsdFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
+                                </div>
+                            </div>
+                            
+                            {/* USD Estimated Value Range Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Est. Value in USD <span style={styles.filterLabelHint}>($ value)</span></label>
+                                <div style={styles.rangeInputsRow}>
+                                    <input
+                                        type="number"
+                                        placeholder="Min $"
+                                        value={minEstValueUsdFilter}
+                                        onChange={(e) => setMinEstValueUsdFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
+                                    <span style={styles.rangeSeparator}>–</span>
+                                    <input
+                                        type="number"
+                                        placeholder="Max $"
+                                        value={maxEstValueUsdFilter}
+                                        onChange={(e) => setMaxEstValueUsdFilter(e.target.value)}
+                                        style={styles.filterInput}
+                                        min="0"
+                                        step="any"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
+                                </div>
+                            </div>
+                            
+                            {/* Value/Price Ratio Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>
+                                    Value/Price Ratio 
+                                    <span style={styles.filterLabelHint}> (Min %)</span>
+                                </label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                        type="number"
+                                        placeholder="e.g., 100"
+                                        value={valueRatioFilter}
+                                        onChange={(e) => setValueRatioFilter(e.target.value)}
+                                        style={{ ...styles.filterInput, flex: 1 }}
+                                        min="0"
+                                        step="1"
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>%</span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                    100% = value ≥ price, 110% = 10% better value
                                 </div>
                             </div>
                         </div>
