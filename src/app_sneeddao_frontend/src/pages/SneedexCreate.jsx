@@ -513,7 +513,7 @@ function SneedexCreate() {
             await managementCanister.canister_status({ canister_id: canisterPrincipal });
             return { verified: true, message: 'You are a controller' };
         } catch (e) {
-            return { verified: false, message: 'Not a controller - add Sneedex manually' };
+            return { verified: false, message: 'Not a controller' };
         }
     }, [identity]);
     
@@ -728,7 +728,7 @@ function SneedexCreate() {
             return { verified: false, message: 'Neuron not found or no access' };
         } catch (e) {
             console.error('Failed to verify neuron:', e);
-            return { verified: false, message: 'Could not verify - add hotkey manually' };
+            return { verified: false, message: 'Could not verify neuron permissions' };
         }
     }, [identity]);
     
@@ -2073,7 +2073,7 @@ function SneedexCreate() {
                                                         {verification.verified ? (
                                                             <><FaCheck /> Ready</>
                                                         ) : (
-                                                            <><FaExclamationTriangle /> Manual escrow</>
+                                                            <><FaExclamationTriangle /> Not ready</>
                                                         )}
                                                     </span>
                                                 ) : null}
@@ -2850,7 +2850,7 @@ function SneedexCreate() {
                                                             alignItems: 'center',
                                                             gap: '4px',
                                                         }}>
-                                                            <FaExclamationTriangle /> {verification.message || 'Manual escrow needed'}
+                                                            <FaExclamationTriangle /> {verification.message || 'Not ready for escrow'}
                                                         </span>
                                                     ) : null}
                                                     <span style={{ color: theme.colors.mutedText, marginLeft: '4px' }}>
@@ -3009,26 +3009,6 @@ function SneedexCreate() {
                                     <li>Escrow all assets (add Sneedex as controller/hotkey, transfer tokens)</li>
                                     <li>Activate the offer and make it live</li>
                                 </ol>
-                            </div>
-                        ) : isAdmin ? (
-                            <div style={{ 
-                                background: `${theme.colors.warning}15`, 
-                                border: `1px solid ${theme.colors.warning}`,
-                                borderRadius: '10px',
-                                padding: '1rem',
-                                marginBottom: '1.5rem',
-                                fontSize: '0.9rem',
-                                color: theme.colors.warning,
-                            }}>
-                                <strong>⚠️ Some assets need manual escrow.</strong> After creating the offer, you'll need to:
-                                <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
-                                    <li>For canisters: Add Sneedex ({SNEEDEX_CANISTER_ID}) as a controller</li>
-                                    <li>For neurons: Add Sneedex as a hotkey with full permissions</li>
-                                    <li>For tokens: Ensure sufficient balance (amount + fee)</li>
-                                </ul>
-                                <div style={{ marginTop: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
-                                    ℹ️ <em>Admin mode: You can create the offer anyway and escrow assets later.</em>
-                                </div>
                             </div>
                         ) : (
                             <div style={{ 
