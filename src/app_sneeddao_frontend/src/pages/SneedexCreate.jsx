@@ -2992,8 +2992,24 @@ function SneedexCreate() {
                             </button>
                         </div>
                         
-                        {/* Show different message based on whether all assets are ready */}
-                        {allAssetsReady ? (
+                        {/* Show different message based on verification status */}
+                        {Object.values(reviewVerification).some(v => v?.checking) ? (
+                            <div style={{ 
+                                background: `${theme.colors.accent}15`, 
+                                border: `1px solid ${theme.colors.accent}`,
+                                borderRadius: '10px',
+                                padding: '1rem',
+                                marginBottom: '1.5rem',
+                                fontSize: '0.9rem',
+                                color: theme.colors.accent,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                            }}>
+                                <FaSync style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                                <span><strong>Verifying assets...</strong> Checking ownership and permissions for all assets. This may take a moment.</span>
+                            </div>
+                        ) : allAssetsReady ? (
                             <div style={{ 
                                 background: `${theme.colors.success}15`, 
                                 border: `1px solid ${theme.colors.success}`,
