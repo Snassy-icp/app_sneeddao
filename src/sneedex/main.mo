@@ -7,6 +7,7 @@ import Text "mo:base/Text";
 import Timer "mo:base/Timer";
 import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
+import Debug "mo:base/Debug";
 
 import T "Types";
 import Utils "Utils";
@@ -66,6 +67,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // These are optional - if not set, wallet registration is skipped
     var backendCanisterId : ?Principal = null;
     var neuronManagerFactoryCanisterId : ?Principal = null;
+    
+    // Expiration auto-processing timer settings
+    var expirationCheckIntervalSeconds : Nat = 3600; // Default: 1 hour
+    var expirationTimerId : ?Timer.TimerId = null; // Main periodic timer
+    var expirationWorkerRunning : Bool = false; // Flag to prevent multiple workers
     
     // ============================================
     // PRIVATE HELPERS
@@ -683,6 +689,149 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         ignore Timer.setTimer<system>(#seconds 1, func() : async () {
             await cacheAssetStakes(offerId);
         });
+    };
+    
+    // ============================================
+    // EXPIRATION AUTO-PROCESSING TIMER
+    // ============================================
+    
+    /// Find the first Active offer that has passed its expiration time
+    func findFirstExpiredOffer() : ?T.Offer {
+        let now = Time.now();
+        for (offer in offers.vals()) {
+            if (offer.state == #Active) {
+                switch (offer.expiration) {
+                    case (?exp) {
+                        if (exp < now) {
+                            return ?offer;
+                        };
+                    };
+                    case null {};
+                };
+            };
+        };
+        return null;
+    };
+    
+    /// Worker function that processes expired offers one by one
+    /// Uses 0-second timers to chain calls and avoid instruction limits
+    func expirationWorker() : async () {
+        // Find next expired offer
+        switch (findFirstExpiredOffer()) {
+            case null {
+                // No more expired offers, worker is done
+                expirationWorkerRunning := false;
+                Debug.print("Expiration worker: No more expired offers to process");
+            };
+            case (?offer) {
+                Debug.print("Expiration worker: Processing offer #" # Nat.toText(offer.id));
+                
+                // Process this expired offer
+                switch (offer.expiration) {
+                    case (?_exp) {
+                        // Check for highest bid
+                        switch (getHighestBid(offer.id)) {
+                            case (?highest) {
+                                // Complete with highest bid
+                                Debug.print("Expiration worker: Completing offer #" # Nat.toText(offer.id) # " with winning bid #" # Nat.toText(highest.id));
+                                ignore await completeOfferInternal(offer.id, highest.id);
+                            };
+                            case null {
+                                // No bids - mark as expired
+                                Debug.print("Expiration worker: No bids, marking offer #" # Nat.toText(offer.id) # " as expired");
+                                let updatedOffer : T.Offer = {
+                                    id = offer.id;
+                                    creator = offer.creator;
+                                    min_bid_price = offer.min_bid_price;
+                                    buyout_price = offer.buyout_price;
+                                    expiration = offer.expiration;
+                                    price_token_ledger = offer.price_token_ledger;
+                                    assets = offer.assets;
+                                    state = #Expired;
+                                    min_bid_increment_fee_multiple = offer.min_bid_increment_fee_multiple;
+                                    approved_bidders = offer.approved_bidders;
+                                    fee_rate_bps = offer.fee_rate_bps;
+                                    public_note = offer.public_note;
+                                    note_to_buyer = offer.note_to_buyer;
+                                    created_at = offer.created_at;
+                                    activated_at = offer.activated_at;
+                                };
+                                updateOffer(offer.id, updatedOffer);
+                                
+                                // Schedule auto-reclaim of assets
+                                scheduleAutoReclaimAssets<system>(offer.id);
+                            };
+                        };
+                    };
+                    case null {
+                        // Should not happen - we only found offers with expiration
+                        Debug.print("Expiration worker: Offer #" # Nat.toText(offer.id) # " has no expiration (unexpected)");
+                    };
+                };
+                
+                // Schedule next worker iteration (0-second delay to yield)
+                scheduleExpirationWorker<system>();
+            };
+        };
+    };
+    
+    /// Schedule the worker to run (0-second timer to yield execution)
+    func scheduleExpirationWorker<system>() {
+        ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+            await expirationWorker();
+        });
+    };
+    
+    /// Main timer callback - starts a worker if not already running
+    func expirationTimerCallback<system>() : async () {
+        Debug.print("Expiration timer: Checking for expired offers...");
+        
+        if (expirationWorkerRunning) {
+            Debug.print("Expiration timer: Worker already running, skipping this cycle");
+            return;
+        };
+        
+        // Check if there are any expired offers to process
+        switch (findFirstExpiredOffer()) {
+            case null {
+                Debug.print("Expiration timer: No expired offers found");
+            };
+            case (?_offer) {
+                Debug.print("Expiration timer: Found expired offers, starting worker");
+                expirationWorkerRunning := true;
+                scheduleExpirationWorker<system>();
+            };
+        };
+    };
+    
+    /// Start the periodic expiration timer with the configured interval
+    func startExpirationTimerInternal<system>() {
+        // Cancel existing timer if any
+        switch (expirationTimerId) {
+            case (?id) { Timer.cancelTimer(id); };
+            case null {};
+        };
+        
+        // Create new recurring timer
+        let timerId = Timer.recurringTimer<system>(#seconds expirationCheckIntervalSeconds, func() : async () {
+            await expirationTimerCallback<system>();
+        });
+        expirationTimerId := ?timerId;
+        Debug.print("Expiration timer started with interval: " # Nat.toText(expirationCheckIntervalSeconds) # " seconds");
+    };
+    
+    /// Stop the periodic expiration timer
+    func stopExpirationTimerInternal() {
+        switch (expirationTimerId) {
+            case (?id) {
+                Timer.cancelTimer(id);
+                expirationTimerId := null;
+                Debug.print("Expiration timer stopped");
+            };
+            case null {
+                Debug.print("Expiration timer was not running");
+            };
+        };
     };
     
     func getBidsForOffer(offerId : T.OfferId) : [T.Bid] {
@@ -2794,6 +2943,90 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// Get the neuron manager factory canister ID
     public query func getNeuronManagerFactoryCanisterId() : async ?Principal {
         neuronManagerFactoryCanisterId;
+    };
+    
+    // ============================================
+    // EXPIRATION TIMER ADMIN FUNCTIONS
+    // ============================================
+    
+    /// Start the expiration auto-processing timer (admin only)
+    public shared ({ caller }) func startExpirationTimer() : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        startExpirationTimerInternal<system>();
+        #ok();
+    };
+    
+    /// Stop the expiration auto-processing timer (admin only)
+    public shared ({ caller }) func stopExpirationTimer() : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        stopExpirationTimerInternal();
+        #ok();
+    };
+    
+    /// Set the expiration check interval in seconds (admin only)
+    public shared ({ caller }) func setExpirationCheckInterval(intervalSeconds : Nat) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        if (intervalSeconds < 60) {
+            return #err(#InvalidInput("Interval must be at least 60 seconds"));
+        };
+        expirationCheckIntervalSeconds := intervalSeconds;
+        
+        // If timer is running, restart it with new interval
+        switch (expirationTimerId) {
+            case (?_id) {
+                startExpirationTimerInternal<system>();
+            };
+            case null {};
+        };
+        #ok();
+    };
+    
+    /// Get the expiration check interval in seconds
+    public query func getExpirationCheckInterval() : async Nat {
+        expirationCheckIntervalSeconds;
+    };
+    
+    /// Check if the expiration timer is currently running
+    public query func isExpirationTimerRunning() : async Bool {
+        switch (expirationTimerId) {
+            case (?_id) { true };
+            case null { false };
+        };
+    };
+    
+    /// Check if the expiration worker is currently running
+    public query func isExpirationWorkerRunning() : async Bool {
+        expirationWorkerRunning;
+    };
+    
+    /// Manually trigger expiration check (admin only)
+    /// Useful for testing or when you want to process expired offers immediately
+    public shared ({ caller }) func triggerExpirationCheck() : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        if (expirationWorkerRunning) {
+            return #err(#InvalidState("Worker is already running"));
+        };
+        
+        // Check if there are any expired offers to process
+        switch (findFirstExpiredOffer()) {
+            case null {
+                #ok(); // No expired offers, nothing to do
+            };
+            case (?_offer) {
+                expirationWorkerRunning := true;
+                scheduleExpirationWorker<system>();
+                #ok();
+            };
+        };
     };
 };
 

@@ -40,6 +40,11 @@ export default function SneedexAdmin() {
     const [backendCanisterId, setBackendCanisterId] = useState(null);
     const [factoryCanisterId, setFactoryCanisterId] = useState(null);
     
+    // Expiration timer settings
+    const [expirationTimerRunning, setExpirationTimerRunning] = useState(false);
+    const [expirationWorkerRunning, setExpirationWorkerRunning] = useState(false);
+    const [expirationCheckInterval, setExpirationCheckInterval] = useState(3600);
+    
     // Form states
     const [newFeeRate, setNewFeeRate] = useState('');
     const [newFeeRecipientPrincipal, setNewFeeRecipientPrincipal] = useState('');
@@ -54,6 +59,7 @@ export default function SneedexAdmin() {
     const [newMaxAssets, setNewMaxAssets] = useState('');
     const [newBackendCanisterId, setNewBackendCanisterId] = useState('');
     const [newFactoryCanisterId, setNewFactoryCanisterId] = useState('');
+    const [newExpirationInterval, setNewExpirationInterval] = useState('');
     
     // Loading states
     const [savingFeeRate, setSavingFeeRate] = useState(false);
@@ -67,6 +73,9 @@ export default function SneedexAdmin() {
     const [savingConfig, setSavingConfig] = useState(false);
     const [savingBackendCanisterId, setSavingBackendCanisterId] = useState(false);
     const [savingFactoryCanisterId, setSavingFactoryCanisterId] = useState(false);
+    const [togglingExpirationTimer, setTogglingExpirationTimer] = useState(false);
+    const [savingExpirationInterval, setSavingExpirationInterval] = useState(false);
+    const [triggeringExpirationCheck, setTriggeringExpirationCheck] = useState(false);
     
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
@@ -103,7 +112,7 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             if (!actor) return;
             
-            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult] = await Promise.all([
+            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, timerRunningResult, workerRunningResult, intervalResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getMarketplaceFeeRate(),
                 actor.getFeeRecipient(),
@@ -112,6 +121,9 @@ export default function SneedexAdmin() {
                 actor.getMarketStats(),
                 actor.getBackendCanisterId(),
                 actor.getNeuronManagerFactoryCanisterId(),
+                actor.isExpirationTimerRunning(),
+                actor.isExpirationWorkerRunning(),
+                actor.getExpirationCheckInterval(),
             ]);
             
             setConfig(configResult);
@@ -125,6 +137,11 @@ export default function SneedexAdmin() {
             // Wallet registration settings
             setBackendCanisterId(backendIdResult && backendIdResult.length > 0 ? backendIdResult[0] : null);
             setFactoryCanisterId(factoryIdResult && factoryIdResult.length > 0 ? factoryIdResult[0] : null);
+            
+            // Expiration timer settings
+            setExpirationTimerRunning(timerRunningResult);
+            setExpirationWorkerRunning(workerRunningResult);
+            setExpirationCheckInterval(Number(intervalResult));
             
             // Pre-fill form with current values
             setNewMinDuration(String(Number(configResult.min_offer_duration_ns) / 1_000_000_000 / 3600)); // Convert ns to hours
@@ -507,6 +524,89 @@ export default function SneedexAdmin() {
             showInfo('Error', 'Failed to set factory canister ID: ' + e.message, 'error');
         }
         setSavingFactoryCanisterId(false);
+    };
+    
+    // Expiration Timer handlers
+    const handleToggleExpirationTimer = async () => {
+        setTogglingExpirationTimer(true);
+        try {
+            const actor = getSneedexActor();
+            let result;
+            if (expirationTimerRunning) {
+                result = await actor.stopExpirationTimer();
+            } else {
+                result = await actor.startExpirationTimer();
+            }
+            
+            if ('ok' in result) {
+                const newState = !expirationTimerRunning;
+                setExpirationTimerRunning(newState);
+                showInfo('Success', newState 
+                    ? `Expiration timer started (checking every ${Math.floor(expirationCheckInterval / 60)} minutes)` 
+                    : 'Expiration timer stopped', 'success');
+            } else {
+                showInfo('Error', 'Failed to toggle timer: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to toggle timer: ' + e.message, 'error');
+        }
+        setTogglingExpirationTimer(false);
+    };
+    
+    const handleSaveExpirationInterval = async () => {
+        const intervalMinutes = parseInt(newExpirationInterval, 10);
+        if (isNaN(intervalMinutes) || intervalMinutes < 1) {
+            showInfo('Invalid Interval', 'Interval must be at least 1 minute', 'error');
+            return;
+        }
+        
+        const intervalSeconds = intervalMinutes * 60;
+        
+        setSavingExpirationInterval(true);
+        try {
+            const actor = getSneedexActor();
+            const result = await actor.setExpirationCheckInterval(BigInt(intervalSeconds));
+            
+            if ('ok' in result) {
+                setExpirationCheckInterval(intervalSeconds);
+                setNewExpirationInterval('');
+                showInfo('Success', `Expiration check interval set to ${intervalMinutes} minute${intervalMinutes !== 1 ? 's' : ''}`, 'success');
+            } else {
+                showInfo('Error', 'Failed to set interval: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to set interval: ' + e.message, 'error');
+        }
+        setSavingExpirationInterval(false);
+    };
+    
+    const handleTriggerExpirationCheck = async () => {
+        if (expirationWorkerRunning) {
+            showInfo('Worker Running', 'The expiration worker is already processing offers. Please wait.', 'info');
+            return;
+        }
+        
+        setTriggeringExpirationCheck(true);
+        try {
+            const actor = getSneedexActor();
+            const result = await actor.triggerExpirationCheck();
+            
+            if ('ok' in result) {
+                showInfo('Success', 'Expiration check triggered. Any expired offers will be processed.', 'success');
+                // Refresh status
+                setTimeout(async () => {
+                    try {
+                        const workerRunning = await actor.isExpirationWorkerRunning();
+                        setExpirationWorkerRunning(workerRunning);
+                    } catch (e) {}
+                }, 1000);
+            } else {
+                showInfo('Error', 'Failed to trigger check: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to trigger check: ' + e.message, 'error');
+        }
+        setTriggeringExpirationCheck(false);
     };
     
     const styles = {
@@ -1232,6 +1332,136 @@ export default function SneedexAdmin() {
                                     {newFactoryCanisterId.trim() ? 'Set' : (factoryCanisterId ? 'Clear' : 'Set')}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </section>
+                
+                {/* Expiration Timer Settings */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaClock style={{ color: theme.colors.warning }} />
+                        Expiration Auto-Processing Timer
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Automatically process expired offers on a periodic schedule. When an offer expires, 
+                        if there are bids, the highest bidder wins; otherwise, assets are returned to the seller.
+                    </p>
+                    
+                    {/* Timer Status */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '1rem', 
+                        marginBottom: '1.5rem',
+                        padding: '1rem',
+                        background: theme.colors.tertiaryBg,
+                        borderRadius: '10px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: theme.colors.mutedText }}>Timer Status:</span>
+                            <span style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                fontWeight: '600',
+                                color: expirationTimerRunning ? theme.colors.success : theme.colors.mutedText
+                            }}>
+                                {expirationTimerRunning ? (
+                                    <><FaCheckCircle /> Running</>
+                                ) : (
+                                    <><FaTimesCircle /> Stopped</>
+                                )}
+                            </span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: theme.colors.mutedText }}>Worker:</span>
+                            <span style={{ 
+                                color: expirationWorkerRunning ? theme.colors.warning : theme.colors.mutedText,
+                                fontWeight: expirationWorkerRunning ? '600' : 'normal'
+                            }}>
+                                {expirationWorkerRunning ? '⚡ Processing...' : 'Idle'}
+                            </span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: theme.colors.mutedText }}>Interval:</span>
+                            <span style={{ fontWeight: '600' }}>
+                                {expirationCheckInterval >= 3600 
+                                    ? `${Math.floor(expirationCheckInterval / 3600)}h ${Math.floor((expirationCheckInterval % 3600) / 60)}m`
+                                    : `${Math.floor(expirationCheckInterval / 60)}m`
+                                }
+                            </span>
+                        </div>
+                        
+                        <button
+                            onClick={handleToggleExpirationTimer}
+                            disabled={togglingExpirationTimer}
+                            style={{
+                                ...styles.button,
+                                background: expirationTimerRunning ? theme.colors.warning : theme.colors.success,
+                                marginLeft: 'auto',
+                                opacity: togglingExpirationTimer ? 0.5 : 1,
+                                cursor: togglingExpirationTimer ? 'not-allowed' : 'pointer',
+                            }}
+                        >
+                            {togglingExpirationTimer ? <FaSpinner className="spin" /> : (expirationTimerRunning ? <FaTimesCircle /> : <FaCheckCircle />)}
+                            {expirationTimerRunning ? 'Stop Timer' : 'Start Timer'}
+                        </button>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+                        {/* Set Interval */}
+                        <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                            <label style={styles.label}>Check Interval (minutes)</label>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                                How often to check for expired offers
+                            </p>
+                            <div style={{ ...styles.row, gap: '0.5rem' }}>
+                                <input
+                                    type="number"
+                                    placeholder={String(Math.floor(expirationCheckInterval / 60))}
+                                    value={newExpirationInterval}
+                                    onChange={(e) => setNewExpirationInterval(e.target.value)}
+                                    min="1"
+                                    style={{ ...styles.input, flex: 1 }}
+                                />
+                                <button
+                                    onClick={handleSaveExpirationInterval}
+                                    disabled={savingExpirationInterval || !newExpirationInterval.trim()}
+                                    style={{
+                                        ...styles.button,
+                                        opacity: (savingExpirationInterval || !newExpirationInterval.trim()) ? 0.5 : 1,
+                                        cursor: (savingExpirationInterval || !newExpirationInterval.trim()) ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {savingExpirationInterval ? <FaSpinner className="spin" /> : <FaSave />}
+                                    Set
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Manual Trigger */}
+                        <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                            <label style={styles.label}>Manual Trigger</label>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                                Immediately process any expired offers
+                            </p>
+                            <button
+                                onClick={handleTriggerExpirationCheck}
+                                disabled={triggeringExpirationCheck || expirationWorkerRunning}
+                                style={{
+                                    ...styles.button,
+                                    background: theme.colors.info || theme.colors.accent,
+                                    width: '100%',
+                                    opacity: (triggeringExpirationCheck || expirationWorkerRunning) ? 0.5 : 1,
+                                    cursor: (triggeringExpirationCheck || expirationWorkerRunning) ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {triggeringExpirationCheck ? <FaSpinner className="spin" /> : <FaClock />}
+                                {expirationWorkerRunning ? 'Worker Running...' : 'Trigger Now'}
+                            </button>
                         </div>
                     </div>
                 </section>
