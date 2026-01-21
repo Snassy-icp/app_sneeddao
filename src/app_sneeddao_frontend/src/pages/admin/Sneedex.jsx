@@ -144,7 +144,7 @@ export default function SneedexAdmin() {
             setExpirationCheckInterval(Number(intervalResult));
             
             // Pre-fill form with current values
-            setNewMinDuration(String(Number(configResult.min_offer_duration_ns) / 1_000_000_000 / 3600)); // Convert ns to hours
+            setNewMinDuration(String(Number(configResult.min_offer_duration_ns) / 1_000_000_000 / 60)); // Convert ns to minutes
             setNewMaxAssets(String(Number(configResult.max_assets_per_offer)));
             
         } catch (err) {
@@ -424,10 +424,10 @@ export default function SneedexAdmin() {
     
     // Config update handler
     const handleSaveConfig = async () => {
-        const durationHours = parseFloat(newMinDuration);
+        const durationMinutes = parseFloat(newMinDuration);
         const maxAssets = parseInt(newMaxAssets);
         
-        if (isNaN(durationHours) || durationHours < 0) {
+        if (isNaN(durationMinutes) || durationMinutes < 0) {
             showInfo('Invalid Duration', 'Please enter a valid minimum offer duration', 'error');
             return;
         }
@@ -441,7 +441,7 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             const newConfig = {
                 admins: adminList,
-                min_offer_duration_ns: BigInt(Math.floor(durationHours * 3600 * 1_000_000_000)),
+                min_offer_duration_ns: BigInt(Math.floor(durationMinutes * 60 * 1_000_000_000)),
                 max_assets_per_offer: BigInt(maxAssets),
             };
             const result = await actor.updateConfig(newConfig);
@@ -1117,17 +1117,17 @@ export default function SneedexAdmin() {
                     
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
                         <div>
-                            <label style={styles.label}>Minimum Offer Duration (hours)</label>
+                            <label style={styles.label}>Minimum Offer Duration (minutes)</label>
                             <input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="1"
                                 value={newMinDuration}
                                 onChange={(e) => setNewMinDuration(e.target.value)}
                                 style={{ ...styles.input, width: '100%' }}
                             />
                             <small style={{ color: theme.colors.mutedText }}>
-                                Minimum time an offer must remain active (e.g., 0.017 ≈ 1 minute, for testing)
+                                Minimum time an offer must remain active (set to 1 for quick testing)
                             </small>
                         </div>
                         <div>
