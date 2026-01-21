@@ -4128,7 +4128,7 @@ function SneedexOffer() {
                                 </div>
                             )}
                             
-                            {isActive && isAuthenticated && !pendingBid && (
+                            {isActive && isAuthenticated && !pendingBid && !isCountdownExpired && !isOfferPastExpiration(offer.expiration?.[0]) && (
                                 <div style={styles.bidSection}>
                                     {/* Only show bid input if there's a min_bid_price (auction mode) */}
                                     {offer.min_bid_price[0] ? (
@@ -4228,13 +4228,40 @@ function SneedexOffer() {
                             {/* Pending bid confirmation */}
                             {pendingBid && (
                                 <div style={{
-                                    background: `${theme.colors.accent}10`,
-                                    border: `2px solid ${theme.colors.accent}`,
+                                    background: (isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) 
+                                        ? `${theme.colors.warning}10` 
+                                        : `${theme.colors.accent}10`,
+                                    border: `2px solid ${(isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) 
+                                        ? theme.colors.warning 
+                                        : theme.colors.accent}`,
                                     borderRadius: '12px',
                                     padding: '1.5rem',
                                     marginTop: '1rem',
                                     position: 'relative'
                                 }}>
+                                    {/* Expired offer warning */}
+                                    {(isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) && (
+                                        <div style={{
+                                            background: `${theme.colors.warning}20`,
+                                            border: `1px solid ${theme.colors.warning}`,
+                                            borderRadius: '8px',
+                                            padding: '1rem',
+                                            marginBottom: '1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                            color: theme.colors.warning
+                                        }}>
+                                            <FaClock style={{ fontSize: '1.2rem', flexShrink: 0 }} />
+                                            <div>
+                                                <strong>This offer has expired!</strong>
+                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: theme.colors.text }}>
+                                                    You can no longer complete this bid. Please withdraw any funds you've deposited.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
                                     {/* Loading overlay during auto-pay-and-confirm */}
                                     {(bidding || (actionLoading && buyoutProgress)) && (
                                         <div style={{
@@ -4313,25 +4340,27 @@ function SneedexOffer() {
                                         </div>
                                     </div>
                                     
-                                    {/* Quick pay button */}
-                                    <button
-                                        style={{
-                                            ...styles.acceptButton,
-                                            width: '100%',
-                                            marginBottom: '1rem',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '8px'
-                                        }}
-                                        onClick={handleDirectPayment}
-                                        disabled={paymentLoading || (pendingBid.escrowBalance >= pendingBid.amount)}
-                                    >
-                                        <FaWallet />
-                                        {paymentLoading ? 'Processing Payment...' : 
-                                         pendingBid.escrowBalance >= pendingBid.amount ? 'Payment Complete ✓' :
-                                         `Pay ${pendingBid.displayAmount} ${tokenInfo.symbol} from Wallet`}
-                                    </button>
+                                    {/* Quick pay button - hidden when expired */}
+                                    {!(isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) && (
+                                        <button
+                                            style={{
+                                                ...styles.acceptButton,
+                                                width: '100%',
+                                                marginBottom: '1rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '8px'
+                                            }}
+                                            onClick={handleDirectPayment}
+                                            disabled={paymentLoading || (pendingBid.escrowBalance >= pendingBid.amount)}
+                                        >
+                                            <FaWallet />
+                                            {paymentLoading ? 'Processing Payment...' : 
+                                             pendingBid.escrowBalance >= pendingBid.amount ? 'Payment Complete ✓' :
+                                             `Pay ${pendingBid.displayAmount} ${tokenInfo.symbol} from Wallet`}
+                                        </button>
+                                    )}
                                     
                                     {/* Manual payment instructions (collapsed) */}
                                     <details style={{ marginBottom: '1rem' }}>
@@ -4365,39 +4394,48 @@ function SneedexOffer() {
                                     
                                     {/* Action buttons */}
                                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                        <button
-                                            style={{
-                                                ...styles.acceptButton,
-                                                flex: '1',
-                                                opacity: pendingBid.escrowBalance >= pendingBid.amount ? 1 : 0.6
-                                            }}
-                                            onClick={handleConfirmBid}
-                                            disabled={actionLoading || pendingBid.escrowBalance < pendingBid.amount}
-                                            title={pendingBid.escrowBalance < pendingBid.amount ? 
-                                                'Send payment first' : 'Confirm your bid'}
-                                        >
-                                            {actionLoading ? 'Confirming...' : '✓ Confirm Bid'}
-                                        </button>
+                                        {/* Confirm button - hidden when expired */}
+                                        {!(isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) && (
+                                            <button
+                                                style={{
+                                                    ...styles.acceptButton,
+                                                    flex: '1',
+                                                    opacity: pendingBid.escrowBalance >= pendingBid.amount ? 1 : 0.6
+                                                }}
+                                                onClick={handleConfirmBid}
+                                                disabled={actionLoading || pendingBid.escrowBalance < pendingBid.amount}
+                                                title={pendingBid.escrowBalance < pendingBid.amount ? 
+                                                    'Send payment first' : 'Confirm your bid'}
+                                            >
+                                                {actionLoading ? 'Confirming...' : '✓ Confirm Bid'}
+                                            </button>
+                                        )}
                                         
+                                        {/* Withdraw button - always available when there are funds */}
                                         {pendingBid.escrowBalance > 0n && (
                                             <button
                                                 style={{
                                                     ...styles.cancelButton,
-                                                    background: 'transparent',
+                                                    background: (isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) 
+                                                        ? theme.colors.warning 
+                                                        : 'transparent',
                                                     border: `1px solid ${theme.colors.warning}`,
-                                                    color: theme.colors.warning
+                                                    color: (isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) 
+                                                        ? '#fff' 
+                                                        : theme.colors.warning,
+                                                    flex: (isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0])) ? '1' : 'none'
                                                 }}
                                                 onClick={handleWithdraw}
                                                 disabled={withdrawLoading}
                                             >
-                                                {withdrawLoading ? 'Withdrawing...' : 'Withdraw'}
+                                                {withdrawLoading ? 'Withdrawing...' : '💸 Withdraw Funds'}
                                             </button>
                                         )}
                                         
                                         <button
                                             style={{
                                                 ...styles.cancelButton,
-                                                flex: pendingBid.escrowBalance > 0n ? 'none' : '1'
+                                                flex: (pendingBid.escrowBalance > 0n && !(isCountdownExpired || isOfferPastExpiration(offer.expiration?.[0]))) ? 'none' : '1'
                                             }}
                                             onClick={handleCancelPendingBid}
                                             disabled={actionLoading}
