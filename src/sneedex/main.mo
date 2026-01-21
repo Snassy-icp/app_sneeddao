@@ -139,7 +139,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     func isAdmin(caller : Principal) : Bool {
-        Utils.principalInList(caller, config.admins);
+        Principal.isController(caller) or Utils.principalInList(caller, config.admins);
     };
     
     func getOffer(offerId : T.OfferId) : ?T.Offer {
