@@ -73,21 +73,21 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     // Helper to deregister canister from seller's wallet (best effort, non-blocking)
     func deregisterCanisterFromWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
-        // Deregister from tracked canisters
-        switch (backendCanisterId) {
-            case (?id) {
-                let backend : T.BackendActor = actor(Principal.toText(id));
-                try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
-            };
-            case null {};
-        };
-        
-        // If it's a neuron manager, also deregister from factory
         if (isNeuronManager) {
+            // Neuron managers: deregister from factory only (not tracked canisters)
             switch (neuronManagerFactoryCanisterId) {
                 case (?id) {
                     let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
                     try { ignore await factory.deregisterManagerFor(user, canisterId); } catch (_) {};
+                };
+                case null {};
+            };
+        } else {
+            // Regular canisters: deregister from tracked canisters
+            switch (backendCanisterId) {
+                case (?id) {
+                    let backend : T.BackendActor = actor(Principal.toText(id));
+                    try { await backend.unregister_tracked_canister_for(user, canisterId); } catch (_) {};
                 };
                 case null {};
             };
@@ -96,21 +96,21 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     // Helper to register canister to buyer's wallet (best effort, non-blocking)
     func registerCanisterToWallet(user : Principal, canisterId : Principal, isNeuronManager : Bool) : async () {
-        // Register to tracked canisters
-        switch (backendCanisterId) {
-            case (?id) {
-                let backend : T.BackendActor = actor(Principal.toText(id));
-                try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
-            };
-            case null {};
-        };
-        
-        // If it's a neuron manager, also register with factory
         if (isNeuronManager) {
+            // Neuron managers: register with factory only (not tracked canisters)
             switch (neuronManagerFactoryCanisterId) {
                 case (?id) {
                     let factory : T.NeuronManagerFactoryActor = actor(Principal.toText(id));
                     try { ignore await factory.registerManagerFor(user, canisterId); } catch (_) {};
+                };
+                case null {};
+            };
+        } else {
+            // Regular canisters: register to tracked canisters
+            switch (backendCanisterId) {
+                case (?id) {
+                    let backend : T.BackendActor = actor(Principal.toText(id));
+                    try { await backend.register_tracked_canister_for(user, canisterId); } catch (_) {};
                 };
                 case null {};
             };
