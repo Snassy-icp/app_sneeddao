@@ -958,9 +958,9 @@ function SneedexMy() {
                                                                 const paymentPrice = tokenPrices[paymentLedger];
                                                                 const bidUsd = paymentPrice ? calculateUsdValue(bidInfo.highest_bid.amount, tokenInfo.decimals, paymentPrice) : null;
                                                                 return bidUsd > 0 ? (
-                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '4px' }}>
-                                                                        ({formatUsd(bidUsd)})
-                                                                    </span>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '2px' }}>
+                                                                        {formatUsd(bidUsd)}
+                                                                    </div>
                                                                 ) : null;
                                                             })()}
                                                         </>
@@ -1168,9 +1168,9 @@ function SneedexMy() {
                                                 <div style={styles.infoValue}>
                                                     {formatAmount(bid.amount, bidTokenInfo.decimals)} {bidTokenInfo.symbol}
                                                     {bidTokenPrice && (
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '4px' }}>
-                                                            ({formatUsd(calculateUsdValue(bid.amount, bidTokenInfo.decimals, bidTokenPrice))})
-                                                        </span>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '2px' }}>
+                                                            {formatUsd(calculateUsdValue(bid.amount, bidTokenInfo.decimals, bidTokenPrice))}
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
