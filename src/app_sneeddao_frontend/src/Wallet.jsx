@@ -4842,17 +4842,21 @@ function Wallet() {
                                     
                                     // Calculate total ICP value for this manager (stake + maturity)
                                     let managerTotalIcp = 0;
+                                    let managerTotalMaturity = 0;
                                     if (neuronsData?.neurons) {
                                         neuronsData.neurons.forEach(neuron => {
                                             if (neuron.info) managerTotalIcp += Number(neuron.info.stake_e8s || 0) / 1e8;
                                             if (neuron.full) {
-                                                managerTotalIcp += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
-                                                if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
-                                                    managerTotalIcp += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
-                                                }
+                                                const maturity = Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+                                                const stakedMaturity = neuron.full.staked_maturity_e8s_equivalent?.[0] 
+                                                    ? Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8 
+                                                    : 0;
+                                                managerTotalMaturity += maturity + stakedMaturity;
+                                                managerTotalIcp += maturity + stakedMaturity;
                                             }
                                         });
                                     }
+                                    const hasMaturity = managerTotalMaturity > 0;
                                     
                                     return (
                                         <div 
@@ -4942,6 +4946,23 @@ function Wallet() {
                                                                 title={`${neuronManagerCycles[canisterId].toLocaleString()} cycles`}
                                                             >
                                                                 ⚡ {formatCyclesCompact(neuronManagerCycles[canisterId])}
+                                                            </span>
+                                                        )}
+                                                        {/* Maturity icon */}
+                                                        {hasMaturity && (
+                                                            <span 
+                                                                style={{
+                                                                    background: '#10B98120',
+                                                                    color: '#10B981',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                    cursor: 'help',
+                                                                }} 
+                                                                title={`${managerTotalMaturity.toFixed(4)} ICP maturity available`}
+                                                            >
+                                                                🌱 {managerTotalMaturity.toFixed(2)}
                                                             </span>
                                                         )}
                                                         {/* Neurons icon */}
