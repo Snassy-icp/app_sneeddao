@@ -78,6 +78,10 @@ function SneedexMy() {
     // USD pricing state
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
     
+    // Filter state
+    const [offerFilter, setOfferFilter] = useState('all'); // all, active, completed, draft, cancelled, expired, reclaimed, claimed
+    const [bidFilter, setBidFilter] = useState('all'); // all, pending, won, lost, refunded
+    
     // Pagination state
     const [offersPage, setOffersPage] = useState(1);
     const [bidsPage, setBidsPage] = useState(1);
@@ -121,14 +125,28 @@ function SneedexMy() {
         return { symbol: 'TOKEN', decimals: 8 };
     }, [whitelistedTokens]);
     
-    // Sort offers by created_at (newest first) and paginate
+    // Filter and sort offers by created_at (newest first) and paginate
+    const filteredOffers = useMemo(() => {
+        if (offerFilter === 'all') return myOffers;
+        return myOffers.filter(offer => {
+            if (offerFilter === 'active') return 'Active' in offer.state;
+            if (offerFilter === 'completed') return 'Completed' in offer.state;
+            if (offerFilter === 'draft') return 'Draft' in offer.state || 'PendingEscrow' in offer.state;
+            if (offerFilter === 'cancelled') return 'Cancelled' in offer.state;
+            if (offerFilter === 'expired') return 'Expired' in offer.state;
+            if (offerFilter === 'reclaimed') return 'Reclaimed' in offer.state;
+            if (offerFilter === 'claimed') return 'Claimed' in offer.state;
+            return true;
+        });
+    }, [myOffers, offerFilter]);
+    
     const sortedOffers = useMemo(() => {
-        return [...myOffers].sort((a, b) => {
+        return [...filteredOffers].sort((a, b) => {
             const timeA = BigInt(a.created_at);
             const timeB = BigInt(b.created_at);
             return timeB > timeA ? 1 : timeB < timeA ? -1 : 0;
         });
-    }, [myOffers]);
+    }, [filteredOffers]);
     
     const paginatedOffers = useMemo(() => {
         const startIndex = (offersPage - 1) * ITEMS_PER_PAGE;
@@ -137,14 +155,25 @@ function SneedexMy() {
     
     const totalOffersPages = useMemo(() => Math.ceil(sortedOffers.length / ITEMS_PER_PAGE), [sortedOffers.length]);
     
-    // Sort bids by created_at (newest first) and paginate
+    // Filter and sort bids by created_at (newest first) and paginate
+    const filteredBids = useMemo(() => {
+        if (bidFilter === 'all') return myBids;
+        return myBids.filter(bid => {
+            if (bidFilter === 'pending') return 'Pending' in bid.state;
+            if (bidFilter === 'won') return 'Won' in bid.state;
+            if (bidFilter === 'lost') return 'Lost' in bid.state;
+            if (bidFilter === 'refunded') return 'Refunded' in bid.state;
+            return true;
+        });
+    }, [myBids, bidFilter]);
+    
     const sortedBids = useMemo(() => {
-        return [...myBids].sort((a, b) => {
+        return [...filteredBids].sort((a, b) => {
             const timeA = BigInt(a.created_at);
             const timeB = BigInt(b.created_at);
             return timeB > timeA ? 1 : timeB < timeA ? -1 : 0;
         });
-    }, [myBids]);
+    }, [filteredBids]);
     
     const paginatedBids = useMemo(() => {
         const startIndex = (bidsPage - 1) * ITEMS_PER_PAGE;
@@ -153,11 +182,14 @@ function SneedexMy() {
     
     const totalBidsPages = useMemo(() => Math.ceil(sortedBids.length / ITEMS_PER_PAGE), [sortedBids.length]);
     
-    // Reset pagination when tab changes
+    // Reset pagination when tab or filter changes
     useEffect(() => {
         setOffersPage(1);
+    }, [activeTab, offerFilter]);
+    
+    useEffect(() => {
         setBidsPage(1);
-    }, [activeTab]);
+    }, [activeTab, bidFilter]);
     
     // Fetch escrow balances for all bids that have tokens escrowed
     // Calls the ledger directly for better performance
@@ -873,6 +905,58 @@ function SneedexMy() {
                     </div>
                 ) : activeTab === 'offers' ? (
                     <>
+                        {/* Filter Controls for Offers */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            marginBottom: '1rem',
+                            flexWrap: 'wrap'
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Filter:</span>
+                            <select
+                                value={offerFilter}
+                                onChange={(e) => setOfferFilter(e.target.value)}
+                                style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '0.9rem',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <option value="all">All ({myOffers.length})</option>
+                                <option value="active">Active ({myOffers.filter(o => 'Active' in o.state).length})</option>
+                                <option value="completed">Completed ({myOffers.filter(o => 'Completed' in o.state).length})</option>
+                                <option value="draft">Draft ({myOffers.filter(o => 'Draft' in o.state || 'PendingEscrow' in o.state).length})</option>
+                                <option value="cancelled">Cancelled ({myOffers.filter(o => 'Cancelled' in o.state).length})</option>
+                                <option value="expired">Expired ({myOffers.filter(o => 'Expired' in o.state).length})</option>
+                                <option value="reclaimed">Reclaimed ({myOffers.filter(o => 'Reclaimed' in o.state).length})</option>
+                                <option value="claimed">Claimed ({myOffers.filter(o => 'Claimed' in o.state).length})</option>
+                            </select>
+                            {offerFilter !== 'all' && (
+                                <button
+                                    onClick={() => setOfferFilter('all')}
+                                    style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: `${theme.colors.accent}20`,
+                                        color: theme.colors.accent,
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    <FaTimes /> Clear filter
+                                </button>
+                            )}
+                        </div>
+                        
                         {/* Top Pagination for Offers */}
                         {sortedOffers.length > ITEMS_PER_PAGE && (
                             <div style={{ ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
@@ -906,12 +990,27 @@ function SneedexMy() {
                         <div style={styles.grid}>
                             {sortedOffers.length === 0 ? (
                                 <div style={styles.emptyState}>
-                                    <div style={styles.emptyIcon}>📭</div>
-                                    <h3 style={styles.emptyTitle}>No Offers Yet</h3>
-                                    <p style={styles.emptyText}>You haven't created any offers. Start selling your assets!</p>
-                                    <Link to="/sneedex_create" style={styles.createButton}>
-                                        <FaPlus /> Create Your First Offer
-                                    </Link>
+                                    <div style={styles.emptyIcon}>{offerFilter !== 'all' ? '🔍' : '📭'}</div>
+                                    <h3 style={styles.emptyTitle}>
+                                        {offerFilter !== 'all' ? 'No Matching Offers' : 'No Offers Yet'}
+                                    </h3>
+                                    <p style={styles.emptyText}>
+                                        {offerFilter !== 'all' 
+                                            ? `No offers match the filter "${offerFilter}". Try a different filter.`
+                                            : "You haven't created any offers. Start selling your assets!"}
+                                    </p>
+                                    {offerFilter !== 'all' ? (
+                                        <button 
+                                            onClick={() => setOfferFilter('all')}
+                                            style={styles.createButton}
+                                        >
+                                            Clear Filter
+                                        </button>
+                                    ) : (
+                                        <Link to="/sneedex_create" style={styles.createButton}>
+                                            <FaPlus /> Create Your First Offer
+                                        </Link>
+                                    )}
                                 </div>
                             ) : (
                                 paginatedOffers.map((offer) => {
@@ -1086,6 +1185,55 @@ function SneedexMy() {
                     </>
                 ) : (
                     <>
+                        {/* Filter Controls for Bids */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            marginBottom: '1rem',
+                            flexWrap: 'wrap'
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Filter:</span>
+                            <select
+                                value={bidFilter}
+                                onChange={(e) => setBidFilter(e.target.value)}
+                                style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '0.9rem',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <option value="all">All ({myBids.length})</option>
+                                <option value="pending">Pending ({myBids.filter(b => 'Pending' in b.state).length})</option>
+                                <option value="won">Won ({myBids.filter(b => 'Won' in b.state).length})</option>
+                                <option value="lost">Lost ({myBids.filter(b => 'Lost' in b.state).length})</option>
+                                <option value="refunded">Refunded ({myBids.filter(b => 'Refunded' in b.state).length})</option>
+                            </select>
+                            {bidFilter !== 'all' && (
+                                <button
+                                    onClick={() => setBidFilter('all')}
+                                    style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: `${theme.colors.accent}20`,
+                                        color: theme.colors.accent,
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    <FaTimes /> Clear filter
+                                </button>
+                            )}
+                        </div>
+                        
                         {/* Top Pagination for Bids */}
                         {sortedBids.length > ITEMS_PER_PAGE && (
                             <div style={{ ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
@@ -1119,12 +1267,27 @@ function SneedexMy() {
                         <div style={styles.grid}>
                             {sortedBids.length === 0 ? (
                                 <div style={styles.emptyState}>
-                                    <div style={styles.emptyIcon}>🎯</div>
-                                    <h3 style={styles.emptyTitle}>No Bids Yet</h3>
-                                    <p style={styles.emptyText}>You haven't placed any bids. Browse the marketplace to find offers!</p>
-                                    <Link to="/sneedex_offers" style={{ ...styles.createButton, background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)` }}>
-                                        <FaGavel /> Browse Marketplace
-                                    </Link>
+                                    <div style={styles.emptyIcon}>{bidFilter !== 'all' ? '🔍' : '🎯'}</div>
+                                    <h3 style={styles.emptyTitle}>
+                                        {bidFilter !== 'all' ? 'No Matching Bids' : 'No Bids Yet'}
+                                    </h3>
+                                    <p style={styles.emptyText}>
+                                        {bidFilter !== 'all'
+                                            ? `No bids match the filter "${bidFilter}". Try a different filter.`
+                                            : "You haven't placed any bids. Browse the marketplace to find offers!"}
+                                    </p>
+                                    {bidFilter !== 'all' ? (
+                                        <button 
+                                            onClick={() => setBidFilter('all')}
+                                            style={{ ...styles.createButton, background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)` }}
+                                        >
+                                            Clear Filter
+                                        </button>
+                                    ) : (
+                                        <Link to="/sneedex_offers" style={{ ...styles.createButton, background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)` }}>
+                                            <FaGavel /> Browse Marketplace
+                                        </Link>
+                                    )}
                                 </div>
                             ) : (
                                 paginatedBids.map((bid) => {
