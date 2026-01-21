@@ -283,9 +283,16 @@ function SneedexMy() {
     const handleCancelOffer = (offerId) => {
         if (!identity) return;
         
+        const bidInfo = offersWithBids[Number(offerId)] || {};
+        const bidCount = bidInfo.bids?.length || 0;
+        const hasBids = bidCount > 0;
+        const message = hasBids 
+            ? `Are you sure you want to cancel this offer? There ${bidCount === 1 ? 'is 1 bid' : `are ${bidCount} bids`} that will be refunded.`
+            : 'Are you sure you want to cancel this offer?';
+        
         setConfirmModal({
             show: true,
-            message: 'Are you sure you want to cancel this offer?',
+            message,
             action: async () => {
                 setActionLoading(`cancel-${offerId}`);
                 try {
@@ -296,7 +303,10 @@ function SneedexMy() {
                         throw new Error(getErrorMessage(result.err));
                     }
                     
-                    showInfo('Offer cancelled successfully!', 'success');
+                    const successMsg = hasBids 
+                        ? 'Offer cancelled. Bidders will be refunded automatically.'
+                        : 'Offer cancelled successfully!';
+                    showInfo(successMsg, 'success');
                     await fetchData();
                 } catch (e) {
                     console.error('Failed to cancel offer:', e);
@@ -926,7 +936,7 @@ function SneedexMy() {
                                             </div>
                                         )}
                                         
-                                        {(isActive || isDraft) && (bidInfo.bids?.length || 0) === 0 && !isOfferPastExpiration(offer.expiration[0]) && (
+                                        {(isActive || isDraft) && !isOfferPastExpiration(offer.expiration[0]) && (
                                             <div style={styles.actionButtons} onClick={(e) => e.stopPropagation()}>
                                                 <button 
                                                     style={{ ...styles.actionButton, ...styles.warningAction }}

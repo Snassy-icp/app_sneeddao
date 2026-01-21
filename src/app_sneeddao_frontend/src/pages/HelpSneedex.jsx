@@ -428,8 +428,8 @@ function HelpSneedex() {
                     
                     <h3 style={styles.subsubheading}>Can I cancel an active offer?</h3>
                     <p style={styles.paragraph}>
-                        Yes, you can cancel an offer as long as there are no confirmed bids. If there's an active 
-                        bid, you'll need to either accept it or wait for the offer to expire.
+                        Yes, you can cancel an active offer at any time. If there are existing bids, all bidders 
+                        will be automatically refunded when you cancel.
                     </p>
                     
                     <h3 style={styles.subsubheading}>How do I know if a canister is verified?</h3>

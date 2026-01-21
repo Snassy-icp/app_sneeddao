@@ -1369,9 +1369,14 @@ function SneedexOffer() {
     const handleCancelOffer = () => {
         if (!identity || !offer) return;
         
+        const hasBids = bids.length > 0;
+        const message = hasBids 
+            ? `Are you sure you want to cancel this offer? There ${bids.length === 1 ? 'is 1 bid' : `are ${bids.length} bids`} that will be refunded.`
+            : 'Are you sure you want to cancel this offer?';
+        
         setConfirmModal({
             show: true,
-            message: 'Are you sure you want to cancel this offer?',
+            message,
             action: async () => {
                 setActionLoading(true);
                 setError('');
@@ -1383,7 +1388,10 @@ function SneedexOffer() {
                         throw new Error(getErrorMessage(result.err));
                     }
                     
-                    showInfo('Offer cancelled.', 'success');
+                    const successMsg = hasBids 
+                        ? 'Offer cancelled. Bidders will be refunded automatically.'
+                        : 'Offer cancelled.';
+                    showInfo(successMsg, 'success');
                     navigate('/sneedex_my');
                 } catch (e) {
                     console.error('Failed to cancel offer:', e);
@@ -4564,16 +4572,14 @@ function SneedexOffer() {
                                             {actionLoading ? 'Processing...' : `Accept Highest Bid (${formatAmount(highestBid?.amount, tokenInfo.decimals)} ${tokenInfo.symbol})`}
                                         </button>
                                     )}
-                                    {bids.length === 0 && (
-                                        <button 
-                                            style={styles.cancelButton}
-                                            onClick={handleCancelOffer}
-                                            disabled={actionLoading}
-                                        >
-                                            <FaTimes style={{ marginRight: '8px' }} />
-                                            {actionLoading ? 'Processing...' : 'Cancel Offer'}
-                                        </button>
-                                    )}
+                                    <button 
+                                        style={styles.cancelButton}
+                                        onClick={handleCancelOffer}
+                                        disabled={actionLoading}
+                                    >
+                                        <FaTimes style={{ marginRight: '8px' }} />
+                                        {actionLoading ? 'Processing...' : 'Cancel Offer'}
+                                    </button>
                                 </div>
                             )}
                             
