@@ -267,46 +267,35 @@ function SneedexMy() {
     // Fetch token prices for USD display
     useEffect(() => {
         const fetchPrices = async () => {
-            try {
-                // Collect unique ledger IDs from offers and bids
-                const ledgerIds = new Set();
-                
-                myOffers.forEach(offer => {
-                    ledgerIds.add(offer.price_token_ledger.toString());
-                });
-                
-                myBids.forEach(bid => {
-                    // Bid has offer_id, we need to look up the offer's payment token
-                    // For now, fetch price for all whitelisted tokens
-                });
-                
-                // Add all whitelisted tokens
-                whitelistedTokens.forEach(token => {
-                    ledgerIds.add(token.ledger_id.toString());
-                });
-                
-                // Fetch prices for each ledger
-                const prices = {};
-                for (const ledgerId of ledgerIds) {
-                    try {
-                        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
-                        const decimals = token ? Number(token.decimals) : 8;
-                        const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
-                        prices[ledgerId] = price;
-                    } catch (e) {
-                        console.warn(`Failed to fetch price for ${ledgerId}:`, e);
-                    }
+            // Only collect ledger IDs from actual offers (not all whitelisted tokens)
+            const ledgerIds = new Set();
+            
+            myOffers.forEach(offer => {
+                ledgerIds.add(offer.price_token_ledger.toString());
+            });
+            
+            // If no ledgers to fetch, skip
+            if (ledgerIds.size === 0) return;
+            
+            // Fetch prices for each ledger (silently ignore failures)
+            const prices = {};
+            for (const ledgerId of ledgerIds) {
+                try {
+                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                    const decimals = token ? Number(token.decimals) : 8;
+                    const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
+                    prices[ledgerId] = price;
+                } catch (e) {
+                    // Silently ignore - token may not have an ICPSwap pool
                 }
-                setTokenPrices(prices);
-            } catch (e) {
-                console.warn('Failed to fetch token prices:', e);
             }
+            setTokenPrices(prices);
         };
         
-        if (myOffers.length > 0 || myBids.length > 0 || whitelistedTokens.length > 0) {
+        if (myOffers.length > 0) {
             fetchPrices();
         }
-    }, [myOffers, myBids, whitelistedTokens]);
+    }, [myOffers, whitelistedTokens]);
     
     const handleAcceptBid = async (offerId) => {
         if (!identity) return;

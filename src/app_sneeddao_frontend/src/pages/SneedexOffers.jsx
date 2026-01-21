@@ -344,7 +344,7 @@ function SneedexOffers() {
                     });
                 });
                 
-                // Fetch prices for each ledger
+                // Fetch prices for each ledger (silently ignore failures - token may not have pool)
                 const prices = {};
                 for (const ledgerId of ledgerIds) {
                     try {
@@ -352,12 +352,12 @@ function SneedexOffers() {
                         const price = await priceService.getTokenUSDPrice(ledgerId, tokenInfo.decimals);
                         prices[ledgerId] = price;
                     } catch (e) {
-                        console.warn(`Failed to fetch price for ${ledgerId}:`, e);
+                        // Silently ignore - token may not have an ICPSwap pool
                     }
                 }
                 setTokenPrices(prices);
             } catch (e) {
-                console.warn('Failed to fetch token prices:', e);
+                // Silently ignore ICP price fetch errors
             }
         };
         

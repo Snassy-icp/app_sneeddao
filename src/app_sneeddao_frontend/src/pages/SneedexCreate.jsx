@@ -181,7 +181,7 @@ function SneedexCreate() {
                 const price = await priceService.getTokenUSDPrice(priceTokenLedger, Number(decimals));
                 setPaymentTokenPrice(price);
             } catch (e) {
-                console.warn('Failed to fetch payment token price:', e);
+                // Silently ignore - token may not have an ICPSwap pool
                 setPaymentTokenPrice(null);
             }
         };
