@@ -24,6 +24,7 @@ const failedTokens = new Set(); // Track tokens that failed to load
  * Props:
  * - value: Selected token principal (string)
  * - onChange: Callback when token is selected (principal: string) => void
+ * - onSelectToken: Optional callback with full token data including logo (token: object) => void
  * - placeholder: Placeholder text
  * - disabled: Whether the selector is disabled
  * - style: Additional styles for the container
@@ -32,6 +33,7 @@ const failedTokens = new Set(); // Track tokens that failed to load
 function TokenSelector({ 
     value, 
     onChange, 
+    onSelectToken,
     placeholder = "Select a token...", 
     disabled = false,
     style = {},
@@ -198,6 +200,17 @@ function TokenSelector({
     // Handle token selection
     const handleSelect = (token) => {
         onChange(token.ledger_id.toString());
+        // Also pass full token data including logo if callback provided
+        if (onSelectToken) {
+            onSelectToken({
+                ledger_id: token.ledger_id.toString(),
+                symbol: token.symbol,
+                name: token.name,
+                decimals: token.decimals,
+                fee: token.fee,
+                logo: token.logo || ''
+            });
+        }
         setIsOpen(false);
         setSearchTerm('');
     };

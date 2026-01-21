@@ -526,6 +526,7 @@ function SneedexCreate() {
     const [newAssetTokenAmount, setNewAssetTokenAmount] = useState('');
     const [newAssetTokenSymbol, setNewAssetTokenSymbol] = useState('');
     const [newAssetTokenDecimals, setNewAssetTokenDecimals] = useState('8');
+    const [newAssetTokenLogo, setNewAssetTokenLogo] = useState('');
     const [newAssetTokenBalance, setNewAssetTokenBalance] = useState(null);
     const [loadingTokenBalance, setLoadingTokenBalance] = useState(false);
     
@@ -1175,6 +1176,7 @@ function SneedexCreate() {
                     amount: newAssetTokenAmount.trim(),
                     symbol: newAssetTokenSymbol.trim() || 'TOKEN',
                     decimals: parseInt(newAssetTokenDecimals) || 8,
+                    logo: newAssetTokenLogo || '',
                     display: `${newAssetTokenAmount} ${newAssetTokenSymbol.trim() || 'TOKEN'}`
                 };
             }
@@ -1220,6 +1222,7 @@ function SneedexCreate() {
         setNewAssetTokenLedger('');
         setNewAssetTokenAmount('');
         setNewAssetTokenSymbol('');
+        setNewAssetTokenLogo('');
         setNewAssetTokenBalance(null);
     };
     
@@ -1265,6 +1268,7 @@ function SneedexCreate() {
             setNewAssetTokenAmount(asset.amount?.toString() || '');
             setNewAssetTokenSymbol(asset.symbol || '');
             setNewAssetTokenDecimals(asset.decimals?.toString() || '8');
+            setNewAssetTokenLogo(asset.logo || '');
         }
     };
     
@@ -1289,6 +1293,7 @@ function SneedexCreate() {
         setNewAssetTokenAmount('');
         setNewAssetTokenSymbol('');
         setNewAssetTokenDecimals('8');
+        setNewAssetTokenLogo('');
         setNewAssetTokenBalance(null);
     };
     
@@ -1678,19 +1683,23 @@ function SneedexCreate() {
                 return <FaBrain style={{ color: theme.colors.success, fontSize: size }} />;
             }
             case 'token': {
-                // Try to find the token in whitelisted tokens and use its logo
-                // Need to handle both string and Principal comparison
-                const token = whitelistedTokens.find(t => {
-                    const tokenLedgerId = typeof t.ledger_id === 'string' 
-                        ? t.ledger_id 
-                        : t.ledger_id?.toString?.() || '';
-                    return tokenLedgerId === asset.ledger_id;
-                });
-                if (token?.logo) {
+                // First check if asset has logo stored directly (from TokenSelector)
+                // Fall back to looking in whitelisted tokens
+                const logo = asset.logo || (() => {
+                    const token = whitelistedTokens.find(t => {
+                        const tokenLedgerId = typeof t.ledger_id === 'string' 
+                            ? t.ledger_id 
+                            : t.ledger_id?.toString?.() || '';
+                        return tokenLedgerId === asset.ledger_id;
+                    });
+                    return token?.logo;
+                })();
+                
+                if (logo) {
                     return (
                         <img 
-                            src={token.logo} 
-                            alt={token.symbol || 'Token'} 
+                            src={logo} 
+                            alt={asset.symbol || 'Token'} 
                             style={{ 
                                 width: size, 
                                 height: size, 
@@ -3525,6 +3534,12 @@ function SneedexCreate() {
                                                     }
                                                     // Fetch balance for selected token
                                                     fetchAssetTokenBalance(ledgerId);
+                                                }}
+                                                onSelectToken={(tokenData) => {
+                                                    // Capture logo from TokenSelector which fetches it from metadata
+                                                    if (tokenData.logo) {
+                                                        setNewAssetTokenLogo(tokenData.logo);
+                                                    }
                                                 }}
                                                 placeholder="Select token to sell..."
                                                 disabled={loadingTokens}
