@@ -293,11 +293,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                         case (#ICRC1Token(asset)) {
                                             let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                            let _ = await* AssetHandlers.transferTokens(
+                                            let _ = await* AssetHandlers.reclaimAllTokens(
                                                 asset.ledger_canister_id,
-                                                ?subaccount,
-                                                { owner = bid.bidder; subaccount = null },
-                                                asset.amount
+                                                self(),
+                                                subaccount,
+                                                { owner = bid.bidder; subaccount = null }
                                             );
                                         };
                                     };
@@ -491,11 +491,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             };
                             case (#ICRC1Token(asset)) {
                                 let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                let _ = await* AssetHandlers.transferTokens(
+                                let _ = await* AssetHandlers.reclaimAllTokens(
                                     asset.ledger_canister_id,
-                                    ?subaccount,
-                                    { owner = offer.creator; subaccount = null },
-                                    asset.amount
+                                    self(),
+                                    subaccount,
+                                    { owner = offer.creator; subaccount = null }
                                 );
                             };
                         };
@@ -2026,11 +2026,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         };
                                         case (#ICRC1Token(asset)) {
                                             let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
-                                            let _ = await* AssetHandlers.transferTokens(
+                                            let _ = await* AssetHandlers.reclaimAllTokens(
                                                 asset.ledger_canister_id,
-                                                ?subaccount,
-                                                { owner = caller; subaccount = null },
-                                                asset.amount
+                                                self(),
+                                                subaccount,
+                                                { owner = caller; subaccount = null }
                                             );
                                         };
                                     };
@@ -2325,11 +2325,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             };
                             case (#ICRC1Token(asset)) {
                                 let subaccount = Utils.offerEscrowSubaccount(caller, offerId);
-                                let _ = await* AssetHandlers.transferTokens(
+                                let _ = await* AssetHandlers.reclaimAllTokens(
                                     asset.ledger_canister_id,
-                                    ?subaccount,
-                                    { owner = caller; subaccount = null },
-                                    asset.amount
+                                    self(),
+                                    subaccount,
+                                    { owner = caller; subaccount = null }
                                 );
                             };
                         };
@@ -3025,6 +3025,128 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 expirationWorkerRunning := true;
                 scheduleExpirationWorker<system>();
                 #ok();
+            };
+        };
+    };
+    
+    /// Admin function to manually reclaim stuck tokens from an offer
+    /// This is useful when autoReclaimAssets failed to transfer tokens
+    /// but already updated the state to Reclaimed
+    public shared ({ caller }) func adminReclaimStuckTokens(offerId : T.OfferId) : async T.Result<Text> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        switch (getOffer(offerId)) {
+            case null { return #err(#OfferNotFound) };
+            case (?offer) {
+                var message = "Results for offer #" # Nat.toText(offerId) # ":\n";
+                
+                for (entry in offer.assets.vals()) {
+                    if (entry.escrowed) {
+                        switch (entry.asset) {
+                            case (#ICRC1Token(asset)) {
+                                let subaccount = Utils.offerEscrowSubaccount(offer.creator, offerId);
+                                let result = await* AssetHandlers.reclaimAllTokens(
+                                    asset.ledger_canister_id,
+                                    self(),
+                                    subaccount,
+                                    { owner = offer.creator; subaccount = null }
+                                );
+                                switch (result) {
+                                    case (#ok(blockIndex)) {
+                                        message := message # "Token transfer succeeded, block: " # Nat.toText(blockIndex) # "\n";
+                                    };
+                                    case (#err(e)) {
+                                        let errMsg = switch (e) {
+                                            case (#TransferFailed(msg)) { msg };
+                                            case _ { "Unknown error" };
+                                        };
+                                        message := message # "Token transfer failed: " # errMsg # "\n";
+                                    };
+                                };
+                            };
+                            case (#Canister(asset)) {
+                                switch (asset.controllers_snapshot) {
+                                    case (?snapshot) {
+                                        let result = await* AssetHandlers.releaseCanister(
+                                            asset.canister_id,
+                                            snapshot
+                                        );
+                                        switch (result) {
+                                            case (#ok(_)) { message := message # "Canister released successfully\n"; };
+                                            case (#err(e)) {
+                                                let errMsg = switch (e) {
+                                                    case (#TransferFailed(msg)) { msg };
+                                                    case _ { "Unknown error" };
+                                                };
+                                                message := message # "Canister release failed: " # errMsg # "\n";
+                                            };
+                                        };
+                                    };
+                                    case null {
+                                        let result = await* AssetHandlers.transferCanister(
+                                            asset.canister_id,
+                                            [offer.creator]
+                                        );
+                                        switch (result) {
+                                            case (#ok(_)) { message := message # "Canister transferred successfully\n"; };
+                                            case (#err(e)) {
+                                                let errMsg = switch (e) {
+                                                    case (#TransferFailed(msg)) { msg };
+                                                    case _ { "Unknown error" };
+                                                };
+                                                message := message # "Canister transfer failed: " # errMsg # "\n";
+                                            };
+                                        };
+                                    };
+                                };
+                            };
+                            case (#SNSNeuron(asset)) {
+                                switch (asset.hotkeys_snapshot) {
+                                    case (?snapshot) {
+                                        let result = await* AssetHandlers.releaseNeuron(
+                                            asset.governance_canister_id,
+                                            asset.neuron_id,
+                                            self(),
+                                            snapshot
+                                        );
+                                        switch (result) {
+                                            case (#ok(_)) { message := message # "Neuron released successfully\n"; };
+                                            case (#err(e)) {
+                                                let errMsg = switch (e) {
+                                                    case (#GovernanceError(msg)) { msg };
+                                                    case _ { "Unknown error" };
+                                                };
+                                                message := message # "Neuron release failed: " # errMsg # "\n";
+                                            };
+                                        };
+                                    };
+                                    case null {
+                                        let result = await* AssetHandlers.transferNeuron(
+                                            asset.governance_canister_id,
+                                            asset.neuron_id,
+                                            self(),
+                                            [offer.creator]
+                                        );
+                                        switch (result) {
+                                            case (#ok(_)) { message := message # "Neuron transferred successfully\n"; };
+                                            case (#err(e)) {
+                                                let errMsg = switch (e) {
+                                                    case (#GovernanceError(msg)) { msg };
+                                                    case _ { "Unknown error" };
+                                                };
+                                                message := message # "Neuron transfer failed: " # errMsg # "\n";
+                                            };
+                                        };
+                                    };
+                                };
+                            };
+                        };
+                    };
+                };
+                
+                #ok(message);
             };
         };
     };

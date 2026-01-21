@@ -388,6 +388,65 @@ module {
         };
     };
     
+    /// Transfer all tokens from a subaccount minus the fee
+    /// Use this when reclaiming escrowed tokens where we want to return everything
+    public func reclaimAllTokens(
+        ledgerCanisterId : Principal,
+        sneedex : Principal,
+        fromSubaccount : Blob,
+        toAccount : T.Account
+    ) : async* T.Result<Nat> {
+        let ledger = getICRC1Ledger(ledgerCanisterId);
+        
+        try {
+            // Get balance
+            let balance = await ledger.icrc1_balance_of({
+                owner = sneedex;
+                subaccount = ?fromSubaccount;
+            });
+            
+            // Get fee
+            let fee = await ledger.icrc1_fee();
+            
+            // Check if there's enough to cover the fee
+            if (balance <= fee) {
+                // Nothing to transfer (or dust amount)
+                return #ok(0);
+            };
+            
+            let transferAmount = balance - fee;
+            
+            // Perform transfer
+            let result = await ledger.icrc1_transfer({
+                to = toAccount;
+                fee = ?fee;
+                memo = null;
+                from_subaccount = ?fromSubaccount;
+                created_at_time = null;
+                amount = transferAmount;
+            });
+            
+            switch (result) {
+                case (#Ok(blockIndex)) { #ok(blockIndex) };
+                case (#Err(e)) {
+                    let errorMsg = switch (e) {
+                        case (#GenericError(g)) { g.message };
+                        case (#TemporarilyUnavailable) { "Temporarily unavailable" };
+                        case (#BadBurn(_)) { "Bad burn amount" };
+                        case (#Duplicate(_)) { "Duplicate transaction" };
+                        case (#BadFee(_)) { "Bad fee" };
+                        case (#CreatedInFuture(_)) { "Created in future" };
+                        case (#TooOld) { "Transaction too old" };
+                        case (#InsufficientFunds(f)) { "Insufficient funds: " # debug_show(f.balance) };
+                    };
+                    #err(#TransferFailed(errorMsg));
+                };
+            };
+        } catch (_e) {
+            #err(#TransferFailed("Failed to reclaim tokens"));
+        };
+    };
+    
     /// Get token balance in a subaccount
     public func getTokenBalance(
         ledgerCanisterId : Principal,
