@@ -330,11 +330,16 @@ function SneedexOffers() {
     // Helper to get SNS ledger from governance ID (defined here for use in price fetching)
     const getSnsLedgerFromGovernanceForPrices = useCallback((governanceId) => {
         const sns = snsList.find(s => {
-            const govId = s.governance_canister_id?.[0]?.toString() || s.governance_canister_id?.toString();
+            // Handle both data formats
+            const govId = s.canisters?.governance || 
+                          s.governance_canister_id?.[0]?.toString() || 
+                          s.governance_canister_id?.toString();
             return govId === governanceId;
         });
         if (sns) {
-            return sns.ledger_canister_id?.[0]?.toString() || sns.ledger_canister_id?.toString();
+            return sns.canisters?.ledger || 
+                   sns.ledger_canister_id?.[0]?.toString() || 
+                   sns.ledger_canister_id?.toString();
         }
         return null;
     }, [snsList]);
@@ -425,11 +430,16 @@ function SneedexOffers() {
     // Helper to get SNS ledger from governance ID
     const getSnsLedgerFromGovernance = useCallback((governanceId) => {
         const sns = snsList.find(s => {
-            const govId = s.governance_canister_id?.[0]?.toString() || s.governance_canister_id?.toString();
+            // Handle both data formats
+            const govId = s.canisters?.governance || 
+                          s.governance_canister_id?.[0]?.toString() || 
+                          s.governance_canister_id?.toString();
             return govId === governanceId;
         });
         if (sns) {
-            return sns.ledger_canister_id?.[0]?.toString() || sns.ledger_canister_id?.toString();
+            return sns.canisters?.ledger || 
+                   sns.ledger_canister_id?.[0]?.toString() || 
+                   sns.ledger_canister_id?.toString();
         }
         return null;
     }, [snsList]);
@@ -1562,9 +1572,11 @@ function SneedexOffers() {
                                 : null;
                             
                             // Determine if this is a "good deal"
+                            // Compare against buyout, current highest bid, or min bid (if no bids yet)
                             const isGoodDeal = estimatedValue > 0 && (
                                 (buyoutUsd && estimatedValue > buyoutUsd * 1.2) || // 20%+ undervalued vs buyout
-                                (highestBidUsd && estimatedValue > highestBidUsd * 1.5) // 50%+ undervalued vs current bid
+                                (highestBidUsd && estimatedValue > highestBidUsd * 1.5) || // 50%+ undervalued vs current bid
+                                (!highestBidUsd && minBidUsd && estimatedValue > minBidUsd * 1.5) // 50%+ undervalued vs min bid (no bids yet)
                             );
                             
                             // Check if there's exactly one canister asset with a title

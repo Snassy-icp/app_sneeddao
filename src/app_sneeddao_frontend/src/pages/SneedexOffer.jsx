@@ -914,9 +914,15 @@ function SneedexOffer() {
                     if (details.type === 'ICRC1Token') {
                         ledgerIds.add(details.ledger_id);
                     } else if (details.type === 'SNSNeuron') {
-                        // Add SNS ledger for neuron assets
-                        const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
-                        const snsLedger = sns?.canisters?.ledger;
+                        // Add SNS ledger for neuron assets (handle both data formats)
+                        const sns = snsData.find(s => 
+                            s.canisters?.governance === details.governance_id ||
+                            s.governance_canister_id?.[0]?.toString() === details.governance_id ||
+                            s.governance_canister_id?.toString() === details.governance_id
+                        );
+                        const snsLedger = sns?.canisters?.ledger || 
+                                          sns?.ledger_canister_id?.[0]?.toString() || 
+                                          sns?.ledger_canister_id?.toString();
                         if (snsLedger) {
                             ledgerIds.add(snsLedger);
                         }
