@@ -29,6 +29,7 @@ import TokenSelector from '../components/TokenSelector';
 import priceService from '../services/PriceService';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
@@ -354,6 +355,10 @@ function SneedexCreate() {
     const [newAssetGovernanceId, setNewAssetGovernanceId] = useState('');
     const [newAssetNeuronId, setNewAssetNeuronId] = useState('');
     const [neuronVerificationStatus, setNeuronVerificationStatus] = useState(null); // null, {checking: true}, {verified: true/false, message: string}
+    
+    // Neuron Manager info state (for displaying ICP neurons inside when selecting)
+    const [neuronManagerInfo, setNeuronManagerInfo] = useState(null); // { neurons: [], totalStakeE8s, totalMaturityE8s, totalIcpE8s }
+    const [loadingNeuronManagerInfo, setLoadingNeuronManagerInfo] = useState(false);
     
     // SNS and Neuron selection state
     const [snsList, setSnsList] = useState([]);
@@ -793,6 +798,89 @@ function SneedexCreate() {
         }
     }, [identity]);
     
+    // Fetch neuron manager info (list of ICP neurons inside)
+    const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
+        if (!canisterId || !identity) return;
+        
+        setLoadingNeuronManagerInfo(true);
+        setNeuronManagerInfo(null);
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const nmActor = createNeuronManagerActor(canisterId, { agent });
+            const neuronsData = await nmActor.getAllNeuronsInfo();
+            
+            // Process neuron data to calculate totals
+            let totalStakeE8s = 0n;
+            let totalMaturityE8s = 0n;
+            
+            const neurons = neuronsData.map(([neuronId, infoOpt]) => {
+                const info = infoOpt?.[0] || infoOpt;
+                const stakeE8s = info?.stake_e8s ? BigInt(info.stake_e8s) : 0n;
+                const maturityE8s = info?.maturity_e8s_equivalent ? BigInt(info.maturity_e8s_equivalent) : 0n;
+                
+                totalStakeE8s += stakeE8s;
+                totalMaturityE8s += maturityE8s;
+                
+                // Get dissolve state
+                let dissolveState = 'Unknown';
+                let dissolveDelaySeconds = 0n;
+                if (info?.dissolve_state?.[0]) {
+                    const ds = info.dissolve_state[0];
+                    if ('DissolveDelaySeconds' in ds) {
+                        dissolveDelaySeconds = BigInt(ds.DissolveDelaySeconds);
+                        dissolveState = dissolveDelaySeconds > 0n ? 'Locked' : 'Dissolved';
+                    } else if ('WhenDissolvedTimestampSeconds' in ds) {
+                        const whenDissolved = BigInt(ds.WhenDissolvedTimestampSeconds);
+                        const now = BigInt(Math.floor(Date.now() / 1000));
+                        dissolveState = whenDissolved <= now ? 'Dissolved' : 'Dissolving';
+                    }
+                }
+                
+                return {
+                    neuronId: neuronId.id ? Number(neuronId.id) : 0,
+                    stakeE8s,
+                    maturityE8s,
+                    totalE8s: stakeE8s + maturityE8s,
+                    dissolveState,
+                    dissolveDelaySeconds,
+                    ageSeconds: info?.age_seconds ? BigInt(info.age_seconds) : 0n,
+                };
+            });
+            
+            const totalIcpE8s = totalStakeE8s + totalMaturityE8s;
+            
+            setNeuronManagerInfo({
+                neurons,
+                totalStakeE8s,
+                totalMaturityE8s,
+                totalIcpE8s,
+            });
+            
+        } catch (e) {
+            console.error('Failed to fetch neuron manager info:', e);
+            setNeuronManagerInfo(null);
+        } finally {
+            setLoadingNeuronManagerInfo(false);
+        }
+    }, [identity]);
+    
+    // Fetch neuron manager info when one is selected and verified
+    useEffect(() => {
+        if (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && 
+            canisterKindVerified?.verified && 
+            newAssetCanisterId) {
+            fetchNeuronManagerInfo(newAssetCanisterId);
+        } else {
+            setNeuronManagerInfo(null);
+        }
+    }, [newAssetCanisterKind, canisterKindVerified, newAssetCanisterId, fetchNeuronManagerInfo]);
+    
     // Verify ICRC1 token - check if user has sufficient balance
     const verifyTokenBalance = useCallback(async (ledgerId, amount, decimals) => {
         if (!identity) return { verified: false, message: 'Not authenticated' };
@@ -1010,13 +1098,25 @@ function SneedexCreate() {
                 
                 const kindName = CANISTER_KIND_NAMES[newAssetCanisterKind] || 'Canister';
                 const displayTitle = newAssetCanisterTitle.trim() || `${newAssetCanisterId.trim().slice(0, 10)}...`;
+                
+                // For neuron managers, store the total ICP
+                let totalIcpE8s = null;
+                if (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && neuronManagerInfo) {
+                    totalIcpE8s = neuronManagerInfo.totalIcpE8s;
+                }
+                
+                const displayName = (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && totalIcpE8s)
+                    ? `${(Number(totalIcpE8s) / 1e8).toFixed(2)} ICP (Neuron Manager)`
+                    : `${kindName}: ${displayTitle}`;
+                
                 asset = { 
                     type: 'canister', 
                     canister_id: newAssetCanisterId.trim(),
                     canister_kind: newAssetCanisterKind,
                     title: newAssetCanisterTitle.trim() || null,
                     description: newAssetCanisterDescription.trim() || null,
-                    display: `${kindName}: ${displayTitle}`
+                    totalIcpE8s, // Store for neuron managers
+                    display: displayName
                 };
             } else if (newAssetType === 'neuron') {
                 if (!selectedSnsRoot || !newAssetGovernanceId.trim()) {
@@ -1168,6 +1268,7 @@ function SneedexCreate() {
         setNewAssetCanisterDescription('');
         setCanisterKindVerified(null);
         setCanisterControllerStatus(null);
+        setNeuronManagerInfo(null);
         setNewAssetGovernanceId('');
         setNewAssetNeuronId('');
         setNeuronVerificationStatus(null);
@@ -1492,15 +1593,69 @@ function SneedexCreate() {
         }
     };
     
-    const getAssetIcon = (asset) => {
+    const getAssetIcon = (asset, size = 24) => {
         switch (asset.type) {
             case 'canister': 
-                // Show robot icon for ICP Neuron Manager
+                // Show ICP logo for ICP Neuron Manager
                 if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
-                    return <FaRobot style={{ color: theme.colors.accent }} />;
+                    return (
+                        <div style={{ position: 'relative', width: size, height: size }}>
+                            <img 
+                                src="icp_symbol.svg" 
+                                alt="ICP" 
+                                style={{ 
+                                    width: size, 
+                                    height: size, 
+                                    borderRadius: '50%',
+                                    objectFit: 'cover'
+                                }} 
+                            />
+                            <FaRobot style={{ 
+                                position: 'absolute', 
+                                bottom: -2, 
+                                right: -2, 
+                                fontSize: size * 0.5,
+                                color: theme.colors.accent,
+                                background: theme.colors.primaryBg,
+                                borderRadius: '50%',
+                                padding: '1px',
+                            }} />
+                        </div>
+                    );
                 }
-                return <FaCubes style={{ color: theme.colors.accent }} />;
-            case 'neuron': return <FaBrain style={{ color: theme.colors.success }} />;
+                return <FaCubes style={{ color: theme.colors.accent, fontSize: size }} />;
+            case 'neuron': {
+                // Try to get SNS logo
+                const sns = snsList.find(s => s.canisters?.governance === asset.governance_id);
+                const snsLogo = sns?.canisters?.governance ? snsLogos.get(sns.canisters.governance) : null;
+                if (snsLogo) {
+                    return (
+                        <div style={{ position: 'relative', width: size, height: size }}>
+                            <img 
+                                src={snsLogo} 
+                                alt={sns?.name || 'SNS'} 
+                                style={{ 
+                                    width: size, 
+                                    height: size, 
+                                    borderRadius: '50%',
+                                    objectFit: 'cover'
+                                }} 
+                            />
+                            <FaBrain style={{ 
+                                position: 'absolute', 
+                                bottom: -2, 
+                                right: -2, 
+                                fontSize: size * 0.5,
+                                color: theme.colors.success,
+                                background: theme.colors.primaryBg,
+                                borderRadius: '50%',
+                                padding: '1px',
+                            }} />
+                        </div>
+                    );
+                }
+                return <FaBrain style={{ color: theme.colors.success, fontSize: size }} />;
+            }
             case 'token': {
                 // Try to find the token in whitelisted tokens and use its logo
                 const token = whitelistedTokens.find(t => t.ledger_id.toString() === asset.ledger_id);
@@ -1510,17 +1665,17 @@ function SneedexCreate() {
                             src={token.logo} 
                             alt={token.symbol || 'Token'} 
                             style={{ 
-                                width: '24px', 
-                                height: '24px', 
+                                width: size, 
+                                height: size, 
                                 borderRadius: '50%',
                                 objectFit: 'cover'
                             }} 
                         />
                     );
                 }
-                return <FaCoins style={{ color: theme.colors.warning }} />;
+                return <FaCoins style={{ color: theme.colors.warning, fontSize: size }} />;
             }
-            default: return <FaCubes />;
+            default: return <FaCubes style={{ fontSize: size }} />;
         }
     };
     
@@ -1544,13 +1699,14 @@ function SneedexCreate() {
                 return stake * price;
             }
         } else if (asset.type === 'canister' && asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
-            // ICP Neuron Manager - estimate based on ICP price
-            // Note: We don't have the neuron stakes cached here, so we can only show "ICP" value if we had it
-            // For now, we'll skip this unless we add stake caching
+            // ICP Neuron Manager - use stored totalIcpE8s and ICP price
+            if (asset.totalIcpE8s && icpPrice) {
+                return (Number(asset.totalIcpE8s) / 1e8) * icpPrice;
+            }
             return null;
         }
         return null;
-    }, [assetPrices, getSnsLedgerFromGovernance, getSnsDecimals]);
+    }, [assetPrices, icpPrice, getSnsLedgerFromGovernance, getSnsDecimals]);
 
     const styles = {
         container: {
@@ -2352,31 +2508,39 @@ function SneedexCreate() {
                                                 {getAssetIcon(asset)}
                                                 <div style={styles.assetDetails}>
                                                     <div style={styles.assetType}>
-                                                        {asset.type === 'canister' && (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'Canister')}
-                                                        {asset.type === 'neuron' && 'SNS Neuron'}
+                                                        {asset.type === 'canister' && (
+                                                            asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && asset.totalIcpE8s
+                                                                ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP`
+                                                                : (asset.title || 'Canister')
+                                                        )}
+                                                        {asset.type === 'neuron' && (
+                                                            asset.stake
+                                                                ? `${(Number(asset.stake) / Math.pow(10, getSnsDecimals(asset.governance_id))).toFixed(2)} ${asset.symbol || 'tokens'}`
+                                                                : 'SNS Neuron'
+                                                        )}
                                                         {asset.type === 'token' && `${asset.amount} ${asset.symbol}`}
                                                     </div>
                                                     <div style={styles.assetId}>
                                                         {asset.type === 'canister' && (
-                                                            <PrincipalDisplay 
-                                                                principal={asset.canister_id}
-                                                                displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
-                                                                short={true}
-                                                                showCopyButton={false}
-                                                                style={{ fontSize: 'inherit', color: 'inherit' }}
-                                                                isAuthenticated={isAuthenticated}
-                                                            />
-                                                        )}
-                                                        {asset.type === 'neuron' && (
-                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                {asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
+                                                                    <span style={{ color: theme.colors.accent, fontSize: '0.75rem' }}>
+                                                                        Neuron Manager •
+                                                                    </span>
+                                                                )}
                                                                 <PrincipalDisplay 
-                                                                    principal={asset.governance_id}
-                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.governance_id, principalNames, principalNicknames)}
+                                                                    principal={asset.canister_id}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
                                                                     short={true}
                                                                     showCopyButton={false}
                                                                     style={{ fontSize: 'inherit', color: 'inherit' }}
                                                                     isAuthenticated={isAuthenticated}
-                                                                /> / {asset.neuron_id.slice(0, 10)}...
+                                                                />
+                                                            </span>
+                                                        )}
+                                                        {asset.type === 'neuron' && (
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                                Neuron • {asset.neuron_id.slice(0, 10)}...
                                                             </span>
                                                         )}
                                                         {asset.type === 'token' && (
@@ -2471,6 +2635,45 @@ function SneedexCreate() {
                                         </div>
                                     );
                                 })}
+                                
+                                {/* Total Estimated Value */}
+                                {(() => {
+                                    const totalUsd = assets.reduce((sum, asset) => {
+                                        const usdValue = getAssetUsdValue(asset);
+                                        return sum + (usdValue || 0);
+                                    }, 0);
+                                    
+                                    if (totalUsd > 0) {
+                                        return (
+                                            <div style={{
+                                                marginTop: '12px',
+                                                padding: '12px 16px',
+                                                background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.accent}10)`,
+                                                borderRadius: '10px',
+                                                border: `1px solid ${theme.colors.success}30`,
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                            }}>
+                                                <span style={{ 
+                                                    fontSize: '0.9rem', 
+                                                    fontWeight: '500',
+                                                    color: theme.colors.primaryText,
+                                                }}>
+                                                    📊 Total Estimated Value:
+                                                </span>
+                                                <span style={{ 
+                                                    fontSize: '1.1rem', 
+                                                    fontWeight: '700',
+                                                    color: theme.colors.success,
+                                                }}>
+                                                    {formatUsd(totalUsd)}
+                                                </span>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
                             </div>
                         )}
                         
@@ -2856,6 +3059,135 @@ function SneedexCreate() {
                                                     }}>
                                                         Selecting this will enable enhanced display of managed ICP neurons
                                                     </div>
+                                                    
+                                                    {/* Neuron Manager Info Display */}
+                                                    {canisterKindVerified?.verified && (
+                                                        <div style={{
+                                                            marginTop: '16px',
+                                                            padding: '16px',
+                                                            background: `${theme.colors.success}08`,
+                                                            border: `1px solid ${theme.colors.success}30`,
+                                                            borderRadius: '12px',
+                                                        }}>
+                                                            {loadingNeuronManagerInfo ? (
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '8px',
+                                                                    color: theme.colors.mutedText,
+                                                                }}>
+                                                                    <FaSync style={{ animation: 'spin 1s linear infinite' }} />
+                                                                    Loading neuron info...
+                                                                </div>
+                                                            ) : neuronManagerInfo ? (
+                                                                <>
+                                                                    <div style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '8px',
+                                                                        marginBottom: '12px',
+                                                                        fontWeight: '600',
+                                                                        color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        <FaBrain style={{ color: theme.colors.accent }} />
+                                                                        {neuronManagerInfo.neurons.length} ICP Neuron{neuronManagerInfo.neurons.length !== 1 ? 's' : ''}
+                                                                    </div>
+                                                                    
+                                                                    {neuronManagerInfo.neurons.length > 0 && (
+                                                                        <div style={{
+                                                                            display: 'flex',
+                                                                            flexDirection: 'column',
+                                                                            gap: '8px',
+                                                                            fontSize: '0.85rem',
+                                                                        }}>
+                                                                            {neuronManagerInfo.neurons.map((neuron, idx) => (
+                                                                                <div key={idx} style={{
+                                                                                    display: 'flex',
+                                                                                    justifyContent: 'space-between',
+                                                                                    alignItems: 'center',
+                                                                                    padding: '8px 12px',
+                                                                                    background: theme.colors.secondaryBg,
+                                                                                    borderRadius: '8px',
+                                                                                }}>
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                        <span style={{ 
+                                                                                            color: theme.colors.mutedText,
+                                                                                            fontSize: '0.75rem',
+                                                                                        }}>
+                                                                                            #{neuron.neuronId}
+                                                                                        </span>
+                                                                                        <span style={{
+                                                                                            padding: '2px 6px',
+                                                                                            borderRadius: '4px',
+                                                                                            fontSize: '0.7rem',
+                                                                                            background: neuron.dissolveState === 'Locked' 
+                                                                                                ? `${theme.colors.success}20`
+                                                                                                : neuron.dissolveState === 'Dissolving'
+                                                                                                    ? `${theme.colors.warning}20`
+                                                                                                    : `${theme.colors.mutedText}20`,
+                                                                                            color: neuron.dissolveState === 'Locked' 
+                                                                                                ? theme.colors.success
+                                                                                                : neuron.dissolveState === 'Dissolving'
+                                                                                                    ? theme.colors.warning
+                                                                                                    : theme.colors.mutedText,
+                                                                                        }}>
+                                                                                            {neuron.dissolveState}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div style={{ textAlign: 'right' }}>
+                                                                                        <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                                                                            {(Number(neuron.totalE8s) / 1e8).toFixed(4)} ICP
+                                                                                        </div>
+                                                                                        {icpPrice && (
+                                                                                            <div style={{ fontSize: '0.75rem', color: theme.colors.success }}>
+                                                                                                {formatUsd((Number(neuron.totalE8s) / 1e8) * icpPrice)}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                            
+                                                                            {/* Totals */}
+                                                                            <div style={{
+                                                                                marginTop: '8px',
+                                                                                paddingTop: '12px',
+                                                                                borderTop: `1px solid ${theme.colors.border}`,
+                                                                                display: 'flex',
+                                                                                justifyContent: 'space-between',
+                                                                                alignItems: 'center',
+                                                                            }}>
+                                                                                <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                                                                    Total:
+                                                                                </span>
+                                                                                <div style={{ textAlign: 'right' }}>
+                                                                                    <div style={{ 
+                                                                                        fontWeight: '700', 
+                                                                                        color: theme.colors.accent,
+                                                                                        fontSize: '1.1rem',
+                                                                                    }}>
+                                                                                        {(Number(neuronManagerInfo.totalIcpE8s) / 1e8).toFixed(4)} ICP
+                                                                                    </div>
+                                                                                    {icpPrice && (
+                                                                                        <div style={{ 
+                                                                                            fontSize: '0.85rem', 
+                                                                                            color: theme.colors.success,
+                                                                                            fontWeight: '600',
+                                                                                        }}>
+                                                                                            {formatUsd((Number(neuronManagerInfo.totalIcpE8s) / 1e8) * icpPrice)}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <div style={{ color: theme.colors.mutedText }}>
+                                                                    Could not load neuron information
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -3389,7 +3721,19 @@ function SneedexCreate() {
                                                 <div style={styles.assetInfo}>
                                                     {getAssetIcon(asset)}
                                                     <div style={styles.assetDetails}>
-                                                        <div style={styles.assetType}>{asset.display}</div>
+                                                        <div style={styles.assetType}>
+                                                            {asset.type === 'canister' && (
+                                                                asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && asset.totalIcpE8s
+                                                                    ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP (Neuron Manager)`
+                                                                    : (asset.title || asset.display)
+                                                            )}
+                                                            {asset.type === 'neuron' && (
+                                                                asset.stake
+                                                                    ? `${(Number(asset.stake) / Math.pow(10, getSnsDecimals(asset.governance_id))).toFixed(2)} ${asset.symbol || 'tokens'} (Neuron)`
+                                                                    : asset.display
+                                                            )}
+                                                            {asset.type === 'token' && asset.display}
+                                                        </div>
                                                         {/* USD Value */}
                                                         {(() => {
                                                             const usdValue = getAssetUsdValue(asset);
