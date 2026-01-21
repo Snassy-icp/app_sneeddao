@@ -30,6 +30,7 @@ import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
+import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -443,6 +444,24 @@ function Wallet() {
     const [deregisteringManager, setDeregisteringManager] = useState(null);
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     
+    // Tracked canisters (wallet canisters) state
+    const [trackedCanisters, setTrackedCanisters] = useState([]);
+    const [trackedCanistersLoading, setTrackedCanistersLoading] = useState(false);
+    const [refreshingTrackedCanisters, setRefreshingTrackedCanisters] = useState(false);
+    const [trackedCanistersExpanded, setTrackedCanistersExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('trackedCanistersExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            return true;
+        }
+    });
+    const [newTrackedCanisterId, setNewTrackedCanisterId] = useState('');
+    const [addingTrackedCanister, setAddingTrackedCanister] = useState(false);
+    const [addTrackedCanisterError, setAddTrackedCanisterError] = useState('');
+    const [confirmRemoveTrackedCanister, setConfirmRemoveTrackedCanister] = useState(null);
+    const [removingTrackedCanister, setRemovingTrackedCanister] = useState(null);
+    
     // Expanded manager cards and their neurons
     const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
     const [managerNeurons, setManagerNeurons] = useState({}); // canisterId -> { loading, neurons, error }
@@ -477,6 +496,15 @@ function Wallet() {
             console.warn('Could not save neuron managers expanded state to localStorage:', error);
         }
     }, [neuronManagersExpanded]);
+
+    // Save trackedCanistersExpanded state to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('trackedCanistersExpanded', JSON.stringify(trackedCanistersExpanded));
+        } catch (error) {
+            console.warn('Could not save tracked canisters expanded state to localStorage:', error);
+        }
+    }, [trackedCanistersExpanded]);
 
     // Load SNS data progressively (non-blocking)
     useEffect(() => {
@@ -540,6 +568,7 @@ function Wallet() {
         fetchIcpPrice();
         fetchNeuronManagers();
         fetchIcpToCyclesRate();
+        fetchTrackedCanisters();
     }, [isAuthenticated, location.search, refreshTrigger]);
 
     // Fetch ICP price
@@ -1211,6 +1240,79 @@ function Wallet() {
             console.error('Error fetching neuron managers:', err);
         } finally {
             setNeuronManagersLoading(false);
+        }
+    }
+
+    // Fetch tracked canisters (wallet canisters)
+    async function fetchTrackedCanisters() {
+        if (!identity) {
+            setTrackedCanisters([]);
+            return;
+        }
+        
+        setTrackedCanistersLoading(true);
+        try {
+            const canisters = await getTrackedCanisters(identity);
+            // Convert Principal objects to strings
+            setTrackedCanisters(canisters.map(p => p.toText()));
+        } catch (err) {
+            console.error('Error fetching tracked canisters:', err);
+        } finally {
+            setTrackedCanistersLoading(false);
+        }
+    }
+
+    // Add a tracked canister
+    async function handleAddTrackedCanister() {
+        if (!identity || !newTrackedCanisterId.trim()) return;
+        
+        setAddingTrackedCanister(true);
+        setAddTrackedCanisterError('');
+        
+        try {
+            // Validate the canister ID
+            Principal.fromText(newTrackedCanisterId.trim());
+        } catch (e) {
+            setAddTrackedCanisterError('Invalid canister ID format');
+            setAddingTrackedCanister(false);
+            return;
+        }
+        
+        try {
+            await registerTrackedCanister(identity, newTrackedCanisterId.trim());
+            setNewTrackedCanisterId('');
+            await fetchTrackedCanisters();
+        } catch (err) {
+            console.error('Error adding tracked canister:', err);
+            setAddTrackedCanisterError(err.message || 'Failed to add canister');
+        } finally {
+            setAddingTrackedCanister(false);
+        }
+    }
+
+    // Remove a tracked canister
+    async function handleRemoveTrackedCanister(canisterId) {
+        if (!identity || !canisterId) return;
+        
+        setRemovingTrackedCanister(canisterId);
+        try {
+            await unregisterTrackedCanister(identity, canisterId);
+            await fetchTrackedCanisters();
+        } catch (err) {
+            console.error('Error removing tracked canister:', err);
+        } finally {
+            setRemovingTrackedCanister(null);
+            setConfirmRemoveTrackedCanister(null);
+        }
+    }
+
+    // Refresh tracked canisters
+    async function handleRefreshTrackedCanisters() {
+        setRefreshingTrackedCanisters(true);
+        try {
+            await fetchTrackedCanisters();
+        } finally {
+            setRefreshingTrackedCanisters(false);
         }
     }
 
@@ -5453,6 +5555,219 @@ function Wallet() {
                                                     )}
                                                 </div>
                                             )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Canisters Section (Tracked Canisters / Wallet Canisters) */}
+                <SectionHeader 
+                    title="Canisters"
+                    subtitle={trackedCanisters.length > 0 ? `${trackedCanisters.length}` : null}
+                    isExpanded={trackedCanistersExpanded}
+                    onToggle={() => setTrackedCanistersExpanded(!trackedCanistersExpanded)}
+                    onRefresh={handleRefreshTrackedCanisters}
+                    isRefreshing={refreshingTrackedCanisters}
+                    theme={theme}
+                />
+                <div style={{ marginBottom: '10px', marginTop: '-5px' }}>
+                    <Link 
+                        to="/canisters" 
+                        style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        Manage custom canister groups →
+                    </Link>
+                </div>
+                {trackedCanistersExpanded && (
+                    <div style={{ marginBottom: '20px' }}>
+                        {/* Add canister input */}
+                        <div style={{ 
+                            backgroundColor: theme.colors.secondaryBg, 
+                            borderRadius: '8px', 
+                            padding: '12px 16px',
+                            marginBottom: '12px',
+                            display: 'flex',
+                            gap: '10px',
+                            alignItems: 'center',
+                            flexWrap: 'wrap'
+                        }}>
+                            <input
+                                type="text"
+                                placeholder="Add canister by ID"
+                                value={newTrackedCanisterId}
+                                onChange={(e) => {
+                                    setNewTrackedCanisterId(e.target.value);
+                                    setAddTrackedCanisterError('');
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && newTrackedCanisterId.trim()) {
+                                        handleAddTrackedCanister();
+                                    }
+                                }}
+                                style={{
+                                    flex: 1,
+                                    minWidth: '200px',
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    backgroundColor: theme.colors.primaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '13px',
+                                    fontFamily: 'monospace',
+                                }}
+                                disabled={addingTrackedCanister}
+                            />
+                            <button
+                                onClick={handleAddTrackedCanister}
+                                disabled={addingTrackedCanister || !newTrackedCanisterId.trim()}
+                                style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: (addingTrackedCanister || !newTrackedCanisterId.trim()) ? theme.colors.mutedText : theme.colors.accent,
+                                    color: '#fff',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: (addingTrackedCanister || !newTrackedCanisterId.trim()) ? 'not-allowed' : 'pointer',
+                                    opacity: (addingTrackedCanister || !newTrackedCanisterId.trim()) ? 0.6 : 1,
+                                }}
+                            >
+                                {addingTrackedCanister ? '...' : '+ Add'}
+                            </button>
+                        </div>
+                        {addTrackedCanisterError && (
+                            <div style={{ 
+                                color: '#ef4444', 
+                                fontSize: '12px', 
+                                marginBottom: '12px',
+                                marginTop: '-8px',
+                                padding: '0 4px'
+                            }}>
+                                {addTrackedCanisterError}
+                            </div>
+                        )}
+                        
+                        {trackedCanistersLoading ? (
+                            <div className="card">
+                                <div className="spinner"></div>
+                            </div>
+                        ) : trackedCanisters.length === 0 ? (
+                            <div style={{ 
+                                backgroundColor: theme.colors.secondaryBg, 
+                                borderRadius: '8px', 
+                                padding: '24px',
+                                textAlign: 'center'
+                            }}>
+                                <p style={{ color: theme.colors.mutedText, marginBottom: '16px' }}>
+                                    No canisters tracked in your wallet.
+                                </p>
+                                <p style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
+                                    Add a canister ID above to start tracking it.
+                                </p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {trackedCanisters.map((canisterId) => {
+                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                    const isConfirming = confirmRemoveTrackedCanister === canisterId;
+                                    const isRemoving = removingTrackedCanister === canisterId;
+                                    
+                                    return (
+                                        <div 
+                                            key={canisterId}
+                                            style={{
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                                padding: '12px 16px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '12px',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                                                <span style={{ fontSize: '20px' }}>📦</span>
+                                                <PrincipalDisplay
+                                                    principal={canisterId}
+                                                    displayInfo={displayInfo}
+                                                    showCopyButton={true}
+                                                    isAuthenticated={isAuthenticated}
+                                                    noLink={true}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <Link
+                                                    to={`/canister?id=${canisterId}`}
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        borderRadius: '6px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        backgroundColor: 'transparent',
+                                                        color: theme.colors.primaryText,
+                                                        fontSize: '12px',
+                                                        textDecoration: 'none',
+                                                        fontWeight: '500',
+                                                    }}
+                                                >
+                                                    View
+                                                </Link>
+                                                {isConfirming ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Remove?</span>
+                                                        <button
+                                                            onClick={() => handleRemoveTrackedCanister(canisterId)}
+                                                            disabled={isRemoving}
+                                                            style={{
+                                                                backgroundColor: '#ef4444',
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '4px 10px',
+                                                                cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                                                fontSize: '12px',
+                                                                opacity: isRemoving ? 0.6 : 1,
+                                                            }}
+                                                        >
+                                                            {isRemoving ? '...' : 'Yes'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setConfirmRemoveTrackedCanister(null)}
+                                                            style={{
+                                                                backgroundColor: theme.colors.secondaryBg,
+                                                                color: theme.colors.primaryText,
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                borderRadius: '4px',
+                                                                padding: '4px 10px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '12px',
+                                                            }}
+                                                        >
+                                                            No
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setConfirmRemoveTrackedCanister(canisterId)}
+                                                        style={{
+                                                            padding: '6px 10px',
+                                                            borderRadius: '6px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            backgroundColor: 'transparent',
+                                                            color: theme.colors.mutedText,
+                                                            fontSize: '12px',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        title="Remove from wallet"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}

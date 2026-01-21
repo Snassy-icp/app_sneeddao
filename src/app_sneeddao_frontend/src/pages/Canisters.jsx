@@ -6,7 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
+import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend, getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock } from 'react-icons/fa';
@@ -119,6 +119,22 @@ export default function CanistersPage() {
             return saved !== null ? JSON.parse(saved) : true;
         } catch { return true; }
     });
+    const [walletExpanded, setWalletExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('canisters_walletExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch { return true; }
+    });
+
+    // Tracked canisters (wallet canisters) state
+    const [trackedCanisters, setTrackedCanisters] = useState([]);
+    const [loadingTrackedCanisters, setLoadingTrackedCanisters] = useState(true);
+    const [newWalletCanisterId, setNewWalletCanisterId] = useState('');
+    const [addingWalletCanister, setAddingWalletCanister] = useState(false);
+    const [walletCanisterError, setWalletCanisterError] = useState(null);
+    const [confirmRemoveWalletCanister, setConfirmRemoveWalletCanister] = useState(null);
+    const [removingWalletCanister, setRemovingWalletCanister] = useState(null);
+    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
 
     // Helper to compare versions
     const compareVersions = (a, b) => {
@@ -333,6 +349,122 @@ export default function CanistersPage() {
     useEffect(() => {
         try { localStorage.setItem('canisters_neuronManagersExpanded', JSON.stringify(neuronManagersExpanded)); } catch {}
     }, [neuronManagersExpanded]);
+
+    useEffect(() => {
+        try { localStorage.setItem('canisters_walletExpanded', JSON.stringify(walletExpanded)); } catch {}
+    }, [walletExpanded]);
+
+    // Fetch tracked canisters
+    useEffect(() => {
+        const fetchTracked = async () => {
+            if (!identity) {
+                setTrackedCanisters([]);
+                setLoadingTrackedCanisters(false);
+                return;
+            }
+            
+            setLoadingTrackedCanisters(true);
+            try {
+                const canisters = await getTrackedCanisters(identity);
+                const canisterIds = canisters.map(p => p.toText());
+                setTrackedCanisters(canisterIds);
+                
+                // Fetch status for each canister
+                if (canisterIds.length > 0) {
+                    const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                        ? 'https://ic0.app' 
+                        : 'http://localhost:4943';
+                    const agent = new HttpAgent({ identity, host });
+                    if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                        await agent.fetchRootKey();
+                    }
+
+                    const statusMap = {};
+                    await Promise.all(canisterIds.map(async (canisterId) => {
+                        try {
+                            const canisterIdPrincipal = Principal.fromText(canisterId);
+                            const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                                agent,
+                                canisterId: MANAGEMENT_CANISTER_ID,
+                                callTransform: (methodName, args, callConfig) => ({
+                                    ...callConfig,
+                                    effectiveCanisterId: canisterIdPrincipal,
+                                }),
+                            });
+                            const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                            statusMap[canisterId] = {
+                                cycles: Number(status.cycles),
+                                memory: Number(status.memory_size),
+                                isController: true,
+                            };
+                        } catch {
+                            // Can't get status - not a controller
+                            statusMap[canisterId] = null;
+                        }
+                    }));
+                    setTrackedCanisterStatus(statusMap);
+                }
+            } catch (err) {
+                console.error('Error fetching tracked canisters:', err);
+            } finally {
+                setLoadingTrackedCanisters(false);
+            }
+        };
+        
+        fetchTracked();
+    }, [identity]);
+
+    // Add a wallet canister (tracked canister)
+    const handleAddWalletCanister = async () => {
+        if (!identity || !newWalletCanisterId.trim()) return;
+        
+        setAddingWalletCanister(true);
+        setWalletCanisterError(null);
+        
+        try {
+            Principal.fromText(newWalletCanisterId.trim());
+        } catch (e) {
+            setWalletCanisterError('Invalid canister ID format');
+            setAddingWalletCanister(false);
+            return;
+        }
+        
+        try {
+            await registerTrackedCanister(identity, newWalletCanisterId.trim());
+            setNewWalletCanisterId('');
+            // Refresh the list
+            const canisters = await getTrackedCanisters(identity);
+            setTrackedCanisters(canisters.map(p => p.toText()));
+        } catch (err) {
+            console.error('Error adding wallet canister:', err);
+            setWalletCanisterError(err.message || 'Failed to add canister');
+        } finally {
+            setAddingWalletCanister(false);
+        }
+    };
+
+    // Remove a wallet canister (tracked canister)
+    const handleRemoveWalletCanister = async (canisterId) => {
+        if (!identity || !canisterId) return;
+        
+        setRemovingWalletCanister(canisterId);
+        try {
+            await unregisterTrackedCanister(identity, canisterId);
+            // Refresh the list
+            const canisters = await getTrackedCanisters(identity);
+            setTrackedCanisters(canisters.map(p => p.toText()));
+            setTrackedCanisterStatus(prev => {
+                const newStatus = { ...prev };
+                delete newStatus[canisterId];
+                return newStatus;
+            });
+        } catch (err) {
+            console.error('Error removing wallet canister:', err);
+        } finally {
+            setRemovingWalletCanister(null);
+            setConfirmRemoveWalletCanister(null);
+        }
+    };
 
     // Clear messages after timeout
     useEffect(() => {
@@ -2135,6 +2267,240 @@ export default function CanistersPage() {
                                     </div>
                                 )}
                                     </>
+                                )}
+                            </>
+                        )}
+
+                        {/* Wallet Section (Tracked Canisters) */}
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => setWalletExpanded(!walletExpanded)}
+                        >
+                            <div style={styles.sectionTitle}>
+                                {walletExpanded ? <FaChevronDown /> : <FaChevronRight />}
+                                <span style={{ fontSize: '18px' }}>💼</span>
+                                Wallet
+                                {trackedCanisters.length > 0 && (
+                                    <span style={styles.sectionCount}>{trackedCanisters.length}</span>
+                                )}
+                            </div>
+                            <Link 
+                                to="/wallet"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    backgroundColor: 'transparent',
+                                    color: theme.colors.textSecondary,
+                                    fontSize: '12px',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    textDecoration: 'none',
+                                }}
+                            >
+                                Open Wallet
+                            </Link>
+                        </div>
+                        
+                        {walletExpanded && (
+                            <>
+                                {/* Add canister input */}
+                                <div style={{ ...styles.addSection, marginBottom: '16px' }}>
+                                    <div style={styles.addSectionTitle}>Add canister to wallet</div>
+                                    <div style={styles.inputRow}>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter canister ID"
+                                            value={newWalletCanisterId}
+                                            onChange={(e) => {
+                                                setNewWalletCanisterId(e.target.value);
+                                                setWalletCanisterError(null);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && newWalletCanisterId.trim()) {
+                                                    handleAddWalletCanister();
+                                                }
+                                            }}
+                                            style={styles.input}
+                                            disabled={addingWalletCanister}
+                                        />
+                                        <button
+                                            onClick={handleAddWalletCanister}
+                                            style={{
+                                                ...styles.addButton,
+                                                backgroundColor: (addingWalletCanister || !newWalletCanisterId.trim()) ? '#6c757d' : '#28a745',
+                                                cursor: (addingWalletCanister || !newWalletCanisterId.trim()) ? 'not-allowed' : 'pointer',
+                                                opacity: (addingWalletCanister || !newWalletCanisterId.trim()) ? 0.6 : 1,
+                                            }}
+                                            disabled={addingWalletCanister || !newWalletCanisterId.trim()}
+                                        >
+                                            {addingWalletCanister ? (
+                                                <FaSpinner className="spin" />
+                                            ) : (
+                                                <FaPlus />
+                                            )}
+                                            Add
+                                        </button>
+                                    </div>
+                                    {walletCanisterError && (
+                                        <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '8px' }}>
+                                            {walletCanisterError}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {loadingTrackedCanisters ? (
+                                    <div style={styles.loadingSpinner}>
+                                        <FaSpinner className="spin" size={24} />
+                                    </div>
+                                ) : trackedCanisters.length === 0 ? (
+                                    <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
+                                        <div style={styles.emptyIcon}>💼</div>
+                                        <div style={styles.emptyText}>No canisters in wallet</div>
+                                        <div style={styles.emptySubtext}>
+                                            Add a canister ID above to track it in your wallet.
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ marginBottom: '24px' }}>
+                                        <div style={styles.canisterList}>
+                                            {trackedCanisters.map((canisterId) => {
+                                                const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                                const status = trackedCanisterStatus[canisterId];
+                                                const cycles = status?.cycles;
+                                                const memory = status?.memory;
+                                                const isController = status?.isController;
+                                                const isConfirming = confirmRemoveWalletCanister === canisterId;
+                                                const isRemoving = removingWalletCanister === canisterId;
+
+                                                return (
+                                                    <div key={canisterId} style={styles.canisterCard}>
+                                                        <div style={styles.canisterInfo}>
+                                                            <div style={{ ...styles.canisterIcon, position: 'relative' }}>
+                                                                <FaCube size={18} />
+                                                                {isController && (
+                                                                    <FaCrown 
+                                                                        size={10} 
+                                                                        style={{ 
+                                                                            position: 'absolute', 
+                                                                            top: -4, 
+                                                                            right: -4, 
+                                                                            color: '#f59e0b',
+                                                                        }} 
+                                                                        title="You are a controller"
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                            <PrincipalDisplay
+                                                                principal={canisterId}
+                                                                displayInfo={displayInfo}
+                                                                showCopyButton={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                noLink={true}
+                                                                style={{ fontSize: '14px' }}
+                                                                showSendMessage={false}
+                                                                showViewProfile={false}
+                                                            />
+                                                            {/* Cycles badge */}
+                                                            {cycles !== undefined && cycles !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${getCyclesColor(cycles, cycleSettings)}20`,
+                                                                        color: getCyclesColor(cycles, cycleSettings),
+                                                                        marginLeft: '8px',
+                                                                    }}
+                                                                    title={`${cycles.toLocaleString()} cycles`}
+                                                                >
+                                                                    ⚡ {formatCyclesCompact(cycles)}
+                                                                </span>
+                                                            )}
+                                                            {/* Memory badge */}
+                                                            {memory !== undefined && memory !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${theme.colors.primary || '#3b82f6'}20`,
+                                                                        color: theme.colors.primary || '#3b82f6',
+                                                                    }}
+                                                                    title={`${memory.toLocaleString()} bytes`}
+                                                                >
+                                                                    💾 {formatMemory(memory)}
+                                                                </span>
+                                                            )}
+                                                            {status === undefined && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${theme.colors.mutedText || theme.colors.textSecondary}20`,
+                                                                        color: theme.colors.mutedText || theme.colors.textSecondary,
+                                                                        marginLeft: '8px',
+                                                                    }}
+                                                                >
+                                                                    ⚡ ...
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                            <Link
+                                                                to={`/canister?id=${canisterId}`}
+                                                                style={styles.viewLink}
+                                                            >
+                                                                View
+                                                            </Link>
+                                                            {isConfirming ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <span style={{ color: '#888', fontSize: '11px' }}>Remove?</span>
+                                                                    <button
+                                                                        onClick={() => handleRemoveWalletCanister(canisterId)}
+                                                                        disabled={isRemoving}
+                                                                        style={{
+                                                                            backgroundColor: '#ef4444',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 10px',
+                                                                            cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '12px',
+                                                                            opacity: isRemoving ? 0.6 : 1,
+                                                                        }}
+                                                                    >
+                                                                        {isRemoving ? <FaSpinner className="spin" size={10} /> : 'Yes'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setConfirmRemoveWalletCanister(null)}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.card,
+                                                                            color: theme.colors.text,
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 10px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '12px',
+                                                                        }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => setConfirmRemoveWalletCanister(canisterId)}
+                                                                    style={styles.removeButton}
+                                                                    title="Remove from wallet"
+                                                                >
+                                                                    <FaTrash />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 )}
                             </>
                         )}
