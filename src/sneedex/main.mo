@@ -128,6 +128,34 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    // Helper to remove all hotkeys from all neurons in a neuron manager (best effort)
+    func removeNeuronManagerHotkeys(canisterId : Principal) : async () {
+        try {
+            let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
+            
+            // Get all neurons and their info
+            let neuronsInfo = await manager.getAllNeuronsInfo();
+            
+            // For each neuron, get full info (which includes hotkeys) and remove them
+            for ((neuronId, _) in neuronsInfo.vals()) {
+                try {
+                    let fullNeuron = await manager.getFullNeuron(neuronId);
+                    switch (fullNeuron) {
+                        case (?neuron) {
+                            // Remove each hotkey
+                            for (hotkey in neuron.hot_keys.vals()) {
+                                try {
+                                    ignore await manager.removeHotKey(neuronId, hotkey);
+                                } catch (_) {};
+                            };
+                        };
+                        case null {};
+                    };
+                } catch (_) {};
+            };
+        } catch (_) {};
+    };
+    
     // Get the fee recipient for a specific ledger (checks overrides first, then falls back to default)
     func getFeeRecipientForLedger(ledger : Principal) : T.Account {
         for ((l, account) in ledgerFeeRecipients.vals()) {
@@ -1139,6 +1167,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         ignore Timer.setTimer<system>(#seconds 0, func () : async () {
                                             await deregisterCanisterFromWallet(caller, canisterAsset.canister_id, isNeuronManager);
                                         });
+                                        
+                                        // If it's a neuron manager, remove all hotkeys from its neurons (best effort, non-blocking)
+                                        if (isNeuronManager) {
+                                            ignore Timer.setTimer<system>(#seconds 1, func () : async () {
+                                                await removeNeuronManagerHotkeys(canisterAsset.canister_id);
+                                            });
+                                        };
                                         
                                         #ok();
                                     };

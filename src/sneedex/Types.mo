@@ -250,6 +250,13 @@ module {
         dissolve_state : ?ICPDissolveState;
         aging_since_timestamp_seconds : Nat64;
         voting_power_refreshed_timestamp_seconds : ?Nat64;
+        hot_keys : [Principal];
+    };
+    
+    // Operation result type for neuron manager operations
+    public type NeuronManagerOperationResult = {
+        #Ok;
+        #Err : Text;
     };
     
     // Actor interface for ICP Neuron Manager verification
@@ -264,6 +271,7 @@ module {
             voting_power : Nat64;
         })];
         getFullNeuron : shared (ICPNeuronId) -> async ?ICPFullNeuron;
+        removeHotKey : shared (ICPNeuronId, Principal) -> async NeuronManagerOperationResult;
     };
     
     // Canister info response for frontend display
