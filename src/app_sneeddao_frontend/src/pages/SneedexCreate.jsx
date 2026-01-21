@@ -1356,7 +1356,25 @@ function SneedexCreate() {
                 }
                 return <FaCubes style={{ color: theme.colors.accent }} />;
             case 'neuron': return <FaBrain style={{ color: theme.colors.success }} />;
-            case 'token': return <FaCoins style={{ color: theme.colors.warning }} />;
+            case 'token': {
+                // Try to find the token in whitelisted tokens and use its logo
+                const token = whitelistedTokens.find(t => t.ledger_id.toString() === asset.ledger_id);
+                if (token?.logo) {
+                    return (
+                        <img 
+                            src={token.logo} 
+                            alt={token.symbol || 'Token'} 
+                            style={{ 
+                                width: '24px', 
+                                height: '24px', 
+                                borderRadius: '50%',
+                                objectFit: 'cover'
+                            }} 
+                        />
+                    );
+                }
+                return <FaCoins style={{ color: theme.colors.warning }} />;
+            }
             default: return <FaCubes />;
         }
     };
