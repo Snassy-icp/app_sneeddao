@@ -31,7 +31,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
-import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -2006,6 +2006,7 @@ function SneedexCreate() {
                                                         {asset.type === 'canister' && (
                                                             <PrincipalDisplay 
                                                                 principal={asset.canister_id}
+                                                                displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
                                                                 short={true}
                                                                 showCopyButton={false}
                                                                 style={{ fontSize: 'inherit', color: 'inherit' }}
@@ -2016,6 +2017,7 @@ function SneedexCreate() {
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.governance_id}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.governance_id, principalNames, principalNicknames)}
                                                                     short={true}
                                                                     showCopyButton={false}
                                                                     style={{ fontSize: 'inherit', color: 'inherit' }}
@@ -2026,6 +2028,7 @@ function SneedexCreate() {
                                                         {asset.type === 'token' && (
                                                             <PrincipalDisplay 
                                                                 principal={asset.ledger_id}
+                                                                displayInfo={getPrincipalDisplayInfoFromContext(asset.ledger_id, principalNames, principalNicknames)}
                                                                 short={true}
                                                                 showCopyButton={false}
                                                                 style={{ fontSize: 'inherit', color: 'inherit' }}
@@ -2870,6 +2873,7 @@ function SneedexCreate() {
                                                                 <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Canister ID:</span>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.canister_id}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
                                                                     short={false}
                                                                     showCopyButton={true}
                                                                 />
@@ -2905,6 +2909,7 @@ function SneedexCreate() {
                                                                 <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Governance:</span>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.governance_id}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.governance_id, principalNames, principalNicknames)}
                                                                     short={false}
                                                                     showCopyButton={true}
                                                                 />
@@ -2921,6 +2926,7 @@ function SneedexCreate() {
                                                                 <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Ledger:</span>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.ledger_id}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(asset.ledger_id, principalNames, principalNicknames)}
                                                                     short={false}
                                                                     showCopyButton={true}
                                                                 />
