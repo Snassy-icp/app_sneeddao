@@ -13,7 +13,8 @@ import {
     createLedgerActor,
     formatAmount, 
     formatDate,
-    formatTimeRemaining, 
+    formatTimeRemaining,
+    isOfferPastExpiration,
     getOfferStateString,
     getBidStateString,
     getAssetDetails,
@@ -1371,6 +1372,35 @@ function SneedexOffer() {
         } catch (e) {
             console.error('Failed to claim payment:', e);
             setError(e.message || 'Failed to claim payment');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+    
+    const handleProcessExpiration = async () => {
+        if (!identity || !offer) return;
+        
+        setActionLoading(true);
+        setError('');
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.processExpiration(BigInt(id));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            // Check if there was a highest bid (auction completes) or not (assets returned)
+            const hadBids = bids.length > 0;
+            if (hadBids) {
+                showInfo('Auction completed! The highest bidder has won.', 'success');
+            } else {
+                showInfo('Offer expired with no bids. Assets are being returned to the seller.', 'success');
+            }
+            await fetchOffer();
+        } catch (e) {
+            console.error('Failed to process expiration:', e);
+            setError(e.message || 'Failed to process expiration');
         } finally {
             setActionLoading(false);
         }
@@ -4460,6 +4490,50 @@ function SneedexOffer() {
                                             {actionLoading ? 'Processing...' : '🎁 Claim Your Assets'}
                                         </button>
                                     )}
+                                </div>
+                            )}
+                            
+                            {/* Process Expiration - visible to anyone when offer is Active and past expiration */}
+                            {isActive && isAuthenticated && offer.expiration[0] && isOfferPastExpiration(offer.expiration[0]) && (
+                                <div style={{
+                                    background: `${theme.colors.warning}15`,
+                                    border: `1px solid ${theme.colors.warning}50`,
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    marginTop: '1rem',
+                                }}>
+                                    <div style={{ 
+                                        color: theme.colors.warning, 
+                                        fontSize: '0.9rem', 
+                                        marginBottom: '0.75rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <FaClock />
+                                        <strong>This offer has expired!</strong>
+                                    </div>
+                                    <p style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.85rem', 
+                                        margin: '0 0 1rem 0' 
+                                    }}>
+                                        {bids.length > 0 
+                                            ? `The auction can now be finalized. The highest bidder (${formatAmount(highestBid?.amount, tokenInfo.decimals)} ${tokenInfo.symbol}) will win.`
+                                            : 'There were no bids on this offer. The assets will be returned to the seller.'
+                                        }
+                                    </p>
+                                    <button 
+                                        style={{
+                                            ...styles.acceptButton,
+                                            background: theme.colors.warning,
+                                        }}
+                                        onClick={handleProcessExpiration}
+                                        disabled={actionLoading}
+                                    >
+                                        <FaClock style={{ marginRight: '8px' }} />
+                                        {actionLoading ? 'Processing...' : (bids.length > 0 ? '⚡ Finalize Auction' : '⚡ Process Expiration')}
+                                    </button>
                                 </div>
                             )}
                             

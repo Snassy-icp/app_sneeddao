@@ -8,7 +8,8 @@ import {
     createSneedexActor, 
     formatAmount, 
     formatDate,
-    formatTimeRemaining, 
+    formatTimeRemaining,
+    isOfferPastExpiration,
     getOfferStateString,
     getBidStateString,
     getAssetType,
@@ -345,6 +346,32 @@ function SneedexMy() {
             await fetchData();
         } catch (e) {
             console.error('Failed to claim assets:', e);
+            showInfo(`Error: ${e.message}`, 'error');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+    
+    const handleProcessExpiration = async (offerId, hasBids) => {
+        if (!identity) return;
+        
+        setActionLoading(`process-expiration-${offerId}`);
+        try {
+            const actor = createSneedexActor(identity);
+            const result = await actor.processExpiration(BigInt(offerId));
+            
+            if ('err' in result) {
+                throw new Error(getErrorMessage(result.err));
+            }
+            
+            if (hasBids) {
+                showInfo('Auction completed! The highest bidder has won.', 'success');
+            } else {
+                showInfo('Offer expired. Assets are being returned.', 'success');
+            }
+            await fetchData();
+        } catch (e) {
+            console.error('Failed to process expiration:', e);
             showInfo(`Error: ${e.message}`, 'error');
         } finally {
             setActionLoading(null);
@@ -857,7 +884,17 @@ function SneedexMy() {
                                             </div>
                                             <div style={styles.infoItem}>
                                                 <div style={styles.infoLabel}>Time Left</div>
-                                                <div style={styles.infoValue}>{formatTimeRemaining(offer.expiration[0])}</div>
+                                                <div style={{
+                                                    ...styles.infoValue,
+                                                    color: isActive && isOfferPastExpiration(offer.expiration[0]) 
+                                                        ? theme.colors.warning 
+                                                        : styles.infoValue?.color
+                                                }}>
+                                                    {isActive && isOfferPastExpiration(offer.expiration[0]) && (
+                                                        <FaClock style={{ marginRight: '4px', verticalAlign: 'middle' }} />
+                                                    )}
+                                                    {formatTimeRemaining(offer.expiration[0])}
+                                                </div>
                                             </div>
                                             <div style={styles.infoItem}>
                                                 <div style={styles.infoLabel}>Created</div>
@@ -889,7 +926,7 @@ function SneedexMy() {
                                             </div>
                                         )}
                                         
-                                        {(isActive || isDraft) && (bidInfo.bids?.length || 0) === 0 && (
+                                        {(isActive || isDraft) && (bidInfo.bids?.length || 0) === 0 && !isOfferPastExpiration(offer.expiration[0]) && (
                                             <div style={styles.actionButtons} onClick={(e) => e.stopPropagation()}>
                                                 <button 
                                                     style={{ ...styles.actionButton, ...styles.warningAction }}
@@ -897,6 +934,27 @@ function SneedexMy() {
                                                     disabled={actionLoading === `cancel-${offer.id}`}
                                                 >
                                                     <FaTimes /> {actionLoading === `cancel-${offer.id}` ? 'Processing...' : 'Cancel Offer'}
+                                                </button>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Process Expiration button for expired active offers */}
+                                        {isActive && offer.expiration[0] && isOfferPastExpiration(offer.expiration[0]) && (
+                                            <div style={styles.actionButtons} onClick={(e) => e.stopPropagation()}>
+                                                <button 
+                                                    style={{ 
+                                                        ...styles.actionButton, 
+                                                        background: `${theme.colors.warning}20`,
+                                                        color: theme.colors.warning,
+                                                        border: `1px solid ${theme.colors.warning}50`
+                                                    }}
+                                                    onClick={() => handleProcessExpiration(offer.id, (bidInfo.bids?.length || 0) > 0)}
+                                                    disabled={actionLoading === `process-expiration-${offer.id}`}
+                                                >
+                                                    <FaClock /> {actionLoading === `process-expiration-${offer.id}` 
+                                                        ? 'Processing...' 
+                                                        : ((bidInfo.bids?.length || 0) > 0 ? 'Finalize Auction' : 'Process Expiration')
+                                                    }
                                                 </button>
                                             </div>
                                         )}

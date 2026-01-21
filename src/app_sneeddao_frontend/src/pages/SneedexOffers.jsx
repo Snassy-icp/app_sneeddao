@@ -10,7 +10,8 @@ import { Principal } from '@dfinity/principal';
 import { 
     createSneedexActor, 
     formatAmount, 
-    formatTimeRemaining, 
+    formatTimeRemaining,
+    isOfferPastExpiration,
     getOfferStateString,
     getAssetType,
     getAssetDetails,
@@ -1525,9 +1526,25 @@ function SneedexOffers() {
                                     )}
                                     
                                     <div style={styles.cardFooter}>
-                                        <div style={styles.timeInfo}>
+                                        <div style={{
+                                            ...styles.timeInfo,
+                                            color: isOfferPastExpiration(offer.expiration[0]) 
+                                                ? theme.colors.warning 
+                                                : styles.timeInfo?.color
+                                        }}>
                                             <FaClock />
                                             {formatTimeRemaining(offer.expiration[0])}
+                                            {isOfferPastExpiration(offer.expiration[0]) && (
+                                                <span style={{ 
+                                                    marginLeft: '6px', 
+                                                    fontSize: '0.75rem',
+                                                    background: `${theme.colors.warning}20`,
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    Action needed
+                                                </span>
+                                            )}
                                         </div>
                                         <div style={styles.bidInfo}>
                                             <div style={styles.bidCount}>

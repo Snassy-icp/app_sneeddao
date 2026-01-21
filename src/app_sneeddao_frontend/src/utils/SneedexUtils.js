@@ -172,6 +172,17 @@ export const formatTimeRemaining = (expiration) => {
 };
 
 /**
+ * Check if an offer has passed its expiration time
+ * @param {BigInt|number|null} expiration - Expiration timestamp in nanoseconds (optional field)
+ * @returns {boolean} True if the offer has expired
+ */
+export const isOfferPastExpiration = (expiration) => {
+    if (!expiration) return false;
+    const expirationMs = Number(expiration) / 1_000_000;
+    return expirationMs <= Date.now();
+};
+
+/**
  * Get the offer state as a string
  * @param {Object} state - Offer state variant
  * @returns {string} State name
