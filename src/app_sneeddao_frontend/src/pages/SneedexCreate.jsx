@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -244,6 +244,8 @@ function SneedexCreate() {
     const [assets, setAssets] = useState([]);
     const [assetVerification, setAssetVerification] = useState({}); // {assetKey: {verified: bool, checking: bool, message: string}}
     const [showAddAsset, setShowAddAsset] = useState(false);
+    const [editingAssetIndex, setEditingAssetIndex] = useState(null); // Index of asset being edited, null if adding new
+    const [expandedReviewAssets, setExpandedReviewAssets] = useState({}); // {index: boolean} for review screen
     const [newAssetType, setNewAssetType] = useState('canister');
     const [newAssetCanisterId, setNewAssetCanisterId] = useState('');
     const [newAssetCanisterKind, setNewAssetCanisterKind] = useState(0); // 0 = unknown, 1 = ICP Neuron Manager
@@ -808,13 +810,29 @@ function SneedexCreate() {
             return;
         }
         
-        // Check for duplicates
-        if (assetExists(asset)) {
-            setError('This asset has already been added to the offer');
-            return;
+        // Check for duplicates (skip if editing the same asset)
+        if (editingAssetIndex === null) {
+            if (assetExists(asset)) {
+                setError('This asset has already been added to the offer');
+                return;
+            }
+            // Adding new asset
+            setAssets([...assets, asset]);
+        } else {
+            // Editing existing asset - check for duplicates with other assets
+            const newKey = getAssetKey(asset);
+            const isDuplicate = assets.some((a, idx) => idx !== editingAssetIndex && getAssetKey(a) === newKey);
+            if (isDuplicate) {
+                setError('This asset already exists in the offer');
+                return;
+            }
+            // Update existing asset
+            const updatedAssets = [...assets];
+            updatedAssets[editingAssetIndex] = asset;
+            setAssets(updatedAssets);
+            setEditingAssetIndex(null);
         }
         
-        setAssets([...assets, asset]);
         setShowAddAsset(false);
         setNewAssetCanisterId('');
         setNewAssetCanisterKind(0);
@@ -833,6 +851,68 @@ function SneedexCreate() {
     
     const removeAsset = (index) => {
         setAssets(assets.filter((_, i) => i !== index));
+        // If we were editing this asset, cancel the edit
+        if (editingAssetIndex === index) {
+            cancelAssetEdit();
+        } else if (editingAssetIndex !== null && editingAssetIndex > index) {
+            // Adjust editing index if we removed an asset before it
+            setEditingAssetIndex(editingAssetIndex - 1);
+        }
+    };
+    
+    const editAsset = (index) => {
+        const asset = assets[index];
+        setEditingAssetIndex(index);
+        setShowAddAsset(true);
+        setError('');
+        
+        if (asset.type === 'canister') {
+            setNewAssetType('canister');
+            setNewAssetCanisterId(asset.canister_id);
+            setNewAssetCanisterKind(asset.canister_kind || 0);
+            setNewAssetCanisterTitle(asset.title || '');
+            setNewAssetCanisterDescription(asset.description || '');
+            // Mark as verified if it was previously added
+            if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                setCanisterKindVerified({ verified: true, message: 'Previously verified' });
+            }
+        } else if (asset.type === 'neuron') {
+            setNewAssetType('neuron');
+            setNewAssetGovernanceId(asset.governance_id);
+            setNewAssetNeuronId(asset.neuron_id);
+            // Try to find the SNS root for this governance
+            const sns = snsList.find(s => s.canisters?.governance === asset.governance_id);
+            if (sns) {
+                setSelectedSnsRoot(sns.rootCanisterId);
+            }
+        } else if (asset.type === 'token') {
+            setNewAssetType('token');
+            setNewAssetTokenLedger(asset.ledger_id);
+            setNewAssetTokenAmount(asset.amount?.toString() || '');
+            setNewAssetTokenSymbol(asset.symbol || '');
+            setNewAssetTokenDecimals(asset.decimals?.toString() || '8');
+        }
+    };
+    
+    const cancelAssetEdit = () => {
+        setEditingAssetIndex(null);
+        setShowAddAsset(false);
+        // Reset form fields
+        setNewAssetType('canister');
+        setNewAssetCanisterId('');
+        setNewAssetCanisterKind(0);
+        setNewAssetCanisterTitle('');
+        setNewAssetCanisterDescription('');
+        setCanisterKindVerified(null);
+        setNewAssetGovernanceId('');
+        setNewAssetNeuronId('');
+        setSelectedSnsRoot('');
+        setSnsNeurons([]);
+        setNewAssetTokenLedger('');
+        setNewAssetTokenAmount('');
+        setNewAssetTokenSymbol('');
+        setNewAssetTokenDecimals('8');
+        setNewAssetTokenBalance(null);
     };
     
     const validateStep1 = () => {
@@ -1328,6 +1408,15 @@ function SneedexCreate() {
             background: 'transparent',
             border: 'none',
             color: theme.colors.error || '#ff4444',
+            cursor: 'pointer',
+            padding: '8px',
+            borderRadius: '6px',
+            transition: 'background 0.3s ease',
+        },
+        editButton: {
+            background: 'transparent',
+            border: 'none',
+            color: theme.colors.accent,
             cursor: 'pointer',
             padding: '8px',
             borderRadius: '6px',
@@ -1894,10 +1983,20 @@ function SneedexCreate() {
                                                 ) : null}
                                                 
                                                 <button
+                                                    style={styles.editButton}
+                                                    onClick={() => editAsset(idx)}
+                                                    onMouseEnter={(e) => e.target.style.background = `${theme.colors.accent}20`}
+                                                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                                    title="Edit asset"
+                                                >
+                                                    <FaPencilAlt />
+                                                </button>
+                                                <button
                                                     style={styles.removeButton}
                                                     onClick={() => removeAsset(idx)}
                                                     onMouseEnter={(e) => e.target.style.background = `${theme.colors.error || '#ff4444'}20`}
                                                     onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                                    title="Remove asset"
                                                 >
                                                     <FaTrash />
                                                 </button>
@@ -1923,12 +2022,28 @@ function SneedexCreate() {
                             </button>
                         ) : (
                             <div style={styles.addAssetModal}>
+                                <div style={{ 
+                                    fontWeight: '600', 
+                                    fontSize: '1rem', 
+                                    marginBottom: '1rem',
+                                    color: theme.colors.primaryText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                }}>
+                                    {editingAssetIndex !== null ? (
+                                        <><FaPencilAlt /> Edit Asset</>
+                                    ) : (
+                                        <><FaPlus /> Add New Asset</>
+                                    )}
+                                </div>
                                 <div style={styles.formGroup}>
                                     <label style={styles.label}>Asset Type</label>
                                     <select
                                         style={styles.select}
                                         value={newAssetType}
                                         onChange={(e) => setNewAssetType(e.target.value)}
+                                        disabled={editingAssetIndex !== null} // Can't change type when editing
                                     >
                                         <option value="canister">Canister</option>
                                         <option value="neuron">SNS Neuron</option>
@@ -2419,7 +2534,7 @@ function SneedexCreate() {
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                                     <button
                                         style={styles.backBtn}
-                                        onClick={() => setShowAddAsset(false)}
+                                        onClick={cancelAssetEdit}
                                     >
                                         Cancel
                                     </button>
@@ -2427,7 +2542,7 @@ function SneedexCreate() {
                                         style={styles.nextBtn}
                                         onClick={addAsset}
                                     >
-                                        Add Asset
+                                        {editingAssetIndex !== null ? 'Update Asset' : 'Add Asset'}
                                     </button>
                                 </div>
                             </div>
@@ -2515,53 +2630,178 @@ function SneedexCreate() {
                                 {assets.map((asset, idx) => {
                                     const key = getAssetKey(asset);
                                     const verification = reviewVerification[key];
+                                    const isExpanded = expandedReviewAssets[idx];
                                     
                                     return (
-                                        <div key={idx} style={{ ...styles.assetItem, background: theme.colors.secondaryBg }}>
-                                            <div style={styles.assetInfo}>
-                                                {getAssetIcon(asset)}
-                                                <div style={styles.assetDetails}>
-                                                    <div style={styles.assetType}>{asset.display}</div>
+                                        <div key={idx} style={{ 
+                                            ...styles.assetItem, 
+                                            background: theme.colors.secondaryBg,
+                                            flexDirection: 'column',
+                                            alignItems: 'stretch',
+                                        }}>
+                                            <div 
+                                                style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    alignItems: 'center',
+                                                    cursor: 'pointer',
+                                                }}
+                                                onClick={() => setExpandedReviewAssets(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                            >
+                                                <div style={styles.assetInfo}>
+                                                    {getAssetIcon(asset)}
+                                                    <div style={styles.assetDetails}>
+                                                        <div style={styles.assetType}>{asset.display}</div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    marginLeft: 'auto',
+                                                }}>
+                                                    {verification?.checking ? (
+                                                        <span style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            fontSize: '0.8rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                        }}>
+                                                            <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Checking...
+                                                        </span>
+                                                    ) : verification?.verified ? (
+                                                        <span style={{ 
+                                                            color: theme.colors.success, 
+                                                            fontSize: '0.8rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                        }}>
+                                                            <FaCheck /> Ready to escrow
+                                                        </span>
+                                                    ) : verification?.verified === false ? (
+                                                        <span style={{ 
+                                                            color: theme.colors.warning, 
+                                                            fontSize: '0.8rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                        }}>
+                                                            <FaExclamationTriangle /> {verification.message || 'Manual escrow needed'}
+                                                        </span>
+                                                    ) : null}
+                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                        {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                                                    </span>
                                                 </div>
                                             </div>
-                                            <div style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                gap: '8px',
-                                                marginLeft: 'auto',
-                                            }}>
-                                                {verification?.checking ? (
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        fontSize: '0.8rem',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                    }}>
-                                                        <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Checking...
-                                                    </span>
-                                                ) : verification?.verified ? (
-                                                    <span style={{ 
-                                                        color: theme.colors.success, 
-                                                        fontSize: '0.8rem',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                    }}>
-                                                        <FaCheck /> Ready to escrow
-                                                    </span>
-                                                ) : verification?.verified === false ? (
-                                                    <span style={{ 
-                                                        color: theme.colors.warning, 
-                                                        fontSize: '0.8rem',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                    }}>
-                                                        <FaExclamationTriangle /> {verification.message || 'Manual escrow needed'}
-                                                    </span>
-                                                ) : null}
-                                            </div>
+                                            
+                                            {/* Expanded Details */}
+                                            {isExpanded && (
+                                                <div style={{ 
+                                                    marginTop: '12px', 
+                                                    paddingTop: '12px',
+                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                    fontSize: '0.85rem',
+                                                }}>
+                                                    {asset.type === 'canister' && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Canister ID:</span>
+                                                                <PrincipalDisplay 
+                                                                    principal={asset.canister_id}
+                                                                    short={false}
+                                                                    showCopyButton={true}
+                                                                />
+                                                            </div>
+                                                            {asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
+                                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                                    <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Type:</span>
+                                                                    <span style={{ color: theme.colors.accent }}>ICP Neuron Manager</span>
+                                                                </div>
+                                                            )}
+                                                            {asset.title && (
+                                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                                    <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Title:</span>
+                                                                    <span>{asset.title}</span>
+                                                                </div>
+                                                            )}
+                                                            {asset.description && (
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                                                    <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Description:</span>
+                                                                    <span style={{ 
+                                                                        whiteSpace: 'pre-wrap',
+                                                                        wordBreak: 'break-word',
+                                                                        maxHeight: '100px',
+                                                                        overflow: 'auto',
+                                                                    }}>{asset.description}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {asset.type === 'neuron' && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Governance:</span>
+                                                                <PrincipalDisplay 
+                                                                    principal={asset.governance_id}
+                                                                    short={false}
+                                                                    showCopyButton={true}
+                                                                />
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Neuron ID:</span>
+                                                                <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{asset.neuron_id}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {asset.type === 'token' && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Ledger:</span>
+                                                                <PrincipalDisplay 
+                                                                    principal={asset.ledger_id}
+                                                                    short={false}
+                                                                    showCopyButton={true}
+                                                                />
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Amount:</span>
+                                                                <span>{asset.amount} {asset.symbol}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Decimals:</span>
+                                                                <span>{asset.decimals}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Edit button in expanded view */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setStep(2);
+                                                            setTimeout(() => editAsset(idx), 100);
+                                                        }}
+                                                        style={{
+                                                            marginTop: '12px',
+                                                            background: `${theme.colors.accent}15`,
+                                                            border: `1px solid ${theme.colors.accent}40`,
+                                                            color: theme.colors.accent,
+                                                            padding: '6px 12px',
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            fontSize: '0.8rem',
+                                                        }}
+                                                    >
+                                                        <FaPencilAlt /> Edit This Asset
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
