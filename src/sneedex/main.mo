@@ -1937,11 +1937,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     return #err(#InvalidState("Offer cannot be cancelled in current state"));
                 };
                 
-                // Check for bids
-                let activeBids = getActiveBidsForOffer(offerId);
-                if (activeBids.size() > 0) {
-                    return #err(#CannotCancelWithBids);
-                };
+                // Note: We allow cancellation even with active bids
+                // All bidders will be automatically refunded
                 
                 let updatedOffer : T.Offer = {
                     id = offer.id;
