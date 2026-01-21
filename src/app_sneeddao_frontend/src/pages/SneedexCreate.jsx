@@ -137,6 +137,10 @@ function SneedexCreate() {
     // USD price for selected payment token
     const [paymentTokenPrice, setPaymentTokenPrice] = useState(null);
     
+    // USD prices for assets
+    const [assetPrices, setAssetPrices] = useState({}); // ledgerId -> USD price per token
+    const [icpPrice, setIcpPrice] = useState(null); // USD price for ICP (for neuron managers)
+    
     // Marketplace fee rate
     const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
     
@@ -187,6 +191,19 @@ function SneedexCreate() {
         };
         fetchPrice();
     }, [priceTokenLedger, selectedPriceToken]);
+    
+    // Fetch ICP price on mount
+    useEffect(() => {
+        const fetchIcpPrice = async () => {
+            try {
+                const price = await priceService.getICPUSDPrice();
+                setIcpPrice(price);
+            } catch (e) {
+                // Silently ignore
+            }
+        };
+        fetchIcpPrice();
+    }, []);
     
     // Fetch marketplace fee rate on mount
     useEffect(() => {
@@ -344,6 +361,31 @@ function SneedexCreate() {
     const [snsNeurons, setSnsNeurons] = useState([]);
     const [loadingSnsNeurons, setLoadingSnsNeurons] = useState(false);
     const [snsLogos, setSnsLogos] = useState(new Map());
+    
+    // Helper to get SNS ledger from governance ID
+    const getSnsLedgerFromGovernance = useCallback((governanceId) => {
+        const sns = snsList.find(s => 
+            s.canisters?.governance === governanceId ||
+            s.governance_canister_id?.[0]?.toString() === governanceId ||
+            s.governance_canister_id?.toString() === governanceId
+        );
+        if (sns) {
+            return sns.canisters?.ledger || 
+                   sns.ledger_canister_id?.[0]?.toString() || 
+                   sns.ledger_canister_id?.toString();
+        }
+        return null;
+    }, [snsList]);
+    
+    // Helper to get SNS decimals from governance ID
+    const getSnsDecimals = useCallback((governanceId) => {
+        const sns = snsList.find(s => 
+            s.canisters?.governance === governanceId ||
+            s.governance_canister_id?.[0]?.toString() === governanceId ||
+            s.governance_canister_id?.toString() === governanceId
+        );
+        return sns?.decimals || 8;
+    }, [snsList]);
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -508,6 +550,58 @@ function SneedexCreate() {
             setLoadingTokenBalance(false);
         }
     }, [identity]);
+    
+    // Fetch prices for assets when assets or snsList changes
+    useEffect(() => {
+        const fetchAssetPrices = async () => {
+            const ledgerIds = new Set();
+            
+            // Collect ledgers from token assets
+            assets.forEach(asset => {
+                if (asset.type === 'token' && asset.ledger_id) {
+                    ledgerIds.add(asset.ledger_id);
+                } else if (asset.type === 'neuron' && asset.governance_id) {
+                    // Add SNS ledger for neuron assets
+                    const snsLedger = getSnsLedgerFromGovernance(asset.governance_id);
+                    if (snsLedger) {
+                        ledgerIds.add(snsLedger);
+                    }
+                }
+            });
+            
+            // Also add current editing token if any
+            if (newAssetType === 'token' && newAssetTokenLedger) {
+                ledgerIds.add(newAssetTokenLedger);
+            }
+            
+            // Also add SNS ledger for currently editing neuron
+            if (newAssetType === 'neuron' && newAssetGovernanceId) {
+                const snsLedger = getSnsLedgerFromGovernance(newAssetGovernanceId);
+                if (snsLedger) {
+                    ledgerIds.add(snsLedger);
+                }
+            }
+            
+            if (ledgerIds.size === 0) return;
+            
+            const newPrices = {};
+            for (const ledgerId of ledgerIds) {
+                try {
+                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                    const decimals = token ? Number(token.decimals) : 8;
+                    const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
+                    newPrices[ledgerId] = price;
+                } catch (e) {
+                    // Silently ignore - token may not have an ICPSwap pool
+                }
+            }
+            setAssetPrices(prev => ({ ...prev, ...newPrices }));
+        };
+        
+        if (snsList.length > 0) {
+            fetchAssetPrices();
+        }
+    }, [assets, snsList, newAssetType, newAssetTokenLedger, newAssetGovernanceId, whitelistedTokens, getSnsLedgerFromGovernance]);
     
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -918,11 +1012,22 @@ function SneedexCreate() {
                 }
                 // Validate governance principal
                 Principal.fromText(newAssetGovernanceId.trim());
+                
+                // Get stake from selected neuron (if available)
+                const selectedNeuron = snsNeurons.find(n => extractNeuronId(n) === newAssetNeuronId.trim());
+                const stakeE8s = selectedNeuron?.cached_neuron_stake_e8s || null;
+                const sns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
+                const snsSymbol = sns?.tokenSymbol || 'tokens';
+                const snsDecimals = sns?.decimals || 8;
+                const stakeDisplay = stakeE8s ? (Number(stakeE8s) / Math.pow(10, snsDecimals)).toFixed(2) : '?';
+                
                 asset = { 
                     type: 'neuron', 
                     governance_id: newAssetGovernanceId.trim(), 
                     neuron_id: newAssetNeuronId.trim(),
-                    display: `Neuron: ${newAssetNeuronId.trim().slice(0, 10)}...`
+                    stake: stakeE8s, // Store stake in e8s for USD calculation
+                    symbol: snsSymbol,
+                    display: `${stakeDisplay} ${snsSymbol} Neuron`
                 };
             } else if (newAssetType === 'token') {
                 if (!newAssetTokenLedger.trim() || !newAssetTokenAmount.trim()) {
@@ -1400,6 +1505,34 @@ function SneedexCreate() {
             default: return <FaCubes />;
         }
     };
+    
+    // Calculate USD value for an asset
+    const getAssetUsdValue = useCallback((asset) => {
+        if (asset.type === 'token') {
+            // ICRC1 Token - use token price
+            const price = assetPrices[asset.ledger_id];
+            if (price && asset.amount) {
+                const decimals = asset.decimals || 8;
+                const amount = parseFloat(asset.amount);
+                return amount * price;
+            }
+        } else if (asset.type === 'neuron') {
+            // SNS Neuron - use SNS token price
+            const snsLedger = getSnsLedgerFromGovernance(asset.governance_id);
+            const price = snsLedger ? assetPrices[snsLedger] : null;
+            if (price && asset.stake) {
+                const decimals = getSnsDecimals(asset.governance_id);
+                const stake = Number(asset.stake) / Math.pow(10, decimals);
+                return stake * price;
+            }
+        } else if (asset.type === 'canister' && asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+            // ICP Neuron Manager - estimate based on ICP price
+            // Note: We don't have the neuron stakes cached here, so we can only show "ICP" value if we had it
+            // For now, we'll skip this unless we add stake caching
+            return null;
+        }
+        return null;
+    }, [assetPrices, getSnsLedgerFromGovernance, getSnsDecimals]);
 
     const styles = {
         container: {
@@ -2239,6 +2372,23 @@ function SneedexCreate() {
                                                             />
                                                         )}
                                                     </div>
+                                                    {/* USD Value */}
+                                                    {(() => {
+                                                        const usdValue = getAssetUsdValue(asset);
+                                                        if (usdValue !== null) {
+                                                            return (
+                                                                <div style={{ 
+                                                                    fontSize: '0.75rem', 
+                                                                    color: theme.colors.success,
+                                                                    fontWeight: '600',
+                                                                    marginTop: '2px',
+                                                                }}>
+                                                                    ≈ {formatUsd(usdValue)}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
                                                 </div>
                                             </div>
                                             
@@ -2859,6 +3009,55 @@ function SneedexCreate() {
                                                 
                                                 {/* Hidden input to store governance ID */}
                                                 <input type="hidden" value={newAssetGovernanceId} />
+                                                
+                                                {/* USD estimate for selected neuron */}
+                                                {newAssetNeuronId && (() => {
+                                                    const selectedNeuron = snsNeurons.find(n => extractNeuronId(n) === newAssetNeuronId);
+                                                    const stakeE8s = selectedNeuron?.cached_neuron_stake_e8s;
+                                                    const snsLedger = getSnsLedgerFromGovernance(newAssetGovernanceId);
+                                                    const price = snsLedger ? assetPrices[snsLedger] : null;
+                                                    
+                                                    if (stakeE8s && price) {
+                                                        const decimals = getSnsDecimals(newAssetGovernanceId);
+                                                        const stake = Number(stakeE8s) / Math.pow(10, decimals);
+                                                        const usdValue = stake * price;
+                                                        const sns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
+                                                        const symbol = sns?.tokenSymbol || 'tokens';
+                                                        
+                                                        return (
+                                                            <div style={{
+                                                                marginTop: '12px',
+                                                                padding: '12px',
+                                                                background: `${theme.colors.success}10`,
+                                                                borderRadius: '8px',
+                                                                fontSize: '0.85rem',
+                                                            }}>
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                }}>
+                                                                    <span style={{ color: theme.colors.mutedText }}>Staked:</span>
+                                                                    <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                                                        {stake.toFixed(decimals > 4 ? 4 : decimals)} {symbol}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                    marginTop: '4px',
+                                                                }}>
+                                                                    <span style={{ color: theme.colors.mutedText }}>Est. Value:</span>
+                                                                    <span style={{ fontWeight: '600', color: theme.colors.success }}>
+                                                                        {formatUsd(usdValue)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
                                             </div>
                                         )}
                                     </>
@@ -2959,6 +3158,26 @@ function SneedexCreate() {
                                                 value={newAssetTokenAmount}
                                                 onChange={(e) => setNewAssetTokenAmount(e.target.value)}
                                             />
+                                            {/* USD estimate for token amount */}
+                                            {newAssetTokenAmount && assetPrices[newAssetTokenLedger] && (
+                                                <div style={{
+                                                    marginTop: '8px',
+                                                    fontSize: '0.85rem',
+                                                    color: theme.colors.mutedText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                }}>
+                                                    <span>≈</span>
+                                                    <span style={{ 
+                                                        color: theme.colors.success, 
+                                                        fontWeight: '600' 
+                                                    }}>
+                                                        {formatUsd(parseFloat(newAssetTokenAmount) * assetPrices[newAssetTokenLedger])}
+                                                    </span>
+                                                    <span>USD</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 )}
@@ -3084,6 +3303,23 @@ function SneedexCreate() {
                                                     {getAssetIcon(asset)}
                                                     <div style={styles.assetDetails}>
                                                         <div style={styles.assetType}>{asset.display}</div>
+                                                        {/* USD Value */}
+                                                        {(() => {
+                                                            const usdValue = getAssetUsdValue(asset);
+                                                            if (usdValue !== null) {
+                                                                return (
+                                                                    <div style={{ 
+                                                                        fontSize: '0.75rem', 
+                                                                        color: theme.colors.success,
+                                                                        fontWeight: '600',
+                                                                        marginTop: '2px',
+                                                                    }}>
+                                                                        ≈ {formatUsd(usdValue)}
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
                                                     </div>
                                                 </div>
                                                 <div style={{ 
@@ -3260,6 +3496,45 @@ function SneedexCreate() {
                             >
                                 <FaSync /> Recheck Assets
                             </button>
+                            
+                            {/* Total Estimated Value */}
+                            {(() => {
+                                const totalUsd = assets.reduce((sum, asset) => {
+                                    const usdValue = getAssetUsdValue(asset);
+                                    return sum + (usdValue || 0);
+                                }, 0);
+                                
+                                if (totalUsd > 0) {
+                                    return (
+                                        <div style={{
+                                            marginTop: '1rem',
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.accent}10)`,
+                                            borderRadius: '10px',
+                                            border: `1px solid ${theme.colors.success}30`,
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                        }}>
+                                            <span style={{ 
+                                                fontSize: '0.9rem', 
+                                                fontWeight: '500',
+                                                color: theme.colors.primaryText,
+                                            }}>
+                                                📊 Total Estimated Value:
+                                            </span>
+                                            <span style={{ 
+                                                fontSize: '1.1rem', 
+                                                fontWeight: '700',
+                                                color: theme.colors.success,
+                                            }}>
+                                                {formatUsd(totalUsd)}
+                                            </span>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </div>
                         
                         {/* Show different message based on verification status */}
