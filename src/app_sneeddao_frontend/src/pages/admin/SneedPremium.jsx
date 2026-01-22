@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -24,7 +24,7 @@ import ConfirmationModal from '../../ConfirmationModal';
 import { 
     FaCrown, FaUserShield, FaSave, FaSpinner, FaPlus, FaTrash, 
     FaClock, FaCoins, FaVoteYea, FaUsers, FaEdit, FaCheckCircle, 
-    FaTimesCircle, FaCog, FaWallet
+    FaTimesCircle, FaCog, FaWallet, FaTimes
 } from 'react-icons/fa';
 
 export default function SneedPremiumAdmin() {
@@ -32,6 +32,9 @@ export default function SneedPremiumAdmin() {
     const { theme } = useTheme();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    
+    // Store actor reference to avoid recreating it
+    const actorRef = useRef(null);
     
     // Admin check
     const { isAdmin: isGlobalAdmin, loading: adminLoading } = useAdminCheck({
@@ -74,13 +77,29 @@ export default function SneedPremiumAdmin() {
     const [manualMemberDuration, setManualMemberDuration] = useState('');
     const [manualMemberDurationUnit, setManualMemberDurationUnit] = useState('months');
     
+    // Edit modal state
+    const [editIcpTierModal, setEditIcpTierModal] = useState({ show: false, index: null, tier: null });
+    const [editVpTierModal, setEditVpTierModal] = useState({ show: false, index: null, tier: null });
+    const [editIcpTierName, setEditIcpTierName] = useState('');
+    const [editIcpTierAmount, setEditIcpTierAmount] = useState('');
+    const [editIcpTierDuration, setEditIcpTierDuration] = useState('');
+    const [editIcpTierDurationUnit, setEditIcpTierDurationUnit] = useState('months');
+    const [editIcpTierActive, setEditIcpTierActive] = useState(true);
+    const [editVpTierName, setEditVpTierName] = useState('');
+    const [editVpTierMinVp, setEditVpTierMinVp] = useState('');
+    const [editVpTierDuration, setEditVpTierDuration] = useState('');
+    const [editVpTierDurationUnit, setEditVpTierDurationUnit] = useState('months');
+    const [editVpTierActive, setEditVpTierActive] = useState(true);
+    
     // Loading states
     const [addingAdmin, setAddingAdmin] = useState(false);
     const [removingAdmin, setRemovingAdmin] = useState(null);
     const [addingIcpTier, setAddingIcpTier] = useState(false);
     const [removingIcpTier, setRemovingIcpTier] = useState(null);
+    const [updatingIcpTier, setUpdatingIcpTier] = useState(false);
     const [addingVpTier, setAddingVpTier] = useState(false);
     const [removingVpTier, setRemovingVpTier] = useState(null);
+    const [updatingVpTier, setUpdatingVpTier] = useState(false);
     const [savingPaymentRecipient, setSavingPaymentRecipient] = useState(false);
     const [savingMinClaimInterval, setSavingMinClaimInterval] = useState(false);
     const [grantingMembership, setGrantingMembership] = useState(false);
@@ -106,9 +125,18 @@ export default function SneedPremiumAdmin() {
         setConfirmModal({ ...confirmModal, show: false });
     };
     
+    // Get or create actor
     const getActor = useCallback(async () => {
         if (!identity) return null;
-        return await createSneedPremiumActor(identity);
+        if (!actorRef.current) {
+            actorRef.current = await createSneedPremiumActor(identity);
+        }
+        return actorRef.current;
+    }, [identity]);
+    
+    // Reset actor when identity changes
+    useEffect(() => {
+        actorRef.current = null;
     }, [identity]);
     
     const fetchData = useCallback(async () => {
@@ -174,7 +202,7 @@ export default function SneedPremiumAdmin() {
             const result = await actor.addAdmin(principal);
             if ('ok' in result) {
                 showInfo('Success', 'Admin added successfully', 'success');
-                fetchData();
+                await fetchData();
                 setNewAdminPrincipal('');
             } else {
                 showInfo('Error', 'Failed to add admin: ' + JSON.stringify(result.err), 'error');
@@ -185,28 +213,30 @@ export default function SneedPremiumAdmin() {
         setAddingAdmin(false);
     };
     
-    const handleRemoveAdmin = async (adminPrincipal) => {
+    const handleRemoveAdmin = (adminPrincipal) => {
         showConfirm(
             'Remove Admin',
             `Are you sure you want to remove this admin?\n\n${adminPrincipal.toString()}`,
-            async () => {
-                closeConfirmModal();
-                setRemovingAdmin(adminPrincipal.toString());
-                try {
-                    const actor = await getActor();
-                    const result = await actor.removeAdmin(adminPrincipal);
-                    if ('ok' in result) {
-                        showInfo('Success', 'Admin removed successfully', 'success');
-                        fetchData();
-                    } else {
-                        showInfo('Error', 'Failed to remove admin: ' + JSON.stringify(result.err), 'error');
-                    }
-                } catch (e) {
-                    showInfo('Error', 'Failed to remove admin: ' + e.message, 'error');
-                }
-                setRemovingAdmin(null);
-            }
+            () => doRemoveAdmin(adminPrincipal)
         );
+    };
+    
+    const doRemoveAdmin = async (adminPrincipal) => {
+        closeConfirmModal();
+        setRemovingAdmin(adminPrincipal.toString());
+        try {
+            const actor = await getActor();
+            const result = await actor.removeAdmin(adminPrincipal);
+            if ('ok' in result) {
+                showInfo('Success', 'Admin removed successfully', 'success');
+                await fetchData();
+            } else {
+                showInfo('Error', 'Failed to remove admin: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to remove admin: ' + e.message, 'error');
+        }
+        setRemovingAdmin(null);
     };
     
     // ============================================
@@ -247,7 +277,7 @@ export default function SneedPremiumAdmin() {
             const result = await actor.addIcpTier(tier);
             if ('ok' in result) {
                 showInfo('Success', `ICP tier "${newIcpTierName}" added successfully`, 'success');
-                fetchData();
+                await fetchData();
                 setNewIcpTierName('');
                 setNewIcpTierAmount('');
                 setNewIcpTierDuration('');
@@ -260,29 +290,104 @@ export default function SneedPremiumAdmin() {
         setAddingIcpTier(false);
     };
     
-    const handleRemoveIcpTier = async (index) => {
+    const handleRemoveIcpTier = (index) => {
         const tier = icpTiers[index];
         showConfirm(
             'Remove ICP Tier',
             `Are you sure you want to remove "${tier.name}"?\n\n${formatIcp(tier.amountE8s)} → ${formatDuration(tier.durationNs)}`,
-            async () => {
-                closeConfirmModal();
-                setRemovingIcpTier(index);
-                try {
-                    const actor = await getActor();
-                    const result = await actor.removeIcpTier(BigInt(index));
-                    if ('ok' in result) {
-                        showInfo('Success', 'ICP tier removed successfully', 'success');
-                        fetchData();
-                    } else {
-                        showInfo('Error', 'Failed to remove ICP tier: ' + JSON.stringify(result.err), 'error');
-                    }
-                } catch (e) {
-                    showInfo('Error', 'Failed to remove ICP tier: ' + e.message, 'error');
-                }
-                setRemovingIcpTier(null);
-            }
+            () => doRemoveIcpTier(index)
         );
+    };
+    
+    const doRemoveIcpTier = async (index) => {
+        closeConfirmModal();
+        setRemovingIcpTier(index);
+        try {
+            const actor = await getActor();
+            const result = await actor.removeIcpTier(BigInt(index));
+            if ('ok' in result) {
+                showInfo('Success', 'ICP tier removed successfully', 'success');
+                await fetchData();
+            } else {
+                showInfo('Error', 'Failed to remove ICP tier: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to remove ICP tier: ' + e.message, 'error');
+        }
+        setRemovingIcpTier(null);
+    };
+    
+    const openEditIcpTierModal = (index) => {
+        const tier = icpTiers[index];
+        const amountIcp = Number(tier.amountE8s) / Number(E8S_PER_ICP);
+        // Estimate duration in the closest unit
+        const durationNs = BigInt(tier.durationNs);
+        let durationValue, durationUnit;
+        if (durationNs >= NS_PER_YEAR && durationNs % NS_PER_YEAR === 0n) {
+            durationValue = Number(durationNs / NS_PER_YEAR);
+            durationUnit = 'years';
+        } else if (durationNs >= NS_PER_MONTH && durationNs % NS_PER_MONTH === 0n) {
+            durationValue = Number(durationNs / NS_PER_MONTH);
+            durationUnit = 'months';
+        } else if (durationNs >= NS_PER_DAY) {
+            durationValue = Number(durationNs / NS_PER_DAY);
+            durationUnit = 'days';
+        } else {
+            durationValue = Number(durationNs / NS_PER_DAY);
+            durationUnit = 'days';
+        }
+        
+        setEditIcpTierName(tier.name);
+        setEditIcpTierAmount(amountIcp.toString());
+        setEditIcpTierDuration(durationValue.toString());
+        setEditIcpTierDurationUnit(durationUnit);
+        setEditIcpTierActive(tier.active);
+        setEditIcpTierModal({ show: true, index, tier });
+    };
+    
+    const handleUpdateIcpTier = async () => {
+        if (!editIcpTierName.trim()) {
+            showInfo('Invalid Name', 'Please enter a tier name', 'error');
+            return;
+        }
+        
+        let amountE8s;
+        try {
+            amountE8s = parseIcpToE8s(editIcpTierAmount);
+        } catch (e) {
+            showInfo('Invalid Amount', 'Please enter a valid ICP amount', 'error');
+            return;
+        }
+        
+        const durationNum = parseFloat(editIcpTierDuration);
+        if (isNaN(durationNum) || durationNum <= 0) {
+            showInfo('Invalid Duration', 'Please enter a valid duration', 'error');
+            return;
+        }
+        
+        const durationNs = parseDurationToNs(durationNum, editIcpTierDurationUnit);
+        
+        setUpdatingIcpTier(true);
+        try {
+            const actor = await getActor();
+            const tier = {
+                amountE8s: amountE8s,
+                durationNs: durationNs,
+                name: editIcpTierName.trim(),
+                active: editIcpTierActive,
+            };
+            const result = await actor.updateIcpTier(BigInt(editIcpTierModal.index), tier);
+            if ('ok' in result) {
+                showInfo('Success', `ICP tier updated successfully`, 'success');
+                await fetchData();
+                setEditIcpTierModal({ show: false, index: null, tier: null });
+            } else {
+                showInfo('Error', 'Failed to update ICP tier: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to update ICP tier: ' + e.message, 'error');
+        }
+        setUpdatingIcpTier(false);
     };
     
     // ============================================
@@ -322,7 +427,7 @@ export default function SneedPremiumAdmin() {
             const result = await actor.addVpTier(tier);
             if ('ok' in result) {
                 showInfo('Success', `Voting power tier "${newVpTierName}" added successfully`, 'success');
-                fetchData();
+                await fetchData();
                 setNewVpTierName('');
                 setNewVpTierMinVp('');
                 setNewVpTierDuration('');
@@ -335,29 +440,103 @@ export default function SneedPremiumAdmin() {
         setAddingVpTier(false);
     };
     
-    const handleRemoveVpTier = async (index) => {
+    const handleRemoveVpTier = (index) => {
         const tier = vpTiers[index];
         showConfirm(
             'Remove Voting Power Tier',
             `Are you sure you want to remove "${tier.name}"?\n\n${formatVotingPower(tier.minVotingPowerE8s)} → ${formatDuration(tier.durationNs)}`,
-            async () => {
-                closeConfirmModal();
-                setRemovingVpTier(index);
-                try {
-                    const actor = await getActor();
-                    const result = await actor.removeVpTier(BigInt(index));
-                    if ('ok' in result) {
-                        showInfo('Success', 'VP tier removed successfully', 'success');
-                        fetchData();
-                    } else {
-                        showInfo('Error', 'Failed to remove VP tier: ' + JSON.stringify(result.err), 'error');
-                    }
-                } catch (e) {
-                    showInfo('Error', 'Failed to remove VP tier: ' + e.message, 'error');
-                }
-                setRemovingVpTier(null);
-            }
+            () => doRemoveVpTier(index)
         );
+    };
+    
+    const doRemoveVpTier = async (index) => {
+        closeConfirmModal();
+        setRemovingVpTier(index);
+        try {
+            const actor = await getActor();
+            const result = await actor.removeVpTier(BigInt(index));
+            if ('ok' in result) {
+                showInfo('Success', 'VP tier removed successfully', 'success');
+                await fetchData();
+            } else {
+                showInfo('Error', 'Failed to remove VP tier: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to remove VP tier: ' + e.message, 'error');
+        }
+        setRemovingVpTier(null);
+    };
+    
+    const openEditVpTierModal = (index) => {
+        const tier = vpTiers[index];
+        const minVp = Number(tier.minVotingPowerE8s) / Number(E8S_PER_ICP);
+        // Estimate duration in the closest unit
+        const durationNs = BigInt(tier.durationNs);
+        let durationValue, durationUnit;
+        if (durationNs >= NS_PER_YEAR && durationNs % NS_PER_YEAR === 0n) {
+            durationValue = Number(durationNs / NS_PER_YEAR);
+            durationUnit = 'years';
+        } else if (durationNs >= NS_PER_MONTH && durationNs % NS_PER_MONTH === 0n) {
+            durationValue = Number(durationNs / NS_PER_MONTH);
+            durationUnit = 'months';
+        } else if (durationNs >= NS_PER_DAY) {
+            durationValue = Number(durationNs / NS_PER_DAY);
+            durationUnit = 'days';
+        } else {
+            durationValue = Number(durationNs / NS_PER_DAY);
+            durationUnit = 'days';
+        }
+        
+        setEditVpTierName(tier.name);
+        setEditVpTierMinVp(minVp.toString());
+        setEditVpTierDuration(durationValue.toString());
+        setEditVpTierDurationUnit(durationUnit);
+        setEditVpTierActive(tier.active);
+        setEditVpTierModal({ show: true, index, tier });
+    };
+    
+    const handleUpdateVpTier = async () => {
+        if (!editVpTierName.trim()) {
+            showInfo('Invalid Name', 'Please enter a tier name', 'error');
+            return;
+        }
+        
+        const minVpNum = parseFloat(editVpTierMinVp);
+        if (isNaN(minVpNum) || minVpNum < 0) {
+            showInfo('Invalid Voting Power', 'Please enter a valid minimum voting power', 'error');
+            return;
+        }
+        const minVpE8s = BigInt(Math.round(minVpNum * Number(E8S_PER_ICP)));
+        
+        const durationNum = parseFloat(editVpTierDuration);
+        if (isNaN(durationNum) || durationNum <= 0) {
+            showInfo('Invalid Duration', 'Please enter a valid duration', 'error');
+            return;
+        }
+        
+        const durationNs = parseDurationToNs(durationNum, editVpTierDurationUnit);
+        
+        setUpdatingVpTier(true);
+        try {
+            const actor = await getActor();
+            const tier = {
+                minVotingPowerE8s: minVpE8s,
+                durationNs: durationNs,
+                name: editVpTierName.trim(),
+                active: editVpTierActive,
+            };
+            const result = await actor.updateVpTier(BigInt(editVpTierModal.index), tier);
+            if ('ok' in result) {
+                showInfo('Success', `VP tier updated successfully`, 'success');
+                await fetchData();
+                setEditVpTierModal({ show: false, index: null, tier: null });
+            } else {
+                showInfo('Error', 'Failed to update VP tier: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to update VP tier: ' + e.message, 'error');
+        }
+        setUpdatingVpTier(false);
     };
     
     // ============================================
@@ -400,7 +579,7 @@ export default function SneedPremiumAdmin() {
             });
             if ('ok' in result) {
                 showInfo('Success', 'Payment recipient updated successfully', 'success');
-                fetchData();
+                await fetchData();
                 setNewPaymentRecipientPrincipal('');
                 setNewPaymentRecipientSubaccount('');
             } else {
@@ -427,7 +606,7 @@ export default function SneedPremiumAdmin() {
             const result = await actor.setMinClaimInterval(intervalNs);
             if ('ok' in result) {
                 showInfo('Success', 'Minimum claim interval updated successfully', 'success');
-                fetchData();
+                await fetchData();
                 setNewMinClaimInterval('');
             } else {
                 showInfo('Error', 'Failed to update interval: ' + JSON.stringify(result.err), 'error');
@@ -465,7 +644,7 @@ export default function SneedPremiumAdmin() {
             const result = await actor.extendMembershipAdmin(principal, durationNs);
             if ('ok' in result) {
                 showInfo('Success', `Membership granted/extended for ${durationNum} ${manualMemberDurationUnit}`, 'success');
-                fetchData();
+                await fetchData();
                 setManualMemberPrincipal('');
                 setManualMemberDuration('');
             } else {
@@ -477,28 +656,30 @@ export default function SneedPremiumAdmin() {
         setGrantingMembership(false);
     };
     
-    const handleRevokeMembership = async (principal) => {
+    const handleRevokeMembership = (principal) => {
         showConfirm(
             'Revoke Membership',
             `Are you sure you want to revoke membership for this principal?\n\n${principal.toString()}`,
-            async () => {
-                closeConfirmModal();
-                setRevokingMembership(principal.toString());
-                try {
-                    const actor = await getActor();
-                    const result = await actor.revokeMembership(principal);
-                    if ('ok' in result) {
-                        showInfo('Success', 'Membership revoked successfully', 'success');
-                        fetchData();
-                    } else {
-                        showInfo('Error', 'Failed to revoke membership: ' + JSON.stringify(result.err), 'error');
-                    }
-                } catch (e) {
-                    showInfo('Error', 'Failed to revoke membership: ' + e.message, 'error');
-                }
-                setRevokingMembership(null);
-            }
+            () => doRevokeMembership(principal)
         );
+    };
+    
+    const doRevokeMembership = async (principal) => {
+        closeConfirmModal();
+        setRevokingMembership(principal.toString());
+        try {
+            const actor = await getActor();
+            const result = await actor.revokeMembership(principal);
+            if ('ok' in result) {
+                showInfo('Success', 'Membership revoked successfully', 'success');
+                await fetchData();
+            } else {
+                showInfo('Error', 'Failed to revoke membership: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to revoke membership: ' + e.message, 'error');
+        }
+        setRevokingMembership(null);
     };
     
     // ============================================
@@ -607,6 +788,18 @@ export default function SneedPremiumAdmin() {
             gap: '0.5rem',
             whiteSpace: 'nowrap',
         },
+        buttonSecondary: {
+            padding: '8px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            fontWeight: '600',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+        },
         buttonDanger: {
             padding: '8px 14px',
             borderRadius: '8px',
@@ -711,6 +904,59 @@ export default function SneedPremiumAdmin() {
             padding: '2rem',
             color: theme.colors.mutedText,
             fontStyle: 'italic',
+        },
+        modal: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+        },
+        modalContent: {
+            background: theme.colors.primaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '16px',
+            padding: '2rem',
+            maxWidth: '500px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflow: 'auto',
+        },
+        modalHeader: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.5rem',
+        },
+        modalTitle: {
+            fontSize: '1.5rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+        },
+        closeButton: {
+            background: 'none',
+            border: 'none',
+            color: theme.colors.mutedText,
+            cursor: 'pointer',
+            fontSize: '1.5rem',
+        },
+        checkbox: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+        },
+        tierActions: {
+            display: 'flex',
+            gap: '0.5rem',
         },
     };
     
@@ -915,17 +1161,27 @@ export default function SneedPremiumAdmin() {
                                     <span style={{ ...styles.badge, ...(tier.active ? styles.badgeActive : styles.badgeExpired) }}>
                                         {tier.active ? <><FaCheckCircle style={{ marginRight: '4px' }} />Active</> : <><FaTimesCircle style={{ marginRight: '4px' }} />Inactive</>}
                                     </span>
-                                    <button
-                                        onClick={() => handleRemoveIcpTier(index)}
-                                        disabled={removingIcpTier === index}
-                                        style={{
-                                            ...styles.buttonDanger,
-                                            opacity: removingIcpTier === index ? 0.5 : 1,
-                                            cursor: removingIcpTier === index ? 'not-allowed' : 'pointer',
-                                        }}
-                                    >
-                                        {removingIcpTier === index ? <FaSpinner className="spin" /> : <FaTrash />}
-                                    </button>
+                                    <div style={styles.tierActions}>
+                                        <button
+                                            onClick={() => openEditIcpTierModal(index)}
+                                            style={styles.buttonSecondary}
+                                            title="Edit tier"
+                                        >
+                                            <FaEdit />
+                                        </button>
+                                        <button
+                                            onClick={() => handleRemoveIcpTier(index)}
+                                            disabled={removingIcpTier === index}
+                                            style={{
+                                                ...styles.buttonDanger,
+                                                opacity: removingIcpTier === index ? 0.5 : 1,
+                                                cursor: removingIcpTier === index ? 'not-allowed' : 'pointer',
+                                            }}
+                                            title="Remove tier"
+                                        >
+                                            {removingIcpTier === index ? <FaSpinner className="spin" /> : <FaTrash />}
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -1019,17 +1275,27 @@ export default function SneedPremiumAdmin() {
                                     <span style={{ ...styles.badge, ...(tier.active ? styles.badgeActive : styles.badgeExpired) }}>
                                         {tier.active ? <><FaCheckCircle style={{ marginRight: '4px' }} />Active</> : <><FaTimesCircle style={{ marginRight: '4px' }} />Inactive</>}
                                     </span>
-                                    <button
-                                        onClick={() => handleRemoveVpTier(index)}
-                                        disabled={removingVpTier === index}
-                                        style={{
-                                            ...styles.buttonDanger,
-                                            opacity: removingVpTier === index ? 0.5 : 1,
-                                            cursor: removingVpTier === index ? 'not-allowed' : 'pointer',
-                                        }}
-                                    >
-                                        {removingVpTier === index ? <FaSpinner className="spin" /> : <FaTrash />}
-                                    </button>
+                                    <div style={styles.tierActions}>
+                                        <button
+                                            onClick={() => openEditVpTierModal(index)}
+                                            style={styles.buttonSecondary}
+                                            title="Edit tier"
+                                        >
+                                            <FaEdit />
+                                        </button>
+                                        <button
+                                            onClick={() => handleRemoveVpTier(index)}
+                                            disabled={removingVpTier === index}
+                                            style={{
+                                                ...styles.buttonDanger,
+                                                opacity: removingVpTier === index ? 0.5 : 1,
+                                                cursor: removingVpTier === index ? 'not-allowed' : 'pointer',
+                                            }}
+                                            title="Remove tier"
+                                        >
+                                            {removingVpTier === index ? <FaSpinner className="spin" /> : <FaTrash />}
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -1260,6 +1526,184 @@ export default function SneedPremiumAdmin() {
                 
             </main>
             
+            {/* Edit ICP Tier Modal */}
+            {editIcpTierModal.show && (
+                <div style={styles.modal} onClick={() => setEditIcpTierModal({ show: false, index: null, tier: null })}>
+                    <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                        <div style={styles.modalHeader}>
+                            <h2 style={styles.modalTitle}>
+                                <FaEdit style={{ color: theme.colors.accent }} />
+                                Edit ICP Tier
+                            </h2>
+                            <button 
+                                style={styles.closeButton}
+                                onClick={() => setEditIcpTierModal({ show: false, index: null, tier: null })}
+                            >
+                                <FaTimes />
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label style={styles.label}>Tier Name</label>
+                                <input
+                                    type="text"
+                                    value={editIcpTierName}
+                                    onChange={(e) => setEditIcpTierName(e.target.value)}
+                                    style={{ ...styles.input, width: '100%' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={styles.label}>ICP Amount</label>
+                                <input
+                                    type="number"
+                                    step="0.0001"
+                                    min="0"
+                                    value={editIcpTierAmount}
+                                    onChange={(e) => setEditIcpTierAmount(e.target.value)}
+                                    style={{ ...styles.input, width: '100%' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={styles.label}>Duration</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        value={editIcpTierDuration}
+                                        onChange={(e) => setEditIcpTierDuration(e.target.value)}
+                                        style={{ ...styles.input, flex: 1 }}
+                                    />
+                                    <select
+                                        value={editIcpTierDurationUnit}
+                                        onChange={(e) => setEditIcpTierDurationUnit(e.target.value)}
+                                        style={styles.select}
+                                    >
+                                        <option value="days">Days</option>
+                                        <option value="weeks">Weeks</option>
+                                        <option value="months">Months</option>
+                                        <option value="years">Years</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label style={styles.checkbox}>
+                                    <input
+                                        type="checkbox"
+                                        checked={editIcpTierActive}
+                                        onChange={(e) => setEditIcpTierActive(e.target.checked)}
+                                    />
+                                    Active (tier can be used for purchases)
+                                </label>
+                            </div>
+                            <button
+                                onClick={handleUpdateIcpTier}
+                                disabled={updatingIcpTier}
+                                style={{
+                                    ...styles.buttonSuccess,
+                                    width: '100%',
+                                    justifyContent: 'center',
+                                    opacity: updatingIcpTier ? 0.5 : 1,
+                                    cursor: updatingIcpTier ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {updatingIcpTier ? <FaSpinner className="spin" /> : <FaSave />}
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Edit VP Tier Modal */}
+            {editVpTierModal.show && (
+                <div style={styles.modal} onClick={() => setEditVpTierModal({ show: false, index: null, tier: null })}>
+                    <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                        <div style={styles.modalHeader}>
+                            <h2 style={styles.modalTitle}>
+                                <FaEdit style={{ color: theme.colors.accent }} />
+                                Edit Voting Power Tier
+                            </h2>
+                            <button 
+                                style={styles.closeButton}
+                                onClick={() => setEditVpTierModal({ show: false, index: null, tier: null })}
+                            >
+                                <FaTimes />
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label style={styles.label}>Tier Name</label>
+                                <input
+                                    type="text"
+                                    value={editVpTierName}
+                                    onChange={(e) => setEditVpTierName(e.target.value)}
+                                    style={{ ...styles.input, width: '100%' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={styles.label}>Minimum Voting Power (in SNEED)</label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={editVpTierMinVp}
+                                    onChange={(e) => setEditVpTierMinVp(e.target.value)}
+                                    style={{ ...styles.input, width: '100%' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={styles.label}>Duration</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        value={editVpTierDuration}
+                                        onChange={(e) => setEditVpTierDuration(e.target.value)}
+                                        style={{ ...styles.input, flex: 1 }}
+                                    />
+                                    <select
+                                        value={editVpTierDurationUnit}
+                                        onChange={(e) => setEditVpTierDurationUnit(e.target.value)}
+                                        style={styles.select}
+                                    >
+                                        <option value="days">Days</option>
+                                        <option value="weeks">Weeks</option>
+                                        <option value="months">Months</option>
+                                        <option value="years">Years</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label style={styles.checkbox}>
+                                    <input
+                                        type="checkbox"
+                                        checked={editVpTierActive}
+                                        onChange={(e) => setEditVpTierActive(e.target.checked)}
+                                    />
+                                    Active (tier can be used for claims)
+                                </label>
+                            </div>
+                            <button
+                                onClick={handleUpdateVpTier}
+                                disabled={updatingVpTier}
+                                style={{
+                                    ...styles.buttonSuccess,
+                                    width: '100%',
+                                    justifyContent: 'center',
+                                    opacity: updatingVpTier ? 0.5 : 1,
+                                    cursor: updatingVpTier ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {updatingVpTier ? <FaSpinner className="spin" /> : <FaSave />}
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <InfoModal
                 isOpen={infoModal.show}
                 onClose={closeInfoModal}
@@ -1278,4 +1722,3 @@ export default function SneedPremiumAdmin() {
         </div>
     );
 }
-
