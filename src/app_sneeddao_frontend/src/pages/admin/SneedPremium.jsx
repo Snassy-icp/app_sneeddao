@@ -1713,11 +1713,11 @@ export default function SneedPremiumAdmin() {
             />
             
             <ConfirmationModal
-                isOpen={confirmModal.show}
+                show={confirmModal.show}
                 onClose={closeConfirmModal}
-                onConfirm={confirmModal.onConfirm}
-                title={confirmModal.title}
+                onSubmit={confirmModal.onConfirm}
                 message={confirmModal.message}
+                doAwait={true}
             />
         </div>
     );
