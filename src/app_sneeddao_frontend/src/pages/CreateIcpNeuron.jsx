@@ -22,6 +22,7 @@ const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
 const ICP_FEE = 10_000;
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
+const CANISTER_CREATION_OVERHEAD = 500_000_000_000; // ~500B cycles used for canister creation
 
 // Beta end date - feature becomes available to everyone after this date
 const BETA_END_DATE = new Date('2026-01-24T00:00:00Z');
@@ -814,6 +815,27 @@ function CreateIcpNeuron() {
                                         >
                                             Get Premium →
                                         </a>
+                                    </div>
+                                )}
+                                
+                                {/* Cycles info */}
+                                {paymentConfig.targetCyclesAmount > 0 && (
+                                    <div style={{ 
+                                        marginTop: '12px', 
+                                        paddingTop: '12px', 
+                                        borderTop: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Your new canister will receive</div>
+                                                <div style={{ color: theme.colors.accent, fontSize: '18px', fontWeight: '600', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                                                    <span>⚡ ~{formatCycles(Math.max(0, paymentConfig.targetCyclesAmount - CANISTER_CREATION_OVERHEAD))}</span>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '11px', fontWeight: '400' }}>
+                                                        ({formatCycles(paymentConfig.targetCyclesAmount)} allocated, ~{formatCycles(CANISTER_CREATION_OVERHEAD)} used for creation)
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                                 
