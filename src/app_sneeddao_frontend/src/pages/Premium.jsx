@@ -16,7 +16,6 @@ import {
 } from '../utils/SneedPremiumUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import InfoModal from '../components/InfoModal';
-import ConfirmationModal from '../ConfirmationModal';
 import { 
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
     FaTimesCircle, FaExclamationTriangle, FaArrowRight, FaWallet,
@@ -56,7 +55,16 @@ export default function Premium() {
     
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
-    const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
+    const [premiumConfirmModal, setPremiumConfirmModal] = useState({ 
+        show: false, 
+        type: null, // 'icp', 'vp', 'promo'
+        title: '',
+        icon: null,
+        details: [],
+        highlight: '',
+        confirmText: '',
+        onConfirm: null 
+    });
     
     const showInfo = (title, message, type = 'info') => {
         setInfoModal({ show: true, title, message, type });
@@ -66,12 +74,8 @@ export default function Premium() {
         setInfoModal({ ...infoModal, show: false });
     };
     
-    const showConfirm = (message, onConfirm) => {
-        setConfirmModal({ show: true, message, onConfirm });
-    };
-    
-    const closeConfirmModal = () => {
-        setConfirmModal({ ...confirmModal, show: false });
+    const closePremiumConfirmModal = () => {
+        setPremiumConfirmModal({ ...premiumConfirmModal, show: false });
     };
     
     // Get or create actor
@@ -182,14 +186,26 @@ export default function Premium() {
             return;
         }
         
-        showConfirm(
-            `Pay ${formatIcp(tier.amountE8s)} from your wallet for "${tier.name}"?\n\nThis will transfer ICP from your wallet and complete the purchase in one step.\n\nYou will receive ${formatDuration(tier.durationNs)} of premium membership.`,
-            () => doPayNow()
-        );
+        setPremiumConfirmModal({
+            show: true,
+            type: 'icp',
+            title: 'Purchase Premium Membership',
+            icon: <FaCoins style={{ fontSize: '2.5rem', color: '#FFD700' }} />,
+            details: [
+                { label: 'Tier', value: tier.name },
+                { label: 'Cost', value: formatIcp(tier.amountE8s) },
+                { label: 'Duration', value: formatDuration(tier.durationNs) },
+            ],
+            highlight: isActive 
+                ? `This will extend your existing membership by ${formatDuration(tier.durationNs)}` 
+                : `You'll become a Sneed Premium member!`,
+            confirmText: `Pay ${formatIcp(tier.amountE8s)}`,
+            onConfirm: doPayNow,
+        });
     };
     
     const doPayNow = async () => {
-        closeConfirmModal();
+        closePremiumConfirmModal();
         setPayingNow(true);
         
         try {
@@ -252,14 +268,28 @@ export default function Premium() {
     
     // Claim with Voting Power
     const handleClaimVP = async () => {
-        showConfirm(
-            `Claim premium membership with your Sneed voting power?\n\nThis will check your staked SNEED neurons and grant membership based on your total voting power.`,
-            () => doClaimVP()
-        );
+        // Find the best VP tier to show
+        const activeTiers = vpTiers.filter(t => t.active);
+        const bestTier = activeTiers.length > 0 ? activeTiers[activeTiers.length - 1] : null;
+        
+        setPremiumConfirmModal({
+            show: true,
+            type: 'vp',
+            title: 'Claim with Voting Power',
+            icon: <FaVoteYea style={{ fontSize: '2.5rem', color: theme.colors.info || theme.colors.accent }} />,
+            details: [
+                { label: 'Method', value: 'Sneed Staking' },
+                { label: 'Available Tiers', value: `${activeTiers.length} tier${activeTiers.length !== 1 ? 's' : ''}` },
+                ...(bestTier ? [{ label: 'Best Tier', value: `${formatVotingPower(bestTier.minVotingPowerE8s)} → ${formatDuration(bestTier.durationNs)}` }] : []),
+            ],
+            highlight: 'Your staked SNEED neurons will be checked to determine your membership duration',
+            confirmText: 'Check My Neurons',
+            onConfirm: doClaimVP,
+        });
     };
     
     const doClaimVP = async () => {
-        closeConfirmModal();
+        closePremiumConfirmModal();
         setClaiming(true);
         
         try {
@@ -292,7 +322,7 @@ export default function Premium() {
         setClaiming(false);
     };
     
-    // Redeem promo code
+    // Redeem promo code - show confirmation first
     const handleRedeemPromoCode = async () => {
         const code = promoCode.trim().toUpperCase();
         if (!code) {
@@ -300,6 +330,22 @@ export default function Premium() {
             return;
         }
         
+        setPremiumConfirmModal({
+            show: true,
+            type: 'promo',
+            title: 'Redeem Promo Code',
+            icon: <FaTicketAlt style={{ fontSize: '2.5rem', color: '#FF69B4' }} />,
+            details: [
+                { label: 'Code', value: code, mono: true },
+            ],
+            highlight: 'This promo code will grant you free premium membership!',
+            confirmText: 'Redeem Code',
+            onConfirm: () => doRedeemPromoCode(code),
+        });
+    };
+    
+    const doRedeemPromoCode = async (code) => {
+        closePremiumConfirmModal();
         setRedeemingPromo(true);
         
         try {
@@ -942,13 +988,196 @@ export default function Premium() {
                 type={infoModal.type}
             />
             
-            <ConfirmationModal
-                show={confirmModal.show}
-                onClose={closeConfirmModal}
-                onSubmit={confirmModal.onConfirm}
-                message={confirmModal.message}
-                doAwait={true}
-            />
+            {/* Premium Confirmation Modal */}
+            {premiumConfirmModal.show && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'rgba(0,0,0,0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1001,
+                    backdropFilter: 'blur(4px)',
+                }}>
+                    <div style={{
+                        background: theme.colors.primaryBg,
+                        border: `2px solid ${
+                            premiumConfirmModal.type === 'icp' ? '#FFD700' :
+                            premiumConfirmModal.type === 'vp' ? (theme.colors.info || theme.colors.accent) :
+                            '#FF69B4'
+                        }`,
+                        borderRadius: '20px',
+                        padding: '2rem',
+                        width: '420px',
+                        maxWidth: '90vw',
+                        boxShadow: `0 20px 60px rgba(0,0,0,0.5), 0 0 40px ${
+                            premiumConfirmModal.type === 'icp' ? 'rgba(255,215,0,0.2)' :
+                            premiumConfirmModal.type === 'vp' ? 'rgba(100,149,237,0.2)' :
+                            'rgba(255,105,180,0.2)'
+                        }`,
+                        animation: 'fadeInScale 0.2s ease-out',
+                    }}>
+                        {/* Icon */}
+                        <div style={{
+                            textAlign: 'center',
+                            marginBottom: '1.5rem',
+                        }}>
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '80px',
+                                height: '80px',
+                                borderRadius: '50%',
+                                background: `${
+                                    premiumConfirmModal.type === 'icp' ? 'linear-gradient(135deg, #FFD700, #FFA500)' :
+                                    premiumConfirmModal.type === 'vp' ? `linear-gradient(135deg, ${theme.colors.info || theme.colors.accent}, ${theme.colors.accent})` :
+                                    'linear-gradient(135deg, #FF69B4, #FF1493)'
+                                }`,
+                                boxShadow: `0 8px 24px ${
+                                    premiumConfirmModal.type === 'icp' ? 'rgba(255,215,0,0.4)' :
+                                    premiumConfirmModal.type === 'vp' ? 'rgba(100,149,237,0.4)' :
+                                    'rgba(255,105,180,0.4)'
+                                }`,
+                            }}>
+                                {React.cloneElement(premiumConfirmModal.icon, { 
+                                    style: { fontSize: '2rem', color: '#fff' } 
+                                })}
+                            </div>
+                        </div>
+                        
+                        {/* Title */}
+                        <h2 style={{
+                            textAlign: 'center',
+                            color: theme.colors.primaryText,
+                            margin: '0 0 1.5rem 0',
+                            fontSize: '1.5rem',
+                            fontWeight: '700',
+                        }}>
+                            {premiumConfirmModal.title}
+                        </h2>
+                        
+                        {/* Details */}
+                        <div style={{
+                            background: theme.colors.tertiaryBg,
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            marginBottom: '1rem',
+                        }}>
+                            {premiumConfirmModal.details.map((detail, idx) => (
+                                <div key={idx} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '0.5rem 0',
+                                    borderBottom: idx < premiumConfirmModal.details.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                }}>
+                                    <span style={{ color: theme.colors.mutedText }}>{detail.label}</span>
+                                    <span style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontWeight: '600',
+                                        fontFamily: detail.mono ? 'monospace' : 'inherit',
+                                        letterSpacing: detail.mono ? '1px' : 'normal',
+                                    }}>
+                                        {detail.value}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {/* Highlight */}
+                        <div style={{
+                            background: `linear-gradient(135deg, ${
+                                premiumConfirmModal.type === 'icp' ? 'rgba(255,215,0,0.15), rgba(255,165,0,0.1)' :
+                                premiumConfirmModal.type === 'vp' ? `rgba(100,149,237,0.15), ${theme.colors.accent}15` :
+                                'rgba(255,105,180,0.15), rgba(255,20,147,0.1)'
+                            })`,
+                            border: `1px solid ${
+                                premiumConfirmModal.type === 'icp' ? 'rgba(255,215,0,0.3)' :
+                                premiumConfirmModal.type === 'vp' ? 'rgba(100,149,237,0.3)' :
+                                'rgba(255,105,180,0.3)'
+                            }`,
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            marginBottom: '1.5rem',
+                            textAlign: 'center',
+                        }}>
+                            <FaCrown style={{ 
+                                color: '#FFD700', 
+                                marginRight: '8px',
+                                verticalAlign: 'middle',
+                            }} />
+                            <span style={{ 
+                                color: theme.colors.primaryText,
+                                fontSize: '0.95rem',
+                            }}>
+                                {premiumConfirmModal.highlight}
+                            </span>
+                        </div>
+                        
+                        {/* Buttons */}
+                        <div style={{
+                            display: 'flex',
+                            gap: '12px',
+                        }}>
+                            <button
+                                onClick={premiumConfirmModal.onConfirm}
+                                style={{
+                                    flex: 1,
+                                    padding: '14px 24px',
+                                    borderRadius: '10px',
+                                    border: 'none',
+                                    background: `linear-gradient(135deg, ${
+                                        premiumConfirmModal.type === 'icp' ? '#FFD700, #FFA500' :
+                                        premiumConfirmModal.type === 'vp' ? `${theme.colors.info || theme.colors.accent}, ${theme.colors.accent}` :
+                                        '#FF69B4, #FF1493'
+                                    })`,
+                                    color: premiumConfirmModal.type === 'icp' ? '#1a1a2e' : '#fff',
+                                    fontWeight: '700',
+                                    fontSize: '1rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    boxShadow: `0 4px 16px ${
+                                        premiumConfirmModal.type === 'icp' ? 'rgba(255,215,0,0.4)' :
+                                        premiumConfirmModal.type === 'vp' ? 'rgba(100,149,237,0.4)' :
+                                        'rgba(255,105,180,0.4)'
+                                    }`,
+                                    transition: 'transform 0.1s ease',
+                                }}
+                                onMouseDown={(e) => e.target.style.transform = 'scale(0.98)'}
+                                onMouseUp={(e) => e.target.style.transform = 'scale(1)'}
+                                onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                            >
+                                <FaCheckCircle />
+                                {premiumConfirmModal.confirmText}
+                            </button>
+                            <button
+                                onClick={closePremiumConfirmModal}
+                                style={{
+                                    padding: '14px 24px',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.mutedText,
+                                    fontWeight: '600',
+                                    fontSize: '1rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
