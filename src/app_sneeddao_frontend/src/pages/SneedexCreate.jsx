@@ -3889,21 +3889,63 @@ function SneedexCreate() {
                         )}
                         
                         {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && !premiumLoading && (
-                            <div style={styles.reviewSection}>
-                                <div style={styles.reviewLabel}>Sneedex Cut</div>
-                                <div style={{ ...styles.reviewValue, color: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? '#FFD700' : theme.colors.warning }}>
-                                    {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
-                                        ? formatFeeRate(premiumAuctionCut)
-                                        : formatFeeRate(marketplaceFeeRate)}
-                                    {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
-                                        <span style={{ marginLeft: '8px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', padding: '2px 8px', borderRadius: '10px' }}>
-                                            👑 PREMIUM
-                                        </span>
-                                    )}
-                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontWeight: 'normal' }}>
-                                        (taken from the winning bid when the sale completes)
-                                    </span>
-                                </div>
+                            <div style={{
+                                ...styles.reviewSection,
+                                background: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                    ? `linear-gradient(135deg, ${theme.colors.cardBackground} 0%, rgba(255, 215, 0, 0.15) 100%)`
+                                    : theme.colors.secondaryBg,
+                                border: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate
+                                    ? '1px solid rgba(255, 215, 0, 0.3)'
+                                    : `1px solid ${theme.colors.border}`,
+                                borderRadius: '10px',
+                                padding: '1rem',
+                            }}>
+                                <div style={{ ...styles.reviewLabel, marginBottom: '0.5rem' }}>Sneedex Cut</div>
+                                {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? (
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
+                                            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#FFD700' }}>
+                                                {formatFeeRate(premiumAuctionCut)}
+                                            </span>
+                                            <span style={{ 
+                                                fontSize: '0.9rem', 
+                                                textDecoration: 'line-through', 
+                                                color: theme.colors.mutedText 
+                                            }}>
+                                                {formatFeeRate(marketplaceFeeRate)}
+                                            </span>
+                                            <span style={{ 
+                                                background: 'linear-gradient(135deg, #FFD700, #FFA500)', 
+                                                color: '#1a1a2e', 
+                                                padding: '3px 10px', 
+                                                borderRadius: '12px',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 'bold',
+                                            }}>
+                                                👑 {Math.round((1 - premiumAuctionCut / marketplaceFeeRate) * 100)}% OFF
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                                            Taken from the winning bid when the sale completes
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: theme.colors.warning, marginBottom: '0.25rem' }}>
+                                            {formatFeeRate(marketplaceFeeRate)}
+                                        </div>
+                                        <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                                            Taken from the winning bid when the sale completes
+                                            {premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
+                                                <span style={{ display: 'block', marginTop: '0.5rem' }}>
+                                                    <Link to="/premium" style={{ color: '#FFD700' }}>
+                                                        👑 Premium members pay only {formatFeeRate(premiumAuctionCut)} →
+                                                    </Link>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                         
