@@ -20,7 +20,7 @@ import ConfirmationModal from '../ConfirmationModal';
 import { 
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
     FaTimesCircle, FaExclamationTriangle, FaArrowRight, FaWallet,
-    FaGift, FaShieldAlt, FaStar, FaRocket
+    FaGift, FaShieldAlt, FaStar, FaRocket, FaTicketAlt
 } from 'react-icons/fa';
 
 // ICP Ledger canister ID (mainnet)
@@ -45,6 +45,10 @@ export default function Premium() {
     // User wallet balance
     const [walletBalance, setWalletBalance] = useState(null);
     const [icpFee, setIcpFee] = useState(null);
+    
+    // Promo code state
+    const [promoCode, setPromoCode] = useState('');
+    const [redeemingPromo, setRedeemingPromo] = useState(false);
     
     // Loading states
     const [claiming, setClaiming] = useState(false);
@@ -286,6 +290,49 @@ export default function Premium() {
         }
         
         setClaiming(false);
+    };
+    
+    // Redeem promo code
+    const handleRedeemPromoCode = async () => {
+        const code = promoCode.trim().toUpperCase();
+        if (!code) {
+            showInfo('Enter Code', 'Please enter a promo code', 'error');
+            return;
+        }
+        
+        setRedeemingPromo(true);
+        
+        try {
+            const actor = await getActor();
+            const result = await actor.claimPromoCode(code);
+            
+            if ('ok' in result) {
+                showInfo('🎉 Success!', `Promo code redeemed!\n\nYour membership now expires: ${formatTimestamp(result.ok.expiration)}`, 'success');
+                setPromoCode('');
+                await fetchData();
+            } else {
+                const err = result.err;
+                let errorMessage = 'Failed to redeem promo code';
+                if ('InvalidCode' in err) {
+                    errorMessage = 'Invalid promo code. Please check the code and try again.';
+                } else if ('CodeExpired' in err) {
+                    errorMessage = 'This promo code has expired.';
+                } else if ('CodeFullyClaimed' in err) {
+                    errorMessage = 'This promo code has reached its maximum number of claims.';
+                } else if ('CodeInactive' in err) {
+                    errorMessage = 'This promo code is no longer active.';
+                } else if ('AlreadyClaimed' in err) {
+                    errorMessage = 'You have already claimed this promo code.';
+                } else if ('InternalError' in err) {
+                    errorMessage = err.InternalError;
+                }
+                showInfo('Redemption Failed', errorMessage, 'error');
+            }
+        } catch (err) {
+            showInfo('Error', 'Failed to redeem promo code: ' + err.message, 'error');
+        }
+        
+        setRedeemingPromo(false);
     };
     
     // ============================================
@@ -812,6 +859,76 @@ export default function Premium() {
                         </>
                     ) : (
                         <div style={styles.noTiers}>No voting power tiers configured yet.</div>
+                    )}
+                </section>
+                
+                {/* Divider */}
+                <div style={styles.divider}>
+                    <div style={styles.dividerLine}></div>
+                    <span>OR</span>
+                    <div style={styles.dividerLine}></div>
+                </div>
+                
+                {/* Promo Code Redemption */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaTicketAlt style={{ color: '#FF69B4' }} />
+                        Redeem Promo Code
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Have a promo code? Enter it below to claim free premium membership.
+                    </p>
+                    
+                    {isAuthenticated ? (
+                        <div style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            alignItems: 'stretch',
+                            flexWrap: 'wrap',
+                        }}>
+                            <input
+                                type="text"
+                                placeholder="Enter promo code"
+                                value={promoCode}
+                                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                                onKeyDown={(e) => e.key === 'Enter' && handleRedeemPromoCode()}
+                                style={{
+                                    flex: '1',
+                                    minWidth: '200px',
+                                    padding: '14px 18px',
+                                    borderRadius: '10px',
+                                    border: `2px solid ${theme.colors.border}`,
+                                    background: theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '1.1rem',
+                                    fontFamily: 'monospace',
+                                    letterSpacing: '2px',
+                                    textTransform: 'uppercase',
+                                }}
+                            />
+                            <button
+                                onClick={handleRedeemPromoCode}
+                                disabled={redeemingPromo || !promoCode.trim()}
+                                style={{
+                                    ...styles.button,
+                                    padding: '14px 28px',
+                                    background: '#FF69B4',
+                                    opacity: redeemingPromo || !promoCode.trim() ? 0.5 : 1,
+                                    cursor: redeemingPromo || !promoCode.trim() ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {redeemingPromo ? (
+                                    <><FaSpinner className="spin" /> Redeeming...</>
+                                ) : (
+                                    <><FaTicketAlt /> Redeem Code</>
+                                )}
+                            </button>
+                        </div>
+                    ) : (
+                        <div style={styles.loginPrompt}>
+                            <FaExclamationTriangle style={{ color: theme.colors.warning, marginBottom: '0.5rem', fontSize: '1.5rem' }} />
+                            <p>Please log in to redeem a promo code</p>
+                        </div>
                     )}
                 </section>
                 
