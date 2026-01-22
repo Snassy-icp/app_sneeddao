@@ -103,11 +103,11 @@ function CreateIcpNeuron() {
     const [userIcpBalance, setUserIcpBalance] = useState(null);
     const [paymentBalance, setPaymentBalance] = useState(null);
     const [conversionRate, setConversionRate] = useState(null);
-    const [sendingPayment, setSendingPayment] = useState(false);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     
-    // Creation step: 'idle' | 'payment' | 'creating' | 'done'
+    // Creation step: 'idle' | 'paying' | 'creating' | 'done'
     const [creationStep, setCreationStep] = useState('idle');
+    const [progressMessage, setProgressMessage] = useState('');
     
     // Beta countdown state
     const [timeUntilPublic, setTimeUntilPublic] = useState(null);
@@ -392,80 +392,73 @@ function CreateIcpNeuron() {
         }
     };
 
-    // Send payment to factory
-    const handleSendPayment = async () => {
-        if (!identity || !paymentConfig || !paymentSubaccount) return;
-        
-        setSendingPayment(true);
-        setError('');
-        
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
-            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
-            
-            // Transfer creation fee to factory's subaccount for this user
-            // Use effective fee (premium discount if applicable)
-            const result = await ledger.icrc1_transfer({
-                to: {
-                    owner: Principal.fromText(factoryCanisterId),
-                    subaccount: [new Uint8Array(paymentSubaccount)],
-                },
-                amount: BigInt(effectiveFeeE8s),
-                fee: [BigInt(ICP_FEE)],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-            });
-            
-            if ('Ok' in result) {
-                setSuccess('✅ Payment sent! You can now create your neuron manager.');
-                await fetchUserBalances();
-                setCreationStep('payment');
-            } else {
-                const err = result.Err;
-                if ('InsufficientFunds' in err) {
-                    setError(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
-                } else {
-                    setError(`Payment failed: ${JSON.stringify(err)}`);
-                }
-            }
-        } catch (err) {
-            console.error('Error sending payment:', err);
-            setError(`Payment error: ${err.message}`);
-        } finally {
-            setSendingPayment(false);
-        }
-    };
-
-    const handleCreateManager = async () => {
+    // Combined pay and create function - handles everything in one go
+    const handlePayAndCreate = async () => {
         if (!isAuthenticated) {
             login();
             return;
         }
-
+        
+        if (!identity || !paymentConfig || !paymentSubaccount) return;
+        
         setCreating(true);
         setError('');
         setSuccess('');
-        setCreationStep('creating');
         
         try {
             const agent = getAgent();
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
                 await agent.fetchRootKey();
             }
-            const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Backend now calculates ICP for cycles dynamically based on CMC rate
+            // Step 1: Send payment (if required and not already deposited)
+            if (paymentConfig.paymentRequired && !hasEnoughPayment) {
+                setCreationStep('paying');
+                setProgressMessage('Sending payment...');
+                
+                const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+                
+                const transferResult = await ledger.icrc1_transfer({
+                    to: {
+                        owner: Principal.fromText(factoryCanisterId),
+                        subaccount: [new Uint8Array(paymentSubaccount)],
+                    },
+                    amount: BigInt(effectiveFeeE8s),
+                    fee: [BigInt(ICP_FEE)],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                });
+                
+                if ('Err' in transferResult) {
+                    const err = transferResult.Err;
+                    if ('InsufficientFunds' in err) {
+                        setError(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
+                    } else {
+                        setError(`Payment failed: ${JSON.stringify(err)}`);
+                    }
+                    setCreationStep('idle');
+                    setProgressMessage('');
+                    setCreating(false);
+                    return;
+                }
+                
+                // Refresh balances after payment
+                await fetchUserBalances();
+            }
+            
+            // Step 2: Create the neuron manager
+            setCreationStep('creating');
+            setProgressMessage('Creating your neuron manager...');
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
             const result = await factory.createNeuronManager();
             
             if ('Ok' in result) {
                 const { canisterId } = result.Ok;
                 setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}`);
                 setCreationStep('done');
+                setProgressMessage('');
                 fetchMyManagers();
                 fetchFactoryInfo();
                 fetchUserBalances();
@@ -486,12 +479,78 @@ function CreateIcpNeuron() {
                 } else {
                     setError('Failed to create neuron manager');
                 }
-                setCreationStep('payment');
+                setCreationStep('idle');
+                setProgressMessage('');
+                // Refresh to show any deposited balance
+                fetchUserBalances();
+            }
+        } catch (err) {
+            console.error('Error in pay and create:', err);
+            setError(`Error: ${err.message || 'Failed to create neuron manager'}`);
+            setCreationStep('idle');
+            setProgressMessage('');
+            // Refresh to show any deposited balance
+            fetchUserBalances();
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    // Create manager when payment is already deposited
+    const handleCreateFromDeposit = async () => {
+        if (!isAuthenticated) {
+            login();
+            return;
+        }
+
+        setCreating(true);
+        setError('');
+        setSuccess('');
+        setCreationStep('creating');
+        setProgressMessage('Creating your neuron manager...');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            
+            const result = await factory.createNeuronManager();
+            
+            if ('Ok' in result) {
+                const { canisterId } = result.Ok;
+                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}`);
+                setCreationStep('done');
+                setProgressMessage('');
+                fetchMyManagers();
+                fetchFactoryInfo();
+                fetchUserBalances();
+            } else if ('Err' in result) {
+                const err = result.Err;
+                if ('InsufficientCycles' in err) {
+                    setError('Factory has insufficient cycles to create a new canister. Please try again later.');
+                } else if ('CanisterCreationFailed' in err) {
+                    setError(`Canister creation failed: ${err.CanisterCreationFailed}`);
+                } else if ('NotAuthorized' in err) {
+                    setError('Not authorized to create a neuron manager.');
+                } else if ('InsufficientPayment' in err) {
+                    setError(`Insufficient payment: Required ${formatIcp(Number(err.InsufficientPayment.required))} ICP, provided ${formatIcp(Number(err.InsufficientPayment.provided))} ICP`);
+                } else if ('TransferFailed' in err) {
+                    setError(`Transfer failed: ${err.TransferFailed}`);
+                } else if ('CyclesTopUpFailed' in err) {
+                    setError(`Cycles top-up failed: ${err.CyclesTopUpFailed}`);
+                } else {
+                    setError('Failed to create neuron manager');
+                }
+                setCreationStep('idle');
+                setProgressMessage('');
             }
         } catch (err) {
             console.error('Error creating manager:', err);
             setError(`Error: ${err.message || 'Failed to create neuron manager'}`);
-            setCreationStep('payment');
+            setCreationStep('idle');
+            setProgressMessage('');
         } finally {
             setCreating(false);
         }
@@ -854,142 +913,175 @@ function CreateIcpNeuron() {
                             </div>
                         )}
                         
-                        {/* Payment Status Steps */}
-                        {paymentConfig.paymentRequired && (
-                            <div style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                gap: '10px',
+                        {/* Progress Overlay */}
+                        {(creationStep === 'paying' || creationStep === 'creating') && (
+                            <div style={{
+                                background: `${theme.colors.cardBackground}f0`,
+                                borderRadius: '12px',
+                                padding: '30px',
                                 marginBottom: '20px',
-                                flexWrap: 'wrap'
+                                textAlign: 'center',
+                                border: `1px solid ${theme.colors.accent}40`,
                             }}>
-                                {/* Step 1: Payment */}
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '8px',
-                                    padding: '8px 16px',
-                                    borderRadius: '20px',
-                                    background: hasEnoughPayment ? `${theme.colors.success || '#22c55e'}20` : `${theme.colors.warning || '#f59e0b'}20`,
-                                    border: `1px solid ${hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b')}`
-                                }}>
-                                    {hasEnoughPayment ? (
-                                        <FaCheckCircle color={theme.colors.success || '#22c55e'} />
-                                    ) : (
-                                        <FaExclamationTriangle color={theme.colors.warning || '#f59e0b'} />
-                                    )}
-                                    <span style={{ 
-                                        color: hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b'),
-                                        fontSize: '13px',
-                                        fontWeight: '500'
+                                <div style={{
+                                    width: '60px',
+                                    height: '60px',
+                                    margin: '0 auto 20px',
+                                    border: `3px solid ${theme.colors.border}`,
+                                    borderTopColor: theme.colors.accent,
+                                    borderRadius: '50%',
+                                    animation: 'spin 1s linear infinite',
+                                }} />
+                                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                                
+                                <div style={{ marginBottom: '15px' }}>
+                                    <div style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontSize: '18px', 
+                                        fontWeight: '600',
+                                        marginBottom: '8px'
                                     }}>
-                                        {hasEnoughPayment ? 'Payment Ready' : 'Payment Required'}
-                                    </span>
+                                        {progressMessage}
+                                    </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
+                                        Please wait, this may take a moment...
+                                    </div>
                                 </div>
                                 
-                                <FaArrowRight style={{ color: theme.colors.mutedText }} />
-                                
-                                {/* Step 2: Create */}
+                                {/* Progress steps */}
                                 <div style={{ 
                                     display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '8px',
-                                    padding: '8px 16px',
-                                    borderRadius: '20px',
-                                    background: creationStep === 'done' ? `${theme.colors.success || '#22c55e'}20` : `${theme.colors.border}50`,
-                                    border: `1px solid ${creationStep === 'done' ? (theme.colors.success || '#22c55e') : theme.colors.border}`
+                                    justifyContent: 'center', 
+                                    gap: '20px',
+                                    marginTop: '20px'
                                 }}>
-                                    {creationStep === 'done' ? (
-                                        <FaCheckCircle color={theme.colors.success || '#22c55e'} />
-                                    ) : (
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        color: creationStep === 'paying' ? theme.colors.accent : (creationStep === 'creating' ? (theme.colors.success || '#22c55e') : theme.colors.mutedText),
+                                    }}>
+                                        {creationStep === 'creating' ? (
+                                            <FaCheckCircle size={14} />
+                                        ) : (
+                                            <span style={{ 
+                                                width: '14px', 
+                                                height: '14px', 
+                                                borderRadius: '50%', 
+                                                background: creationStep === 'paying' ? theme.colors.accent : theme.colors.border,
+                                                display: 'inline-block'
+                                            }} />
+                                        )}
+                                        <span style={{ fontSize: '13px' }}>Payment</span>
+                                    </div>
+                                    <FaArrowRight style={{ color: theme.colors.mutedText, opacity: 0.5 }} size={12} />
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        color: creationStep === 'creating' ? theme.colors.accent : theme.colors.mutedText,
+                                    }}>
                                         <span style={{ 
-                                            width: '16px', 
-                                            height: '16px', 
+                                            width: '14px', 
+                                            height: '14px', 
                                             borderRadius: '50%', 
-                                            border: `2px solid ${theme.colors.mutedText}`,
+                                            background: creationStep === 'creating' ? theme.colors.accent : theme.colors.border,
                                             display: 'inline-block'
                                         }} />
-                                    )}
-                                    <span style={{ 
-                                        color: creationStep === 'done' ? (theme.colors.success || '#22c55e') : theme.colors.mutedText,
-                                        fontSize: '13px',
-                                        fontWeight: '500'
-                                    }}>
-                                        Create Manager
-                                    </span>
+                                        <span style={{ fontSize: '13px' }}>Creating</span>
+                                    </div>
                                 </div>
                             </div>
                         )}
                         
-                        {/* Deposited Payment Balance */}
-                        {paymentConfig.paymentRequired && (
+                        {/* Deposited Payment Balance - Only show if there's a deposited balance (edge case) */}
+                        {paymentConfig.paymentRequired && paymentBalance > 0 && creationStep !== 'paying' && creationStep !== 'creating' && (
                             <div style={{ 
-                                background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                background: hasEnoughPayment 
+                                    ? `${theme.colors.success || '#22c55e'}15` 
+                                    : `${theme.colors.warning || '#f59e0b'}15`,
                                 borderRadius: '8px',
-                                padding: '12px 16px',
+                                padding: '16px',
                                 marginBottom: '16px',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center'
+                                border: `1px solid ${hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b')}40`,
                             }}>
-                                <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
-                                    Your Deposited Payment:
-                                </span>
-                                <span style={{ 
-                                    color: hasEnoughPayment ? (theme.colors.success || '#22c55e') : theme.colors.primaryText,
-                                    fontWeight: '600',
-                                    fontSize: '14px'
+                                <div style={{ 
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: hasEnoughPayment ? '12px' : '8px'
                                 }}>
-                                    {formatIcp(paymentBalance)} ICP
-                                    {hasEnoughPayment && ' ✓'}
-                                </span>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
+                                        ⚠️ You have a pending deposit:
+                                    </span>
+                                    <span style={{ 
+                                        color: hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b'),
+                                        fontWeight: '600',
+                                        fontSize: '14px'
+                                    }}>
+                                        {formatIcp(paymentBalance)} ICP
+                                    </span>
+                                </div>
+                                
+                                {hasEnoughPayment ? (
+                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                        <button
+                                            style={{ 
+                                                ...buttonStyle,
+                                                flex: 1,
+                                                minWidth: '200px',
+                                                opacity: creating ? 0.7 : 1,
+                                                cursor: creating ? 'not-allowed' : 'pointer',
+                                            }}
+                                            onClick={handleCreateFromDeposit}
+                                            disabled={creating}
+                                        >
+                                            {creating ? '⏳ Creating...' : '🚀 Create Neuron Manager'}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
+                                        This deposit is insufficient. Please contact support on Discord to request a refund.
+                                    </p>
+                                )}
                             </div>
                         )}
                         
-                        {/* Action Buttons */}
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                            {/* Send Payment Button */}
-                            {paymentConfig.paymentRequired && !hasEnoughPayment && (
-                                <button
-                                    style={{ 
-                                        ...buttonStyle,
-                                        opacity: (!canSendPayment || sendingPayment) ? 0.6 : 1,
-                                        cursor: (!canSendPayment || sendingPayment) ? 'not-allowed' : 'pointer',
-                                    }}
-                                    onClick={handleSendPayment}
-                                    disabled={!canSendPayment || sendingPayment}
-                                >
-                                    {sendingPayment ? '⏳ Sending Payment...' : `💰 Send ${formatIcp(effectiveFeeE8s)} ICP`}
-                                </button>
-                            )}
-                            
-                            {/* Create Manager Button */}
-                            {(!paymentConfig.paymentRequired || hasEnoughPayment) && (
-                                <button 
-                                    style={{ 
-                                        ...buttonStyle, 
-                                        opacity: creating ? 0.7 : 1,
-                                        cursor: creating ? 'not-allowed' : 'pointer',
-                                    }} 
-                                    onClick={handleCreateManager}
-                                    disabled={creating}
-                                >
-                                    {creating ? '⏳ Creating...' : '🚀 Create Neuron Manager'}
-                                </button>
-                            )}
-                        </div>
-                        
-                        {/* Help text */}
-                        <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '15px', textAlign: 'center' }}>
-                            {paymentConfig.paymentRequired ? (
-                                hasEnoughPayment 
-                                    ? 'Payment received! Click "Create Neuron Manager" to proceed.'
-                                    : `Send ${formatIcp(effectiveFeeE8s)} ICP to deposit your payment, then create your manager.${isPremium ? ' (Premium discount applied!)' : ''}`
-                            ) : (
-                                'Creating a neuron manager is currently free!'
-                            )}
-                        </p>
+                        {/* Main Action Button - Only show when no deposit exists and not in progress */}
+                        {creationStep !== 'paying' && creationStep !== 'creating' && creationStep !== 'done' && (
+                            <>
+                                {/* No deposited balance - show main button */}
+                                {(!paymentBalance || paymentBalance === 0) && (
+                                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                        <button
+                                            style={{ 
+                                                ...buttonStyle,
+                                                opacity: (!canSendPayment || creating) ? 0.6 : 1,
+                                                cursor: (!canSendPayment || creating) ? 'not-allowed' : 'pointer',
+                                                padding: '14px 32px',
+                                                fontSize: '17px',
+                                            }}
+                                            onClick={handlePayAndCreate}
+                                            disabled={!canSendPayment || creating}
+                                        >
+                                            {paymentConfig.paymentRequired 
+                                                ? `🚀 Pay ${formatIcp(effectiveFeeE8s)} ICP & Create`
+                                                : '🚀 Create Neuron Manager'
+                                            }
+                                        </button>
+                                    </div>
+                                )}
+                                
+                                {/* Help text */}
+                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '15px', textAlign: 'center' }}>
+                                    {paymentConfig.paymentRequired ? (
+                                        `Click to pay and create your neuron manager in one step.${isPremium ? ' (Premium discount applied!)' : ''}`
+                                    ) : (
+                                        'Creating a neuron manager is currently free!'
+                                    )}
+                                </p>
+                            </>
+                        )}
                         
                         {/* Access info */}
                         <div style={{ 
