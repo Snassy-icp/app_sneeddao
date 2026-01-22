@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
@@ -149,12 +150,14 @@ function SneedexCreate() {
     // Marketplace fee rate
     const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
     
+    // Premium status (cached in localStorage)
+    const { isPremium: isPremiumUser, loading: premiumLoading } = usePremiumStatus(identity);
+    
     // Offer creation fee (ICP)
     const [offerCreationFee, setOfferCreationFee] = useState(0n); // Effective fee for this user
     const [regularOfferCreationFee, setRegularOfferCreationFee] = useState(0n); // Regular (non-premium) fee
     const [premiumOfferCreationFee, setPremiumOfferCreationFee] = useState(0n); // Premium fee
     const [premiumAuctionCut, setPremiumAuctionCut] = useState(0); // Premium auction cut in bps
-    const [isPremiumUser, setIsPremiumUser] = useState(false);
     const [userPaymentBalance, setUserPaymentBalance] = useState(0n);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingFeeInfo, setLoadingFeeInfo] = useState(true);
@@ -246,10 +249,6 @@ function SneedexCreate() {
             setPremiumAuctionCut(Number(premiumCutBps));
             setPaymentSubaccount(subaccount);
             setUserPaymentBalance(balance);
-            
-            // Determine if user is premium (effective fee equals premium fee and is less than regular)
-            const isPremium = regularFee > 0n && effectiveFee < regularFee;
-            setIsPremiumUser(isPremium);
             
             // Also fetch user's ICP wallet balance
             const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
