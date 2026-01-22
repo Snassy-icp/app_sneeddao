@@ -24,6 +24,10 @@
       "main": "src/sneedex/main.mo",
       "type": "motoko"
     },
+    "sneed_premium": {
+      "main": "src/sneed_premium/main.mo",
+      "type": "motoko"
+    },
     "app_sneeddao_frontend": {
       "dependencies": [
         "app_sneeddao_backend",
