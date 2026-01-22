@@ -8,7 +8,7 @@ import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
 import ThemeToggle from './ThemeToggle';
 import { useAdminCheck } from '../hooks/useAdminCheck';
-import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
+import usePremiumStatus from '../hooks/usePremiumStatus';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
@@ -338,18 +338,36 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         >
             {/* Top Row: Logo, Menu Title, SNS Dropdown, Login - All on same row */}
             <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '15px' }}>
-                <img
-                    src={customLogo || "sneed_logo.png"}
-                    alt={customLogo ? "Logo" : "Sneed Logo"}
-                    onClick={handleLogoClick}
-                    style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: customLogo ? '0' : '50%',
-                        objectFit: 'cover',
-                        cursor: 'pointer'
-                    }}
-                />
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <img
+                        src={customLogo || "sneed_logo.png"}
+                        alt={customLogo ? "Logo" : "Sneed Logo"}
+                        onClick={handleLogoClick}
+                        style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: customLogo ? '0' : '50%',
+                            objectFit: 'cover',
+                            cursor: 'pointer'
+                        }}
+                    />
+                    {/* Premium crown overlay */}
+                    {isPremium && !premiumLoading && (
+                        <div
+                            style={{
+                                position: 'absolute',
+                                top: '-8px',
+                                right: '-8px',
+                                fontSize: '12px',
+                                transform: 'rotate(20deg)',
+                                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+                            }}
+                            title="Premium Member"
+                        >
+                            👑
+                        </div>
+                    )}
+                </div>
                 
                 <div 
                     style={{ 
@@ -462,16 +480,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 </button>
 
                 {isAuthenticated ? (
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {isPremium && !premiumLoading && (
-                            <PremiumBadge size="tiny" />
-                        )}
-                        <PrincipalBox 
-                            principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                            onLogout={logout}
-                            compact={true}
-                        />
-                    </div>
+                    <PrincipalBox 
+                        principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
+                        onLogout={logout}
+                        compact={true}
+                    />
                 ) : (
                     <button
                         onClick={login}
