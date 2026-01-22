@@ -492,6 +492,35 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         });
     };
 
+    // Allow user to withdraw their deposited payment
+    public shared ({ caller }) func withdrawUserPayment(): async T.TransferResult {
+        let subaccount = principalToSubaccount(caller);
+        let fee = Nat64.toNat(T.ICP_FEE);
+        
+        // Get balance in user's subaccount
+        let balance = await ledger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = ?subaccount;
+        });
+        
+        // Check if there's anything to withdraw (accounting for fee)
+        if (balance <= fee) {
+            return #Err(#InsufficientFunds({ balance = balance }));
+        };
+        
+        // Withdraw to caller's main account (balance - fee)
+        let withdrawAmount = balance - fee;
+        
+        await ledger.icrc1_transfer({
+            to = { owner = caller; subaccount = null };
+            fee = ?fee;
+            memo = null;
+            from_subaccount = ?subaccount;
+            created_at_time = null;
+            amount = withdrawAmount;
+        });
+    };
+
     // Transfer ICP to CMC and notify to top up this canister with cycles
     func topUpSelfWithCycles(icpAmountE8s: Nat64): async* T.NotifyTopUpResult {
         let selfPrincipal = Principal.fromActor(this);

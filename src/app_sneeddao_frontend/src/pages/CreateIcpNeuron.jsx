@@ -496,6 +496,44 @@ function CreateIcpNeuron() {
         }
     };
 
+    // Withdraw deposited payment
+    const [withdrawing, setWithdrawing] = useState(false);
+    
+    const handleWithdrawDeposit = async () => {
+        if (!identity) return;
+        
+        setWithdrawing(true);
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.withdrawUserPayment();
+            
+            if ('Ok' in result) {
+                setSuccess('✅ Deposit withdrawn successfully!');
+                await fetchUserBalances();
+            } else if ('Err' in result) {
+                const err = result.Err;
+                if ('InsufficientFunds' in err) {
+                    setError('Nothing to withdraw (balance too low to cover fee)');
+                } else {
+                    setError(`Withdrawal failed: ${JSON.stringify(err)}`);
+                }
+            }
+        } catch (err) {
+            console.error('Error withdrawing deposit:', err);
+            setError(`Withdrawal error: ${err.message}`);
+        } finally {
+            setWithdrawing(false);
+        }
+    };
+
     // Create manager when payment is already deposited
     const handleCreateFromDeposit = async () => {
         if (!isAuthenticated) {
@@ -1009,7 +1047,7 @@ function CreateIcpNeuron() {
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    marginBottom: hasEnoughPayment ? '12px' : '8px'
+                                    marginBottom: '12px'
                                 }}>
                                     <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
                                         ⚠️ You have a pending deposit:
@@ -1023,25 +1061,43 @@ function CreateIcpNeuron() {
                                     </span>
                                 </div>
                                 
-                                {hasEnoughPayment ? (
-                                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                    {hasEnoughPayment && (
                                         <button
                                             style={{ 
                                                 ...buttonStyle,
                                                 flex: 1,
-                                                minWidth: '200px',
+                                                minWidth: '150px',
                                                 opacity: creating ? 0.7 : 1,
                                                 cursor: creating ? 'not-allowed' : 'pointer',
                                             }}
                                             onClick={handleCreateFromDeposit}
-                                            disabled={creating}
+                                            disabled={creating || withdrawing}
                                         >
                                             {creating ? '⏳ Creating...' : '🚀 Create Neuron Manager'}
                                         </button>
-                                    </div>
-                                ) : (
-                                    <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
-                                        This deposit is insufficient. Please contact support on Discord to request a refund.
+                                    )}
+                                    <button
+                                        style={{ 
+                                            ...buttonStyle,
+                                            flex: hasEnoughPayment ? 'none' : 1,
+                                            minWidth: hasEnoughPayment ? '120px' : '150px',
+                                            background: 'transparent',
+                                            border: `1px solid ${theme.colors.error || '#ef4444'}`,
+                                            color: theme.colors.error || '#ef4444',
+                                            opacity: withdrawing ? 0.7 : 1,
+                                            cursor: withdrawing ? 'not-allowed' : 'pointer',
+                                        }}
+                                        onClick={handleWithdrawDeposit}
+                                        disabled={creating || withdrawing}
+                                    >
+                                        {withdrawing ? '⏳ Withdrawing...' : '↩️ Withdraw'}
+                                    </button>
+                                </div>
+                                
+                                {!hasEnoughPayment && (
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '10px', marginBottom: 0 }}>
+                                        This deposit is insufficient to create a manager. You can withdraw it back to your wallet.
                                     </p>
                                 )}
                             </div>
