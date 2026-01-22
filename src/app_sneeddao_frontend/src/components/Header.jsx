@@ -8,6 +8,7 @@ import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
 import ThemeToggle from './ThemeToggle';
 import { useAdminCheck } from '../hooks/useAdminCheck';
+import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
@@ -77,6 +78,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         isAuthenticated, 
         redirectPath: null // Don't redirect from header
     });
+    
+    // Check premium status
+    const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
 
     // Check if we're on an admin page
     const isOnAdminPage = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
@@ -458,7 +462,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 </button>
 
                 {isAuthenticated ? (
-                    <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isPremium && !premiumLoading && (
+                            <PremiumBadge size="tiny" />
+                        )}
                         <PrincipalBox 
                             principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
                             onLogout={logout}

@@ -17,6 +17,7 @@ import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUti
 import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
 import { useNaming } from '../NamingContext';
+import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -86,6 +87,12 @@ export default function PrincipalPage() {
     const searchContainerRef = useRef(null);
 
     const principalParam = searchParams.get('id');
+    
+    // Check premium status for the viewed principal
+    const { isPremium: viewedUserIsPremium, loading: premiumLoading } = usePremiumStatus(
+        identity, 
+        principalParam ? Principal.fromText(principalParam) : null
+    );
     try {
         stablePrincipalId.current = principalParam ? Principal.fromText(principalParam) : null;
     } catch (e) {
@@ -761,14 +768,19 @@ export default function PrincipalPage() {
                                         marginBottom: '15px'
                                     }}>
                                         <div>
-                                            <h2 style={{ 
-                                                color: theme.colors.primaryText,
-                                                margin: '0 0 5px 0',
-                                                fontSize: '18px',
-                                                fontWeight: '500'
-                                            }}>
-                                                User Details
-                                            </h2>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                                                <h2 style={{ 
+                                                    color: theme.colors.primaryText,
+                                                    margin: '0',
+                                                    fontSize: '18px',
+                                                    fontWeight: '500'
+                                                }}>
+                                                    User Details
+                                                </h2>
+                                                {viewedUserIsPremium && !premiumLoading && (
+                                                    <PremiumBadge size="small" />
+                                                )}
+                                            </div>
                                             <PrincipalDisplay 
                                                 principal={stablePrincipalId.current}
                                                 displayInfo={{

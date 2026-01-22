@@ -32,6 +32,7 @@ import TransactionList from '../components/TransactionList';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { getNeuronManagerSettings, saveNeuronManagerSettings, formatCyclesCompact, parseCyclesInput, getCyclesColor } from '../utils/NeuronManagerSettings';
+import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -93,6 +94,9 @@ export default function Me() {
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
+    
+    // Check premium status
+    const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
 
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
@@ -495,14 +499,19 @@ export default function Me() {
                         border: `1px solid ${theme.colors.border}`
                     }}>
                         <div style={{ marginBottom: '15px' }}>
-                            <h2 style={{ 
-                                color: theme.colors.primaryText,
-                                margin: '0 0 5px 0',
-                                fontSize: '18px',
-                                fontWeight: '500'
-                            }}>
-                                Your Principal ID
-                            </h2>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                                <h2 style={{ 
+                                    color: theme.colors.primaryText,
+                                    margin: '0',
+                                    fontSize: '18px',
+                                    fontWeight: '500'
+                                }}>
+                                    Your Principal ID
+                                </h2>
+                                {isPremium && !premiumLoading && (
+                                    <PremiumBadge size="small" />
+                                )}
+                            </div>
                             <div style={{ 
                                 fontFamily: 'monospace',
                                 color: theme.colors.mutedText,

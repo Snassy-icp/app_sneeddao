@@ -59,7 +59,14 @@ We will go on to design the user facing frontend experience once this core is in
 - [x] Navigation link added to Header ("Me" section)
 - [x] Route added in App.jsx
 
+### Premium Badge Integration (Completed ✅)
+- [x] Created `usePremiumStatus` hook for checking premium status (with caching)
+- [x] Created `PremiumBadge` component with multiple sizes (tiny, small, medium, large)
+- [x] Header - Shows premium badge next to user's principal when logged in
+- [x] Me page - Shows premium badge in user's profile section
+- [x] Principal page - Shows premium badge when viewing another user's profile
+
 ### Pending Features (Future ⏳)
-- [ ] Display premium status badge in user profile/header
 - [ ] Integration with other services (discounts, gated features)
 - [ ] Premium-only features and content gating
+- [ ] Add premium badge to forum posts/threads (optional enhancement)
