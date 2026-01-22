@@ -91,9 +91,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var premiumCreationFeeE8s: Nat64 = 50_000_000; // 0.5 ICP default for premium members
     var sneedPremiumCanisterId: ?Principal = null; // Sneed Premium canister ID
     
-    // Premium membership cache (to avoid repeated inter-canister calls)
-    var premiumCacheStable: PremiumClient.PremiumCache = [];
-    transient var premiumCache: PremiumClient.PremiumCache = [];
+    // Premium membership cache (stable Map - no preupgrade/postupgrade needed)
+    var premiumCache = PremiumClient.emptyCache();
 
     // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
@@ -113,8 +112,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         userRegistrationsStable := Iter.toArray(userRegistrations.entries());
         // Save authorized callers
         authorizedForCallersStable := Iter.toArray(authorizedForCallers.keys());
-        // Save premium cache
-        premiumCacheStable := premiumCache;
+        // Note: premiumCache uses stable Map, no need to save
         // Note: We no longer save to managersStable (deprecated)
     };
 
@@ -129,9 +127,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
         authorizedForCallersStable := [];
         
-        // Restore premium cache (and clean expired entries)
-        premiumCache := PremiumClient.cleanCache(premiumCacheStable);
-        premiumCacheStable := [];
+        // Clean expired entries from premium cache (stable Map persists automatically)
+        PremiumClient.cleanCache(premiumCache);
         
         // Migration: If there's data in old managersStable, migrate it to userRegistrations
         if (managersStable.size() > 0) {
@@ -303,18 +300,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         assert(isAdminOrGovernance(caller));
         sneedPremiumCanisterId := canisterId;
     };
-    
+
+// Not exposed since potentially async call that costs cycles.
+/*    
     // Check if a user is a Sneed Premium member (uses cache)
     public func checkUserPremiumStatus(user: Principal): async Bool {
         switch (sneedPremiumCanisterId) {
             case null { false }; // No premium canister configured
             case (?canisterId) {
-                let (isPremium, newCache) = await* PremiumClient.isPremium(premiumCache, canisterId, user);
-                premiumCache := newCache;
-                isPremium;
+                await* PremiumClient.isPremium(premiumCache, canisterId, user);
             };
         };
     };
+*/
 
     // Get the cycles allocated to new canisters
     public query func getCanisterCreationCycles(): async Nat {
@@ -554,9 +552,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
                 case null { false };
                 case (?canisterId) {
-                    let (isPremium, newCache) = await* PremiumClient.isPremium(premiumCache, canisterId, caller);
-                    premiumCache := newCache;
-                    isPremium;
+                    await* PremiumClient.isPremium(premiumCache, canisterId, caller);
                 };
             };
             

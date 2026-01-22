@@ -1,24 +1,25 @@
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
-import Array "mo:base/Array";
+import Map "mo:map/Map";
+import { phash } "mo:map/Map";
 
 /// Reusable module for checking Sneed Premium membership status with caching.
+/// Uses stable Map for the cache.
 /// 
 /// Usage in client canisters:
 /// 1. Import this module: `import PremiumClient "../PremiumClient";`
-/// 2. Create a stable cache variable: `var premiumCache : [(Principal, Time.Time)] = [];`
+/// 2. Create a stable cache: `var premiumCache = PremiumClient.emptyCache();`
 /// 3. Call `PremiumClient.checkPremium(cache, premiumCanisterId, principal)` to check membership
-/// 4. The cache will be updated automatically with expiration timestamps
-/// 5. Save/restore the cache in preupgrade/postupgrade
+/// 4. The cache is automatically updated (Map is mutable)
 
 module {
     // ============================================
     // TYPES
     // ============================================
     
-    /// Cache entry: (principal, expiration timestamp)
+    /// Cache type: Map of principal -> expiration timestamp
     /// If expiration > Time.now(), the user has an active premium membership
-    public type PremiumCache = [(Principal, Time.Time)];
+    public type PremiumCache = Map.Map<Principal, Time.Time>;
     
     /// Result of a premium check
     public type PremiumStatus = {
@@ -36,38 +37,34 @@ module {
     // CACHE MANAGEMENT
     // ============================================
     
+    /// Create an empty cache
+    public func emptyCache() : PremiumCache {
+        Map.new<Principal, Time.Time>();
+    };
+    
     /// Get cached expiration for a principal
     /// Returns null if not in cache, or the cached expiration timestamp
     public func getCachedExpiration(cache : PremiumCache, principal : Principal) : ?Time.Time {
-        for ((p, exp) in cache.vals()) {
-            if (Principal.equal(p, principal)) {
-                return ?exp;
-            };
-        };
-        null;
+        Map.get(cache, phash, principal);
     };
     
     /// Update the cache with a new expiration timestamp
-    /// Returns the updated cache
-    public func updateCache(cache : PremiumCache, principal : Principal, expiration : Time.Time) : PremiumCache {
-        let filtered = Array.filter<(Principal, Time.Time)>(
-            cache,
-            func((p, _) : (Principal, Time.Time)) : Bool {
-                not Principal.equal(p, principal);
-            }
-        );
-        Array.append(filtered, [(principal, expiration)]);
+    public func updateCache(cache : PremiumCache, principal : Principal, expiration : Time.Time) : () {
+        ignore Map.put(cache, phash, principal, expiration);
     };
     
     /// Remove expired entries from the cache (cleanup helper)
-    public func cleanCache(cache : PremiumCache) : PremiumCache {
+    public func cleanCache(cache : PremiumCache) : () {
         let now = Time.now();
-        Array.filter<(Principal, Time.Time)>(
-            cache,
-            func((_, exp) : (Principal, Time.Time)) : Bool {
-                exp > now;
-            }
-        );
+        let toRemove = Map.filter<Principal, Time.Time>(cache, phash, func(_, exp) { exp <= now });
+        for ((principal, _) in Map.entries(toRemove)) {
+            ignore Map.remove(cache, phash, principal);
+        };
+    };
+    
+    /// Get cache size
+    public func cacheSize(cache : PremiumCache) : Nat {
+        Map.size(cache);
     };
     
     // ============================================
@@ -78,15 +75,16 @@ module {
     /// Uses the cache if the cached expiration hasn't passed yet.
     /// If cache miss or expired, calls the Sneed Premium canister and updates the cache.
     /// 
-    /// Returns: (isPremium, expiration, updatedCache)
+    /// Returns: (isPremium, expiration)
     /// - isPremium: true if the user has an active premium membership
     /// - expiration: the expiration timestamp (0 if not found)
-    /// - updatedCache: the updated cache (caller should save this)
+    /// 
+    /// Note: The cache is updated in-place (Map is mutable)
     public func checkPremium(
         cache : PremiumCache,
         premiumCanisterId : Principal,
         principal : Principal
-    ) : async* (Bool, Time.Time, PremiumCache) {
+    ) : async* (Bool, Time.Time) {
         let now = Time.now();
         
         // Check cache first
@@ -94,7 +92,7 @@ module {
             case (?expiration) {
                 if (expiration > now) {
                     // Cache hit - user is premium
-                    return (true, expiration, cache);
+                    return (true, expiration);
                 };
                 // Cache expired - fall through to check canister
             };
@@ -110,31 +108,30 @@ module {
         switch (status) {
             case (#Active({ expiration })) {
                 // Update cache with new expiration
-                let newCache = updateCache(cache, principal, expiration);
-                return (true, expiration, newCache);
+                updateCache(cache, principal, expiration);
+                return (true, expiration);
             };
             case (#Expired({ expiredAt })) {
                 // Update cache with expired timestamp (so we don't keep checking)
-                let newCache = updateCache(cache, principal, expiredAt);
-                return (false, expiredAt, newCache);
+                updateCache(cache, principal, expiredAt);
+                return (false, expiredAt);
             };
             case (#NotFound) {
                 // Mark as "never had premium" with timestamp 0
-                let newCache = updateCache(cache, principal, 0);
-                return (false, 0, newCache);
+                updateCache(cache, principal, 0);
+                return (false, 0);
             };
         };
     };
     
     /// Simple check that returns only whether the user is premium.
-    /// Still updates the cache internally.
     public func isPremium(
         cache : PremiumCache,
         premiumCanisterId : Principal,
         principal : Principal
-    ) : async* (Bool, PremiumCache) {
-        let (isPremium, _, newCache) = await* checkPremium(cache, premiumCanisterId, principal);
-        (isPremium, newCache);
+    ) : async* Bool {
+        let (isPremium, _) = await* checkPremium(cache, premiumCanisterId, principal);
+        isPremium;
     };
     
     /// Check from cache only (synchronous, no inter-canister call).
@@ -148,4 +145,3 @@ module {
         };
     };
 };
-
