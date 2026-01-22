@@ -41,6 +41,39 @@ module {
     };
     
     // ============================================
+    // PROMO CODES
+    // ============================================
+    
+    /// Promo code for granting free premium membership
+    public type PromoCode = {
+        code : Text;                    // Unique code (uppercase letters)
+        durationNs : Nat;               // Duration of premium granted
+        maxClaims : Nat;                // Maximum number of times this code can be used
+        claimCount : Nat;               // How many times it's been claimed
+        expiration : ?Time.Time;        // Optional expiration date for the code itself
+        notes : ?Text;                  // Admin notes (not shown to users)
+        createdBy : Principal;          // Who created this code
+        createdAt : Time.Time;          // When it was created
+        active : Bool;                  // Can be deactivated
+    };
+    
+    /// Record of a promo code claim
+    public type PromoCodeClaim = {
+        code : Text;
+        claimedBy : Principal;
+        claimedAt : Time.Time;
+        durationGrantedNs : Nat;
+    };
+    
+    /// Request to create a new promo code
+    public type CreatePromoCodeRequest = {
+        durationNs : Nat;
+        maxClaims : Nat;
+        expiration : ?Time.Time;
+        notes : ?Text;
+    };
+    
+    // ============================================
     // ICRC1 TYPES
     // ============================================
     
@@ -197,9 +230,20 @@ module {
         #NotFound;
     };
     
+    public type PromoCodeError = {
+        #NotAuthorized;
+        #InvalidCode;
+        #CodeExpired;
+        #CodeFullyClaimed;      // Max claims reached
+        #CodeInactive;
+        #AlreadyClaimed;        // User already claimed this code
+        #InternalError : Text;
+    };
+    
     public type PurchaseResult = Result.Result<Membership, PurchaseError>;
     public type ClaimResult = Result.Result<Membership, ClaimError>;
     public type AdminResult<T> = Result.Result<T, AdminError>;
+    public type PromoCodeResult = Result.Result<Membership, PromoCodeError>;
     
     // ============================================
     // CONFIGURATION

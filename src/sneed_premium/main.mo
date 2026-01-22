@@ -42,6 +42,10 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     // Voting power tiers
     var vpTiers : [T.VotingPowerTier] = [];
     
+    // Promo codes
+    var promoCodes : [T.PromoCode] = [];
+    var promoCodeClaims : [T.PromoCodeClaim] = [];
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -90,6 +94,56 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     
     func getSneedGovernance() : T.SnsGovernance {
         actor(Principal.toText(config.sneedGovernanceId)) : T.SnsGovernance;
+    };
+    
+    // Generate a random promo code (uppercase letters only, 8 chars)
+    func generatePromoCode() : Text {
+        // Use time-based pseudo-random generation
+        let now = Int.abs(Time.now());
+        let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let charsLen = 26;
+        var code = "";
+        var seed = now;
+        for (_ in [0, 1, 2, 3, 4, 5, 6, 7].vals()) {
+            let idx = seed % charsLen;
+            let char = switch (idx) {
+                case 0 { "A" }; case 1 { "B" }; case 2 { "C" }; case 3 { "D" };
+                case 4 { "E" }; case 5 { "F" }; case 6 { "G" }; case 7 { "H" };
+                case 8 { "I" }; case 9 { "J" }; case 10 { "K" }; case 11 { "L" };
+                case 12 { "M" }; case 13 { "N" }; case 14 { "O" }; case 15 { "P" };
+                case 16 { "Q" }; case 17 { "R" }; case 18 { "S" }; case 19 { "T" };
+                case 20 { "U" }; case 21 { "V" }; case 22 { "W" }; case 23 { "X" };
+                case 24 { "Y" }; case _ { "Z" };
+            };
+            code := code # char;
+            seed := (seed * 1103515245 + 12345) / 65536;  // Simple LCG
+        };
+        code;
+    };
+    
+    func getPromoCode(code : Text) : ?T.PromoCode {
+        for (pc in promoCodes.vals()) {
+            if (pc.code == code) return ?pc;
+        };
+        null;
+    };
+    
+    func updatePromoCode(updatedCode : T.PromoCode) : () {
+        promoCodes := Array.map<T.PromoCode, T.PromoCode>(
+            promoCodes,
+            func(pc : T.PromoCode) : T.PromoCode {
+                if (pc.code == updatedCode.code) { updatedCode } else { pc }
+            }
+        );
+    };
+    
+    func hasUserClaimedPromoCode(user : Principal, code : Text) : Bool {
+        for (claim in promoCodeClaims.vals()) {
+            if (Principal.equal(claim.claimedBy, user) and claim.code == code) {
+                return true;
+            };
+        };
+        false;
     };
     
     // ============================================
@@ -334,6 +388,89 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         
         setMembership(newMembership);
         #ok(newMembership);
+    };
+    
+    // ============================================
+    // PROMO CODE METHODS
+    // ============================================
+    
+    /// Claim a promo code to get free premium membership
+    public shared ({ caller }) func claimPromoCode(code : Text) : async T.PromoCodeResult {
+        let now = Time.now();
+        
+        // Find the promo code
+        let promoCodeOpt = getPromoCode(code);
+        switch (promoCodeOpt) {
+            case null {
+                return #err(#InvalidCode);
+            };
+            case (?promoCode) {
+                // Check if code is active
+                if (not promoCode.active) {
+                    return #err(#CodeInactive);
+                };
+                
+                // Check if code is expired
+                switch (promoCode.expiration) {
+                    case (?exp) {
+                        if (now > exp) {
+                            return #err(#CodeExpired);
+                        };
+                    };
+                    case null {};
+                };
+                
+                // Check if max claims reached
+                if (promoCode.claimCount >= promoCode.maxClaims) {
+                    return #err(#CodeFullyClaimed);
+                };
+                
+                // Check if user already claimed this code
+                if (hasUserClaimedPromoCode(caller, code)) {
+                    return #err(#AlreadyClaimed);
+                };
+                
+                // All checks passed - grant membership
+                let currentExpiration = switch (getMembership(caller)) {
+                    case (?m) { if (m.expiration > now) { m.expiration } else { now } };
+                    case null { now };
+                };
+                
+                let newExpiration = Utils.extendExpiration(currentExpiration, promoCode.durationNs, now);
+                let newMembership : T.Membership = {
+                    principal = caller;
+                    expiration = newExpiration;
+                    lastUpdated = now;
+                };
+                
+                setMembership(newMembership);
+                
+                // Record the claim
+                let claim : T.PromoCodeClaim = {
+                    code = code;
+                    claimedBy = caller;
+                    claimedAt = now;
+                    durationGrantedNs = promoCode.durationNs;
+                };
+                promoCodeClaims := Array.append(promoCodeClaims, [claim]);
+                
+                // Increment claim count
+                let updatedPromoCode : T.PromoCode = {
+                    code = promoCode.code;
+                    durationNs = promoCode.durationNs;
+                    maxClaims = promoCode.maxClaims;
+                    claimCount = promoCode.claimCount + 1;
+                    expiration = promoCode.expiration;
+                    notes = promoCode.notes;
+                    createdBy = promoCode.createdBy;
+                    createdAt = promoCode.createdAt;
+                    active = promoCode.active;
+                };
+                updatePromoCode(updatedPromoCode);
+                
+                #ok(newMembership);
+            };
+        };
     };
     
     // ============================================
@@ -582,6 +719,136 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             sneedGovernanceId = config.sneedGovernanceId;
             paymentRecipient = config.paymentRecipient;
             minClaimIntervalNs = intervalNs;
+        };
+        #ok(());
+    };
+    
+    // --- Promo Code Management (Admin) ---
+    
+    /// Create a new promo code (admin only)
+    public shared ({ caller }) func createPromoCode(request : T.CreatePromoCodeRequest) : async T.AdminResult<T.PromoCode> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        if (request.durationNs == 0) {
+            return #err(#InvalidInput("Duration must be positive"));
+        };
+        if (request.maxClaims == 0) {
+            return #err(#InvalidInput("Max claims must be positive"));
+        };
+        
+        // Generate a unique code
+        var code = generatePromoCode();
+        var attempts = 0;
+        while (getPromoCode(code) != null and attempts < 100) {
+            code := generatePromoCode();
+            attempts += 1;
+        };
+        
+        if (attempts >= 100) {
+            return #err(#InvalidInput("Failed to generate unique code"));
+        };
+        
+        let now = Time.now();
+        let promoCode : T.PromoCode = {
+            code = code;
+            durationNs = request.durationNs;
+            maxClaims = request.maxClaims;
+            claimCount = 0;
+            expiration = request.expiration;
+            notes = request.notes;
+            createdBy = caller;
+            createdAt = now;
+            active = true;
+        };
+        
+        promoCodes := Array.append(promoCodes, [promoCode]);
+        #ok(promoCode);
+    };
+    
+    /// Get all promo codes (admin only)
+    public query ({ caller }) func getPromoCodes() : async T.AdminResult<[T.PromoCode]> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        #ok(promoCodes);
+    };
+    
+    /// Get promo code claims for a specific code (admin only)
+    public query ({ caller }) func getPromoCodeClaims(code : Text) : async T.AdminResult<[T.PromoCodeClaim]> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        let claims = Array.filter<T.PromoCodeClaim>(
+            promoCodeClaims,
+            func(c : T.PromoCodeClaim) : Bool { c.code == code }
+        );
+        #ok(claims);
+    };
+    
+    /// Deactivate a promo code (admin only)
+    public shared ({ caller }) func deactivatePromoCode(code : Text) : async T.AdminResult<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        switch (getPromoCode(code)) {
+            case null { return #err(#NotFound); };
+            case (?pc) {
+                let updated : T.PromoCode = {
+                    code = pc.code;
+                    durationNs = pc.durationNs;
+                    maxClaims = pc.maxClaims;
+                    claimCount = pc.claimCount;
+                    expiration = pc.expiration;
+                    notes = pc.notes;
+                    createdBy = pc.createdBy;
+                    createdAt = pc.createdAt;
+                    active = false;
+                };
+                updatePromoCode(updated);
+                #ok(());
+            };
+        };
+    };
+    
+    /// Reactivate a promo code (admin only)
+    public shared ({ caller }) func reactivatePromoCode(code : Text) : async T.AdminResult<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        switch (getPromoCode(code)) {
+            case null { return #err(#NotFound); };
+            case (?pc) {
+                let updated : T.PromoCode = {
+                    code = pc.code;
+                    durationNs = pc.durationNs;
+                    maxClaims = pc.maxClaims;
+                    claimCount = pc.claimCount;
+                    expiration = pc.expiration;
+                    notes = pc.notes;
+                    createdBy = pc.createdBy;
+                    createdAt = pc.createdAt;
+                    active = true;
+                };
+                updatePromoCode(updated);
+                #ok(());
+            };
+        };
+    };
+    
+    /// Delete a promo code entirely (admin only)
+    public shared ({ caller }) func deletePromoCode(code : Text) : async T.AdminResult<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        let initialLen = promoCodes.size();
+        promoCodes := Array.filter<T.PromoCode>(
+            promoCodes,
+            func(pc : T.PromoCode) : Bool { pc.code != code }
+        );
+        if (promoCodes.size() == initialLen) {
+            return #err(#NotFound);
         };
         #ok(());
     };
