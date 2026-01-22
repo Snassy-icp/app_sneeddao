@@ -85,6 +85,9 @@ import SneedexOffer from './pages/SneedexOffer';
 import SneedexCreate from './pages/SneedexCreate';
 import SneedexMy from './pages/SneedexMy';
 
+// Premium page
+import Premium from './pages/Premium';
+
 // Component to set up global naming function
 function GlobalNamingSetup() {
     const { getNeuronDisplayName } = useNaming();
@@ -146,6 +149,7 @@ function App() {
                     <Route path="/partners" element={<Partners />} />
                     <Route path="/projects" element={<Projects />} />
                     <Route path="/proposals" element={<Proposals />} />
+                    <Route path="/premium" element={<Premium />} />
                     <Route path="/rewards" element={<Rewards />} />
                     <Route path="/tips" element={<Tips />} />
                     <Route path="/posts" element={<Posts />} />

@@ -35,17 +35,31 @@ We will go on to design the user facing frontend experience once this core is in
   - Query methods for external canisters to check membership
 
 ### Admin Frontend (Completed ✅)
-- [x] Create SneedPremiumUtils.js - Actor creation utility
+- [x] Create SneedPremiumUtils.js - Actor creation utility with IDL definitions
 - [x] Create pages/admin/SneedPremium.jsx - Admin interface with:
-  - Configuration overview (canister IDs, payment recipient)
-  - ICP tier management (add/edit/remove tiers)
-  - Voting power tier management (add/edit/remove tiers)
+  - Configuration overview (canister IDs, payment recipient, active members count)
+  - Payment recipient configuration
+  - Minimum VP claim interval configuration
+  - ICP tier management (add/edit/remove tiers with modal editing)
+  - Voting power tier management (add/edit/remove tiers with modal editing)
   - Admin management (add/remove admins)
-  - Membership management (view all, grant/revoke/extend memberships)
+  - Manual membership granting (grant/extend membership for any principal)
+  - Membership management (view all members, revoke memberships)
 - [x] Add route in App.jsx (`/admin/premium`)
 - [x] Add link in Admin.jsx dashboard
 
-### User Frontend (Pending ⏳)
-- [ ] Premium membership page for users to purchase/claim
-- [ ] Display premium status in user profile
+### User Frontend (Completed ✅)
+- [x] Premium membership page (`/premium`) for users to:
+  - View current membership status and expiration
+  - See available ICP payment tiers with pricing
+  - Purchase premium with ICP (deposit to unique subaccount flow)
+  - See available VP tiers with minimum voting power requirements
+  - Claim premium with voting power (staked Sneed neurons)
+  - Premium benefits overview section
+- [x] Navigation link added to Header ("Me" section)
+- [x] Route added in App.jsx
+
+### Pending Features (Future ⏳)
+- [ ] Display premium status badge in user profile/header
 - [ ] Integration with other services (discounts, gated features)
+- [ ] Premium-only features and content gating
