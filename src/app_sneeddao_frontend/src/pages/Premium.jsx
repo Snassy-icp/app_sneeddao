@@ -40,18 +40,14 @@ export default function Premium() {
     const [icpTiers, setIcpTiers] = useState([]);
     const [vpTiers, setVpTiers] = useState([]);
     const [depositAccount, setDepositAccount] = useState(null);
-    const [depositBalance, setDepositBalance] = useState(null);
     const [selectedIcpTier, setSelectedIcpTier] = useState(null);
-    const [canisterId, setCanisterId] = useState(null);
     
     // User wallet balance
     const [walletBalance, setWalletBalance] = useState(null);
     const [icpFee, setIcpFee] = useState(null);
     
     // Loading states
-    const [purchasing, setPurchasing] = useState(false);
     const [claiming, setClaiming] = useState(false);
-    const [checkingBalance, setCheckingBalance] = useState(false);
     const [payingNow, setPayingNow] = useState(false);
     
     // Modals
@@ -98,33 +94,29 @@ export default function Premium() {
             if (!actor) {
                 // Unauthenticated - fetch public data only
                 const anonActor = await createSneedPremiumActor();
-                const [icpTiersResult, vpTiersResult, canisterIdResult] = await Promise.all([
+                const [icpTiersResult, vpTiersResult] = await Promise.all([
                     anonActor.getIcpTiers(),
                     anonActor.getVotingPowerTiers(),
-                    anonActor.getCanisterId(),
                 ]);
                 setIcpTiers(icpTiersResult);
                 setVpTiers(vpTiersResult);
-                setCanisterId(canisterIdResult);
                 setLoading(false);
                 return;
             }
             
             const principal = identity.getPrincipal();
             
-            const [statusResult, icpTiersResult, vpTiersResult, depositResult, canisterIdResult] = await Promise.all([
+            const [statusResult, icpTiersResult, vpTiersResult, depositResult] = await Promise.all([
                 actor.checkMembership(principal),
                 actor.getIcpTiers(),
                 actor.getVotingPowerTiers(),
                 actor.getDepositAccount(principal),
-                actor.getCanisterId(),
             ]);
             
             setMembershipStatus(statusResult);
             setIcpTiers(icpTiersResult);
             setVpTiers(vpTiersResult);
             setDepositAccount(depositResult);
-            setCanisterId(canisterIdResult);
             
             // Auto-select first tier if any
             if (icpTiersResult.length > 0) {
@@ -142,22 +134,6 @@ export default function Premium() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-    
-    // Check deposit balance
-    const checkDepositBalance = async () => {
-        if (!depositAccount || !identity) return;
-        
-        setCheckingBalance(true);
-        try {
-            const icpLedger = createIcrc1Actor(ICP_LEDGER_ID, { agentOptions: { identity, host: 'https://icp-api.io' } });
-            const balance = await icpLedger.icrc1_balance_of(depositAccount);
-            setDepositBalance(balance);
-        } catch (err) {
-            console.error('Failed to check balance:', err);
-            showInfo('Error', 'Failed to check deposit balance: ' + err.message, 'error');
-        }
-        setCheckingBalance(false);
-    };
     
     // Fetch wallet balance and ICP fee
     const fetchWalletBalance = useCallback(async () => {
@@ -270,56 +246,6 @@ export default function Premium() {
         setPayingNow(false);
     };
     
-    // Purchase with ICP
-    const handlePurchase = async () => {
-        if (selectedIcpTier === null) {
-            showInfo('Select Tier', 'Please select a membership tier first', 'error');
-            return;
-        }
-        
-        const tier = icpTiers[selectedIcpTier];
-        
-        showConfirm(
-            `Complete your purchase of "${tier.name}"?\n\nThis will use ${formatIcp(tier.amountE8s)} from your deposit account to grant you ${formatDuration(tier.durationNs)} of premium membership.`,
-            () => doPurchase()
-        );
-    };
-    
-    const doPurchase = async () => {
-        closeConfirmModal();
-        setPurchasing(true);
-        
-        try {
-            const actor = await getActor();
-            const result = await actor.purchaseWithIcp();
-            
-            if ('ok' in result) {
-                showInfo('🎉 Success!', `You are now a Sneed Premium member!\n\nYour membership expires: ${formatTimestamp(result.ok.expiration)}`, 'success');
-                await fetchData();
-                await checkDepositBalance();
-            } else {
-                const err = result.err;
-                let errorMessage = 'Purchase failed';
-                if ('InsufficientPayment' in err) {
-                    errorMessage = `Insufficient funds. Required: ${formatIcp(err.InsufficientPayment.required)}, but your deposit has: ${formatIcp(err.InsufficientPayment.received)}`;
-                } else if ('InvalidTier' in err) {
-                    errorMessage = 'No valid tier found for your deposit amount';
-                } else if ('TierNotActive' in err) {
-                    errorMessage = 'This tier is not currently active';
-                } else if ('TransferFailed' in err) {
-                    errorMessage = 'Payment transfer failed: ' + err.TransferFailed;
-                } else if ('InternalError' in err) {
-                    errorMessage = err.InternalError;
-                }
-                showInfo('Purchase Failed', errorMessage, 'error');
-            }
-        } catch (err) {
-            showInfo('Error', 'Failed to complete purchase: ' + err.message, 'error');
-        }
-        
-        setPurchasing(false);
-    };
-    
     // Claim with Voting Power
     const handleClaimVP = async () => {
         showConfirm(
@@ -360,24 +286,6 @@ export default function Premium() {
         }
         
         setClaiming(false);
-    };
-    
-    // Format subaccount for display
-    const formatSubaccount = (subaccount) => {
-        if (!subaccount || subaccount.length === 0) return null;
-        const bytes = subaccount[0] || subaccount;
-        const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        return hex;
-    };
-    
-    // Copy to clipboard helper
-    const copyToClipboard = async (text, label) => {
-        try {
-            await navigator.clipboard.writeText(text);
-            showInfo('Copied!', `${label} copied to clipboard`, 'success');
-        } catch (err) {
-            showInfo('Error', 'Failed to copy to clipboard', 'error');
-        }
     };
     
     // ============================================
@@ -513,31 +421,6 @@ export default function Premium() {
             padding: '1.5rem',
             marginTop: '1rem',
         },
-        depositLabel: {
-            color: theme.colors.mutedText,
-            fontSize: '0.9rem',
-            marginBottom: '0.5rem',
-        },
-        depositValue: {
-            fontFamily: 'monospace',
-            fontSize: '0.9rem',
-            background: theme.colors.secondaryBg,
-            padding: '10px 14px',
-            borderRadius: '8px',
-            border: `1px solid ${theme.colors.border}`,
-            wordBreak: 'break-all',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-        },
-        balanceDisplay: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: '1rem',
-            padding: '1rem',
-            background: theme.colors.secondaryBg,
-            borderRadius: '10px',
-        },
         button: {
             padding: '12px 24px',
             borderRadius: '10px',
@@ -561,11 +444,6 @@ export default function Premium() {
         },
         buttonSuccess: {
             background: theme.colors.success,
-        },
-        buttonSecondary: {
-            background: theme.colors.secondaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            color: theme.colors.primaryText,
         },
         perksGrid: {
             display: 'grid',
@@ -848,74 +726,6 @@ export default function Premium() {
                                         </button>
                                     </div>
                                     
-                                    {/* Manual Deposit Section (collapsed by default) */}
-                                    <details style={{ marginTop: '1rem' }}>
-                                        <summary style={{ 
-                                            cursor: 'pointer', 
-                                            color: theme.colors.mutedText,
-                                            fontSize: '0.9rem',
-                                            marginBottom: '1rem',
-                                        }}>
-                                            Or send ICP manually to your deposit account
-                                        </summary>
-                                        <div style={{ paddingTop: '1rem' }}>
-                                            <div style={styles.depositLabel}>Your Deposit Account:</div>
-                                            <div 
-                                                style={styles.depositValue}
-                                                onClick={() => copyToClipboard(canisterId?.toString() || SNEED_PREMIUM_CANISTER_ID, 'Principal')}
-                                                title="Click to copy principal"
-                                            >
-                                                <strong>Principal:</strong> {canisterId?.toString() || SNEED_PREMIUM_CANISTER_ID}
-                                            </div>
-                                            {depositAccount.subaccount && depositAccount.subaccount.length > 0 && (
-                                                <div 
-                                                    style={{ ...styles.depositValue, marginTop: '8px' }}
-                                                    onClick={() => copyToClipboard(formatSubaccount(depositAccount.subaccount), 'Subaccount')}
-                                                    title="Click to copy subaccount"
-                                                >
-                                                    <strong>Subaccount:</strong> {formatSubaccount(depositAccount.subaccount)}
-                                                </div>
-                                            )}
-                                            
-                                            <div style={styles.balanceDisplay}>
-                                                <div>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Your Deposit Balance</div>
-                                                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: theme.colors.primaryText }}>
-                                                        {depositBalance !== null ? formatIcp(depositBalance) : '—'}
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={checkDepositBalance}
-                                                    disabled={checkingBalance}
-                                                    style={{
-                                                        ...styles.button,
-                                                        ...styles.buttonSecondary,
-                                                        opacity: checkingBalance ? 0.5 : 1,
-                                                    }}
-                                                >
-                                                    {checkingBalance ? <FaSpinner className="spin" /> : <FaWallet />}
-                                                    Check Balance
-                                                </button>
-                                            </div>
-                                            
-                                            <button
-                                                onClick={handlePurchase}
-                                                disabled={purchasing || selectedIcpTier === null}
-                                                style={{
-                                                    ...styles.button,
-                                                    ...styles.buttonLarge,
-                                                    opacity: purchasing || selectedIcpTier === null ? 0.5 : 1,
-                                                    cursor: purchasing || selectedIcpTier === null ? 'not-allowed' : 'pointer',
-                                                }}
-                                            >
-                                                {purchasing ? (
-                                                    <><FaSpinner className="spin" /> Processing...</>
-                                                ) : (
-                                                    <><FaCrown /> Complete Purchase (from deposit)</>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </details>
                                 </div>
                             )}
                             
