@@ -17,3 +17,35 @@ The premium canister should contain a dynamic list (managable by admins) of how 
 The admin configuration should be available under a new subpage of the /admin page on the frontend. 
 
 We will go on to design the user facing frontend experience once this core is in place. 
+
+---
+
+## Implementation Status
+
+### Backend (Completed ✅)
+- [x] Types.mo - All type declarations
+- [x] Utils.mo - Utility functions (subaccount generation, VP calculation, tier matching)
+- [x] main.mo - Actor implementation with:
+  - Membership registry with expiration tracking
+  - ICP payment tiers (admin-configurable)
+  - Voting power tiers (admin-configurable)
+  - Purchase with ICP flow (user deposits to subaccount, canister forwards to recipient)
+  - Claim with voting power flow (verifies SNS neurons, calculates VP, grants membership)
+  - Admin management (add/remove admins, tiers, manual membership grants)
+  - Query methods for external canisters to check membership
+
+### Admin Frontend (Completed ✅)
+- [x] Create SneedPremiumUtils.js - Actor creation utility
+- [x] Create pages/admin/SneedPremium.jsx - Admin interface with:
+  - Configuration overview (canister IDs, payment recipient)
+  - ICP tier management (add/edit/remove tiers)
+  - Voting power tier management (add/edit/remove tiers)
+  - Admin management (add/remove admins)
+  - Membership management (view all, grant/revoke/extend memberships)
+- [x] Add route in App.jsx (`/admin/premium`)
+- [x] Add link in Admin.jsx dashboard
+
+### User Frontend (Pending ⏳)
+- [ ] Premium membership page for users to purchase/claim
+- [ ] Display premium status in user profile
+- [ ] Integration with other services (discounts, gated features)
