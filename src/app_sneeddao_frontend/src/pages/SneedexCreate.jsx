@@ -150,12 +150,15 @@ function SneedexCreate() {
     const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
     
     // Offer creation fee (ICP)
-    const [offerCreationFee, setOfferCreationFee] = useState(0n);
+    const [offerCreationFee, setOfferCreationFee] = useState(0n); // Effective fee for this user
+    const [regularOfferCreationFee, setRegularOfferCreationFee] = useState(0n); // Regular (non-premium) fee
+    const [premiumOfferCreationFee, setPremiumOfferCreationFee] = useState(0n); // Premium fee
+    const [premiumAuctionCut, setPremiumAuctionCut] = useState(0); // Premium auction cut in bps
+    const [isPremiumUser, setIsPremiumUser] = useState(false);
     const [userPaymentBalance, setUserPaymentBalance] = useState(0n);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingFeeInfo, setLoadingFeeInfo] = useState(true);
     const [withdrawingPayment, setWithdrawingPayment] = useState(false);
-    const [sendingPayment, setSendingPayment] = useState(false);
     const [userIcpBalance, setUserIcpBalance] = useState(null);
     
     // Admin status (admins can create offers with unverified assets)
@@ -228,15 +231,25 @@ function SneedexCreate() {
             const actor = createSneedexActor(identity);
             const userPrincipal = identity.getPrincipal();
             
-            const [fee, subaccount, balance] = await Promise.all([
+            const [effectiveFee, regularFee, premiumFee, premiumCutBps, subaccount, balance] = await Promise.all([
                 actor.getEffectiveOfferCreationFee(userPrincipal),
+                actor.getOfferCreationFee(),
+                actor.getPremiumOfferCreationFee(),
+                actor.getPremiumAuctionCutBps(),
                 actor.getOfferCreationPaymentSubaccount(userPrincipal),
                 actor.getUserOfferCreationBalance(userPrincipal),
             ]);
             
-            setOfferCreationFee(fee);
+            setOfferCreationFee(effectiveFee);
+            setRegularOfferCreationFee(regularFee);
+            setPremiumOfferCreationFee(premiumFee);
+            setPremiumAuctionCut(Number(premiumCutBps));
             setPaymentSubaccount(subaccount);
             setUserPaymentBalance(balance);
+            
+            // Determine if user is premium (effective fee equals premium fee and is less than regular)
+            const isPremium = regularFee > 0n && effectiveFee < regularFee;
+            setIsPremiumUser(isPremium);
             
             // Also fetch user's ICP wallet balance
             const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
@@ -1404,49 +1417,6 @@ function SneedexCreate() {
         setError('');
     };
     
-    // Send payment for offer creation
-    const handleSendPayment = async () => {
-        if (!identity || !paymentSubaccount) return;
-        
-        setSendingPayment(true);
-        setError('');
-        
-        try {
-            const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
-                agentOptions: { identity, host: getHost() }
-            });
-            
-            const result = await icpLedger.icrc1_transfer({
-                to: {
-                    owner: Principal.fromText(SNEEDEX_CANISTER_ID),
-                    subaccount: [paymentSubaccount],
-                },
-                amount: offerCreationFee,
-                fee: [ICP_FEE],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-            });
-            
-            if ('Err' in result) {
-                const err = result.Err;
-                if ('InsufficientFunds' in err) {
-                    setError(`Insufficient funds: ${Number(err.InsufficientFunds.balance) / Number(E8S)} ICP available`);
-                } else {
-                    setError(`Payment failed: ${JSON.stringify(err)}`);
-                }
-            } else {
-                // Refresh balance
-                await fetchFeeInfo();
-            }
-        } catch (e) {
-            console.error('Payment error:', e);
-            setError(`Payment error: ${e.message}`);
-        } finally {
-            setSendingPayment(false);
-        }
-    };
-    
     // Withdraw payment balance
     const handleWithdrawPayment = async () => {
         if (!identity) return;
@@ -1473,8 +1443,10 @@ function SneedexCreate() {
     
     // Check if user has paid enough for offer creation
     const hasEnoughPayment = userPaymentBalance >= offerCreationFee;
-    const canSendPayment = userIcpBalance !== null && userIcpBalance >= offerCreationFee + ICP_FEE;
-    const needsPayment = offerCreationFee > 0n && !hasEnoughPayment;
+    // User needs to have enough ICP to pay (either already deposited, or in wallet)
+    const totalAvailable = (userIcpBalance || 0n) + userPaymentBalance;
+    const canAffordCreation = totalAvailable >= offerCreationFee + ICP_FEE;
+    const needsPayment = offerCreationFee > 0n;
     
     const handleCreate = async () => {
         if (!identity) {
@@ -1487,11 +1459,17 @@ function SneedexCreate() {
         setProgressError(null);
         
         // Build progress steps based on what we need to do
-        const steps = [
-            { label: 'Creating offer...', status: 'pending' },
-            { label: 'Adding assets...', status: 'pending' },
-            { label: 'Finalizing offer...', status: 'pending' },
-        ];
+        const steps = [];
+        
+        // Add payment step if needed
+        const requiresPaymentStep = offerCreationFee > 0n && !hasEnoughPayment;
+        if (requiresPaymentStep) {
+            steps.push({ label: `Paying ${Number(offerCreationFee) / Number(E8S)} ICP fee...`, status: 'pending' });
+        }
+        
+        steps.push({ label: 'Creating offer...', status: 'pending' });
+        steps.push({ label: 'Adding assets...', status: 'pending' });
+        steps.push({ label: 'Finalizing offer...', status: 'pending' });
         
         if (allAssetsReady) {
             steps.push({ label: 'Escrowing assets...', status: 'pending' });
@@ -1502,11 +1480,46 @@ function SneedexCreate() {
         setCurrentProgressStep(0);
         setShowProgressOverlay(true);
         
+        let stepIndex = 0;
+        
         try {
             const actor = createSneedexActor(identity);
             
-            // Step 1: Create the offer
-            updateProgressStep(0, 'in_progress');
+            // Step: Pay creation fee (if needed and not already deposited)
+            if (requiresPaymentStep) {
+                updateProgressStep(stepIndex, 'in_progress');
+                
+                const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
+                    agentOptions: { identity, host: getHost() }
+                });
+                
+                const result = await icpLedger.icrc1_transfer({
+                    to: {
+                        owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+                        subaccount: [paymentSubaccount],
+                    },
+                    amount: offerCreationFee,
+                    fee: [ICP_FEE],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                });
+                
+                if ('Err' in result) {
+                    const err = result.Err;
+                    if ('InsufficientFunds' in err) {
+                        throw new Error(`Insufficient funds: ${Number(err.InsufficientFunds.balance) / Number(E8S)} ICP available`);
+                    } else {
+                        throw new Error(`Payment failed: ${JSON.stringify(err)}`);
+                    }
+                }
+                
+                updateProgressStep(stepIndex, 'complete');
+                stepIndex++;
+            }
+            
+            // Step: Create the offer
+            updateProgressStep(stepIndex, 'in_progress');
             
             // Convert approved bidders to principals
             const approvedBidderPrincipals = approvedBidders.map(str => Principal.fromText(str));
@@ -1530,10 +1543,11 @@ function SneedexCreate() {
             
             const offerId = createResult.ok;
             setCreatedOfferId(offerId);
-            updateProgressStep(0, 'complete');
+            updateProgressStep(stepIndex, 'complete');
+            stepIndex++;
             
-            // Step 2: Add assets to the offer
-            updateProgressStep(1, 'in_progress');
+            // Step: Add assets to the offer
+            updateProgressStep(stepIndex, 'in_progress');
             for (const asset of assets) {
                 const assetVariant = createAssetVariant(asset.type, asset);
                 const addResult = await actor.addAsset({
@@ -1545,20 +1559,22 @@ function SneedexCreate() {
                     throw new Error(`Failed to add asset: ${getErrorMessage(addResult.err)}`);
                 }
             }
-            updateProgressStep(1, 'complete');
+            updateProgressStep(stepIndex, 'complete');
+            stepIndex++;
             
-            // Step 3: Finalize assets
-            updateProgressStep(2, 'in_progress');
+            // Step: Finalize assets
+            updateProgressStep(stepIndex, 'in_progress');
             const finalizeResult = await actor.finalizeAssets(offerId);
             if ('err' in finalizeResult) {
                 throw new Error(`Failed to finalize: ${getErrorMessage(finalizeResult.err)}`);
             }
-            updateProgressStep(2, 'complete');
+            updateProgressStep(stepIndex, 'complete');
+            stepIndex++;
             
             // If all assets are ready, auto-escrow and activate
             if (allAssetsReady) {
-                // Step 4: Escrow all assets
-                updateProgressStep(3, 'in_progress');
+                // Step: Escrow all assets
+                updateProgressStep(stepIndex, 'in_progress');
                 
                 for (let idx = 0; idx < assets.length; idx++) {
                     const asset = assets[idx];
@@ -1574,15 +1590,16 @@ function SneedexCreate() {
                         await escrowTokenAsset(asset.ledger_id, asset.amount, asset.decimals, offerId, idx, identity.getPrincipal());
                     }
                 }
-                updateProgressStep(3, 'complete');
+                updateProgressStep(stepIndex, 'complete');
+                stepIndex++;
                 
-                // Step 5: Activate the offer
-                updateProgressStep(4, 'in_progress');
+                // Step: Activate the offer
+                updateProgressStep(stepIndex, 'in_progress');
                 const activateResult = await actor.activateOffer(offerId);
                 if ('err' in activateResult) {
                     throw new Error(`Failed to activate: ${getErrorMessage(activateResult.err)}`);
                 }
-                updateProgressStep(4, 'complete');
+                updateProgressStep(stepIndex, 'complete');
             }
             
             // Show success
@@ -2611,8 +2628,10 @@ function SneedexCreate() {
                         {/* Marketplace Fee Info */}
                         {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && (
                             <div style={{
-                                background: `${theme.colors.warning}10`,
-                                border: `1px solid ${theme.colors.warning}40`,
+                                background: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                    ? `linear-gradient(135deg, ${theme.colors.warning}10 0%, rgba(255, 215, 0, 0.15) 100%)`
+                                    : `${theme.colors.warning}10`,
+                                border: `1px solid ${isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? 'rgba(255, 215, 0, 0.4)' : `${theme.colors.warning}40`}`,
                                 borderRadius: '10px',
                                 padding: '16px',
                                 marginBottom: '24px',
@@ -2622,16 +2641,37 @@ function SneedexCreate() {
                             }}>
                                 <span style={{ fontSize: '1.5rem' }}>💰</span>
                                 <div>
-                                    <strong style={{ color: theme.colors.warning }}>
-                                        Sneedex Marketplace Fee: {formatFeeRate(marketplaceFeeRate)}
+                                    <strong style={{ color: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? '#FFD700' : theme.colors.warning }}>
+                                        Sneedex Marketplace Fee: {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                            ? formatFeeRate(premiumAuctionCut)
+                                            : formatFeeRate(marketplaceFeeRate)}
+                                        {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
+                                            <span style={{ marginLeft: '8px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', padding: '2px 8px', borderRadius: '10px' }}>
+                                                👑 PREMIUM
+                                            </span>
+                                        )}
                                     </strong>
                                     <p style={{ 
                                         fontSize: '0.85rem', 
                                         color: theme.colors.mutedText, 
                                         margin: '4px 0 0 0' 
                                     }}>
-                                        When your offer sells, Sneedex will take a {formatFeeRate(marketplaceFeeRate)} cut from the winning bid.
+                                        When your offer sells, Sneedex will take a {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                            ? formatFeeRate(premiumAuctionCut)
+                                            : formatFeeRate(marketplaceFeeRate)} cut from the winning bid.
                                         The remaining amount goes to you. This rate is locked when the offer is created.
+                                        {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
+                                            <span style={{ color: theme.colors.success, marginLeft: '4px' }}>
+                                                (Regular: {formatFeeRate(marketplaceFeeRate)})
+                                            </span>
+                                        )}
+                                        {!isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
+                                            <span style={{ display: 'block', marginTop: '4px' }}>
+                                                <Link to="/premium" style={{ color: '#FFD700' }}>
+                                                    👑 Premium members pay only {formatFeeRate(premiumAuctionCut)} →
+                                                </Link>
+                                            </span>
+                                        )}
                                     </p>
                                 </div>
                             </div>
@@ -4272,7 +4312,7 @@ function SneedexCreate() {
                         )}
                         
                         {/* Offer Creation Fee Section */}
-                        {!loadingFeeInfo && offerCreationFee > 0n && (
+                        {!loadingFeeInfo && (regularOfferCreationFee > 0n || userPaymentBalance > 0n) && (
                             <div style={{
                                 background: `linear-gradient(135deg, ${theme.colors.cardBackground} 0%, rgba(255, 215, 0, 0.1) 100%)`,
                                 border: `1px solid rgba(255, 215, 0, 0.3)`,
@@ -4282,24 +4322,59 @@ function SneedexCreate() {
                             }}>
                                 <h4 style={{ color: '#FFD700', margin: '0 0 0.75rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     💰 Offer Creation Fee
+                                    {isPremiumUser && <span style={{ fontSize: '0.75rem', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', padding: '2px 8px', borderRadius: '10px' }}>👑 PREMIUM</span>}
                                 </h4>
-                                <p style={{ color: theme.colors.mutedText, margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
-                                    Creating an offer requires a fee of <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong>
-                                </p>
                                 
-                                {/* Show deposited balance if > 0 */}
+                                {regularOfferCreationFee > 0n && (
+                                    <div style={{ color: theme.colors.mutedText, margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+                                        {isPremiumUser ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                <span>Fee: <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong></span>
+                                                <span style={{ textDecoration: 'line-through', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                    {Number(regularOfferCreationFee) / Number(E8S)} ICP
+                                                </span>
+                                                <span style={{ color: theme.colors.success, fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                                    {Math.round((1 - Number(offerCreationFee) / Number(regularOfferCreationFee)) * 100)}% OFF
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span>Fee: <strong style={{ color: '#FFD700' }}>{Number(offerCreationFee) / Number(E8S)} ICP</strong></span>
+                                        )}
+                                        {!isPremiumUser && premiumOfferCreationFee < regularOfferCreationFee && (
+                                            <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                                                <Link to="/premium" style={{ color: '#FFD700' }}>
+                                                    👑 Premium members pay only {Number(premiumOfferCreationFee) / Number(E8S)} ICP →
+                                                </Link>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                {/* Show balance check */}
+                                {needsPayment && !hasEnoughPayment && (
+                                    <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, marginBottom: '0.5rem' }}>
+                                        Wallet balance: <strong>{userIcpBalance !== null ? `${Number(userIcpBalance) / Number(E8S)} ICP` : 'Loading...'}</strong>
+                                        {!canAffordCreation && (
+                                            <span style={{ color: theme.colors.error, marginLeft: '8px' }}>
+                                                ⚠️ Insufficient funds
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                {/* Show deposited balance if > 0 (recovery from failed attempt) */}
                                 {userPaymentBalance > 0n && (
                                     <div style={{
                                         background: hasEnoughPayment ? `${theme.colors.success}15` : `${theme.colors.warning}15`,
                                         border: `1px solid ${hasEnoughPayment ? theme.colors.success : theme.colors.warning}`,
                                         borderRadius: '8px',
                                         padding: '0.75rem 1rem',
-                                        marginBottom: '1rem',
+                                        marginTop: '0.75rem',
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                            <span style={{ color: hasEnoughPayment ? theme.colors.success : theme.colors.warning }}>
-                                                {hasEnoughPayment ? '✅' : '⚠️'} Deposited: <strong>{Number(userPaymentBalance) / Number(E8S)} ICP</strong>
-                                                {hasEnoughPayment ? ' — Ready to create!' : ' — Insufficient'}
+                                            <span style={{ color: hasEnoughPayment ? theme.colors.success : theme.colors.warning, fontSize: '0.9rem' }}>
+                                                {hasEnoughPayment ? '✅' : '💰'} Pending deposit: <strong>{Number(userPaymentBalance) / Number(E8S)} ICP</strong>
+                                                {hasEnoughPayment && ' — Will be used automatically'}
                                             </span>
                                             <button
                                                 onClick={handleWithdrawPayment}
@@ -4320,32 +4395,6 @@ function SneedexCreate() {
                                         </div>
                                     </div>
                                 )}
-                                
-                                {/* Payment action */}
-                                {needsPayment && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                        <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
-                                            Wallet balance: <strong>{userIcpBalance !== null ? `${Number(userIcpBalance) / Number(E8S)} ICP` : 'Loading...'}</strong>
-                                        </div>
-                                        <button
-                                            onClick={handleSendPayment}
-                                            disabled={sendingPayment || !canSendPayment}
-                                            style={{
-                                                background: canSendPayment ? 'linear-gradient(135deg, #FFD700, #FFA500)' : theme.colors.tertiaryBg,
-                                                color: canSendPayment ? '#1a1a2e' : theme.colors.mutedText,
-                                                border: 'none',
-                                                padding: '0.75rem 1.5rem',
-                                                borderRadius: '8px',
-                                                fontSize: '0.95rem',
-                                                fontWeight: 'bold',
-                                                cursor: (sendingPayment || !canSendPayment) ? 'not-allowed' : 'pointer',
-                                                opacity: (sendingPayment || !canSendPayment) ? 0.6 : 1,
-                                            }}
-                                        >
-                                            {sendingPayment ? '⏳ Sending Payment...' : canSendPayment ? `💳 Pay ${Number(offerCreationFee) / Number(E8S)} ICP` : 'Insufficient ICP Balance'}
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         )}
                         
@@ -4356,15 +4405,15 @@ function SneedexCreate() {
                             <button
                                 style={{
                                     ...styles.createBtn,
-                                    ...((!allAssetsReady && !isAdmin) || needsPayment ? {
+                                    ...((!allAssetsReady && !isAdmin) || (needsPayment && !canAffordCreation) ? {
                                         opacity: 0.5,
                                         cursor: 'not-allowed',
                                     } : {})
                                 }}
                                 onClick={handleCreate}
-                                disabled={creating || (!allAssetsReady && !isAdmin) || needsPayment}
+                                disabled={creating || (!allAssetsReady && !isAdmin) || (needsPayment && !canAffordCreation)}
                                 onMouseEnter={(e) => {
-                                    if (!creating && (allAssetsReady || isAdmin) && !needsPayment) {
+                                    if (!creating && (allAssetsReady || isAdmin) && !(needsPayment && !canAffordCreation)) {
                                         e.target.style.transform = 'translateY(-2px)';
                                         e.target.style.boxShadow = `0 8px 25px ${theme.colors.success}40`;
                                     }
@@ -4374,7 +4423,10 @@ function SneedexCreate() {
                                     e.target.style.boxShadow = 'none';
                                 }}
                             >
-                                {creating ? 'Creating...' : needsPayment ? '🔒 Pay Fee First' : '🚀 Create Offer'}
+                                {creating ? 'Creating...' : 
+                                 (needsPayment && !canAffordCreation) ? '⚠️ Insufficient Funds' :
+                                 needsPayment ? `🚀 Pay ${Number(offerCreationFee) / Number(E8S)} ICP & Create` : 
+                                 '🚀 Create Offer'}
                             </button>
                         </div>
                     </div>
