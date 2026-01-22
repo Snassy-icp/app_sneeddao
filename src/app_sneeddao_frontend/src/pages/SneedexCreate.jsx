@@ -227,7 +227,7 @@ function SneedexCreate() {
         fetchIcpPrice();
     }, []);
     
-    // Fetch offer creation fee info (single query call - fast!)
+    // Fetch offer creation fee info (all query calls - fast!)
     const fetchFeeInfo = useCallback(async () => {
         if (!identity || !isAuthenticated) return;
         
@@ -236,17 +236,10 @@ function SneedexCreate() {
             const actor = createSneedexActor(identity);
             const userPrincipal = identity.getPrincipal();
             
-            // Single query for all fee config + user-specific data
-            const [feeConfig, subaccount, balance, icpBalance] = await Promise.all([
+            // First get fee config and subaccount (queries)
+            const [feeConfig, subaccount] = await Promise.all([
                 actor.getFeeConfig(), // Single query for all 4 fee values
                 actor.getOfferCreationPaymentSubaccount(userPrincipal),
-                actor.getUserOfferCreationBalance(userPrincipal),
-                createLedgerActor(ICP_LEDGER_ID, {
-                    agentOptions: { identity, host: getHost() }
-                }).icrc1_balance_of({
-                    owner: userPrincipal,
-                    subaccount: [],
-                }),
             ]);
             
             setRegularOfferCreationFee(feeConfig.regularCreationFeeE8s);
@@ -254,8 +247,24 @@ function SneedexCreate() {
             setMarketplaceFeeRate(Number(feeConfig.regularAuctionCutBps));
             setPremiumAuctionCut(Number(feeConfig.premiumAuctionCutBps));
             setPaymentSubaccount(subaccount);
-            setUserPaymentBalance(balance);
-            setUserIcpBalance(icpBalance);
+            
+            // Then get balances from ICP ledger directly (queries, don't block fee display)
+            const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
+                agentOptions: { identity, host: getHost() }
+            });
+            const [walletBalance, depositBalance] = await Promise.all([
+                icpLedger.icrc1_balance_of({
+                    owner: userPrincipal,
+                    subaccount: [],
+                }),
+                icpLedger.icrc1_balance_of({
+                    owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+                    subaccount: [subaccount],
+                }),
+            ]);
+            
+            setUserIcpBalance(walletBalance);
+            setUserPaymentBalance(depositBalance);
         } catch (e) {
             console.error('Failed to fetch fee info:', e);
         } finally {
@@ -4414,7 +4423,6 @@ function SneedexCreate() {
                             >
                                 {creating ? 'Creating...' : 
                                  (needsPayment && !canAffordCreation) ? '⚠️ Insufficient Funds' :
-                                 needsPayment ? `🚀 Pay ${Number(offerCreationFee) / Number(E8S)} ICP & Create` : 
                                  '🚀 Create Offer'}
                             </button>
                         </div>
