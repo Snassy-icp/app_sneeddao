@@ -14,6 +14,7 @@ import Cycles "mo:base/ExperimentalCycles";
 import Text "mo:base/Text";
 
 import T "Types";
+import PremiumClient "../PremiumClient";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
@@ -85,6 +86,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     
     var feeDestination: T.Account = { owner = deployer.caller; subaccount = null }; // Default to deployer
     var paymentRequired: Bool = true;
+    
+    // Premium membership discount pricing
+    var premiumCreationFeeE8s: Nat64 = 50_000_000; // 0.5 ICP default for premium members
+    var sneedPremiumCanisterId: ?Principal = null; // Sneed Premium canister ID
+    
+    // Premium membership cache (to avoid repeated inter-canister calls)
+    var premiumCacheStable: PremiumClient.PremiumCache = [];
+    transient var premiumCache: PremiumClient.PremiumCache = [];
 
     // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
@@ -104,6 +113,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         userRegistrationsStable := Iter.toArray(userRegistrations.entries());
         // Save authorized callers
         authorizedForCallersStable := Iter.toArray(authorizedForCallers.keys());
+        // Save premium cache
+        premiumCacheStable := premiumCache;
         // Note: We no longer save to managersStable (deprecated)
     };
 
@@ -117,6 +128,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             authorizedForCallers.put(caller, true);
         };
         authorizedForCallersStable := [];
+        
+        // Restore premium cache (and clean expired entries)
+        premiumCache := PremiumClient.cleanCache(premiumCacheStable);
+        premiumCacheStable := [];
         
         // Migration: If there's data in old managersStable, migrate it to userRegistrations
         if (managersStable.size() > 0) {
@@ -261,6 +276,44 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func setPaymentRequired(required: Bool): async () {
         assert(isAdminOrGovernance(caller));
         paymentRequired := required;
+    };
+    
+    // ============================================
+    // PREMIUM DISCOUNT CONFIGURATION
+    // ============================================
+    
+    // Get the premium creation fee (discounted fee for Sneed Premium members)
+    public query func getPremiumCreationFee(): async Nat64 {
+        premiumCreationFeeE8s;
+    };
+    
+    // Set the premium creation fee (admin only)
+    public shared ({ caller }) func setPremiumCreationFee(feeE8s: Nat64): async () {
+        assert(isAdminOrGovernance(caller));
+        premiumCreationFeeE8s := feeE8s;
+    };
+    
+    // Get the Sneed Premium canister ID
+    public query func getSneedPremiumCanisterId(): async ?Principal {
+        sneedPremiumCanisterId;
+    };
+    
+    // Set the Sneed Premium canister ID (admin only)
+    public shared ({ caller }) func setSneedPremiumCanisterId(canisterId: ?Principal): async () {
+        assert(isAdminOrGovernance(caller));
+        sneedPremiumCanisterId := canisterId;
+    };
+    
+    // Check if a user is a Sneed Premium member (uses cache)
+    public func checkUserPremiumStatus(user: Principal): async Bool {
+        switch (sneedPremiumCanisterId) {
+            case null { false }; // No premium canister configured
+            case (?canisterId) {
+                let (isPremium, newCache) = await* PremiumClient.isPremium(premiumCache, canisterId, user);
+                premiumCache := newCache;
+                isPremium;
+            };
+        };
     };
 
     // Get the cycles allocated to new canisters
@@ -497,21 +550,38 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         if (paymentRequired) {
             let userSubaccount = principalToSubaccount(caller);
             
+            // Check if user is a Sneed Premium member for discounted pricing
+            let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
+                case null { false };
+                case (?canisterId) {
+                    let (isPremium, newCache) = await* PremiumClient.isPremium(premiumCache, canisterId, caller);
+                    premiumCache := newCache;
+                    isPremium;
+                };
+            };
+            
+            // Determine the applicable fee (premium members get a discount)
+            let applicableFeeE8s: Nat64 = if (isPremiumMember) {
+                premiumCreationFeeE8s;
+            } else {
+                creationFeeE8s;
+            };
+            
             // Check user's balance on their subaccount
             let userBalance = await ledger.icrc1_balance_of({
                 owner = Principal.fromActor(this);
                 subaccount = ?userSubaccount;
             });
             
-            if (userBalance < Nat64.toNat(creationFeeE8s)) {
+            if (userBalance < Nat64.toNat(applicableFeeE8s)) {
                 return #Err(#InsufficientPayment({
-                    required = creationFeeE8s;
+                    required = applicableFeeE8s;
                     provided = Nat64.fromNat(userBalance);
                 }));
             };
             
             // Track: Total ICP paid by user
-            trackedIcpPaidE8s := creationFeeE8s;
+            trackedIcpPaidE8s := applicableFeeE8s;
             
             // Calculate ICP needed for target cycles based on current CMC rate
             let icpForCyclesE8s = await calculateIcpForCycles(targetCyclesAmount);
@@ -527,8 +597,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             trackedIcpForCyclesE8s := actualIcpForCycles;
             
             // Calculate amount for fee destination (total - cycles portion - 2 transfer fees)
-            let feeAmount: Nat64 = if (creationFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
-                creationFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
+            let feeAmount: Nat64 = if (applicableFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
+                applicableFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
             } else {
                 0;
             };

@@ -23,6 +23,10 @@ export default function IcpNeuronManagerFactoryAdmin() {
   const [paymentRequired, setPaymentRequired] = useState(true);
   const [conversionRate, setConversionRate] = useState(null);
   
+  // Premium discount config state
+  const [premiumCreationFee, setPremiumCreationFee] = useState('');
+  const [sneedPremiumCanisterId, setSneedPremiumCanisterId] = useState('');
+  
   // Balances
   const [cyclesBalance, setCyclesBalance] = useState(null);
   const [icpBalance, setIcpBalance] = useState(null);
@@ -114,7 +118,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       const actor = getFactoryActor();
       if (!actor) return;
 
-      const [config, admins, governance, cycles, icp, count, rate, versions, creationCycles, wasmExists, wasmBytes, mgrVersion] = await Promise.all([
+      const [config, admins, governance, cycles, icp, count, rate, versions, creationCycles, wasmExists, wasmBytes, mgrVersion, premiumFee, premiumCanisterId] = await Promise.all([
         actor.getPaymentConfig(),
         actor.getAdmins(),
         actor.getSneedGovernance(),
@@ -126,7 +130,9 @@ export default function IcpNeuronManagerFactoryAdmin() {
         actor.getCanisterCreationCycles().catch(() => 1_000_000_000_000n),
         actor.hasManagerWasm().catch(() => false),
         actor.getManagerWasmSize().catch(() => 0),
-        actor.getCurrentVersion().catch(() => ({ major: 0n, minor: 0n, patch: 0n }))
+        actor.getCurrentVersion().catch(() => ({ major: 0n, minor: 0n, patch: 0n })),
+        actor.getPremiumCreationFee().catch(() => 50_000_000n),
+        actor.getSneedPremiumCanisterId().catch(() => [])
       ]);
 
       setPaymentConfig(config);
@@ -154,6 +160,14 @@ export default function IcpNeuronManagerFactoryAdmin() {
       setWasmVersionMajor(Number(mgrVersion.major).toString());
       setWasmVersionMinor(Number(mgrVersion.minor).toString());
       setWasmVersionPatch(Number(mgrVersion.patch).toString());
+      
+      // Premium discount settings
+      setPremiumCreationFee((Number(premiumFee) / E8S).toString());
+      if (premiumCanisterId && premiumCanisterId.length > 0) {
+        setSneedPremiumCanisterId(premiumCanisterId[0].toText());
+      } else {
+        setSneedPremiumCanisterId('');
+      }
     } catch (err) {
       console.error('Error fetching initial data:', err);
       setError('Failed to load initial data: ' + err.message);
@@ -261,6 +275,37 @@ export default function IcpNeuronManagerFactoryAdmin() {
     } catch (err) {
       console.error('Error setting canister creation cycles:', err);
       setError('Failed to set canister creation cycles: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePremiumConfig = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getFactoryActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      // Update premium creation fee
+      const premiumFeeE8s = BigInt(Math.round(parseFloat(premiumCreationFee) * E8S));
+      await actor.setPremiumCreationFee(premiumFeeE8s);
+
+      // Update Sneed Premium canister ID (optional - can be cleared)
+      if (sneedPremiumCanisterId.trim()) {
+        const canisterId = Principal.fromText(sneedPremiumCanisterId.trim());
+        await actor.setSneedPremiumCanisterId([canisterId]);
+      } else {
+        await actor.setSneedPremiumCanisterId([]);
+      }
+
+      setSuccess('Premium discount configuration updated successfully');
+      await fetchInitialData();
+    } catch (err) {
+      console.error('Error updating premium config:', err);
+      setError('Failed to update premium config: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -1033,6 +1078,136 @@ export default function IcpNeuronManagerFactoryAdmin() {
             }}
           >
             Update Cycles
+          </button>
+        </form>
+      </div>
+
+      {/* Premium Discount Configuration */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #FFD700',
+        background: 'linear-gradient(135deg, #2a2a2a 0%, rgba(255, 215, 0, 0.05) 100%)'
+      }}>
+        <h3 style={{ color: '#FFD700', fontSize: '18px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          👑 Sneed Premium Discount
+        </h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Sneed Premium members receive a discounted creation fee. Configure the premium pricing and connect to the Sneed Premium canister.
+        </p>
+        
+        {/* Current Status */}
+        <div style={{
+          backgroundColor: '#1a1a1a',
+          borderRadius: '6px',
+          padding: '15px',
+          marginBottom: '15px',
+          border: `1px solid ${sneedPremiumCanisterId ? '#2ecc7140' : '#e74c3c40'}`
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Regular Price</div>
+              <div style={{ color: '#f39c12', fontSize: '20px', fontWeight: 'bold' }}>
+                {creationFee} ICP
+              </div>
+            </div>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Premium Price</div>
+              <div style={{ color: '#FFD700', fontSize: '20px', fontWeight: 'bold' }}>
+                {premiumCreationFee} ICP
+              </div>
+            </div>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Discount</div>
+              <div style={{ color: '#2ecc71', fontSize: '20px', fontWeight: 'bold' }}>
+                {creationFee && premiumCreationFee && parseFloat(creationFee) > 0 
+                  ? `${(((parseFloat(creationFee) - parseFloat(premiumCreationFee)) / parseFloat(creationFee)) * 100).toFixed(0)}%`
+                  : '—'
+                }
+              </div>
+            </div>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Integration Status</div>
+              <div style={{ 
+                color: sneedPremiumCanisterId ? '#2ecc71' : '#e74c3c', 
+                fontSize: '14px', 
+                fontWeight: 'bold' 
+              }}>
+                {sneedPremiumCanisterId ? '✓ Connected' : '✗ Not configured'}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <form onSubmit={handleUpdatePremiumConfig}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Premium Creation Fee (ICP)
+              </label>
+              <input
+                type="number"
+                step="0.0001"
+                min="0"
+                placeholder="0.5"
+                value={premiumCreationFee}
+                onChange={(e) => setPremiumCreationFee(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #FFD70050',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+              <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+                Discounted fee for Sneed Premium members
+              </p>
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Sneed Premium Canister ID
+              </label>
+              <input
+                type="text"
+                placeholder="xxxx-xxxxx-xxxxx-xxxxx-cai"
+                value={sneedPremiumCanisterId}
+                onChange={(e) => setSneedPremiumCanisterId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace'
+                }}
+              />
+              <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+                Leave empty to disable premium discount
+              </p>
+            </div>
+          </div>
+          
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              backgroundColor: '#FFD700',
+              color: '#000000',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '12px 24px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              fontSize: '14px',
+              fontWeight: 'bold'
+            }}
+          >
+            Update Premium Configuration
           </button>
         </form>
       </div>
