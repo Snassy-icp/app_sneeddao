@@ -24,6 +24,29 @@ module {
     // - Byte 23: type marker (0x4F = offer, 0x42 = bid)
     // This ensures uniqueness: each offer/bid has unique ID, and type marker prevents collisions
     
+    /// Generate subaccount for user payments (offer creation fees)
+    /// Simple: just the principal bytes padded to 32 bytes
+    public func userPaymentSubaccount(user : Principal) : Blob {
+        let a = Array.init<Nat8>(32, 0);
+        let pa = Principal.toBlob(user);
+        let size = pa.size();
+        
+        // Byte 0: principal length
+        a[0] := Nat8.fromNat(size);
+        
+        // Bytes 1-N: principal bytes
+        var pos = 1;
+        for (x in pa.vals()) {
+            a[pos] := x;
+            pos += 1;
+        };
+        
+        // Byte 23: type marker for payment
+        a[23] := 0x50; // 'P' for Payment
+        
+        Blob.fromArray(Array.freeze(a));
+    };
+    
     /// Generate subaccount for offer escrow (for ICRC1 tokens in offer)
     public func offerEscrowSubaccount(creator : Principal, offerId : T.OfferId) : Blob {
         let a = Array.init<Nat8>(32, 0);

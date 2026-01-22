@@ -45,6 +45,12 @@ export default function SneedexAdmin() {
     const [expirationWorkerRunning, setExpirationWorkerRunning] = useState(false);
     const [expirationCheckInterval, setExpirationCheckInterval] = useState(3600);
     
+    // Offer creation fee settings
+    const [offerCreationFee, setOfferCreationFee] = useState(0n);
+    const [premiumOfferCreationFee, setPremiumOfferCreationFee] = useState(0n);
+    const [premiumAuctionCutBps, setPremiumAuctionCutBps] = useState(0);
+    const [sneedPremiumCanisterId, setSneedPremiumCanisterId] = useState(null);
+    
     // Form states
     const [newFeeRate, setNewFeeRate] = useState('');
     const [newFeeRecipientPrincipal, setNewFeeRecipientPrincipal] = useState('');
@@ -60,6 +66,10 @@ export default function SneedexAdmin() {
     const [newBackendCanisterId, setNewBackendCanisterId] = useState('');
     const [newFactoryCanisterId, setNewFactoryCanisterId] = useState('');
     const [newExpirationInterval, setNewExpirationInterval] = useState('');
+    const [newOfferCreationFee, setNewOfferCreationFee] = useState('');
+    const [newPremiumOfferCreationFee, setNewPremiumOfferCreationFee] = useState('');
+    const [newPremiumAuctionCutBps, setNewPremiumAuctionCutBps] = useState('');
+    const [newSneedPremiumCanisterId, setNewSneedPremiumCanisterId] = useState('');
     
     // Loading states
     const [savingFeeRate, setSavingFeeRate] = useState(false);
@@ -76,6 +86,8 @@ export default function SneedexAdmin() {
     const [togglingExpirationTimer, setTogglingExpirationTimer] = useState(false);
     const [savingExpirationInterval, setSavingExpirationInterval] = useState(false);
     const [triggeringExpirationCheck, setTriggeringExpirationCheck] = useState(false);
+    const [savingOfferCreationFee, setSavingOfferCreationFee] = useState(false);
+    const [savingPremiumSettings, setSavingPremiumSettings] = useState(false);
     
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
@@ -112,7 +124,7 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             if (!actor) return;
             
-            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, timerRunningResult, workerRunningResult, intervalResult] = await Promise.all([
+            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, timerRunningResult, workerRunningResult, intervalResult, offerFeeResult, premiumOfferFeeResult, premiumAuctionCutResult, premiumCanisterIdResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getMarketplaceFeeRate(),
                 actor.getFeeRecipient(),
@@ -124,6 +136,10 @@ export default function SneedexAdmin() {
                 actor.isExpirationTimerRunning(),
                 actor.isExpirationWorkerRunning(),
                 actor.getExpirationCheckInterval(),
+                actor.getOfferCreationFee(),
+                actor.getPremiumOfferCreationFee(),
+                actor.getPremiumAuctionCutBps(),
+                actor.getSneedPremiumCanisterId(),
             ]);
             
             setConfig(configResult);
@@ -143,9 +159,19 @@ export default function SneedexAdmin() {
             setExpirationWorkerRunning(workerRunningResult);
             setExpirationCheckInterval(Number(intervalResult));
             
+            // Offer creation fee settings
+            setOfferCreationFee(offerFeeResult);
+            setPremiumOfferCreationFee(premiumOfferFeeResult);
+            setPremiumAuctionCutBps(Number(premiumAuctionCutResult));
+            setSneedPremiumCanisterId(premiumCanisterIdResult && premiumCanisterIdResult.length > 0 ? premiumCanisterIdResult[0] : null);
+            
             // Pre-fill form with current values
             setNewMinDuration(String(Number(configResult.min_offer_duration_ns) / 1_000_000_000 / 60)); // Convert ns to minutes
             setNewMaxAssets(String(Number(configResult.max_assets_per_offer)));
+            setNewOfferCreationFee(String(Number(offerFeeResult) / 100_000_000)); // Convert e8s to ICP
+            setNewPremiumOfferCreationFee(String(Number(premiumOfferFeeResult) / 100_000_000));
+            setNewPremiumAuctionCutBps(String(premiumAuctionCutResult));
+            setNewSneedPremiumCanisterId(premiumCanisterIdResult && premiumCanisterIdResult.length > 0 ? premiumCanisterIdResult[0].toText() : '');
             
         } catch (err) {
             console.error('Failed to fetch Sneedex config:', err);
@@ -238,6 +264,85 @@ export default function SneedexAdmin() {
             showInfo('Error', 'Failed to update fee recipient: ' + e.message, 'error');
         }
         setSavingFeeRecipient(false);
+    };
+    
+    // Offer Creation Fee handlers
+    const handleSaveOfferCreationFee = async () => {
+        const feeIcp = parseFloat(newOfferCreationFee);
+        if (isNaN(feeIcp) || feeIcp < 0) {
+            showInfo('Invalid Fee', 'Fee must be a non-negative number', 'error');
+            return;
+        }
+        
+        const feeE8s = BigInt(Math.round(feeIcp * 100_000_000));
+        
+        setSavingOfferCreationFee(true);
+        try {
+            const actor = getSneedexActor();
+            const result = await actor.setOfferCreationFee(feeE8s);
+            if ('ok' in result) {
+                showInfo('Success', `Offer creation fee updated to ${feeIcp} ICP`, 'success');
+                setOfferCreationFee(feeE8s);
+            } else {
+                showInfo('Error', 'Failed to update offer creation fee: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to update offer creation fee: ' + e.message, 'error');
+        }
+        setSavingOfferCreationFee(false);
+    };
+    
+    // Premium Settings handlers
+    const handleSavePremiumSettings = async () => {
+        const premiumFeeIcp = parseFloat(newPremiumOfferCreationFee);
+        if (isNaN(premiumFeeIcp) || premiumFeeIcp < 0) {
+            showInfo('Invalid Fee', 'Premium fee must be a non-negative number', 'error');
+            return;
+        }
+        
+        const premiumCutBps = parseInt(newPremiumAuctionCutBps);
+        if (isNaN(premiumCutBps) || premiumCutBps < 0 || premiumCutBps > 5000) {
+            showInfo('Invalid Cut', 'Premium auction cut must be between 0 and 5000 basis points (0-50%)', 'error');
+            return;
+        }
+        
+        let premiumCanisterId = [];
+        if (newSneedPremiumCanisterId.trim()) {
+            try {
+                premiumCanisterId = [Principal.fromText(newSneedPremiumCanisterId.trim())];
+            } catch (e) {
+                showInfo('Invalid Principal', 'Please enter a valid Sneed Premium canister ID', 'error');
+                return;
+            }
+        }
+        
+        const premiumFeeE8s = BigInt(Math.round(premiumFeeIcp * 100_000_000));
+        
+        setSavingPremiumSettings(true);
+        try {
+            const actor = getSneedexActor();
+            
+            // Save all three settings
+            const results = await Promise.all([
+                actor.setPremiumOfferCreationFee(premiumFeeE8s),
+                actor.setPremiumAuctionCutBps(BigInt(premiumCutBps)),
+                actor.setSneedPremiumCanisterId(premiumCanisterId),
+            ]);
+            
+            const allOk = results.every(r => 'ok' in r);
+            if (allOk) {
+                showInfo('Success', 'Premium settings updated successfully', 'success');
+                setPremiumOfferCreationFee(premiumFeeE8s);
+                setPremiumAuctionCutBps(premiumCutBps);
+                setSneedPremiumCanisterId(premiumCanisterId.length > 0 ? premiumCanisterId[0] : null);
+            } else {
+                const errors = results.filter(r => 'err' in r).map(r => JSON.stringify(r.err));
+                showInfo('Error', 'Failed to update some premium settings: ' + errors.join(', '), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to update premium settings: ' + e.message, 'error');
+        }
+        setSavingPremiumSettings(false);
     };
     
     // Ledger-specific fee recipient handlers
@@ -955,6 +1060,118 @@ export default function SneedexAdmin() {
                         >
                             {savingFeeRecipient ? <FaSpinner className="spin" /> : <FaSave />}
                             Save Recipient
+                        </button>
+                    </div>
+                </section>
+                
+                {/* Offer Creation Fee */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaPercent style={{ color: theme.colors.success }} />
+                        Offer Creation Fee
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Current fee: <strong style={{ color: theme.colors.success }}>{Number(offerCreationFee) / 100_000_000} ICP</strong>
+                        <br />
+                        <small>Users must pay this fee (in ICP) to create an offer. Set to 0 for free offer creation.</small>
+                    </p>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Offer Creation Fee (ICP)</label>
+                            <input
+                                type="number"
+                                step="0.0001"
+                                min="0"
+                                placeholder="e.g., 0.5"
+                                value={newOfferCreationFee}
+                                onChange={(e) => setNewOfferCreationFee(e.target.value)}
+                                style={{ ...styles.input, width: '150px' }}
+                            />
+                        </div>
+                        <button
+                            onClick={handleSaveOfferCreationFee}
+                            disabled={savingOfferCreationFee || !newOfferCreationFee}
+                            style={{
+                                ...styles.buttonSuccess,
+                                width: 'fit-content',
+                                opacity: savingOfferCreationFee || !newOfferCreationFee ? 0.5 : 1,
+                                cursor: savingOfferCreationFee || !newOfferCreationFee ? 'not-allowed' : 'pointer',
+                            }}
+                        >
+                            {savingOfferCreationFee ? <FaSpinner className="spin" /> : <FaSave />}
+                            Save Fee
+                        </button>
+                    </div>
+                </section>
+                
+                {/* Sneed Premium Settings */}
+                <section style={{
+                    ...styles.section,
+                    background: `linear-gradient(135deg, ${theme.colors.cardBackground} 0%, rgba(255, 215, 0, 0.1) 100%)`,
+                    border: `1px solid rgba(255, 215, 0, 0.3)`,
+                }}>
+                    <h2 style={{ ...styles.sectionTitle, color: '#FFD700' }}>
+                        👑 Sneed Premium Settings
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Configure discounted fees for Sneed Premium members.
+                        <br />
+                        <small>Current: Premium creation fee = <strong style={{ color: '#FFD700' }}>{Number(premiumOfferCreationFee) / 100_000_000} ICP</strong>, 
+                        Premium auction cut = <strong style={{ color: '#FFD700' }}>{premiumAuctionCutBps / 100}%</strong> (0 = use regular rate),
+                        Premium canister = <strong style={{ color: '#FFD700' }}>{sneedPremiumCanisterId ? sneedPremiumCanisterId.toString() : 'Not set'}</strong></small>
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Premium Creation Fee (ICP)</label>
+                                <input
+                                    type="number"
+                                    step="0.0001"
+                                    min="0"
+                                    placeholder="e.g., 0.25"
+                                    value={newPremiumOfferCreationFee}
+                                    onChange={(e) => setNewPremiumOfferCreationFee(e.target.value)}
+                                    style={{ ...styles.input, width: '150px' }}
+                                />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Premium Auction Cut (bps, 0=use regular)</label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    max="5000"
+                                    placeholder="e.g., 150 (1.5%)"
+                                    value={newPremiumAuctionCutBps}
+                                    onChange={(e) => setNewPremiumAuctionCutBps(e.target.value)}
+                                    style={{ ...styles.input, width: '180px' }}
+                                />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Sneed Premium Canister ID (leave empty to disable)</label>
+                            <input
+                                type="text"
+                                placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai"
+                                value={newSneedPremiumCanisterId}
+                                onChange={(e) => setNewSneedPremiumCanisterId(e.target.value)}
+                                style={styles.input}
+                            />
+                        </div>
+                        <button
+                            onClick={handleSavePremiumSettings}
+                            disabled={savingPremiumSettings}
+                            style={{
+                                ...styles.buttonSuccess,
+                                width: 'fit-content',
+                                background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+                                color: '#1a1a2e',
+                                opacity: savingPremiumSettings ? 0.5 : 1,
+                                cursor: savingPremiumSettings ? 'not-allowed' : 'pointer',
+                            }}
+                        >
+                            {savingPremiumSettings ? <FaSpinner className="spin" /> : <FaSave />}
+                            Save Premium Settings
                         </button>
                     </div>
                 </section>

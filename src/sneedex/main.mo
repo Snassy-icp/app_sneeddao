@@ -9,9 +9,13 @@ import Blob "mo:base/Blob";
 import Buffer "mo:base/Buffer";
 import Debug "mo:base/Debug";
 
+import Map "mo:map/Map";
+import { phash } "mo:map/Map";
+
 import T "Types";
 import Utils "Utils";
 import AssetHandlers "AssetHandlers";
+import PremiumClient "../PremiumClient";
 
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
@@ -62,6 +66,21 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Per-ledger fee recipient overrides
     // Maps ledger principal to override account
     var ledgerFeeRecipients : [(Principal, T.Account)] = [];
+    
+    // Offer creation fee settings (in ICP e8s)
+    var offerCreationFeeE8s : Nat64 = 0; // Default 0 - no fee
+    var premiumOfferCreationFeeE8s : Nat64 = 0; // Default 0 - no fee for premium
+    
+    // Premium auction cut in basis points (applies to completed auctions for premium members)
+    var premiumAuctionCutBps : Nat = 0; // Default same as regular (0 means use regular rate)
+    
+    // Sneed Premium integration
+    var sneedPremiumCanisterId : ?Principal = null;
+    var premiumCache = PremiumClient.emptyCache();
+    
+    // ICP Ledger for offer creation fees
+    let ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+    let ICP_FEE : Nat64 = 10_000; // 0.0001 ICP
     
     // Wallet registration settings (for auto-registering delivered assets)
     // These are optional - if not set, wallet registration is skipped
@@ -1052,6 +1071,60 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             case null {};
         };
         
+        // Check and collect offer creation fee
+        let effectiveFee = await getEffectiveOfferCreationFee(caller);
+        if (effectiveFee > 0) {
+            let paymentSubaccount = Utils.userPaymentSubaccount(caller);
+            let icpLedger : T.ICRC1Actor = actor(ICP_LEDGER_ID);
+            
+            // Check user's payment balance
+            let balance = await icpLedger.icrc1_balance_of({
+                owner = Principal.fromActor(this);
+                subaccount = ?paymentSubaccount;
+            });
+            
+            let requiredAmount = Nat64.toNat(effectiveFee);
+            if (balance < requiredAmount) {
+                return #err(#InsufficientFunds({ required = requiredAmount; available = balance }));
+            };
+            
+            // Transfer fee to the ICP fee recipient
+            let icpFeeRecipient = getFeeRecipientForLedger(Principal.fromText(ICP_LEDGER_ID));
+            let transferAmount = requiredAmount - Nat64.toNat(ICP_FEE); // Deduct ledger fee
+            
+            if (transferAmount > 0) {
+                let transferResult = await icpLedger.icrc1_transfer({
+                    to = icpFeeRecipient;
+                    fee = ?Nat64.toNat(ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?paymentSubaccount;
+                    created_at_time = null;
+                    amount = transferAmount;
+                });
+                
+                switch (transferResult) {
+                    case (#Err(e)) {
+                        return #err(#TransferFailed(debug_show(e)));
+                    };
+                    case (#Ok(_)) {};
+                };
+            };
+        };
+        
+        // Determine the fee rate for this offer (premium members may get lower rate)
+        var offerFeeRateBps = marketplaceFeeRateBps;
+        if (premiumAuctionCutBps > 0) {
+            switch (sneedPremiumCanisterId) {
+                case (?canisterId) {
+                    let isPremiumMember = await* PremiumClient.isPremium(premiumCache, canisterId, caller);
+                    if (isPremiumMember) {
+                        offerFeeRateBps := premiumAuctionCutBps;
+                    };
+                };
+                case null {};
+            };
+        };
+        
         let offerId = nextOfferId;
         nextOfferId += 1;
         
@@ -1066,7 +1139,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             assets = [];
             state = #Draft;
             approved_bidders = request.approved_bidders;
-            fee_rate_bps = marketplaceFeeRateBps; // Lock in current fee rate
+            fee_rate_bps = offerFeeRateBps; // Lock in fee rate (may be premium rate)
             public_note = request.public_note;
             note_to_buyer = request.note_to_buyer;
             created_at = Time.now();
@@ -2908,6 +2981,143 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         );
         
         #ok();
+    };
+    
+    // ============================================
+    // OFFER CREATION FEE MANAGEMENT (Admin)
+    // ============================================
+    
+    /// Get current offer creation fee in ICP e8s
+    public query func getOfferCreationFee() : async Nat64 {
+        offerCreationFeeE8s;
+    };
+    
+    /// Get premium offer creation fee in ICP e8s
+    public query func getPremiumOfferCreationFee() : async Nat64 {
+        premiumOfferCreationFeeE8s;
+    };
+    
+    /// Get premium auction cut in basis points
+    public query func getPremiumAuctionCutBps() : async Nat {
+        premiumAuctionCutBps;
+    };
+    
+    /// Get Sneed Premium canister ID
+    public query func getSneedPremiumCanisterId() : async ?Principal {
+        sneedPremiumCanisterId;
+    };
+    
+    /// Set offer creation fee in ICP e8s (admin only)
+    public shared ({ caller }) func setOfferCreationFee(feeE8s : Nat64) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        offerCreationFeeE8s := feeE8s;
+        #ok();
+    };
+    
+    /// Set premium offer creation fee in ICP e8s (admin only)
+    public shared ({ caller }) func setPremiumOfferCreationFee(feeE8s : Nat64) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        premiumOfferCreationFeeE8s := feeE8s;
+        #ok();
+    };
+    
+    /// Set premium auction cut in basis points (admin only)
+    /// 0 means use the regular marketplace fee rate
+    public shared ({ caller }) func setPremiumAuctionCutBps(rateBps : Nat) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        // Sanity check: max 50% (5000 bps)
+        if (rateBps > 5000) {
+            return #err(#InvalidAsset("Fee rate cannot exceed 50% (5000 bps)"));
+        };
+        premiumAuctionCutBps := rateBps;
+        #ok();
+    };
+    
+    /// Set Sneed Premium canister ID (admin only)
+    public shared ({ caller }) func setSneedPremiumCanisterId(canisterId : ?Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        sneedPremiumCanisterId := canisterId;
+        #ok();
+    };
+    
+    // ============================================
+    // OFFER CREATION PAYMENT (User)
+    // ============================================
+    
+    /// Get the payment subaccount for a user to send offer creation fees
+    public query func getOfferCreationPaymentSubaccount(user : Principal) : async Blob {
+        Utils.userPaymentSubaccount(user);
+    };
+    
+    /// Get user's payment balance for offer creation
+    public func getUserOfferCreationBalance(user : Principal) : async Nat {
+        let subaccount = Utils.userPaymentSubaccount(user);
+        let icpLedger : T.ICRC1Actor = actor(ICP_LEDGER_ID);
+        await icpLedger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = ?subaccount;
+        });
+    };
+    
+    /// Withdraw user's offer creation payment balance
+    public shared ({ caller }) func withdrawOfferCreationPayment() : async T.Result<Nat> {
+        let subaccount = Utils.userPaymentSubaccount(caller);
+        let fee = Nat64.toNat(ICP_FEE);
+        
+        let icpLedger : T.ICRC1Actor = actor(ICP_LEDGER_ID);
+        let balance = await icpLedger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = ?subaccount;
+        });
+        
+        if (balance <= fee) {
+            return #err(#InsufficientFunds({ required = fee + 1; available = balance }));
+        };
+        
+        let withdrawAmount = balance - fee;
+        
+        let result = await icpLedger.icrc1_transfer({
+            to = { owner = caller; subaccount = null };
+            fee = ?fee;
+            memo = null;
+            from_subaccount = ?subaccount;
+            created_at_time = null;
+            amount = withdrawAmount;
+        });
+        
+        switch (result) {
+            case (#Ok(_)) { #ok(withdrawAmount) };
+            case (#Err(e)) { #err(#TransferFailed(debug_show(e))) };
+        };
+    };
+    
+    /// Get the effective offer creation fee for a user (checks premium status)
+    public func getEffectiveOfferCreationFee(user : Principal) : async Nat64 {
+        // If no fee is set, return 0
+        if (offerCreationFeeE8s == 0) {
+            return 0;
+        };
+        
+        // Check if user is premium
+        switch (sneedPremiumCanisterId) {
+            case (?canisterId) {
+                let isPremiumMember = await* PremiumClient.isPremium(premiumCache, canisterId, user);
+                if (isPremiumMember) {
+                    return premiumOfferCreationFeeE8s;
+                };
+            };
+            case null {};
+        };
+        
+        offerCreationFeeE8s;
     };
     
     // ============================================
