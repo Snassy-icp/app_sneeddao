@@ -24,7 +24,8 @@ import ConfirmationModal from '../../ConfirmationModal';
 import { 
     FaCrown, FaUserShield, FaSave, FaSpinner, FaPlus, FaTrash, 
     FaClock, FaCoins, FaVoteYea, FaUsers, FaEdit, FaCheckCircle, 
-    FaTimesCircle, FaCog, FaWallet, FaTimes
+    FaTimesCircle, FaCog, FaWallet, FaTimes, FaTicketAlt, FaCopy,
+    FaEye, FaPause, FaPlay
 } from 'react-icons/fa';
 
 export default function SneedPremiumAdmin() {
@@ -76,6 +77,19 @@ export default function SneedPremiumAdmin() {
     const [manualMemberPrincipal, setManualMemberPrincipal] = useState('');
     const [manualMemberDuration, setManualMemberDuration] = useState('');
     const [manualMemberDurationUnit, setManualMemberDurationUnit] = useState('months');
+    
+    // Promo codes state
+    const [promoCodes, setPromoCodes] = useState([]);
+    const [newPromoCodeDuration, setNewPromoCodeDuration] = useState('');
+    const [newPromoCodeDurationUnit, setNewPromoCodeDurationUnit] = useState('months');
+    const [newPromoCodeMaxClaims, setNewPromoCodeMaxClaims] = useState('');
+    const [newPromoCodeExpiration, setNewPromoCodeExpiration] = useState('');
+    const [newPromoCodeNotes, setNewPromoCodeNotes] = useState('');
+    const [creatingPromoCode, setCreatingPromoCode] = useState(false);
+    const [deactivatingPromoCode, setDeactivatingPromoCode] = useState(null);
+    const [deletingPromoCode, setDeletingPromoCode] = useState(null);
+    const [viewClaimsModal, setViewClaimsModal] = useState({ show: false, code: null, claims: [] });
+    const [loadingClaims, setLoadingClaims] = useState(false);
     
     // Edit modal state
     const [editIcpTierModal, setEditIcpTierModal] = useState({ show: false, index: null, tier: null });
@@ -149,12 +163,13 @@ export default function SneedPremiumAdmin() {
             const actor = await getActor();
             if (!actor) return;
             
-            const [configResult, icpTiersResult, vpTiersResult, membershipsResult, canisterIdResult] = await Promise.all([
+            const [configResult, icpTiersResult, vpTiersResult, membershipsResult, canisterIdResult, promoCodesResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getAllIcpTiers(),
                 actor.getAllVotingPowerTiers(),
                 actor.getAllMemberships(),
                 actor.getCanisterId(),
+                actor.getPromoCodes(),
             ]);
             
             setConfig(configResult);
@@ -163,6 +178,9 @@ export default function SneedPremiumAdmin() {
             setVpTiers(vpTiersResult);
             setMemberships(membershipsResult);
             setCanisterId(canisterIdResult);
+            if ('ok' in promoCodesResult) {
+                setPromoCodes(promoCodesResult.ok);
+            }
             
         } catch (err) {
             console.error('Failed to fetch Sneed Premium config:', err);
@@ -680,6 +698,131 @@ export default function SneedPremiumAdmin() {
             showInfo('Error', 'Failed to revoke membership: ' + e.message, 'error');
         }
         setRevokingMembership(null);
+    };
+    
+    // ============================================
+    // Promo Code Handlers
+    // ============================================
+    
+    const handleCreatePromoCode = async () => {
+        const durationNum = parseFloat(newPromoCodeDuration);
+        if (isNaN(durationNum) || durationNum <= 0) {
+            showInfo('Invalid Duration', 'Please enter a valid duration', 'error');
+            return;
+        }
+        
+        const maxClaimsNum = parseInt(newPromoCodeMaxClaims);
+        if (isNaN(maxClaimsNum) || maxClaimsNum <= 0) {
+            showInfo('Invalid Max Claims', 'Please enter a valid number of max claims', 'error');
+            return;
+        }
+        
+        const durationNs = parseDurationToNs(durationNum, newPromoCodeDurationUnit);
+        
+        // Parse optional expiration date
+        let expiration = [];
+        if (newPromoCodeExpiration) {
+            const expDate = new Date(newPromoCodeExpiration);
+            if (isNaN(expDate.getTime())) {
+                showInfo('Invalid Expiration', 'Please enter a valid date', 'error');
+                return;
+            }
+            expiration = [BigInt(expDate.getTime()) * 1_000_000n]; // Convert ms to ns
+        }
+        
+        // Optional notes
+        const notes = newPromoCodeNotes.trim() ? [newPromoCodeNotes.trim()] : [];
+        
+        setCreatingPromoCode(true);
+        try {
+            const actor = await getActor();
+            const result = await actor.createPromoCode({
+                durationNs: durationNs,
+                maxClaims: BigInt(maxClaimsNum),
+                expiration: expiration,
+                notes: notes,
+            });
+            if ('ok' in result) {
+                showInfo('Success', `Promo code created: ${result.ok.code}`, 'success');
+                await fetchData();
+                setNewPromoCodeDuration('');
+                setNewPromoCodeMaxClaims('');
+                setNewPromoCodeExpiration('');
+                setNewPromoCodeNotes('');
+            } else {
+                showInfo('Error', 'Failed to create promo code: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to create promo code: ' + e.message, 'error');
+        }
+        setCreatingPromoCode(false);
+    };
+    
+    const handleTogglePromoCode = async (code, currentActive) => {
+        setDeactivatingPromoCode(code);
+        try {
+            const actor = await getActor();
+            const result = currentActive 
+                ? await actor.deactivatePromoCode(code)
+                : await actor.reactivatePromoCode(code);
+            if ('ok' in result) {
+                showInfo('Success', `Promo code ${currentActive ? 'deactivated' : 'reactivated'}`, 'success');
+                await fetchData();
+            } else {
+                showInfo('Error', `Failed to ${currentActive ? 'deactivate' : 'reactivate'} promo code: ` + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', `Failed to ${currentActive ? 'deactivate' : 'reactivate'} promo code: ` + e.message, 'error');
+        }
+        setDeactivatingPromoCode(null);
+    };
+    
+    const handleDeletePromoCode = (code) => {
+        showConfirm(
+            'Delete Promo Code',
+            `Are you sure you want to delete promo code "${code}"?\n\nThis action cannot be undone.`,
+            () => doDeletePromoCode(code)
+        );
+    };
+    
+    const doDeletePromoCode = async (code) => {
+        closeConfirmModal();
+        setDeletingPromoCode(code);
+        try {
+            const actor = await getActor();
+            const result = await actor.deletePromoCode(code);
+            if ('ok' in result) {
+                showInfo('Success', 'Promo code deleted', 'success');
+                await fetchData();
+            } else {
+                showInfo('Error', 'Failed to delete promo code: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to delete promo code: ' + e.message, 'error');
+        }
+        setDeletingPromoCode(null);
+    };
+    
+    const handleViewClaims = async (code) => {
+        setLoadingClaims(true);
+        setViewClaimsModal({ show: true, code, claims: [] });
+        try {
+            const actor = await getActor();
+            const result = await actor.getPromoCodeClaims(code);
+            if ('ok' in result) {
+                setViewClaimsModal({ show: true, code, claims: result.ok });
+            } else {
+                showInfo('Error', 'Failed to load claims: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to load claims: ' + e.message, 'error');
+        }
+        setLoadingClaims(false);
+    };
+    
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text);
+        showInfo('Copied', 'Promo code copied to clipboard', 'success');
     };
     
     // ============================================
@@ -1524,6 +1667,221 @@ export default function SneedPremiumAdmin() {
                     )}
                 </section>
                 
+                {/* Promo Codes */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaTicketAlt style={{ color: '#FF69B4' }} />
+                        Promo Codes ({promoCodes.length})
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Create and manage promo codes for free premium membership.
+                    </p>
+                    
+                    {promoCodes.length > 0 ? (
+                        <div style={styles.list}>
+                            {promoCodes.map((promo, index) => {
+                                const isExpired = promo.expiration[0] && BigInt(promo.expiration[0]) < now;
+                                const isFullyClaimed = Number(promo.claimCount) >= Number(promo.maxClaims);
+                                const canBeUsed = promo.active && !isExpired && !isFullyClaimed;
+                                
+                                return (
+                                    <div key={index} style={{
+                                        ...styles.tierItem,
+                                        opacity: canBeUsed ? 1 : 0.7,
+                                        flexDirection: 'column',
+                                        alignItems: 'stretch',
+                                        gap: '0.75rem',
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                                                    <span style={{
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '1.25rem',
+                                                        fontWeight: 'bold',
+                                                        color: canBeUsed ? theme.colors.accent : theme.colors.mutedText,
+                                                        letterSpacing: '2px',
+                                                    }}>
+                                                        {promo.code}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(promo.code)}
+                                                        style={{
+                                                            ...styles.buttonSecondary,
+                                                            padding: '4px 8px',
+                                                            fontSize: '0.8rem',
+                                                        }}
+                                                        title="Copy code"
+                                                    >
+                                                        <FaCopy />
+                                                    </button>
+                                                </div>
+                                                <div style={styles.tierDetails}>
+                                                    <span><FaClock style={{ marginRight: '4px' }} />Grants: {formatDuration(promo.durationNs)}</span>
+                                                    <span><FaUsers style={{ marginRight: '4px' }} />Claims: {Number(promo.claimCount)} / {Number(promo.maxClaims)}</span>
+                                                    {promo.expiration[0] && (
+                                                        <span style={{ color: isExpired ? theme.colors.error : theme.colors.mutedText }}>
+                                                            {isExpired ? 'Expired' : 'Expires'}: {formatTimestamp(promo.expiration[0])}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                {promo.active ? (
+                                                    <span style={{ ...styles.badge, ...styles.badgeActive }}>
+                                                        <FaCheckCircle style={{ marginRight: '4px' }} />Active
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ ...styles.badge, ...styles.badgeExpired }}>
+                                                        <FaPause style={{ marginRight: '4px' }} />Inactive
+                                                    </span>
+                                                )}
+                                                {isFullyClaimed && (
+                                                    <span style={{ ...styles.badge, background: `${theme.colors.warning}20`, color: theme.colors.warning }}>
+                                                        Fully Claimed
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {promo.notes[0] && (
+                                            <div style={{
+                                                padding: '0.5rem',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '6px',
+                                                fontSize: '0.85rem',
+                                                color: theme.colors.mutedText,
+                                                fontStyle: 'italic',
+                                            }}>
+                                                📝 {promo.notes[0]}
+                                            </div>
+                                        )}
+                                        
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                                            <span>Created by <PrincipalDisplay principal={promo.createdBy.toString()} short /> on {formatTimestamp(promo.createdAt)}</span>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    onClick={() => handleViewClaims(promo.code)}
+                                                    style={styles.buttonSecondary}
+                                                    title="View claims"
+                                                >
+                                                    <FaEye /> Claims
+                                                </button>
+                                                <button
+                                                    onClick={() => handleTogglePromoCode(promo.code, promo.active)}
+                                                    disabled={deactivatingPromoCode === promo.code}
+                                                    style={{
+                                                        ...styles.buttonSecondary,
+                                                        opacity: deactivatingPromoCode === promo.code ? 0.5 : 1,
+                                                    }}
+                                                    title={promo.active ? 'Deactivate' : 'Reactivate'}
+                                                >
+                                                    {deactivatingPromoCode === promo.code ? <FaSpinner className="spin" /> : (promo.active ? <FaPause /> : <FaPlay />)}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeletePromoCode(promo.code)}
+                                                    disabled={deletingPromoCode === promo.code}
+                                                    style={{
+                                                        ...styles.buttonDanger,
+                                                        opacity: deletingPromoCode === promo.code ? 0.5 : 1,
+                                                    }}
+                                                    title="Delete"
+                                                >
+                                                    {deletingPromoCode === promo.code ? <FaSpinner className="spin" /> : <FaTrash />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div style={styles.emptyState}>No promo codes created yet.</div>
+                    )}
+                    
+                    {/* Create Promo Code Form */}
+                    <div style={{ marginTop: '1.5rem', padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                        <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: theme.colors.primaryText }}>
+                            <FaPlus style={{ marginRight: '8px' }} />
+                            Create Promo Code
+                        </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <div style={styles.row}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={styles.label}>Membership Duration</label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="1"
+                                            placeholder="Duration"
+                                            value={newPromoCodeDuration}
+                                            onChange={(e) => setNewPromoCodeDuration(e.target.value)}
+                                            style={styles.inputSmall}
+                                        />
+                                        <select
+                                            value={newPromoCodeDurationUnit}
+                                            onChange={(e) => setNewPromoCodeDurationUnit(e.target.value)}
+                                            style={styles.select}
+                                        >
+                                            <option value="days">Days</option>
+                                            <option value="weeks">Weeks</option>
+                                            <option value="months">Months</option>
+                                            <option value="years">Years</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style={styles.label}>Max Claims</label>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        placeholder="e.g., 10"
+                                        value={newPromoCodeMaxClaims}
+                                        onChange={(e) => setNewPromoCodeMaxClaims(e.target.value)}
+                                        style={styles.inputSmall}
+                                    />
+                                </div>
+                            </div>
+                            <div style={styles.row}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={styles.label}>Expiration Date (optional)</label>
+                                    <input
+                                        type="datetime-local"
+                                        value={newPromoCodeExpiration}
+                                        onChange={(e) => setNewPromoCodeExpiration(e.target.value)}
+                                        style={{ ...styles.input, maxWidth: '250px' }}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label style={styles.label}>Notes (optional, admin only)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., 'For Twitter giveaway Jan 2026'"
+                                    value={newPromoCodeNotes}
+                                    onChange={(e) => setNewPromoCodeNotes(e.target.value)}
+                                    style={styles.input}
+                                />
+                            </div>
+                            <button
+                                onClick={handleCreatePromoCode}
+                                disabled={creatingPromoCode || !newPromoCodeDuration || !newPromoCodeMaxClaims}
+                                style={{
+                                    ...styles.buttonSuccess,
+                                    width: 'fit-content',
+                                    opacity: creatingPromoCode || !newPromoCodeDuration || !newPromoCodeMaxClaims ? 0.5 : 1,
+                                    cursor: creatingPromoCode || !newPromoCodeDuration || !newPromoCodeMaxClaims ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {creatingPromoCode ? <FaSpinner className="spin" /> : <FaTicketAlt />}
+                                Generate Promo Code
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                
             </main>
             
             {/* Edit ICP Tier Modal */}
@@ -1611,6 +1969,52 @@ export default function SneedPremiumAdmin() {
                                 Save Changes
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* View Promo Code Claims Modal */}
+            {viewClaimsModal.show && (
+                <div style={styles.modal} onClick={() => setViewClaimsModal({ show: false, code: null, claims: [] })}>
+                    <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                        <div style={styles.modalHeader}>
+                            <h2 style={styles.modalTitle}>
+                                <FaEye style={{ color: theme.colors.accent }} />
+                                Claims for {viewClaimsModal.code}
+                            </h2>
+                            <button 
+                                style={styles.closeButton}
+                                onClick={() => setViewClaimsModal({ show: false, code: null, claims: [] })}
+                            >
+                                <FaTimes />
+                            </button>
+                        </div>
+                        {loadingClaims ? (
+                            <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                <FaSpinner className="spin" size={24} />
+                                <p style={{ marginTop: '1rem', color: theme.colors.mutedText }}>Loading claims...</p>
+                            </div>
+                        ) : viewClaimsModal.claims.length > 0 ? (
+                            <div style={styles.list}>
+                                {viewClaimsModal.claims.map((claim, idx) => (
+                                    <div key={idx} style={styles.listItem}>
+                                        <div>
+                                            <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                                                <PrincipalDisplay principal={claim.claimedBy.toString()} />
+                                            </div>
+                                            <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                                                Claimed: {formatTimestamp(claim.claimedAt)}
+                                            </div>
+                                        </div>
+                                        <div style={{ color: theme.colors.success, fontSize: '0.9rem' }}>
+                                            +{formatDuration(claim.durationGrantedNs)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div style={styles.emptyState}>No claims yet for this code.</div>
+                        )}
                     </div>
                 </div>
             )}

@@ -81,6 +81,42 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         NotFound: IDL.Null,
     });
     
+    const PromoCode = IDL.Record({
+        code: IDL.Text,
+        durationNs: IDL.Nat,
+        maxClaims: IDL.Nat,
+        claimCount: IDL.Nat,
+        expiration: IDL.Opt(IDL.Int),
+        notes: IDL.Opt(IDL.Text),
+        createdBy: IDL.Principal,
+        createdAt: IDL.Int,
+        active: IDL.Bool,
+    });
+    
+    const PromoCodeClaim = IDL.Record({
+        code: IDL.Text,
+        claimedBy: IDL.Principal,
+        claimedAt: IDL.Int,
+        durationGrantedNs: IDL.Nat,
+    });
+    
+    const CreatePromoCodeRequest = IDL.Record({
+        durationNs: IDL.Nat,
+        maxClaims: IDL.Nat,
+        expiration: IDL.Opt(IDL.Int),
+        notes: IDL.Opt(IDL.Text),
+    });
+    
+    const PromoCodeError = IDL.Variant({
+        NotAuthorized: IDL.Null,
+        InvalidCode: IDL.Null,
+        CodeExpired: IDL.Null,
+        CodeFullyClaimed: IDL.Null,
+        CodeInactive: IDL.Null,
+        AlreadyClaimed: IDL.Null,
+        InternalError: IDL.Text,
+    });
+    
     const PurchaseResult = IDL.Variant({
         ok: Membership,
         err: PurchaseError,
@@ -91,6 +127,11 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         err: ClaimError,
     });
     
+    const PromoCodeResult = IDL.Variant({
+        ok: Membership,
+        err: PromoCodeError,
+    });
+    
     const AdminResultUnit = IDL.Variant({
         ok: IDL.Null,
         err: AdminError,
@@ -98,6 +139,21 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
     
     const AdminResultMembership = IDL.Variant({
         ok: Membership,
+        err: AdminError,
+    });
+    
+    const AdminResultPromoCode = IDL.Variant({
+        ok: PromoCode,
+        err: AdminError,
+    });
+    
+    const AdminResultPromoCodes = IDL.Variant({
+        ok: IDL.Vec(PromoCode),
+        err: AdminError,
+    });
+    
+    const AdminResultPromoCodeClaims = IDL.Variant({
+        ok: IDL.Vec(PromoCodeClaim),
         err: AdminError,
     });
     
@@ -118,6 +174,7 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         // Purchase/Claim methods
         purchaseWithIcp: IDL.Func([], [PurchaseResult], []),
         claimWithVotingPower: IDL.Func([], [ClaimResult], []),
+        claimPromoCode: IDL.Func([IDL.Text], [PromoCodeResult], []),
         
         // Admin methods
         updateConfig: IDL.Func([Config], [AdminResultUnit], []),
@@ -136,6 +193,14 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         setSneedGovernanceId: IDL.Func([IDL.Principal], [AdminResultUnit], []),
         setPaymentRecipient: IDL.Func([Account], [AdminResultUnit], []),
         setMinClaimInterval: IDL.Func([IDL.Nat], [AdminResultUnit], []),
+        
+        // Promo code admin methods
+        createPromoCode: IDL.Func([CreatePromoCodeRequest], [AdminResultPromoCode], []),
+        getPromoCodes: IDL.Func([], [AdminResultPromoCodes], ['query']),
+        getPromoCodeClaims: IDL.Func([IDL.Text], [AdminResultPromoCodeClaims], ['query']),
+        deactivatePromoCode: IDL.Func([IDL.Text], [AdminResultUnit], []),
+        reactivatePromoCode: IDL.Func([IDL.Text], [AdminResultUnit], []),
+        deletePromoCode: IDL.Func([IDL.Text], [AdminResultUnit], []),
     });
 };
 
