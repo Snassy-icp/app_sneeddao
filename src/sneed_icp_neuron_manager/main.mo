@@ -301,7 +301,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         sneedPremiumCanisterId := canisterId;
     };
 
-// Not exposed since potentially async call that costs cycles.
+// Not exposed since potentially async call (can't be query) that costs cycles.
 /*    
     // Check if a user is a Sneed Premium member (uses cache)
     public func checkUserPremiumStatus(user: Principal): async Bool {

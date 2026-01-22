@@ -16,6 +16,7 @@ import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
+import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
@@ -80,6 +81,9 @@ function CreateIcpNeuron() {
         loading: loadingSneedVP 
     } = useSneedMembership();
     
+    // Premium membership for discounted pricing
+    const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
+    
     const [managers, setManagers] = useState([]);
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
     const [managerVersions, setManagerVersions] = useState({}); // canisterId -> version object
@@ -94,6 +98,7 @@ function CreateIcpNeuron() {
     
     // Payment state
     const [paymentConfig, setPaymentConfig] = useState(null);
+    const [premiumFeeE8s, setPremiumFeeE8s] = useState(null); // Discounted fee for premium members
     const [userIcpBalance, setUserIcpBalance] = useState(null);
     const [paymentBalance, setPaymentBalance] = useState(null);
     const [conversionRate, setConversionRate] = useState(null);
@@ -153,11 +158,12 @@ function CreateIcpNeuron() {
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            const [version, cyclesBalance, managerCount, config] = await Promise.all([
+            const [version, cyclesBalance, managerCount, config, premiumFee] = await Promise.all([
                 factory.getCurrentVersion(),
                 factory.getCyclesBalance(),
                 factory.getManagerCount(),
                 factory.getPaymentConfig(),
+                factory.getPremiumCreationFee(),
             ]);
             
             setFactoryInfo({
@@ -172,6 +178,8 @@ function CreateIcpNeuron() {
                 feeDestination: config.feeDestination,
                 paymentRequired: config.paymentRequired,
             });
+            
+            setPremiumFeeE8s(Number(premiumFee));
             
             // Also get the user's payment subaccount
             if (identity) {
@@ -399,12 +407,13 @@ function CreateIcpNeuron() {
             const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             
             // Transfer creation fee to factory's subaccount for this user
+            // Use effective fee (premium discount if applicable)
             const result = await ledger.icrc1_transfer({
                 to: {
                     owner: Principal.fromText(factoryCanisterId),
                     subaccount: [new Uint8Array(paymentSubaccount)],
                 },
-                amount: BigInt(paymentConfig.creationFeeE8s),
+                amount: BigInt(effectiveFeeE8s),
                 fee: [BigInt(ICP_FEE)],
                 memo: [],
                 from_subaccount: [],
@@ -506,13 +515,23 @@ function CreateIcpNeuron() {
         navigator.clipboard.writeText(text);
     };
 
+    // Calculate effective fee (premium discount if applicable)
+    const effectiveFeeE8s = isPremium && premiumFeeE8s !== null 
+        ? premiumFeeE8s 
+        : (paymentConfig?.creationFeeE8s || 0);
+    
+    // Calculate discount percentage
+    const discountPercent = paymentConfig && premiumFeeE8s !== null && paymentConfig.creationFeeE8s > 0
+        ? Math.round((1 - premiumFeeE8s / paymentConfig.creationFeeE8s) * 100)
+        : 0;
+    
     // Check if user has enough payment balance
     const hasEnoughPayment = paymentConfig && paymentBalance !== null && 
-        paymentBalance >= paymentConfig.creationFeeE8s;
+        paymentBalance >= effectiveFeeE8s;
     
     // Check if user has enough in wallet to send payment
     const canSendPayment = paymentConfig && userIcpBalance !== null &&
-        userIcpBalance >= paymentConfig.creationFeeE8s + ICP_FEE;
+        userIcpBalance >= effectiveFeeE8s + ICP_FEE;
 
     const cardStyle = {
         background: theme.colors.cardBackground,
@@ -718,16 +737,47 @@ function CreateIcpNeuron() {
                         {/* Payment Required Info */}
                         {paymentConfig.paymentRequired && (
                             <div style={{ 
-                                background: `${theme.colors.accent}15`,
+                                background: isPremium ? 'linear-gradient(135deg, rgba(255,215,0,0.15) 0%, rgba(255,165,0,0.1) 100%)' : `${theme.colors.accent}15`,
                                 borderRadius: '8px',
                                 padding: '16px',
-                                marginBottom: '20px'
+                                marginBottom: '20px',
+                                border: isPremium ? '1px solid rgba(255,215,0,0.3)' : 'none'
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                                     <div>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Creation Fee</div>
-                                        <div style={{ color: theme.colors.primaryText, fontSize: '24px', fontWeight: '700' }}>
-                                            {formatIcp(paymentConfig.creationFeeE8s)} ICP
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            Creation Fee
+                                            {isPremium && discountPercent > 0 && (
+                                                <span style={{
+                                                    background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+                                                    color: '#1a1a2e',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '10px',
+                                                    fontSize: '10px',
+                                                    fontWeight: '700',
+                                                }}>
+                                                    👑 {discountPercent}% OFF
+                                                </span>
+                                            )}
+                                            {loadingPremium && (
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '10px' }}>
+                                                    (checking premium...)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                                            <div style={{ color: isPremium ? '#FFD700' : theme.colors.primaryText, fontSize: '24px', fontWeight: '700' }}>
+                                                {formatIcp(effectiveFeeE8s)} ICP
+                                            </div>
+                                            {isPremium && discountPercent > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '14px', 
+                                                    textDecoration: 'line-through' 
+                                                }}>
+                                                    {formatIcp(paymentConfig.creationFeeE8s)} ICP
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
@@ -737,6 +787,35 @@ function CreateIcpNeuron() {
                                         </div>
                                     </div>
                                 </div>
+                                
+                                {/* Premium upsell for non-premium users */}
+                                {!isPremium && !loadingPremium && premiumFeeE8s !== null && discountPercent > 0 && (
+                                    <div style={{ 
+                                        marginTop: '12px', 
+                                        paddingTop: '12px', 
+                                        borderTop: `1px solid ${theme.colors.border}`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        fontSize: '12px',
+                                    }}>
+                                        <span style={{ color: '#FFD700' }}>👑</span>
+                                        <span style={{ color: theme.colors.mutedText }}>
+                                            Premium members pay only <strong style={{ color: '#FFD700' }}>{formatIcp(premiumFeeE8s)} ICP</strong>
+                                        </span>
+                                        <a 
+                                            href="/premium" 
+                                            style={{ 
+                                                color: '#FFD700', 
+                                                marginLeft: 'auto',
+                                                textDecoration: 'none',
+                                                fontWeight: '600',
+                                            }}
+                                        >
+                                            Get Premium →
+                                        </a>
+                                    </div>
+                                )}
                                 
                                 {/* Conversion rate info */}
                                 {conversionRate && (
@@ -859,7 +938,7 @@ function CreateIcpNeuron() {
                                     onClick={handleSendPayment}
                                     disabled={!canSendPayment || sendingPayment}
                                 >
-                                    {sendingPayment ? '⏳ Sending Payment...' : `💰 Send ${formatIcp(paymentConfig.creationFeeE8s)} ICP`}
+                                    {sendingPayment ? '⏳ Sending Payment...' : `💰 Send ${formatIcp(effectiveFeeE8s)} ICP`}
                                 </button>
                             )}
                             
@@ -884,7 +963,7 @@ function CreateIcpNeuron() {
                             {paymentConfig.paymentRequired ? (
                                 hasEnoughPayment 
                                     ? 'Payment received! Click "Create Neuron Manager" to proceed.'
-                                    : `Send ${formatIcp(paymentConfig.creationFeeE8s)} ICP to deposit your payment, then create your manager.`
+                                    : `Send ${formatIcp(effectiveFeeE8s)} ICP to deposit your payment, then create your manager.${isPremium ? ' (Premium discount applied!)' : ''}`
                             ) : (
                                 'Creating a neuron manager is currently free!'
                             )}

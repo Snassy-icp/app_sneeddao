@@ -1,9 +1,58 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createSneedPremiumActor, isMembershipActive, getExpirationFromStatus } from '../utils/SneedPremiumUtils';
 
+const PREMIUM_CACHE_KEY = 'sneed_premium_status';
+
+/**
+ * Load cached premium status from localStorage
+ * Returns null if no valid cache exists
+ */
+function loadCachedStatus(principalStr) {
+    try {
+        const cached = localStorage.getItem(`${PREMIUM_CACHE_KEY}_${principalStr}`);
+        if (!cached) return null;
+        
+        const data = JSON.parse(cached);
+        
+        // Check if cache is still valid (not past expiration)
+        if (data.expiration) {
+            const expirationMs = Number(data.expiration) / 1_000_000; // Convert ns to ms
+            if (Date.now() < expirationMs) {
+                return {
+                    isPremium: data.isPremium,
+                    expiration: BigInt(data.expiration),
+                };
+            }
+        }
+        
+        // Cache expired, remove it
+        localStorage.removeItem(`${PREMIUM_CACHE_KEY}_${principalStr}`);
+        return null;
+    } catch (e) {
+        console.error('Error loading premium cache:', e);
+        return null;
+    }
+}
+
+/**
+ * Save premium status to localStorage with expiration
+ */
+function saveCachedStatus(principalStr, isPremium, expiration) {
+    try {
+        const data = {
+            isPremium,
+            expiration: expiration ? expiration.toString() : null,
+            cachedAt: Date.now(),
+        };
+        localStorage.setItem(`${PREMIUM_CACHE_KEY}_${principalStr}`, JSON.stringify(data));
+    } catch (e) {
+        console.error('Error saving premium cache:', e);
+    }
+}
+
 /**
  * Hook to check premium membership status for a principal
- * Results are cached for the session to avoid repeated calls
+ * Results are cached in localStorage until membership expiration
  * @param {Identity} identity - User identity
  * @param {Principal} principal - Principal to check (defaults to identity's principal)
  * @returns {{ isPremium: boolean, expiration: bigint|null, loading: boolean, error: string|null, refresh: function }}
@@ -13,7 +62,6 @@ export function usePremiumStatus(identity, principal = null) {
     const [expiration, setExpiration] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const cacheRef = useRef(new Map());
     const lastFetchRef = useRef(null);
 
     const checkStatus = useCallback(async (forceRefresh = false) => {
@@ -28,13 +76,15 @@ export function usePremiumStatus(identity, principal = null) {
         const principalStr = targetPrincipal.toString();
         const now = Date.now();
         
-        // Check cache (valid for 5 minutes unless force refresh)
-        const cached = cacheRef.current.get(principalStr);
-        if (!forceRefresh && cached && (now - cached.timestamp < 5 * 60 * 1000)) {
-            setIsPremium(cached.isPremium);
-            setExpiration(cached.expiration);
-            setLoading(false);
-            return;
+        // Check localStorage cache first (unless force refresh)
+        if (!forceRefresh) {
+            const cached = loadCachedStatus(principalStr);
+            if (cached) {
+                setIsPremium(cached.isPremium);
+                setExpiration(cached.expiration);
+                setLoading(false);
+                return;
+            }
         }
 
         // Prevent duplicate fetches within 1 second
@@ -53,12 +103,8 @@ export function usePremiumStatus(identity, principal = null) {
             const isActive = isMembershipActive(status);
             const exp = getExpirationFromStatus(status);
             
-            // Update cache
-            cacheRef.current.set(principalStr, {
-                isPremium: isActive,
-                expiration: exp,
-                timestamp: now
-            });
+            // Save to localStorage - cache until membership expires
+            saveCachedStatus(principalStr, isActive, exp);
             
             setIsPremium(isActive);
             setExpiration(exp);
@@ -123,4 +169,3 @@ export function PremiumBadge({ style = {}, size = 'small', showTooltip = true })
 }
 
 export default usePremiumStatus;
-
