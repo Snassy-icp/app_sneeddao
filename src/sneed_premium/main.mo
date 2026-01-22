@@ -373,13 +373,19 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         // Update last claim time
         setLastVpClaimTime(caller, now);
         
-        // Update membership
+        // For VP claims: set to now + duration, but only if it extends past current expiration
+        // This is different from ICP purchases which are additive
         let currentExpiration = switch (getMembership(caller)) {
             case (?m) { m.expiration };
             case null { 0 };
         };
         
-        let newExpiration = Utils.extendExpiration(currentExpiration, tier.durationNs, now);
+        // VP claim sets expiration to now + tier duration (not additive)
+        let vpExpiration = now + tier.durationNs;
+        
+        // Only update if VP-based expiration is later than current
+        let newExpiration = if (vpExpiration > currentExpiration) { vpExpiration } else { currentExpiration };
+        
         let newMembership : T.Membership = {
             principal = caller;
             expiration = newExpiration;
