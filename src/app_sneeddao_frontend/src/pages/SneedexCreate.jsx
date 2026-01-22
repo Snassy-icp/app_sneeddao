@@ -154,11 +154,13 @@ function SneedexCreate() {
     const { isPremium: isPremiumUser, loading: premiumLoading } = usePremiumStatus(identity);
     
     // Offer creation fee (ICP)
-    const [offerCreationFee, setOfferCreationFee] = useState(0n); // Effective fee for this user
     const [regularOfferCreationFee, setRegularOfferCreationFee] = useState(0n); // Regular (non-premium) fee
     const [premiumOfferCreationFee, setPremiumOfferCreationFee] = useState(0n); // Premium fee
     const [premiumAuctionCut, setPremiumAuctionCut] = useState(0); // Premium auction cut in bps
     const [userPaymentBalance, setUserPaymentBalance] = useState(0n);
+    
+    // Effective fee is calculated from premium status (not fetched)
+    const offerCreationFee = isPremiumUser ? premiumOfferCreationFee : regularOfferCreationFee;
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingFeeInfo, setLoadingFeeInfo] = useState(true);
     const [withdrawingPayment, setWithdrawingPayment] = useState(false);
@@ -225,7 +227,7 @@ function SneedexCreate() {
         fetchIcpPrice();
     }, []);
     
-    // Fetch offer creation fee info
+    // Fetch offer creation fee info (single query call - fast!)
     const fetchFeeInfo = useCallback(async () => {
         if (!identity || !isAuthenticated) return;
         
@@ -234,30 +236,25 @@ function SneedexCreate() {
             const actor = createSneedexActor(identity);
             const userPrincipal = identity.getPrincipal();
             
-            const [effectiveFee, regularFee, premiumFee, premiumCutBps, subaccount, balance] = await Promise.all([
-                actor.getEffectiveOfferCreationFee(userPrincipal),
-                actor.getOfferCreationFee(),
-                actor.getPremiumOfferCreationFee(),
-                actor.getPremiumAuctionCutBps(),
+            // Single query for all fee config + user-specific data
+            const [feeConfig, subaccount, balance, icpBalance] = await Promise.all([
+                actor.getFeeConfig(), // Single query for all 4 fee values
                 actor.getOfferCreationPaymentSubaccount(userPrincipal),
                 actor.getUserOfferCreationBalance(userPrincipal),
+                createLedgerActor(ICP_LEDGER_ID, {
+                    agentOptions: { identity, host: getHost() }
+                }).icrc1_balance_of({
+                    owner: userPrincipal,
+                    subaccount: [],
+                }),
             ]);
             
-            setOfferCreationFee(effectiveFee);
-            setRegularOfferCreationFee(regularFee);
-            setPremiumOfferCreationFee(premiumFee);
-            setPremiumAuctionCut(Number(premiumCutBps));
+            setRegularOfferCreationFee(feeConfig.regularCreationFeeE8s);
+            setPremiumOfferCreationFee(feeConfig.premiumCreationFeeE8s);
+            setMarketplaceFeeRate(Number(feeConfig.regularAuctionCutBps));
+            setPremiumAuctionCut(Number(feeConfig.premiumAuctionCutBps));
             setPaymentSubaccount(subaccount);
             setUserPaymentBalance(balance);
-            
-            // Also fetch user's ICP wallet balance
-            const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
-                agentOptions: { identity, host: getHost() }
-            });
-            const icpBalance = await icpLedger.icrc1_balance_of({
-                owner: userPrincipal,
-                subaccount: [],
-            });
             setUserIcpBalance(icpBalance);
         } catch (e) {
             console.error('Failed to fetch fee info:', e);
@@ -269,20 +266,6 @@ function SneedexCreate() {
     useEffect(() => {
         fetchFeeInfo();
     }, [fetchFeeInfo]);
-    
-    // Fetch marketplace fee rate on mount
-    useEffect(() => {
-        const fetchFeeRate = async () => {
-            try {
-                const sneedexActor = createSneedexActor(identity);
-                const rate = await sneedexActor.getMarketplaceFeeRate();
-                setMarketplaceFeeRate(Number(rate));
-            } catch (e) {
-                console.error('Failed to fetch marketplace fee rate:', e);
-            }
-        };
-        fetchFeeRate();
-    }, [identity]);
     
     // Helper to calculate expiration timestamp in nanoseconds from days, hours, minutes
     const getExpirationNs = useCallback(() => {
@@ -2625,7 +2608,7 @@ function SneedexCreate() {
                         </div>
                         
                         {/* Marketplace Fee Info */}
-                        {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && (
+                        {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && !premiumLoading && (
                             <div style={{
                                 background: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
                                     ? `linear-gradient(135deg, ${theme.colors.warning}10 0%, rgba(255, 215, 0, 0.15) 100%)`
@@ -3896,11 +3879,18 @@ function SneedexCreate() {
                             </div>
                         )}
                         
-                        {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && (
+                        {marketplaceFeeRate !== null && marketplaceFeeRate > 0 && !premiumLoading && (
                             <div style={styles.reviewSection}>
                                 <div style={styles.reviewLabel}>Sneedex Cut</div>
-                                <div style={{ ...styles.reviewValue, color: theme.colors.warning }}>
-                                    {formatFeeRate(marketplaceFeeRate)}
+                                <div style={{ ...styles.reviewValue, color: isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate ? '#FFD700' : theme.colors.warning }}>
+                                    {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate 
+                                        ? formatFeeRate(premiumAuctionCut)
+                                        : formatFeeRate(marketplaceFeeRate)}
+                                    {isPremiumUser && premiumAuctionCut > 0 && premiumAuctionCut < marketplaceFeeRate && (
+                                        <span style={{ marginLeft: '8px', fontSize: '0.8rem', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1a1a2e', padding: '2px 8px', borderRadius: '10px' }}>
+                                            👑 PREMIUM
+                                        </span>
+                                    )}
                                     <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontWeight: 'normal' }}>
                                         (taken from the winning bid when the sale completes)
                                     </span>
@@ -4311,7 +4301,7 @@ function SneedexCreate() {
                         )}
                         
                         {/* Offer Creation Fee Section */}
-                        {!loadingFeeInfo && (regularOfferCreationFee > 0n || userPaymentBalance > 0n) && (
+                        {!loadingFeeInfo && !premiumLoading && (regularOfferCreationFee > 0n || userPaymentBalance > 0n) && (
                             <div style={{
                                 background: `linear-gradient(135deg, ${theme.colors.cardBackground} 0%, rgba(255, 215, 0, 0.1) 100%)`,
                                 border: `1px solid rgba(255, 215, 0, 0.3)`,

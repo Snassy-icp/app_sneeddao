@@ -3002,6 +3002,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         premiumAuctionCutBps;
     };
     
+    /// Get all fee configuration in a single query
+    /// Returns: (regularCreationFeeE8s, premiumCreationFeeE8s, regularAuctionCutBps, premiumAuctionCutBps)
+    public query func getFeeConfig() : async {
+        regularCreationFeeE8s : Nat64;
+        premiumCreationFeeE8s : Nat64;
+        regularAuctionCutBps : Nat;
+        premiumAuctionCutBps : Nat;
+    } {
+        {
+            regularCreationFeeE8s = offerCreationFeeE8s;
+            premiumCreationFeeE8s = premiumOfferCreationFeeE8s;
+            regularAuctionCutBps = marketplaceFeeRateBps;
+            premiumAuctionCutBps = premiumAuctionCutBps;
+        };
+    };
+    
     /// Get Sneed Premium canister ID
     public query func getSneedPremiumCanisterId() : async ?Principal {
         sneedPremiumCanisterId;
