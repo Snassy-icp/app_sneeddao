@@ -1161,7 +1161,7 @@ function CreateIcpNeuron() {
                                         gap: '4px'
                                     }}
                                 >
-                                    🌱 Sneed Wallet
+                                    👛 Sneed Wallet
                                 </Link>
                                 <Link 
                                     to="/canisters" 
