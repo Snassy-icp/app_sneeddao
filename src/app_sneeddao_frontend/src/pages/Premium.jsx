@@ -15,13 +15,9 @@ import {
     SNEED_PREMIUM_CANISTER_ID
 } from '../utils/SneedPremiumUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
-import { createActor as createSneedexActor } from 'declarations/sneedex';
-import { createActor as createNeuronManagerFactoryActor } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createSneedexActor, canisterId as SNEEDEX_CANISTER_ID } from 'declarations/sneedex';
+import { createActor as createNeuronManagerFactoryActor, canisterId as NEURON_MANAGER_FACTORY_CANISTER_ID } from 'declarations/sneed_icp_neuron_manager_factory';
 import { useSneedMembership } from '../hooks/useSneedMembership';
-
-// Canister IDs
-const SNEEDEX_CANISTER_ID = 'igm46-laaaa-aaaae-qgwra-cai';
-const NEURON_MANAGER_FACTORY_CANISTER_ID = 'sfamc-kyaaa-aaaau-adnpq-cai';
 import InfoModal from '../components/InfoModal';
 import { 
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
@@ -163,32 +159,40 @@ export default function Premium() {
                 const pricing = { sneedex: null, neuronManager: null };
                 
                 // Fetch sneedex fees
-                try {
-                    const sneedexActor = createSneedexActor(SNEEDEX_CANISTER_ID, {});
-                    const feeConfig = await sneedexActor.getFeeConfig();
-                    pricing.sneedex = {
-                        regularCreationFeeE8s: feeConfig.regularCreationFeeE8s,
-                        premiumCreationFeeE8s: feeConfig.premiumCreationFeeE8s,
-                        regularAuctionCutBps: feeConfig.regularAuctionCutBps,
-                        premiumAuctionCutBps: feeConfig.premiumAuctionCutBps,
-                    };
-                } catch (err) {
-                    console.warn('Failed to fetch sneedex fees:', err);
+                if (SNEEDEX_CANISTER_ID) {
+                    try {
+                        const sneedexActor = createSneedexActor(SNEEDEX_CANISTER_ID, {});
+                        const feeConfig = await sneedexActor.getFeeConfig();
+                        pricing.sneedex = {
+                            regularCreationFeeE8s: feeConfig.regularCreationFeeE8s,
+                            premiumCreationFeeE8s: feeConfig.premiumCreationFeeE8s,
+                            regularAuctionCutBps: feeConfig.regularAuctionCutBps,
+                            premiumAuctionCutBps: feeConfig.premiumAuctionCutBps,
+                        };
+                    } catch (err) {
+                        console.warn('Failed to fetch sneedex fees:', err);
+                    }
                 }
                 
                 // Fetch neuron manager factory fees
-                try {
-                    const factoryActor = createNeuronManagerFactoryActor(NEURON_MANAGER_FACTORY_CANISTER_ID, {});
-                    const [paymentConfig, premiumFee] = await Promise.all([
-                        factoryActor.getPaymentConfig(),
-                        factoryActor.getPremiumCreationFee(),
-                    ]);
-                    pricing.neuronManager = {
-                        regularFeeE8s: paymentConfig.creationFeeE8s,
-                        premiumFeeE8s: premiumFee,
-                    };
-                } catch (err) {
-                    console.warn('Failed to fetch neuron manager factory fees:', err);
+                if (NEURON_MANAGER_FACTORY_CANISTER_ID) {
+                    try {
+                        const factoryActor = createNeuronManagerFactoryActor(NEURON_MANAGER_FACTORY_CANISTER_ID, {});
+                        const [paymentConfig, premiumFee] = await Promise.all([
+                            factoryActor.getPaymentConfig(),
+                            factoryActor.getPremiumCreationFee(),
+                        ]);
+                        
+                        // Only show if there's a discount
+                        if (Number(paymentConfig.creationFeeE8s) > Number(premiumFee)) {
+                            pricing.neuronManager = {
+                                regularFeeE8s: paymentConfig.creationFeeE8s,
+                                premiumFeeE8s: premiumFee,
+                            };
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch neuron manager factory fees:', err);
+                    }
                 }
                 
                 // Only update if we got at least some pricing
