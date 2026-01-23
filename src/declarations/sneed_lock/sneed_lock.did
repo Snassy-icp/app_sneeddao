@@ -118,6 +118,8 @@ type SneedLock =
    getPaymentSubaccount: (user: principal) -> (blob) query;
    get_active_claim_request: (request_id: ClaimRequestId) ->
     (opt ClaimRequest) query;
+   get_active_position_locks: () -> (vec FullyQualifiedPositionLock) query;
+   get_active_token_locks: () -> (vec FullyQualifiedLock) query;
    get_admin_list: () -> (vec principal) query;
    get_all_active_claim_requests: () -> (vec ClaimRequest) query;
    get_all_completed_claim_requests: () -> (vec ClaimRequest) query;
@@ -152,6 +154,8 @@ type SneedLock =
                                     nat;
                                     nat;
                                   });
+   get_expired_position_locks: () -> (vec FullyQualifiedPositionLock) query;
+   get_expired_token_locks: () -> (vec FullyQualifiedLock) query;
    get_failed_claim_request: (request_id: ClaimRequestId) ->
     (opt ClaimRequest) query;
    get_info_entries: (start: nat, length: nat) -> (vec opt BufferEntry);

@@ -246,6 +246,16 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(ClaimRequest)],
         ['query'],
       ),
+    'get_active_position_locks' : IDL.Func(
+        [],
+        [IDL.Vec(FullyQualifiedPositionLock)],
+        ['query'],
+      ),
+    'get_active_token_locks' : IDL.Func(
+        [],
+        [IDL.Vec(FullyQualifiedLock)],
+        ['query'],
+      ),
     'get_admin_list' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_all_active_claim_requests' : IDL.Func(
         [],
@@ -325,6 +335,16 @@ export const idlFactory = ({ IDL }) => {
         [],
         [IDL.Opt(IDL.Tuple(IDL.Nat, IDL.Nat))],
         [],
+      ),
+    'get_expired_position_locks' : IDL.Func(
+        [],
+        [IDL.Vec(FullyQualifiedPositionLock)],
+        ['query'],
+      ),
+    'get_expired_token_locks' : IDL.Func(
+        [],
+        [IDL.Vec(FullyQualifiedLock)],
+        ['query'],
       ),
     'get_failed_claim_request' : IDL.Func(
         [ClaimRequestId],

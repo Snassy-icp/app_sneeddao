@@ -179,6 +179,11 @@ export interface SneedLock {
     [ClaimRequestId],
     [] | [ClaimRequest]
   >,
+  'get_active_position_locks' : ActorMethod<
+    [],
+    Array<FullyQualifiedPositionLock>
+  >,
+  'get_active_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_admin_list' : ActorMethod<[], Array<Principal>>,
   'get_all_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
   'get_all_completed_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
@@ -220,6 +225,11 @@ export interface SneedLock {
     Array<[] | [BufferEntry]>
   >,
   'get_error_id_range' : ActorMethod<[], [] | [[bigint, bigint]]>,
+  'get_expired_position_locks' : ActorMethod<
+    [],
+    Array<FullyQualifiedPositionLock>
+  >,
+  'get_expired_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_failed_claim_request' : ActorMethod<
     [ClaimRequestId],
     [] | [ClaimRequest]

@@ -173,6 +173,20 @@ shared (deployer) persistent actor class SneedLock() = this {
     get_fully_qualified_locks();
   };
 
+  // Get only active (non-expired) token locks
+  public query func get_active_token_locks() : async [T.FullyQualifiedLock] {
+    let now = Nat64.fromIntWrap(Time.now());
+    let all_locks = get_fully_qualified_locks();
+    Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry > now; });
+  };
+
+  // Get only expired token locks
+  public query func get_expired_token_locks() : async [T.FullyQualifiedLock] {
+    let now = Nat64.fromIntWrap(Time.now());
+    let all_locks = get_fully_qualified_locks();
+    Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry <= now; });
+  };
+
   public query func get_ledger_token_locks(ledger_canister_id : T.TokenType) : async [T.FullyQualifiedLock] {
     let all_locks = get_fully_qualified_locks();
     Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.1 == ledger_canister_id; });
@@ -180,6 +194,20 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   public query func get_all_position_locks() : async [T.FullyQualifiedPositionLock] {
     get_fully_qualified_position_locks();
+  };
+
+  // Get only active (non-expired) position locks
+  public query func get_active_position_locks() : async [T.FullyQualifiedPositionLock] {
+    let now = Nat64.fromIntWrap(Time.now());
+    let all_position_locks = get_fully_qualified_position_locks();
+    Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry > now; });
+  };
+
+  // Get only expired position locks
+  public query func get_expired_position_locks() : async [T.FullyQualifiedPositionLock] {
+    let now = Nat64.fromIntWrap(Time.now());
+    let all_position_locks = get_fully_qualified_position_locks();
+    Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry <= now; });
   };
 
   public query func get_swap_position_locks(swap_canister_id : T.SwapCanisterId) : async [T.FullyQualifiedPositionLock] {

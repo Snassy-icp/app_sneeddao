@@ -18,16 +18,25 @@ function SneedlockInfo() {
     const { theme } = useTheme();
     const location = useLocation();
     const navigate = useNavigate();
-    const [tokenData, setTokenData] = useState({});
+    
+    // Separate state for active and expired locks
+    const [activeTokenData, setActiveTokenData] = useState({});
+    const [expiredTokenData, setExpiredTokenData] = useState({});
+    const [activeTab, setActiveTab] = useState('active'); // 'active' or 'expired'
+    
     const [initialLoading, setInitialLoading] = useState(true);
+    const [expiredLoading, setExpiredLoading] = useState(false);
+    const [expiredLoaded, setExpiredLoaded] = useState(false);
     const [metadataLoading, setMetadataLoading] = useState(true);
     const [tokenMetadata, setTokenMetadata] = useState({});
     const [expandedRows, setExpandedRows] = useState(new Set());  // Track expanded rows
     const [conversionRates, setConversionRates] = useState({});  // Cache for conversion rates
     const [ownerFilter, setOwnerFilter] = useState('');
     const [ledgerFilter, setLedgerFilter] = useState('');
-    const [hideExpired, setHideExpired] = useState(true);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+
+    // tokenData points to the current tab's data
+    const tokenData = activeTab === 'active' ? activeTokenData : expiredTokenData;
 
     // Cache for swap canister data
     const swapCanisterCache = {};
@@ -37,17 +46,14 @@ function SneedlockInfo() {
         const params = new URLSearchParams(location.search);
         const ownerParam = params.get('owner');
         const ledgerParam = params.get('ledger');
-        const hideExpiredParam = params.get('hideExpired');
+        const tabParam = params.get('tab');
         if (ownerParam) setOwnerFilter(ownerParam);
         if (ledgerParam) setLedgerFilter(ledgerParam);
-        // Default to true if not specified, false only if explicitly set to 'false'
-        if (hideExpiredParam !== null) {
-            setHideExpired(hideExpiredParam !== 'false');
-        }
+        if (tabParam === 'expired') setActiveTab('expired');
     }, [location]);
 
     // Update URL when filters change
-    const updateFilters = (newOwner, newLedger, newHideExpired) => {
+    const updateFilters = (newOwner, newLedger, newTab) => {
         const params = new URLSearchParams(location.search);
         
         if (newOwner) {
@@ -62,11 +68,10 @@ function SneedlockInfo() {
             params.delete('ledger');
         }
         
-        // Only add to URL if false (true is the default)
-        if (newHideExpired === false) {
-            params.set('hideExpired', 'false');
+        if (newTab === 'expired') {
+            params.set('tab', 'expired');
         } else {
-            params.delete('hideExpired');
+            params.delete('tab');
         }
         
         navigate('?' + params.toString(), { replace: true });
@@ -74,37 +79,28 @@ function SneedlockInfo() {
 
     const handleOwnerFilterChange = (value) => {
         setOwnerFilter(value);
-        updateFilters(value, ledgerFilter, hideExpired);
+        updateFilters(value, ledgerFilter, activeTab);
     };
 
     const handleLedgerFilterChange = (value) => {
         setLedgerFilter(value);
-        updateFilters(ownerFilter, value, hideExpired);
+        updateFilters(ownerFilter, value, activeTab);
     };
 
-    const handleHideExpiredChange = (value) => {
-        setHideExpired(value);
-        updateFilters(ownerFilter, ledgerFilter, value);
-    };
-
-    // Helper to check if a lock is expired
-    const isLockExpired = (expiry) => {
-        if (!expiry) return false;
-        try {
-            const actualTimestamp = typeof expiry === 'object' && expiry.expiry ? expiry.expiry : expiry;
-            const timestampStr = actualTimestamp.toString();
-            const milliseconds = Number(timestampStr) / 1_000_000;
-            const date = new Date(milliseconds);
-            if (isNaN(date.getTime()) || date.getFullYear() > 2100) return false;
-            return date <= new Date();
-        } catch {
-            return false;
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+        setExpandedRows(new Set()); // Reset expanded rows when switching tabs
+        updateFilters(ownerFilter, ledgerFilter, tab);
+        
+        // Load expired locks if switching to expired tab and not yet loaded
+        if (tab === 'expired' && !expiredLoaded && !expiredLoading) {
+            fetchExpiredData();
         }
     };
 
-    // Filter data by owner, ledger, and expired status
+    // Filter data by owner and ledger (expired filtering is done via tabs now)
     const getFilteredData = () => {
-        if (!ownerFilter && !ledgerFilter && !hideExpired) return tokenData;
+        if (!ownerFilter && !ledgerFilter) return tokenData;
 
         const filteredData = {};
         Object.entries(tokenData).forEach(([tokenKey, data]) => {
@@ -116,15 +112,9 @@ function SneedlockInfo() {
                 return;
             }
 
-            // Filter locks by owner and expired status
+            // Filter locks by owner
             let filteredTokenLocks = data.tokenLocks || [];
             let filteredPositionLocks = data.positionLocks || [];
-            
-            // Filter by expired status
-            if (hideExpired) {
-                filteredTokenLocks = filteredTokenLocks.filter(lock => !isLockExpired(lock.expiry));
-                filteredPositionLocks = filteredPositionLocks.filter(lock => !isLockExpired(lock.expiry));
-            }
             
             // Filter by owner
             if (ownerFilter) {
@@ -431,12 +421,12 @@ function SneedlockInfo() {
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
-            // Fetch all locks first to know which tokens we need metadata for
-            const allTokenLocks = await sneedLockActor.get_all_token_locks();
-            const allPositionLocks = await sneedLockActor.get_all_position_locks();
+            // Fetch only active (non-expired) locks for initial load
+            const allTokenLocks = await sneedLockActor.get_active_token_locks();
+            const allPositionLocks = await sneedLockActor.get_active_position_locks();
 
-            console.log("All token locks fetched", allTokenLocks);
-            console.log("All position locks fetched", allPositionLocks);
+            console.log("Active token locks fetched", allTokenLocks);
+            console.log("Active position locks fetched", allPositionLocks);
             // Aggregate token locks by token type
             const aggregatedData = {};
 
@@ -517,8 +507,8 @@ function SneedlockInfo() {
                 }
             }
 
-            // Update state with initial data
-            setTokenData(aggregatedData);
+            // Update state with initial active data
+            setActiveTokenData(aggregatedData);
             setInitialLoading(false);
 
             // Start loading metadata and positions in the background
@@ -583,7 +573,7 @@ function SneedlockInfo() {
                 if (!canisterData.error) {
                     const matchingPosition = canisterData.positions.find(p => p.id === positionId);
                     if (matchingPosition) {
-                        setTokenData(prevData => {
+                        setActiveTokenData(prevData => {
                             const newData = { ...prevData };
                             
                             // Add token0 details
@@ -653,6 +643,206 @@ function SneedlockInfo() {
             setMetadataLoading(false);
         } catch (error) {
             console.error('Error fetching data:', error);
+        }
+    };
+
+    // Fetch expired locks (lazy-loaded when user clicks Expired tab)
+    const fetchExpiredData = async () => {
+        if (expiredLoaded || expiredLoading) return;
+        
+        setExpiredLoading(true);
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            
+            // Fetch only expired locks
+            const expiredTokenLocks = await sneedLockActor.get_expired_token_locks();
+            const expiredPositionLocks = await sneedLockActor.get_expired_position_locks();
+
+            console.log("Expired token locks fetched", expiredTokenLocks);
+            console.log("Expired position locks fetched", expiredPositionLocks);
+            
+            // Aggregate expired token locks by token type
+            const aggregatedData = {};
+
+            // Process token locks with detailed information
+            for (const lock of expiredTokenLocks) {
+                const tokenId = lock[1];
+                const amount = BigInt(lock[2].amount);
+                const tokenKey = tokenId?.toText?.() || tokenId;
+                const lockDetails = {
+                    id: lock[0],
+                    lockId: lock[2].lock_id,
+                    amount: amount,
+                    expiry: lock[2].expiry,
+                    owner: lock[0]?.toText?.() || lock[0]
+                };
+
+                if (!aggregatedData[tokenKey]) {
+                    aggregatedData[tokenKey] = {
+                        tokenId,
+                        tokenLockAmount: 0n,
+                        positionLockAmount: 0n,
+                        tokenLockCount: 0,
+                        positionLockCount: 0,
+                        positionsLoading: false,
+                        tokenLocks: [],
+                        positionLocks: []
+                    };
+                }
+                aggregatedData[tokenKey].tokenLockAmount += amount;
+                aggregatedData[tokenKey].tokenLockCount += 1;
+                aggregatedData[tokenKey].tokenLocks.push(lockDetails);
+            }
+
+            // Create a Set of tokens that appear in position locks
+            const tokensInPositions = new Set();
+            for (const lock of expiredPositionLocks) {
+                tokensInPositions.add(lock[2].token0.toText());
+                tokensInPositions.add(lock[2].token1.toText());
+            }
+
+            // Fetch metadata for tokens in positions
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+
+            for (const tokenKey of tokensInPositions) {
+                if (!aggregatedData[tokenKey]) {
+                    aggregatedData[tokenKey] = {
+                        tokenId: Principal.fromText(tokenKey),
+                        tokenLockAmount: 0n,
+                        positionLockAmount: 0n,
+                        tokenLockCount: 0,
+                        positionLockCount: 0,
+                        positionsLoading: true,
+                        tokenLocks: [],
+                        positionLocks: []
+                    };
+                } else {
+                    aggregatedData[tokenKey].positionsLoading = true;
+                }
+                
+                // Fetch token metadata if not already present
+                if (!tokenMetadata[tokenKey]) {
+                    const whitelistedToken = whitelistedTokenMap.get(tokenKey);
+                    try {
+                        const ledgerActor = createLedgerActor(tokenKey, { agentOptions: { identity } });
+                        const metadata = await ledgerActor.icrc1_metadata();
+                        const logo = getTokenLogo(metadata);
+                        const symbol = await ledgerActor.icrc1_symbol();
+                        const decimals = await ledgerActor.icrc1_decimals();
+                        
+                        setTokenMetadata(prev => ({
+                            ...prev,
+                            [tokenKey]: {
+                                ledger_id: tokenKey,
+                                symbol,
+                                decimals,
+                                logo,
+                                ...(whitelistedToken || {})
+                            }
+                        }));
+                    } catch (error) {
+                        console.error(`Error fetching metadata for token ${tokenKey}:`, error);
+                        setTokenMetadata(prev => ({
+                            ...prev,
+                            [tokenKey]: whitelistedToken || {
+                                ledger_id: tokenKey,
+                                symbol: tokenKey.slice(0, 8) + '...',
+                                decimals: 8,
+                                logo: ''
+                            }
+                        }));
+                    }
+                }
+            }
+
+            // Update state with expired data
+            setExpiredTokenData(aggregatedData);
+
+            // Process expired position locks
+            for (const lock of expiredPositionLocks) {
+                const swapCanisterId = lock[1];
+                const positionId = lock[2].position_id;
+                const token0 = lock[2].token0;
+                const token1 = lock[2].token1;
+                const lockId = lock[0];
+                const expiry = lock[2].expiry;
+
+                const canisterData = await fetchPositionDetails(swapCanisterId);
+                if (!canisterData.error) {
+                    const matchingPosition = canisterData.positions.find(p => p.id === positionId);
+                    if (matchingPosition) {
+                        setExpiredTokenData(prevData => {
+                            const newData = { ...prevData };
+                            
+                            const token0Key = token0.toText();
+                            if (!newData[token0Key]) {
+                                newData[token0Key] = {
+                                    tokenId: token0,
+                                    tokenLockAmount: 0n,
+                                    positionLockAmount: 0n,
+                                    tokenLockCount: 0,
+                                    positionLockCount: 0,
+                                    positionsLoading: false,
+                                    tokenLocks: [],
+                                    positionLocks: []
+                                };
+                            }
+                            const token0Amount = BigInt(matchingPosition.token0Amount);
+                            newData[token0Key].positionLockAmount = (newData[token0Key].positionLockAmount || 0n) + token0Amount;
+                            newData[token0Key].positionLockCount += 1;
+                            newData[token0Key].positionsLoading = false;
+                            newData[token0Key].positionLocks.push({
+                                id: lockId,
+                                positionId,
+                                swapCanisterId,
+                                amount: token0Amount,
+                                expiry,
+                                owner: lock[0].toText(),
+                                otherToken: token1,
+                                otherAmount: BigInt(matchingPosition.token1Amount)
+                            });
+
+                            const token1Key = token1.toText();
+                            if (!newData[token1Key]) {
+                                newData[token1Key] = {
+                                    tokenId: token1,
+                                    tokenLockAmount: 0n,
+                                    positionLockAmount: 0n,
+                                    tokenLockCount: 0,
+                                    positionLockCount: 0,
+                                    positionsLoading: false,
+                                    tokenLocks: [],
+                                    positionLocks: []
+                                };
+                            }
+                            const token1Amount = BigInt(matchingPosition.token1Amount);
+                            newData[token1Key].positionLockAmount = (newData[token1Key].positionLockAmount || 0n) + token1Amount;
+                            newData[token1Key].positionLockCount += 1;
+                            newData[token1Key].positionsLoading = false;
+                            newData[token1Key].positionLocks.push({
+                                id: lockId,
+                                positionId,
+                                swapCanisterId,
+                                amount: token1Amount,
+                                expiry,
+                                owner: lock[0].toText(),
+                                otherToken: token0,
+                                otherAmount: BigInt(matchingPosition.token0Amount)
+                            });
+
+                            return newData;
+                        });
+                    }
+                }
+            }
+
+            setExpiredLoaded(true);
+        } catch (error) {
+            console.error('Error fetching expired data:', error);
+        } finally {
+            setExpiredLoading(false);
         }
     };
 
@@ -861,36 +1051,100 @@ function SneedlockInfo() {
                                 </button>
                             )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-                            <label 
-                                style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '8px',
-                                    cursor: 'pointer',
-                                    color: theme.colors.primaryText,
-                                    padding: '8px 12px',
-                                    borderRadius: '4px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    background: hideExpired ? theme.colors.accentGradient : theme.colors.secondaryBg,
-                                    transition: 'all 0.2s ease'
-                                }}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={hideExpired}
-                                    onChange={(e) => handleHideExpiredChange(e.target.checked)}
-                                    style={{
-                                        width: '16px',
-                                        height: '16px',
-                                        cursor: 'pointer',
-                                        accentColor: theme.colors.accent
-                                    }}
-                                />
-                                Hide Expired
-                            </label>
-                        </div>
                     </div>
+                    
+                    {/* Active / Expired Tabs */}
+                    <div style={{ 
+                        display: 'flex', 
+                        gap: '0', 
+                        marginBottom: '20px',
+                        borderBottom: `1px solid ${theme.colors.border}`
+                    }}>
+                        <button
+                            onClick={() => handleTabChange('active')}
+                            style={{
+                                padding: '12px 24px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: activeTab === 'active' ? theme.colors.accent : theme.colors.mutedText,
+                                borderBottom: activeTab === 'active' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                fontWeight: activeTab === 'active' ? '600' : '400',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            🔒 Active Locks
+                            {Object.keys(activeTokenData).length > 0 && (
+                                <span style={{ 
+                                    marginLeft: '8px', 
+                                    background: theme.colors.secondaryBg,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px'
+                                }}>
+                                    {Object.values(activeTokenData).reduce((sum, d) => sum + (d.tokenLockCount || 0) + (d.positionLockCount || 0), 0)}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => handleTabChange('expired')}
+                            style={{
+                                padding: '12px 24px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: activeTab === 'expired' ? theme.colors.accent : theme.colors.mutedText,
+                                borderBottom: activeTab === 'expired' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                fontWeight: activeTab === 'expired' ? '600' : '400',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            ⏰ Expired Locks
+                            {expiredLoaded && Object.keys(expiredTokenData).length > 0 && (
+                                <span style={{ 
+                                    marginLeft: '8px', 
+                                    background: theme.colors.secondaryBg,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px'
+                                }}>
+                                    {Object.values(expiredTokenData).reduce((sum, d) => sum + (d.tokenLockCount || 0) + (d.positionLockCount || 0), 0)}
+                                </span>
+                            )}
+                            {expiredLoading && (
+                                <span style={{ marginLeft: '8px', fontSize: '12px' }}>⏳</span>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Loading state for expired tab */}
+                    {activeTab === 'expired' && expiredLoading && (
+                        <div style={{ 
+                            textAlign: 'center', 
+                            padding: '40px 20px',
+                            color: theme.colors.mutedText
+                        }}>
+                            <div style={{ fontSize: '24px', marginBottom: '12px' }}>⏳</div>
+                            Loading expired locks...
+                        </div>
+                    )}
+
+                    {/* Empty state for expired tab */}
+                    {activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length === 0 && (
+                        <div style={{ 
+                            textAlign: 'center', 
+                            padding: '40px 20px',
+                            color: theme.colors.mutedText
+                        }}>
+                            <div style={{ fontSize: '24px', marginBottom: '12px' }}>✨</div>
+                            No expired locks found
+                        </div>
+                    )}
+
+                    {/* Table - only show when we have data */}
+                    {((activeTab === 'active') || (activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length > 0)) && (
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -1173,6 +1427,7 @@ function SneedlockInfo() {
                             </tr>
                         </tfoot>
                     </table>
+                    )}
                 </div>
             </main>
         </div>
