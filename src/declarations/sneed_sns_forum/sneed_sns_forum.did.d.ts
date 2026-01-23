@@ -169,6 +169,11 @@ export interface PostResponse {
   'thread_id' : bigint,
   'reply_to_post_id' : [] | [bigint],
 }
+export interface PremiumConfig {
+  'premium_post_body_max_length' : bigint,
+  'premium_thread_body_max_length' : bigint,
+  'sneed_premium_canister_id' : [] | [Principal],
+}
 export interface ProposalThreadMappingResponse {
   'sns_root_canister_id' : Principal,
   'created_at' : bigint,
@@ -272,6 +277,11 @@ export interface TopicStatistics {
   'topic_id' : bigint,
   'total_unread_posts' : bigint,
 }
+export interface UpdatePremiumConfigInput {
+  'premium_post_body_max_length' : [] | [bigint],
+  'premium_thread_body_max_length' : [] | [bigint],
+  'sneed_premium_canister_id' : [] | [[] | [Principal]],
+}
 export interface UpdateTextLimitsInput {
   'thread_body_max_length' : [] | [bigint],
   'forum_description_max_length' : [] | [bigint],
@@ -295,6 +305,7 @@ export type VoteType = { 'upvote' : null } |
   { 'downvote' : null };
 export interface _SERVICE {
   'add_admin' : ActorMethod<[Principal], Result>,
+  'check_user_premium_status' : ActorMethod<[Principal], boolean>,
   'create_forum' : ActorMethod<[CreateForumInput], Result_1>,
   'create_poll' : ActorMethod<[CreatePollInput], Result_1>,
   'create_post' : ActorMethod<
@@ -348,6 +359,7 @@ export interface _SERVICE {
   'get_posts_by_thread' : ActorMethod<[bigint], Array<PostResponse>>,
   'get_posts_by_thread_admin' : ActorMethod<[bigint], Array<PostResponse>>,
   'get_posts_by_user' : ActorMethod<[Principal], Array<PostResponse>>,
+  'get_premium_config' : ActorMethod<[], PremiumConfig>,
   'get_proposal_thread' : ActorMethod<
     [Principal, bigint],
     [] | [ProposalThreadMappingResponse]
@@ -432,6 +444,7 @@ export interface _SERVICE {
   'undelete_topic' : ActorMethod<[bigint], Result>,
   'update_forum' : ActorMethod<[bigint, CreateForumInput], Result>,
   'update_post' : ActorMethod<[bigint, [] | [string], string], Result>,
+  'update_premium_config' : ActorMethod<[UpdatePremiumConfigInput], Result>,
   'update_text_limits' : ActorMethod<[UpdateTextLimitsInput], Result>,
   'update_thread' : ActorMethod<[bigint, [] | [string], string], Result>,
   'update_topic' : ActorMethod<[bigint, CreateTopicInput], Result>,

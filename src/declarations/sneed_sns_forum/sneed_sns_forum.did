@@ -24,6 +24,12 @@ type UpdateTextLimitsInput =
    topic_description_max_length: opt nat;
    topic_title_max_length: opt nat;
  };
+type UpdatePremiumConfigInput = 
+ record {
+   premium_post_body_max_length: opt nat;
+   premium_thread_body_max_length: opt nat;
+   sneed_premium_canister_id: opt opt principal;
+ };
 type TopicStatistics = 
  record {
    thread_count: nat;
@@ -152,6 +158,12 @@ type ProposalThreadMappingResponse =
    proposal_id: nat;
    sns_root_canister_id: principal;
    thread_id: nat;
+ };
+type PremiumConfig = 
+ record {
+   premium_post_body_max_length: nat;
+   premium_thread_body_max_length: nat;
+   sneed_premium_canister_id: opt principal;
  };
 type PostResponse = 
  record {
@@ -350,6 +362,7 @@ type AdminInfo =
  };
 service : {
   add_admin: (new_admin: principal) -> (Result);
+  check_user_premium_status: (user: principal) -> (bool);
   create_forum: (input: CreateForumInput) -> (Result_1);
   create_poll: (input: CreatePollInput) -> (Result_1);
   create_post: (thread_id: nat, reply_to_post_id: opt nat, title: opt text,
@@ -395,6 +408,7 @@ service : {
   get_posts_by_thread: (thread_id: nat) -> (vec PostResponse) query;
   get_posts_by_thread_admin: (thread_id: nat) -> (vec PostResponse) query;
   get_posts_by_user: (user_principal: principal) -> (vec PostResponse) query;
+  get_premium_config: () -> (PremiumConfig) query;
   get_proposal_thread: (sns_root: principal, proposal_id: nat) ->
    (opt ProposalThreadMappingResponse) query;
   get_proposals_topic: (forum_id: nat) ->
@@ -470,6 +484,7 @@ service : {
   undelete_topic: (id: nat) -> (Result);
   update_forum: (id: nat, input: CreateForumInput) -> (Result);
   update_post: (id: nat, title: opt text, body: text) -> (Result);
+  update_premium_config: (input: UpdatePremiumConfigInput) -> (Result);
   update_text_limits: (input: UpdateTextLimitsInput) -> (Result);
   update_thread: (id: nat, title: opt text, body: text) -> (Result);
   update_topic: (id: nat, input: CreateTopicInput) -> (Result);

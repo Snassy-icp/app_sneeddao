@@ -128,7 +128,10 @@ export default function Forum() {
           await fetchTextLimits();
           break;
         case 'premium':
-          await fetchPremiumConfig();
+          await Promise.all([
+            fetchPremiumConfig(),
+            fetchTextLimits() // Also fetch text limits for comparison
+          ]);
           break;
       }
       setError('');
@@ -1685,12 +1688,20 @@ export default function Forum() {
         <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Forum Administration</h1>
         
         <div className="forum-tabs">
-          {['forums', 'topics', 'threads', 'posts', 'stats', 'textlimits', 'premium'].map(tab => (
+          {[
+            { key: 'forums', label: 'Forums' },
+            { key: 'topics', label: 'Topics' },
+            { key: 'threads', label: 'Threads' },
+            { key: 'posts', label: 'Posts' },
+            { key: 'stats', label: 'Stats' },
+            { key: 'textlimits', label: 'Text Limits' },
+            { key: 'premium', label: '⭐ Premium' }
+          ].map(tab => (
             <button
-              key={tab}
-              className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
+              key={tab.key}
+              className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
               onClick={() => {
-                setActiveTab(tab);
+                setActiveTab(tab.key);
                 setShowCreateForm(false);
                 setFormData({});
                 setShowAddAdminForm(false);
@@ -1699,7 +1710,7 @@ export default function Forum() {
                 setEditingType(null);
               }}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab.label}
             </button>
           ))}
         </div>

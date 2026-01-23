@@ -185,6 +185,11 @@ export const idlFactory = ({ IDL }) => {
     'post_id' : IDL.Nat,
     'neuron_votes' : IDL.Vec(NeuronVote),
   });
+  const PremiumConfig = IDL.Record({
+    'premium_post_body_max_length' : IDL.Nat,
+    'premium_thread_body_max_length' : IDL.Nat,
+    'sneed_premium_canister_id' : IDL.Opt(IDL.Principal),
+  });
   const ProposalThreadMappingResponse = IDL.Record({
     'sns_root_canister_id' : IDL.Principal,
     'created_at' : IDL.Int,
@@ -289,6 +294,11 @@ export const idlFactory = ({ IDL }) => {
     'forum_id' : IDL.Nat,
     'topic_id' : IDL.Nat,
   });
+  const UpdatePremiumConfigInput = IDL.Record({
+    'premium_post_body_max_length' : IDL.Opt(IDL.Nat),
+    'premium_thread_body_max_length' : IDL.Opt(IDL.Nat),
+    'sneed_premium_canister_id' : IDL.Opt(IDL.Opt(IDL.Principal)),
+  });
   const UpdateTextLimitsInput = IDL.Record({
     'thread_body_max_length' : IDL.Opt(IDL.Nat),
     'forum_description_max_length' : IDL.Opt(IDL.Nat),
@@ -301,6 +311,7 @@ export const idlFactory = ({ IDL }) => {
   });
   return IDL.Service({
     'add_admin' : IDL.Func([IDL.Principal], [Result], []),
+    'check_user_premium_status' : IDL.Func([IDL.Principal], [IDL.Bool], []),
     'create_forum' : IDL.Func([CreateForumInput], [Result_1], []),
     'create_poll' : IDL.Func([CreatePollInput], [Result_1], []),
     'create_post' : IDL.Func(
@@ -415,6 +426,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(PostResponse)],
         ['query'],
       ),
+    'get_premium_config' : IDL.Func([], [PremiumConfig], ['query']),
     'get_proposal_thread' : IDL.Func(
         [IDL.Principal, IDL.Nat],
         [IDL.Opt(ProposalThreadMappingResponse)],
@@ -575,6 +587,11 @@ export const idlFactory = ({ IDL }) => {
     'update_forum' : IDL.Func([IDL.Nat, CreateForumInput], [Result], []),
     'update_post' : IDL.Func(
         [IDL.Nat, IDL.Opt(IDL.Text), IDL.Text],
+        [Result],
+        [],
+      ),
+    'update_premium_config' : IDL.Func(
+        [UpdatePremiumConfigInput],
         [Result],
         [],
       ),
