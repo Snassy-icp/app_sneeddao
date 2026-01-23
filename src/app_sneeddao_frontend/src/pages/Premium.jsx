@@ -25,7 +25,8 @@ import InfoModal from '../components/InfoModal';
 import { 
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
     FaTimesCircle, FaExclamationTriangle, FaArrowRight, FaWallet,
-    FaGift, FaShieldAlt, FaStar, FaRocket, FaTicketAlt
+    FaGift, FaShieldAlt, FaStar, FaRocket, FaTicketAlt, FaExchangeAlt,
+    FaBrain, FaComments, FaEnvelope, FaAddressBook, FaCube, FaPercent, FaUsers, FaTachometerAlt, FaFolder
 } from 'react-icons/fa';
 
 // ICP Ledger canister ID (mainnet)
@@ -969,377 +970,449 @@ export default function Premium() {
                         </div>
                     </div>
                     
-                    {/* Actual Pricing Comparison */}
-                    {premiumPricing && (premiumPricing.sneedex || premiumPricing.neuronManager || premiumPricing.forum || premiumPricing.sms) && (
+                    {/* Actual Pricing Comparison - Grouped by Service */}
+                    {premiumPricing && (premiumPricing.sneedex || premiumPricing.neuronManager || premiumPricing.forum || premiumPricing.sms || premiumPricing.nicknames || premiumPricing.canisterGroups) && (
                         <div style={{
                             marginTop: '1.5rem',
-                            background: theme.colors.tertiaryBg,
-                            borderRadius: '12px',
-                            padding: '1.25rem',
+                            background: `linear-gradient(135deg, ${theme.colors.tertiaryBg} 0%, ${theme.colors.secondaryBg}40 100%)`,
+                            borderRadius: '16px',
+                            padding: '1.5rem',
                             border: `1px solid ${theme.colors.border}`,
+                            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
                         }}>
                             <h3 style={{ 
-                                color: theme.colors.primaryText, 
-                                marginBottom: '1rem', 
-                                fontSize: '1rem',
+                                color: '#ffd700', 
+                                marginBottom: '1.25rem', 
+                                fontSize: '1.15rem',
+                                fontWeight: '700',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '8px',
+                                gap: '10px',
                             }}>
-                                <FaCoins style={{ color: '#FFD700' }} /> Current Premium Savings
+                                <div style={{
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 2px 8px rgba(255, 215, 0, 0.3)',
+                                }}>
+                                    <FaStar style={{ color: '#000', fontSize: '16px' }} />
+                                </div>
+                                Premium Benefits & Savings
                             </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {/* Sneedex Fees */}
-                                {premiumPricing.sneedex && (
-                                    <>
-                                        {/* Only show creation fee if there is a regular fee (not both 0) */}
-                                        {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Sneedex Offer Creation</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {formatIcp(premiumPricing.sneedex.regularCreationFeeE8s)} ICP
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {Number(premiumPricing.sneedex.premiumCreationFeeE8s) > 0 
-                                                            ? `${formatIcp(premiumPricing.sneedex.premiumCreationFeeE8s)} ICP`
-                                                            : 'FREE'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {/* Only show auction cut if there's a difference */}
-                                        {Number(premiumPricing.sneedex.regularAuctionCutBps) > Number(premiumPricing.sneedex.premiumAuctionCutBps) && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Sneedex Auction Cut</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {(Number(premiumPricing.sneedex.regularAuctionCutBps) / 100).toFixed(2)}%
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {(Number(premiumPricing.sneedex.premiumAuctionCutBps) / 100).toFixed(2)}%
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                                {/* Neuron Manager Fees - only show if there's a difference */}
-                                {premiumPricing.neuronManager && 
-                                 Number(premiumPricing.neuronManager.regularFeeE8s) > Number(premiumPricing.neuronManager.premiumFeeE8s) && (
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                
+                                {/* Sneedex Section */}
+                                {premiumPricing.sneedex && (Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 || 
+                                    Number(premiumPricing.sneedex.regularAuctionCutBps) > Number(premiumPricing.sneedex.premiumAuctionCutBps)) && (
                                     <div style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        padding: '10px 14px',
-                                        background: theme.colors.secondaryBg,
-                                        borderRadius: '8px',
+                                        background: theme.colors.card,
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: `1px solid ${theme.colors.border}`,
                                     }}>
-                                        <span style={{ color: theme.colors.secondaryText }}>ICP Neuron Manager Creation</span>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ 
-                                                color: theme.colors.mutedText, 
-                                                textDecoration: 'line-through',
-                                                fontSize: '0.9rem',
+                                        <div style={{
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(90deg, #e74c3c20 0%, transparent 100%)`,
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
+                                            <div style={{
+                                                width: '28px',
+                                                height: '28px',
+                                                borderRadius: '8px',
+                                                background: '#e74c3c20',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
                                             }}>
-                                                {formatIcp(premiumPricing.neuronManager.regularFeeE8s)} ICP
+                                                <FaExchangeAlt style={{ color: '#e74c3c', fontSize: '12px' }} />
+                                            </div>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                                Sneedex Marketplace
                                             </span>
-                                            <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                {Number(premiumPricing.neuronManager.premiumFeeE8s) > 0 
-                                                    ? `${formatIcp(premiumPricing.neuronManager.premiumFeeE8s)} ICP`
-                                                    : 'FREE'}
-                                            </span>
+                                        </div>
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Offer Creation Fee
+                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {formatIcp(premiumPricing.sneedex.regularCreationFeeE8s)} ICP
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {Number(premiumPricing.sneedex.premiumCreationFeeE8s) > 0 
+                                                                ? `${formatIcp(premiumPricing.sneedex.premiumCreationFeeE8s)} ICP`
+                                                                : '✨ FREE'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {Number(premiumPricing.sneedex.regularAuctionCutBps) > Number(premiumPricing.sneedex.premiumAuctionCutBps) && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <FaPercent style={{ color: '#9b59b6', fontSize: '10px' }} /> Auction Cut
+                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {(Number(premiumPricing.sneedex.regularAuctionCutBps) / 100).toFixed(2)}%
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {(Number(premiumPricing.sneedex.premiumAuctionCutBps) / 100).toFixed(2)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
                                 
-                                {/* Forum Limits */}
-                                {premiumPricing.forum && (
-                                    <>
-                                        {premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit && (
+                                {/* ICP Neuron Manager Section */}
+                                {premiumPricing.neuronManager && 
+                                 Number(premiumPricing.neuronManager.regularFeeE8s) > Number(premiumPricing.neuronManager.premiumFeeE8s) && (
+                                    <div style={{
+                                        background: theme.colors.card,
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(90deg, #9b59b620 0%, transparent 100%)`,
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
                                             <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
+                                                width: '28px',
+                                                height: '28px',
                                                 borderRadius: '8px',
+                                                background: '#9b59b620',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
                                             }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Forum Post Length</span>
+                                                <FaBrain style={{ color: '#9b59b6', fontSize: '12px' }} />
+                                            </div>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                                ICP Neuron Manager
+                                            </span>
+                                        </div>
+                                        <div style={{ padding: '12px 16px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Manager Creation Fee
+                                                </span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.forum.regularPostBodyLimit.toLocaleString()} chars
+                                                    <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                        {formatIcp(premiumPricing.neuronManager.regularFeeE8s)} ICP
                                                     </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.forum.premiumPostBodyLimit.toLocaleString()} chars
+                                                    <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        {Number(premiumPricing.neuronManager.premiumFeeE8s) > 0 
+                                                            ? `${formatIcp(premiumPricing.neuronManager.premiumFeeE8s)} ICP`
+                                                            : '✨ FREE'}
                                                     </span>
                                                 </div>
                                             </div>
-                                        )}
-                                        {premiumPricing.forum.premiumThreadBodyLimit > premiumPricing.forum.regularThreadBodyLimit && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Forum Thread Length</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.forum.regularThreadBodyLimit.toLocaleString()} chars
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.forum.premiumThreadBodyLimit.toLocaleString()} chars
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
+                                        </div>
+                                    </div>
                                 )}
                                 
-                                {/* SMS Limits */}
-                                {premiumPricing.sms && (
-                                    <>
-                                        {premiumPricing.sms.premiumBodyLimit > premiumPricing.sms.regularBodyLimit && (
+                                {/* SNS Forum Section */}
+                                {premiumPricing.forum && (premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit ||
+                                    premiumPricing.forum.premiumThreadBodyLimit > premiumPricing.forum.regularThreadBodyLimit) && (
+                                    <div style={{
+                                        background: theme.colors.card,
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(90deg, #3498db20 0%, transparent 100%)`,
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
                                             <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
+                                                width: '28px',
+                                                height: '28px',
                                                 borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>SMS Message Length</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.sms.regularBodyLimit.toLocaleString()} chars
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.sms.premiumBodyLimit.toLocaleString()} chars
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {premiumPricing.sms.premiumRateLimit < premiumPricing.sms.regularRateLimit && (
-                                            <div style={{
+                                                background: '#3498db20',
                                                 display: 'flex',
-                                                justifyContent: 'space-between',
                                                 alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
+                                                justifyContent: 'center',
                                             }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>SMS Rate Limit</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.sms.regularRateLimit} min
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.sms.premiumRateLimit > 0 
-                                                            ? `${premiumPricing.sms.premiumRateLimit} min` 
-                                                            : 'No limit'}
-                                                    </span>
-                                                </div>
+                                                <FaComments style={{ color: '#3498db', fontSize: '12px' }} />
                                             </div>
-                                        )}
-                                        {premiumPricing.sms.premiumMaxRecipients > premiumPricing.sms.regularMaxRecipients && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>SMS Max Recipients</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.sms.regularMaxRecipients}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.sms.premiumMaxRecipients}
-                                                    </span>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                                SNS Forum
+                                            </span>
+                                        </div>
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Post Length</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.forum.regularPostBodyLimit.toLocaleString()}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.forum.premiumPostBodyLimit.toLocaleString()} chars
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </>
+                                            )}
+                                            {premiumPricing.forum.premiumThreadBodyLimit > premiumPricing.forum.regularThreadBodyLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Thread Length</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.forum.regularThreadBodyLimit.toLocaleString()}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.forum.premiumThreadBodyLimit.toLocaleString()} chars
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
                                 
-                                {/* Nickname Limits */}
-                                {premiumPricing.nicknames && (
-                                    <>
-                                        {premiumPricing.nicknames.premiumNeuronLimit > premiumPricing.nicknames.regularNeuronLimit && (
+                                {/* Direct Messages (SMS) Section */}
+                                {premiumPricing.sms && (premiumPricing.sms.premiumBodyLimit > premiumPricing.sms.regularBodyLimit ||
+                                    premiumPricing.sms.premiumRateLimit < premiumPricing.sms.regularRateLimit ||
+                                    premiumPricing.sms.premiumMaxRecipients > premiumPricing.sms.regularMaxRecipients) && (
+                                    <div style={{
+                                        background: theme.colors.card,
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(90deg, #2ecc7120 0%, transparent 100%)`,
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
                                             <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
+                                                width: '28px',
+                                                height: '28px',
                                                 borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Neuron Nicknames</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.nicknames.regularNeuronLimit}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.nicknames.premiumNeuronLimit}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {premiumPricing.nicknames.premiumPrincipalLimit > premiumPricing.nicknames.regularPrincipalLimit && (
-                                            <div style={{
+                                                background: '#2ecc7120',
                                                 display: 'flex',
-                                                justifyContent: 'space-between',
                                                 alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
+                                                justifyContent: 'center',
                                             }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Principal Nicknames</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.nicknames.regularPrincipalLimit}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.nicknames.premiumPrincipalLimit}
-                                                    </span>
-                                                </div>
+                                                <FaEnvelope style={{ color: '#2ecc71', fontSize: '12px' }} />
                                             </div>
-                                        )}
-                                    </>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                                Direct Messages
+                                            </span>
+                                        </div>
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {premiumPricing.sms.premiumBodyLimit > premiumPricing.sms.regularBodyLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Message Length</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.sms.regularBodyLimit.toLocaleString()}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.sms.premiumBodyLimit.toLocaleString()} chars
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {premiumPricing.sms.premiumRateLimit < premiumPricing.sms.regularRateLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <FaTachometerAlt style={{ color: '#e67e22', fontSize: '10px' }} /> Rate Limit
+                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.sms.regularRateLimit} min
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.sms.premiumRateLimit > 0 ? `${premiumPricing.sms.premiumRateLimit} min` : '⚡ Unlimited'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {premiumPricing.sms.premiumMaxRecipients > premiumPricing.sms.regularMaxRecipients && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <FaUsers style={{ color: '#1abc9c', fontSize: '11px' }} /> Max Recipients
+                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.sms.regularMaxRecipients}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.sms.premiumMaxRecipients}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
                                 
-                                {/* Canister Groups Limits */}
-                                {premiumPricing.canisterGroups && (
-                                    <>
-                                        {premiumPricing.canisterGroups.premiumMaxGroups > premiumPricing.canisterGroups.regularMaxGroups && (
+                                {/* Address Book (Nicknames) Section */}
+                                {premiumPricing.nicknames && (premiumPricing.nicknames.premiumNeuronLimit > premiumPricing.nicknames.regularNeuronLimit ||
+                                    premiumPricing.nicknames.premiumPrincipalLimit > premiumPricing.nicknames.regularPrincipalLimit) && (
+                                    <div style={{
+                                        background: theme.colors.card,
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(90deg, #f39c1220 0%, transparent 100%)`,
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
                                             <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
+                                                width: '28px',
+                                                height: '28px',
                                                 borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Canister Folders</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.canisterGroups.regularMaxGroups}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.canisterGroups.premiumMaxGroups}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {premiumPricing.canisterGroups.premiumMaxPerGroup > premiumPricing.canisterGroups.regularMaxPerGroup && (
-                                            <div style={{
+                                                background: '#f39c1220',
                                                 display: 'flex',
-                                                justifyContent: 'space-between',
                                                 alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
+                                                justifyContent: 'center',
                                             }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Canisters per Folder</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.canisterGroups.regularMaxPerGroup}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.canisterGroups.premiumMaxPerGroup}
-                                                    </span>
-                                                </div>
+                                                <FaAddressBook style={{ color: '#f39c12', fontSize: '12px' }} />
                                             </div>
-                                        )}
-                                        {premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal && (
-                                            <div style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 14px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <span style={{ color: theme.colors.secondaryText }}>Total Canisters</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        textDecoration: 'line-through',
-                                                        fontSize: '0.9rem',
-                                                    }}>
-                                                        {premiumPricing.canisterGroups.regularMaxTotal}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
-                                                        {premiumPricing.canisterGroups.premiumMaxTotal}
-                                                    </span>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                                Address Book
+                                            </span>
+                                        </div>
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {premiumPricing.nicknames.premiumNeuronLimit > premiumPricing.nicknames.regularNeuronLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Neuron Nicknames</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.nicknames.regularNeuronLimit}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.nicknames.premiumNeuronLimit}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </>
+                                            )}
+                                            {premiumPricing.nicknames.premiumPrincipalLimit > premiumPricing.nicknames.regularPrincipalLimit && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Principal Nicknames</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.nicknames.regularPrincipalLimit}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.nicknames.premiumPrincipalLimit}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
+                                
+                                {/* Canister Manager Section */}
+                                {premiumPricing.canisterGroups && (premiumPricing.canisterGroups.premiumMaxGroups > premiumPricing.canisterGroups.regularMaxGroups ||
+                                    premiumPricing.canisterGroups.premiumMaxPerGroup > premiumPricing.canisterGroups.regularMaxPerGroup ||
+                                    premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal) && (
+                                    <div style={{
+                                        background: theme.colors.card,
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{
+                                            padding: '12px 16px',
+                                            background: `linear-gradient(90deg, #8e44ad20 0%, transparent 100%)`,
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
+                                            <div style={{
+                                                width: '28px',
+                                                height: '28px',
+                                                borderRadius: '8px',
+                                                background: '#8e44ad20',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}>
+                                                <FaCube style={{ color: '#8e44ad', fontSize: '12px' }} />
+                                            </div>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                                Canister Manager
+                                            </span>
+                                        </div>
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {premiumPricing.canisterGroups.premiumMaxGroups > premiumPricing.canisterGroups.regularMaxGroups && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <FaFolder style={{ color: '#e67e22', fontSize: '10px' }} /> Folders
+                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.canisterGroups.regularMaxGroups}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.canisterGroups.premiumMaxGroups}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {premiumPricing.canisterGroups.premiumMaxPerGroup > premiumPricing.canisterGroups.regularMaxPerGroup && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Canisters per Folder</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.canisterGroups.regularMaxPerGroup}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.canisterGroups.premiumMaxPerGroup}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Total Canisters</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                            {premiumPricing.canisterGroups.regularMaxTotal}
+                                                        </span>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                            {premiumPricing.canisterGroups.premiumMaxTotal}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                
                             </div>
                         </div>
                     )}
