@@ -104,6 +104,13 @@ actor SneedSMS {
     stable var stable_max_body_length: Nat = 5000;
     stable var stable_max_recipients: Nat = 20;
     
+    // Premium config - stable storage
+    stable var stable_sneed_premium_canister_id: ?Principal = null;
+    stable var stable_premium_max_subject_length: Nat = 500;
+    stable var stable_premium_max_body_length: Nat = 20000;
+    stable var stable_premium_rate_limit_minutes: Nat = 1;
+    stable var stable_premium_max_recipients: Nat = 50;
+    
     // Runtime config (mutable wrapper around stable values)
     var runtime_config : SMSConfig = {
         var rate_limit_minutes = stable_rate_limit_minutes;
@@ -426,6 +433,58 @@ actor SneedSMS {
             max_body_length = state.config.max_body_length;
             max_recipients = state.config.max_recipients;
         }
+    };
+
+    // Premium configuration
+    public query func get_premium_config() : async {
+        sneed_premium_canister_id: ?Principal;
+        premium_max_subject_length: Nat;
+        premium_max_body_length: Nat;
+        premium_rate_limit_minutes: Nat;
+        premium_max_recipients: Nat;
+    } {
+        {
+            sneed_premium_canister_id = stable_sneed_premium_canister_id;
+            premium_max_subject_length = stable_premium_max_subject_length;
+            premium_max_body_length = stable_premium_max_body_length;
+            premium_rate_limit_minutes = stable_premium_rate_limit_minutes;
+            premium_max_recipients = stable_premium_max_recipients;
+        }
+    };
+
+    public shared ({ caller }) func update_premium_config(
+        sneed_premium_canister_id: ??Principal, // null = no change, ?null = clear, ?(?id) = set
+        premium_max_subject_length: ?Nat,
+        premium_max_body_length: ?Nat,
+        premium_rate_limit_minutes: ?Nat,
+        premium_max_recipients: ?Nat
+    ) : async Result<(), SMSError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Only admins can update premium configuration"));
+        };
+
+        switch (sneed_premium_canister_id) {
+            case (?opt_id) stable_sneed_premium_canister_id := opt_id;
+            case null {}; // No change
+        };
+        switch (premium_max_subject_length) {
+            case (?length) stable_premium_max_subject_length := length;
+            case null {};
+        };
+        switch (premium_max_body_length) {
+            case (?length) stable_premium_max_body_length := length;
+            case null {};
+        };
+        switch (premium_rate_limit_minutes) {
+            case (?minutes) stable_premium_rate_limit_minutes := minutes;
+            case null {};
+        };
+        switch (premium_max_recipients) {
+            case (?count) stable_premium_max_recipients := count;
+            case null {};
+        };
+
+        #ok()
     };
 
     // Message management endpoints

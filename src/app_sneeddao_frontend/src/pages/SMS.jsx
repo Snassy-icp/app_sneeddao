@@ -13,6 +13,7 @@ import {
     getLastSeenMessagesTimestamp
 } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
+import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
 const SMS = () => {
     const { theme } = useTheme();
@@ -36,15 +37,36 @@ const SMS = () => {
     const [submitting, setSubmitting] = useState(false);
 
     const [config, setConfig] = useState(null);
+    const [premiumConfig, setPremiumConfig] = useState(null);
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [showMessageModal, setShowMessageModal] = useState(false);
     const [recipientValidation, setRecipientValidation] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [showMessageDetails, setShowMessageDetails] = useState(false);
     
+    // Premium status
+    const { isPremium } = usePremiumStatus(identity);
+    
     // Message highlighting state (using single-execution pattern like Posts)
     const [capturedOldMessagesTimestamp, setCapturedOldMessagesTimestamp] = useState(0);
     const [messagesTimestampProcessed, setMessagesTimestampProcessed] = useState(false);
+    
+    // Effective limits based on premium status
+    const effectiveSubjectLimit = (isPremium && premiumConfig?.premium_max_subject_length) 
+        ? premiumConfig.premium_max_subject_length 
+        : (config?.max_subject_length || 200);
+    const effectiveBodyLimit = (isPremium && premiumConfig?.premium_max_body_length) 
+        ? premiumConfig.premium_max_body_length 
+        : (config?.max_body_length || 5000);
+    const effectiveMaxRecipients = (isPremium && premiumConfig?.premium_max_recipients)
+        ? premiumConfig.premium_max_recipients
+        : (config?.max_recipients || 20);
+    const regularSubjectLimit = config?.max_subject_length || 200;
+    const regularBodyLimit = config?.max_body_length || 5000;
+    const regularMaxRecipients = config?.max_recipients || 20;
+    const hasPremiumSubjectLimit = isPremium && effectiveSubjectLimit > regularSubjectLimit;
+    const hasPremiumBodyLimit = isPremium && effectiveBodyLimit > regularBodyLimit;
+    const hasPremiumMaxRecipients = isPremium && effectiveMaxRecipients > regularMaxRecipients;
 
     // Helper function to truncate subject for header display
     const truncateSubject = (subject, maxLength = 50) => {
@@ -105,8 +127,35 @@ const SMS = () => {
     useEffect(() => {
         if (isAuthenticated) {
             fetchMessages();
+            fetchConfig();
         }
     }, [isAuthenticated, selectedTab]);
+
+    // Fetch SMS config (regular and premium)
+    const fetchConfig = async () => {
+        try {
+            const actor = getSmsActor();
+            if (!actor) return;
+            
+            const [regularConfig, premiumCfg] = await Promise.all([
+                actor.get_config(),
+                actor.get_premium_config().catch(() => null)
+            ]);
+            
+            setConfig(regularConfig);
+            if (premiumCfg) {
+                setPremiumConfig({
+                    sneed_premium_canister_id: premiumCfg.sneed_premium_canister_id?.[0]?.toString() || null,
+                    premium_max_subject_length: Number(premiumCfg.premium_max_subject_length),
+                    premium_max_body_length: Number(premiumCfg.premium_max_body_length),
+                    premium_rate_limit_minutes: Number(premiumCfg.premium_rate_limit_minutes ?? 1),
+                    premium_max_recipients: Number(premiumCfg.premium_max_recipients ?? 50)
+                });
+            }
+        } catch (err) {
+            console.error('Error fetching SMS config:', err);
+        }
+    };
 
     // ONE-TIME messages timestamp processing - executes ONCE per page load
     useEffect(() => {
@@ -769,8 +818,28 @@ const SMS = () => {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 <div>
-                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '10px', fontSize: '16px' }}>
-                                        Recipients:
+                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '10px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <span>Recipients:</span>
+                                        <span style={{ 
+                                            fontSize: '12px', 
+                                            color: composeForm.recipients.filter(r => r.trim()).length > effectiveMaxRecipients 
+                                                ? theme.colors.error 
+                                                : theme.colors.mutedText 
+                                        }}>
+                                            ({composeForm.recipients.filter(r => r.trim()).length}/{effectiveMaxRecipients})
+                                        </span>
+                                        {hasPremiumMaxRecipients && (
+                                            <span style={{
+                                                backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                                color: '#ffd700',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '10px',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                ⭐ PREMIUM
+                                            </span>
+                                        )}
                                     </label>
                                     {composeForm.recipients.map((recipient, index) => (
                                         <div key={index} style={{ marginBottom: '10px' }}>
@@ -817,18 +886,24 @@ const SMS = () => {
                                     <button
                                         type="button"
                                         onClick={addRecipient}
+                                        disabled={composeForm.recipients.length >= effectiveMaxRecipients}
                                         style={{
                                             padding: '8px 16px',
-                                            backgroundColor: theme.colors.success,
+                                            backgroundColor: composeForm.recipients.length >= effectiveMaxRecipients 
+                                                ? theme.colors.mutedText 
+                                                : theme.colors.success,
                                             color: 'white',
                                             border: 'none',
                                             borderRadius: '4px',
-                                            cursor: 'pointer',
+                                            cursor: composeForm.recipients.length >= effectiveMaxRecipients 
+                                                ? 'not-allowed' 
+                                                : 'pointer',
                                             fontSize: '14px',
-                                            marginBottom: '15px'
+                                            marginBottom: '15px',
+                                            opacity: composeForm.recipients.length >= effectiveMaxRecipients ? 0.6 : 1
                                         }}
                                     >
-                                        + Add Recipient
+                                        + Add Recipient {composeForm.recipients.length >= effectiveMaxRecipients && `(max ${effectiveMaxRecipients})`}
                                     </button>
                                 </div>
 
@@ -841,17 +916,40 @@ const SMS = () => {
                                         value={composeForm.subject}
                                         onChange={(e) => setComposeForm(prev => ({ ...prev, subject: e.target.value }))}
                                         placeholder="Enter subject..."
-                                        maxLength={config?.max_subject_length || 200}
+                                        maxLength={effectiveSubjectLimit}
                                         style={{
                                             width: '100%',
                                             padding: '10px',
                                             backgroundColor: theme.colors.tertiaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
+                                            border: `1px solid ${composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : theme.colors.border}`,
                                             borderRadius: '4px',
                                             color: theme.colors.primaryText,
                                             fontSize: '14px'
                                         }}
                                     />
+                                    <div style={{ 
+                                        fontSize: '12px', 
+                                        color: composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : 
+                                               (effectiveSubjectLimit - composeForm.subject.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
+                                        marginTop: '5px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <span>{composeForm.subject.length}/{effectiveSubjectLimit} characters</span>
+                                        {hasPremiumSubjectLimit && (
+                                            <span style={{
+                                                backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                                color: '#ffd700',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '10px',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                ⭐ PREMIUM
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div>
@@ -862,19 +960,42 @@ const SMS = () => {
                                         value={composeForm.body}
                                         onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
                                         placeholder="Enter your message..."
-                                        maxLength={config?.max_body_length || 5000}
+                                        maxLength={effectiveBodyLimit}
                                         rows={8}
                                         style={{
                                             width: '100%',
                                             padding: '10px',
                                             backgroundColor: theme.colors.tertiaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
+                                            border: `1px solid ${composeForm.body.length > effectiveBodyLimit ? theme.colors.error : theme.colors.border}`,
                                             borderRadius: '4px',
                                             color: theme.colors.primaryText,
                                             fontSize: '14px',
                                             resize: 'vertical'
                                         }}
                                     />
+                                    <div style={{ 
+                                        fontSize: '12px', 
+                                        color: composeForm.body.length > effectiveBodyLimit ? theme.colors.error : 
+                                               (effectiveBodyLimit - composeForm.body.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
+                                        marginTop: '5px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <span>{composeForm.body.length}/{effectiveBodyLimit} characters</span>
+                                        {hasPremiumBodyLimit && (
+                                            <span style={{
+                                                backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                                color: '#ffd700',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '10px',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                ⭐ PREMIUM
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Error display in compose modal */}

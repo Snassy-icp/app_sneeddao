@@ -56,6 +56,14 @@ service : {
   get_last_seen_messages_timestamp: (user_principal: principal) ->
    (opt int) query;
   get_message: (message_id: nat) -> (opt MessageResponse) query;
+  get_premium_config: () ->
+   (record {
+      premium_max_body_length: nat;
+      premium_max_recipients: nat;
+      premium_max_subject_length: nat;
+      premium_rate_limit_minutes: nat;
+      sneed_premium_canister_id: opt principal;
+    }) query;
   get_received_messages: () -> (vec MessageResponse) query;
   get_recent_messages_count: (user_principal: principal) -> (nat) query;
   get_sent_messages: () -> (vec MessageResponse) query;
@@ -63,6 +71,8 @@ service : {
                       total_messages: nat;
                       total_users: nat;
                     }) query;
+  import_admins: (admins_to_import: vec AdminInfo) -> (Result_1);
+  import_messages: (messages_to_import: vec MessageResponse) -> (Result_1);
   is_admin_query: ("principal": principal) -> (bool) query;
   mark_messages_seen_up_to: (timestamp: int) -> ();
   remove_admin: (admin_to_remove: principal) -> (Result);
@@ -70,4 +80,8 @@ service : {
   send_message: (input: CreateMessageInput) -> (Result_1);
   update_config: (rate_limit_minutes: opt nat, max_subject_length: opt nat,
    max_body_length: opt nat, max_recipients: opt nat) -> (Result);
+  update_premium_config: (sneed_premium_canister_id: opt opt principal,
+   premium_max_subject_length: opt nat, premium_max_body_length: opt nat,
+   premium_rate_limit_minutes: opt nat, premium_max_recipients: opt nat) ->
+   (Result);
 }

@@ -2,16 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
+import { Principal } from '@dfinity/principal';
 
 const SmsAdmin = () => {
     const { identity, isAuthenticated } = useAuth();
     
     const [config, setConfig] = useState(null);
+    const [premiumConfig, setPremiumConfig] = useState(null);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [savingPremium, setSavingPremium] = useState(false);
     const [error, setError] = useState(null);
+    const [premiumError, setPremiumError] = useState(null);
     const [success, setSuccess] = useState(null);
+    const [premiumSuccess, setPremiumSuccess] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
     
     // Form state
@@ -20,6 +25,15 @@ const SmsAdmin = () => {
         max_subject_length: 200,
         max_body_length: 5000,
         max_recipients: 20
+    });
+
+    // Premium form state
+    const [formPremiumConfig, setFormPremiumConfig] = useState({
+        sneed_premium_canister_id: '',
+        premium_max_subject_length: 500,
+        premium_max_body_length: 20000,
+        premium_rate_limit_minutes: 1,
+        premium_max_recipients: 50
     });
 
     // Create SMS actor
@@ -73,6 +87,25 @@ const SmsAdmin = () => {
                     max_recipients: Number(configData.max_recipients)
                 });
 
+                // Try to fetch premium config separately (might not exist on older deployments)
+                try {
+                    if (actor.get_premium_config) {
+                        const premiumConfigData = await actor.get_premium_config();
+                        if (premiumConfigData) {
+                            setPremiumConfig(premiumConfigData);
+                            setFormPremiumConfig({
+                                sneed_premium_canister_id: premiumConfigData.sneed_premium_canister_id?.[0]?.toString() || '',
+                                premium_max_subject_length: Number(premiumConfigData.premium_max_subject_length),
+                                premium_max_body_length: Number(premiumConfigData.premium_max_body_length),
+                                premium_rate_limit_minutes: Number(premiumConfigData.premium_rate_limit_minutes ?? 1),
+                                premium_max_recipients: Number(premiumConfigData.premium_max_recipients ?? 50)
+                            });
+                        }
+                    }
+                } catch (premiumErr) {
+                    console.warn('Premium config not available:', premiumErr);
+                }
+
             } catch (err) {
                 console.error('Error fetching SMS admin data:', err);
                 setError('Failed to load admin data: ' + err.message);
@@ -122,6 +155,63 @@ const SmsAdmin = () => {
             setError('Failed to update configuration: ' + err.message);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handlePremiumConfigUpdate = async (e) => {
+        e.preventDefault();
+        
+        if (!isAdmin) {
+            setPremiumError('Access denied. Admin privileges required.');
+            return;
+        }
+
+        try {
+            setSavingPremium(true);
+            setPremiumError(null);
+            setPremiumSuccess(null);
+
+            const actor = getSmsActor();
+            if (!actor) throw new Error('Failed to create SMS actor');
+
+            // Build the update input
+            let sneedPremiumCanisterId = [];
+            if (formPremiumConfig.sneed_premium_canister_id && formPremiumConfig.sneed_premium_canister_id.trim()) {
+                try {
+                    const principal = Principal.fromText(formPremiumConfig.sneed_premium_canister_id.trim());
+                    sneedPremiumCanisterId = [[principal]]; // ?(?Principal)
+                } catch (e) {
+                    setPremiumError('Invalid Principal ID format for Sneed Premium Canister');
+                    setSavingPremium(false);
+                    return;
+                }
+            } else {
+                sneedPremiumCanisterId = [[]]; // ?(null) - clear
+            }
+
+            const result = await actor.update_premium_config(
+                sneedPremiumCanisterId,
+                [BigInt(formPremiumConfig.premium_max_subject_length)],
+                [BigInt(formPremiumConfig.premium_max_body_length)],
+                [BigInt(formPremiumConfig.premium_rate_limit_minutes)],
+                [BigInt(formPremiumConfig.premium_max_recipients)]
+            );
+
+            if ('ok' in result) {
+                setPremiumSuccess('Premium configuration updated successfully!');
+                
+                // Refresh premium config data
+                const newPremiumConfig = await actor.get_premium_config();
+                setPremiumConfig(newPremiumConfig);
+            } else {
+                const errorMsg = result.err.Unauthorized || result.err.InvalidInput || 'Failed to update premium configuration';
+                setPremiumError(errorMsg);
+            }
+        } catch (err) {
+            console.error('Error updating premium config:', err);
+            setPremiumError('Failed to update premium configuration: ' + err.message);
+        } finally {
+            setSavingPremium(false);
         }
     };
 
@@ -373,6 +463,220 @@ const SmsAdmin = () => {
                             }}
                         >
                             {saving ? 'Saving...' : 'Update Configuration'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* Premium Configuration Section */}
+                <div style={{
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '12px',
+                    padding: '30px',
+                    border: '1px solid #ffd700',
+                    marginTop: '30px'
+                }}>
+                    <h2 style={{ 
+                        fontSize: '24px', 
+                        fontWeight: 'bold', 
+                        marginBottom: '10px',
+                        color: '#ffd700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                    }}>
+                        ⭐ Premium Configuration
+                    </h2>
+                    <p style={{ color: '#888', marginBottom: '20px' }}>
+                        Configure premium member limits. Premium members will use these limits instead of the regular limits.
+                    </p>
+
+                    {premiumError && (
+                        <div style={{
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            border: '1px solid #e74c3c',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '20px',
+                            color: '#e74c3c'
+                        }}>
+                            {premiumError}
+                        </div>
+                    )}
+
+                    {premiumSuccess && (
+                        <div style={{
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            border: '1px solid #2ecc71',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '20px',
+                            color: '#2ecc71'
+                        }}>
+                            {premiumSuccess}
+                        </div>
+                    )}
+
+                    <form onSubmit={handlePremiumConfigUpdate}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Sneed Premium Canister ID
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai (leave empty to disable)"
+                                    value={formPremiumConfig.sneed_premium_canister_id}
+                                    onChange={(e) => setFormPremiumConfig(prev => ({ ...prev, sneed_premium_canister_id: e.target.value }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                                <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>
+                                    The canister ID of the Sneed Premium membership canister. Leave empty to disable premium limits.
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Premium Max Subject Length
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formPremiumConfig.premium_max_subject_length}
+                                    onChange={(e) => setFormPremiumConfig(prev => ({ ...prev, premium_max_subject_length: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                                <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>
+                                    Max subject length for premium members (regular: {formConfig.max_subject_length})
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Premium Max Body Length
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formPremiumConfig.premium_max_body_length}
+                                    onChange={(e) => setFormPremiumConfig(prev => ({ ...prev, premium_max_body_length: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                                <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>
+                                    Max body length for premium members (regular: {formConfig.max_body_length})
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Premium Rate Limit (Minutes)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={formPremiumConfig.premium_rate_limit_minutes}
+                                    onChange={(e) => setFormPremiumConfig(prev => ({ ...prev, premium_rate_limit_minutes: parseInt(e.target.value) || 0 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                                <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>
+                                    Minutes between messages for premium members (regular: {formConfig.rate_limit_minutes})
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Premium Max Recipients
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formPremiumConfig.premium_max_recipients}
+                                    onChange={(e) => setFormPremiumConfig(prev => ({ ...prev, premium_max_recipients: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                                <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>
+                                    Max recipients per message for premium members (regular: {formConfig.max_recipients})
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Comparison Box */}
+                        <div style={{ 
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)', 
+                            border: '1px solid #ffd700', 
+                            padding: '15px', 
+                            borderRadius: '8px',
+                            marginTop: '20px'
+                        }}>
+                            <strong style={{ color: '#ffd700' }}>Limits Comparison:</strong>
+                            <div style={{ color: '#ccc', marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>Regular Subject Max: <strong>{formConfig.max_subject_length}</strong></div>
+                                <div>Premium Subject Max: <strong style={{ color: '#4caf50' }}>{formPremiumConfig.premium_max_subject_length}</strong></div>
+                                <div>Regular Body Max: <strong>{formConfig.max_body_length}</strong></div>
+                                <div>Premium Body Max: <strong style={{ color: '#4caf50' }}>{formPremiumConfig.premium_max_body_length}</strong></div>
+                                <div>Regular Rate Limit: <strong>{formConfig.rate_limit_minutes} min</strong></div>
+                                <div>Premium Rate Limit: <strong style={{ color: '#4caf50' }}>{formPremiumConfig.premium_rate_limit_minutes} min</strong></div>
+                                <div>Regular Max Recipients: <strong>{formConfig.max_recipients}</strong></div>
+                                <div>Premium Max Recipients: <strong style={{ color: '#4caf50' }}>{formPremiumConfig.premium_max_recipients}</strong></div>
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={savingPremium}
+                            style={{
+                                backgroundColor: savingPremium ? '#555' : '#ffd700',
+                                color: '#1a1a1a',
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '12px 24px',
+                                fontSize: '16px',
+                                fontWeight: '600',
+                                cursor: savingPremium ? 'not-allowed' : 'pointer',
+                                marginTop: '30px',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                        >
+                            {savingPremium ? 'Saving...' : '⭐ Update Premium Configuration'}
                         </button>
                     </form>
                 </div>

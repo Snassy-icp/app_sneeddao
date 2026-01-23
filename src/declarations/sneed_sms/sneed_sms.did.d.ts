@@ -49,6 +49,16 @@ export interface _SERVICE {
   >,
   'get_last_seen_messages_timestamp' : ActorMethod<[Principal], [] | [bigint]>,
   'get_message' : ActorMethod<[bigint], [] | [MessageResponse]>,
+  'get_premium_config' : ActorMethod<
+    [],
+    {
+      'premium_max_body_length' : bigint,
+      'sneed_premium_canister_id' : [] | [Principal],
+      'premium_max_recipients' : bigint,
+      'premium_rate_limit_minutes' : bigint,
+      'premium_max_subject_length' : bigint,
+    }
+  >,
   'get_received_messages' : ActorMethod<[], Array<MessageResponse>>,
   'get_recent_messages_count' : ActorMethod<[Principal], bigint>,
   'get_sent_messages' : ActorMethod<[], Array<MessageResponse>>,
@@ -56,6 +66,8 @@ export interface _SERVICE {
     [],
     { 'total_users' : bigint, 'total_messages' : bigint }
   >,
+  'import_admins' : ActorMethod<[Array<AdminInfo>], Result_1>,
+  'import_messages' : ActorMethod<[Array<MessageResponse>], Result_1>,
   'is_admin_query' : ActorMethod<[Principal], boolean>,
   'mark_messages_seen_up_to' : ActorMethod<[bigint], undefined>,
   'remove_admin' : ActorMethod<[Principal], Result>,
@@ -63,6 +75,16 @@ export interface _SERVICE {
   'send_message' : ActorMethod<[CreateMessageInput], Result_1>,
   'update_config' : ActorMethod<
     [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
+    Result
+  >,
+  'update_premium_config' : ActorMethod<
+    [
+      [] | [[] | [Principal]],
+      [] | [bigint],
+      [] | [bigint],
+      [] | [bigint],
+      [] | [bigint],
+    ],
     Result
   >,
 }
