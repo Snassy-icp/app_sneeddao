@@ -214,12 +214,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         'DEX': {
             icon: <FaExchangeAlt size={18} />,
             displayName: 'Sneedex',
-            defaultPath: '/sneedex',
+            defaultPath: '/sneedex_offers',
             subMenu: [
-                { name: 'Sneedex', path: '/sneedex' },
                 { name: 'Marketplace', path: '/sneedex_offers' },
                 { name: 'Create Offer', path: '/sneedex_create' },
-                { name: 'My Sneedex', path: '/sneedex_my' }
+                { name: 'My Sneedex', path: '/sneedex_my' },
+                { name: 'About', path: '/sneedex' }
             ]
         },
         'Help': {
