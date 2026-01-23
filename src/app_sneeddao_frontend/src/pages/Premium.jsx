@@ -281,6 +281,8 @@ export default function Premium() {
         // Use the voting power from the hook
         const vp = sneedVotingPower || 0;
         
+        console.log('handleClaimVP - VP:', vp, 'vpTiers:', vpTiers);
+        
         // Find the best VP tier to show
         const activeTiers = vpTiers.filter(t => t.active);
         
@@ -298,13 +300,22 @@ export default function Premium() {
             ? activeTiers.reduce((min, t) => Number(t.minVotingPowerE8s) < min ? Number(t.minVotingPowerE8s) : min, Number(activeTiers[0].minVotingPowerE8s))
             : 0;
         
-        if (!matchedTier && activeTiers.length > 0) {
+        // Check if there are no active tiers
+        if (activeTiers.length === 0) {
+            showInfo('No VP Tiers', 'No voting power tiers are configured yet. Please try again later or contact an admin.', 'error');
+            return;
+        }
+        
+        // Check if user doesn't qualify for any tier
+        if (!matchedTier) {
             showInfo('Insufficient Voting Power', 
                 `Your voting power: ${formatVotingPower(vp)}\n\nMinimum required: ${formatVotingPower(minRequired)}\n\nStake more SNEED tokens to qualify for premium membership!`, 
                 'error'
             );
             return;
         }
+        
+        console.log('Opening VP claim modal with matchedTier:', matchedTier);
         
         setPremiumConfirmModal({
             show: true,
@@ -313,32 +324,33 @@ export default function Premium() {
             icon: <FaVoteYea style={{ fontSize: '2.5rem', color: theme.colors.info || theme.colors.accent }} />,
             details: [
                 { label: 'Your Voting Power', value: formatVotingPower(vp), highlight: true },
-                ...(matchedTier ? [
-                    { label: 'Matched Tier', value: matchedTier.name },
-                    { label: 'Duration', value: formatDuration(matchedTier.durationNs) },
-                ] : []),
+                { label: 'Matched Tier', value: matchedTier.name },
+                { label: 'Duration', value: formatDuration(matchedTier.durationNs) },
             ],
-            highlight: matchedTier 
-                ? `You qualify for "${matchedTier.name}" - ${formatDuration(matchedTier.durationNs)} of membership!`
-                : 'Your staked SNEED neurons will be checked to determine your membership duration',
+            highlight: `You qualify for "${matchedTier.name}" - ${formatDuration(matchedTier.durationNs)} of membership!`,
             confirmText: 'Claim Membership',
             onConfirm: doClaimVP,
         });
     };
     
     const doClaimVP = async () => {
+        console.log('doClaimVP called');
         closePremiumConfirmModal();
         setClaiming(true);
         
         try {
+            console.log('Getting actor...');
             const actor = await getActor();
+            console.log('Calling claimWithVotingPower...');
             const result = await actor.claimWithVotingPower();
+            console.log('claimWithVotingPower result:', result);
             
             if ('ok' in result) {
                 showInfo('🎉 Success!', `Premium membership claimed!\n\nYour membership expires: ${formatTimestamp(result.ok.expiration)}`, 'success');
                 await fetchData();
             } else {
                 const err = result.err;
+                console.log('Claim error:', err);
                 let errorMessage = 'Claim failed';
                 if ('NoEligibleNeurons' in err) {
                     errorMessage = 'No eligible neurons found for your principal. Make sure you have staked SNEED in the SNS governance.';
@@ -350,14 +362,18 @@ export default function Premium() {
                     errorMessage = 'You have already claimed recently. Please wait before claiming again.';
                 } else if ('InternalError' in err) {
                     errorMessage = err.InternalError;
+                } else {
+                    errorMessage = 'Unknown error: ' + JSON.stringify(err);
                 }
                 showInfo('Claim Failed', errorMessage, 'error');
             }
         } catch (err) {
+            console.error('doClaimVP error:', err);
             showInfo('Error', 'Failed to claim membership: ' + err.message, 'error');
         }
         
         setClaiming(false);
+        console.log('doClaimVP completed');
     };
     
     // Redeem promo code - show confirmation first
@@ -992,16 +1008,18 @@ export default function Premium() {
                             {isAuthenticated ? (
                                 <button
                                     onClick={handleClaimVP}
-                                    disabled={claiming}
+                                    disabled={claiming || loadingVp}
                                     style={{
                                         ...styles.button,
                                         ...styles.buttonLarge,
-                                        opacity: claiming ? 0.5 : 1,
-                                        cursor: claiming ? 'not-allowed' : 'pointer',
+                                        opacity: (claiming || loadingVp) ? 0.5 : 1,
+                                        cursor: (claiming || loadingVp) ? 'not-allowed' : 'pointer',
                                     }}
                                 >
                                     {claiming ? (
-                                        <><FaSpinner className="spin" /> Checking Neurons...</>
+                                        <><FaSpinner className="spin" /> Claiming...</>
+                                    ) : loadingVp ? (
+                                        <><FaSpinner className="spin" /> Loading Neurons...</>
                                     ) : (
                                         <><FaVoteYea /> Claim with Voting Power</>
                                     )}
@@ -1091,7 +1109,7 @@ export default function Premium() {
             </main>
             
             <InfoModal
-                isOpen={infoModal.show}
+                show={infoModal.show}
                 onClose={closeInfoModal}
                 title={infoModal.title}
                 message={infoModal.message}
