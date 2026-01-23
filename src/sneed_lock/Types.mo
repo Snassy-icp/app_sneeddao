@@ -295,4 +295,16 @@ module {
 
     public type StableArchivedTokenLocks = [(LockId, ArchivedTokenLock)];
     public type StableArchivedPositionLocks = [(LockId, ArchivedPositionLock)];
+    
+    // Payment log entry type
+    public type PaymentLogEntry = {
+        id : Nat;                          // Sequential payment ID
+        timestamp : Timestamp;           // When the payment was made
+        payer : Principal;                 // Who paid
+        amount_e8s : Nat;                  // Amount paid in e8s
+        icp_transaction_id : Nat;          // ICP ledger block index
+        lock_type : LockType;              // Token lock or position lock
+        correlation_id : Nat;              // Correlation ID for tracing
+    };
+
 };

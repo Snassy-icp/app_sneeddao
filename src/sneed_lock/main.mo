@@ -145,6 +145,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var total_token_lock_fees_collected_e8s : Nat = 0;
   stable var total_position_lock_fees_collected_e8s : Nat = 0;
   
+  // Payment log stable storage
+  stable var payment_log : [T.PaymentLogEntry] = [];
+  stable var next_payment_log_id : Nat = 0;
+  
   // Ephemeral timer state (not stable - timer IDs don't persist across upgrades)
   transient var next_scheduled_timer_time : ?T.Timestamp = null;
 
@@ -1860,6 +1864,52 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
+  // Admin query: Get paginated payment log
+  // Returns payments in reverse chronological order (newest first)
+  public shared query ({ caller }) func admin_get_payment_log(offset : Nat, limit : Nat) : async {
+    payments : [T.PaymentLogEntry];
+    total_count : Nat;
+    has_more : Bool;
+  } {
+    assert(isAdmin(caller));
+    
+    let total = payment_log.size();
+    
+    // Return empty if offset is beyond the log
+    if (offset >= total) {
+      return {
+        payments = [];
+        total_count = total;
+        has_more = false;
+      };
+    };
+    
+    // Calculate reverse index (newest first)
+    // offset 0 = most recent, offset 1 = second most recent, etc.
+    let effective_limit = if (limit > 1000) { 1000 } else { limit }; // Cap at 1000 per page
+    let start_idx = if (total > offset) { total - offset } else { 0 };
+    let end_idx = if (start_idx > effective_limit) { start_idx - effective_limit } else { 0 };
+    
+    var result : [T.PaymentLogEntry] = [];
+    var idx = start_idx;
+    while (idx > end_idx) {
+      idx -= 1;
+      result := Array.append(result, [payment_log[idx]]);
+    };
+    
+    {
+      payments = result;
+      total_count = total;
+      has_more = end_idx > 0;
+    };
+  };
+
+  // Admin query: Get payment log count
+  public shared query ({ caller }) func admin_get_payment_log_count() : async Nat {
+    assert(isAdmin(caller));
+    payment_log.size();
+  };
+
   // Query: Get payment subaccount for a user
   public query func getPaymentSubaccount(user : Principal) : async Blob {
     userPaymentSubaccount(user);
@@ -1944,12 +1994,9 @@ shared (deployer) persistent actor class SneedLock() = this {
     #Ok(fee_nat);
   };
 
-  // Lock type for fee tracking
-  public type LockType = { #TokenLock; #PositionLock };
-
   // Charge the ICP lock fee (transfer from user's payment subaccount to main account)
   // Should only be called after lock is successfully created
-  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat, lock_type : LockType) : async { #Ok : Nat; #Err : Text } {
+  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat, lock_type : T.LockType) : async { #Ok : Nat; #Err : Text } {
     // If fee is 0, nothing to charge
     if (fee_nat == 0) {
       return #Ok(0);
@@ -1992,6 +2039,20 @@ shared (deployer) persistent actor class SneedLock() = this {
             case (#TokenLock) { total_token_lock_fees_collected_e8s += fee_nat; };
             case (#PositionLock) { total_position_lock_fees_collected_e8s += fee_nat; };
           };
+          
+          // Record payment in log
+          let payment_entry : T.PaymentLogEntry = {
+            id = next_payment_log_id;
+            timestamp = TimeAsNat64(Time.now());
+            payer = caller;
+            amount_e8s = fee_nat;
+            icp_transaction_id = blockIdx;
+            lock_type = lock_type;
+            correlation_id = correlation_id;
+          };
+          payment_log := Array.append(payment_log, [payment_entry]);
+          next_payment_log_id += 1;
+          
           log_info(caller, correlation_id, "ICP lock fee charged: " # Nat.toText(transfer_amount) # " e8s, block: " # Nat.toText(blockIdx));
           #Ok(fee_nat);
         };

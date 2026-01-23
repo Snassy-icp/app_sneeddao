@@ -59,6 +59,13 @@ type SneedLock =
    admin_clear_completed_claim_requests: () -> (nat);
    admin_clear_failed_claim_requests: () -> (nat);
    admin_emergency_stop_timer: () -> ();
+   admin_get_payment_log: (offset: nat, limit: nat) ->
+    (record {
+       has_more: bool;
+       payments: vec PaymentLogEntry;
+       total_count: nat;
+     }) query;
+   admin_get_payment_log_count: () -> (nat) query;
    admin_pause_claim_queue: (reason: text) -> ();
    admin_remove_active_claim_request: (request_id: ClaimRequestId) -> (bool);
    admin_remove_admin: (admin_to_remove: principal) ->
@@ -252,6 +259,16 @@ type LockType =
  variant {
    PositionLock;
    TokenLock;
+ };
+type PaymentLogEntry = 
+ record {
+   amount_e8s: nat;
+   correlation_id: nat;
+   icp_transaction_id: nat;
+   id: nat;
+   lock_type: LockType;
+   payer: principal;
+   timestamp: Timestamp;
  };
 type LockInfo = 
  variant {

@@ -95,6 +95,15 @@ export type LockInfo = { 'PositionLock' : FullyQualifiedPositionLock } |
   { 'TokenLock' : FullyQualifiedLock };
 export type LockType = { 'PositionLock' : null } |
   { 'TokenLock' : null };
+export interface PaymentLogEntry {
+  'id' : bigint,
+  'timestamp' : Timestamp,
+  'payer' : Principal,
+  'amount_e8s' : bigint,
+  'icp_transaction_id' : bigint,
+  'lock_type' : LockType,
+  'correlation_id' : bigint,
+}
 export type PositionId = bigint;
 export interface PositionLock {
   'dex' : Dex,
@@ -115,6 +124,15 @@ export interface SneedLock {
   'admin_clear_completed_claim_requests' : ActorMethod<[], bigint>,
   'admin_clear_failed_claim_requests' : ActorMethod<[], bigint>,
   'admin_emergency_stop_timer' : ActorMethod<[], undefined>,
+  'admin_get_payment_log' : ActorMethod<
+    [bigint, bigint],
+    {
+      'payments' : Array<PaymentLogEntry>,
+      'total_count' : bigint,
+      'has_more' : boolean,
+    }
+  >,
+  'admin_get_payment_log_count' : ActorMethod<[], bigint>,
   'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
   'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
   'admin_remove_admin' : ActorMethod<
