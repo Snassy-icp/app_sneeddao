@@ -204,11 +204,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         'Locks': {
             icon: <FaLock size={18} />,
             displayName: 'Sneed Lock',
-            defaultPath: '/sneedlock',
+            defaultPath: '/sneedlock_info',
             subMenu: [
-                { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' },
-                { name: 'Wizard', path: '/lock_wizard' }
+                { name: 'Wizard', path: '/lock_wizard' },
+                { name: 'About', path: '/sneedlock' }
             ]
         },
         'DEX': {
