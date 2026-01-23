@@ -90,26 +90,32 @@ actor SneedSMS {
         user_last_seen_messages_timestamp: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp
     };
 
-    // Stable storage
-    var stable_next_id: Nat = 1;
-    let stable_messages = Map.new<Nat, Message>();
-    let stable_admins = Vector.new<AdminInfo>();
-    var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
-    let stable_sender_messages = Map.new<Nat32, Vector.Vector<Nat>>();
-    let stable_recipient_messages = Map.new<Nat32, Vector.Vector<Nat>>();
-    let stable_user_last_message_time = Map.new<Nat32, Int>();
-    let stable_user_last_seen_messages_timestamp = Map.new<Nat32, Int>();
-    var stable_config : SMSConfig = {
-        var rate_limit_minutes = 10;
-        var max_subject_length = 200;
-        var max_body_length = 5000;
-        var max_recipients = 20;
+    // Stable storage - using mops stable-compatible types
+    stable var stable_next_id: Nat = 1;
+    stable var stable_messages = Map.new<Nat, Message>();
+    stable var stable_admins = Vector.new<AdminInfo>();
+    stable var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
+    stable var stable_sender_messages = Map.new<Nat32, Vector.Vector<Nat>>();
+    stable var stable_recipient_messages = Map.new<Nat32, Vector.Vector<Nat>>();
+    stable var stable_user_last_message_time = Map.new<Nat32, Int>();
+    stable var stable_user_last_seen_messages_timestamp = Map.new<Nat32, Int>();
+    stable var stable_rate_limit_minutes: Nat = 10;
+    stable var stable_max_subject_length: Nat = 200;
+    stable var stable_max_body_length: Nat = 5000;
+    stable var stable_max_recipients: Nat = 20;
+    
+    // Runtime config (mutable wrapper around stable values)
+    var runtime_config : SMSConfig = {
+        var rate_limit_minutes = stable_rate_limit_minutes;
+        var max_subject_length = stable_max_subject_length;
+        var max_body_length = stable_max_body_length;
+        var max_recipients = stable_max_recipients;
     };
 
     // Runtime state that directly references stable storage
-    private transient var state : SMSState = {
+    private var state : SMSState = {
         var next_id = stable_next_id;
-        var config = stable_config;
+        var config = runtime_config;
         messages = stable_messages;
         admins = stable_admins;
         principal_dedup_state = stable_principal_dedup;
@@ -119,10 +125,22 @@ actor SneedSMS {
         user_last_seen_messages_timestamp = stable_user_last_seen_messages_timestamp;
     };
 
-    // System functions
+    // System functions - save config values to stable vars
     system func preupgrade() {
         stable_next_id := state.next_id;
-        stable_config := state.config;
+        stable_rate_limit_minutes := state.config.rate_limit_minutes;
+        stable_max_subject_length := state.config.max_subject_length;
+        stable_max_body_length := state.config.max_body_length;
+        stable_max_recipients := state.config.max_recipients;
+    };
+    
+    system func postupgrade() {
+        // Restore config from stable values
+        state.config.rate_limit_minutes := stable_rate_limit_minutes;
+        state.config.max_subject_length := stable_max_subject_length;
+        state.config.max_body_length := stable_max_body_length;
+        state.config.max_recipients := stable_max_recipients;
+        state.next_id := stable_next_id;
     };
 
     // Helper functions
