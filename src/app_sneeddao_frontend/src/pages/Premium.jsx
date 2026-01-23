@@ -15,7 +15,13 @@ import {
     SNEED_PREMIUM_CANISTER_ID
 } from '../utils/SneedPremiumUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
+import { createActor as createSneedexActor } from 'declarations/sneedex';
+import { createActor as createNeuronManagerFactoryActor } from 'declarations/sneed_icp_neuron_manager_factory';
 import { useSneedMembership } from '../hooks/useSneedMembership';
+
+// Canister IDs
+const SNEEDEX_CANISTER_ID = 'igm46-laaaa-aaaae-qgwra-cai';
+const NEURON_MANAGER_FACTORY_CANISTER_ID = 'sfamc-kyaaa-aaaau-adnpq-cai';
 import InfoModal from '../components/InfoModal';
 import { 
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
@@ -52,6 +58,9 @@ export default function Premium() {
     // Promo code state
     const [promoCode, setPromoCode] = useState('');
     const [redeemingPromo, setRedeemingPromo] = useState(false);
+    
+    // Premium pricing comparison from other canisters
+    const [premiumPricing, setPremiumPricing] = useState(null);
     
     // Loading states
     const [claiming, setClaiming] = useState(false);
@@ -146,6 +155,53 @@ export default function Premium() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+    
+    // Fetch premium pricing from external canisters
+    useEffect(() => {
+        const fetchPremiumPricing = async () => {
+            try {
+                const pricing = { sneedex: null, neuronManager: null };
+                
+                // Fetch sneedex fees
+                try {
+                    const sneedexActor = createSneedexActor(SNEEDEX_CANISTER_ID, {});
+                    const feeConfig = await sneedexActor.getFeeConfig();
+                    pricing.sneedex = {
+                        regularCreationFeeE8s: feeConfig.regularCreationFeeE8s,
+                        premiumCreationFeeE8s: feeConfig.premiumCreationFeeE8s,
+                        regularAuctionCutBps: feeConfig.regularAuctionCutBps,
+                        premiumAuctionCutBps: feeConfig.premiumAuctionCutBps,
+                    };
+                } catch (err) {
+                    console.warn('Failed to fetch sneedex fees:', err);
+                }
+                
+                // Fetch neuron manager factory fees
+                try {
+                    const factoryActor = createNeuronManagerFactoryActor(NEURON_MANAGER_FACTORY_CANISTER_ID, {});
+                    const [paymentConfig, premiumFee] = await Promise.all([
+                        factoryActor.getPaymentConfig(),
+                        factoryActor.getPremiumCreationFee(),
+                    ]);
+                    pricing.neuronManager = {
+                        regularFeeE8s: paymentConfig.creationFeeE8s,
+                        premiumFeeE8s: premiumFee,
+                    };
+                } catch (err) {
+                    console.warn('Failed to fetch neuron manager factory fees:', err);
+                }
+                
+                // Only update if we got at least some pricing
+                if (pricing.sneedex || pricing.neuronManager) {
+                    setPremiumPricing(pricing);
+                }
+            } catch (err) {
+                console.error('Failed to fetch premium pricing:', err);
+            }
+        };
+        
+        fetchPremiumPricing();
+    }, []);
     
     // Fetch wallet balance and ICP fee
     const fetchWalletBalance = useCallback(async () => {
@@ -786,12 +842,116 @@ export default function Premium() {
                             <div style={styles.perkTitle}>Premium Badge</div>
                             <div style={styles.perkDesc}>Show off your support in the community</div>
                         </div>
-                        <div style={styles.perkCard}>
-                            <div style={styles.perkIcon}><FaRocket /></div>
-                            <div style={styles.perkTitle}>Support the DAO</div>
-                            <div style={styles.perkDesc}>Help fund development and growth</div>
-                        </div>
                     </div>
+                    
+                    {/* Actual Pricing Comparison */}
+                    {premiumPricing && (premiumPricing.sneedex || premiumPricing.neuronManager) && (
+                        <div style={{
+                            marginTop: '1.5rem',
+                            background: theme.colors.tertiaryBg,
+                            borderRadius: '12px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                        }}>
+                            <h3 style={{ 
+                                color: theme.colors.primaryText, 
+                                marginBottom: '1rem', 
+                                fontSize: '1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}>
+                                <FaCoins style={{ color: '#FFD700' }} /> Current Premium Savings
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {/* Sneedex Fees */}
+                                {premiumPricing.sneedex && (
+                                    <>
+                                        {/* Only show creation fee if there is a regular fee (not both 0) */}
+                                        {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Sneedex Offer Creation</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {formatIcp(premiumPricing.sneedex.regularCreationFeeE8s)} ICP
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {Number(premiumPricing.sneedex.premiumCreationFeeE8s) > 0 
+                                                            ? `${formatIcp(premiumPricing.sneedex.premiumCreationFeeE8s)} ICP`
+                                                            : 'FREE'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Only show auction cut if there's a difference */}
+                                        {Number(premiumPricing.sneedex.regularAuctionCutBps) > Number(premiumPricing.sneedex.premiumAuctionCutBps) && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Sneedex Auction Cut</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {(Number(premiumPricing.sneedex.regularAuctionCutBps) / 100).toFixed(2)}%
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {(Number(premiumPricing.sneedex.premiumAuctionCutBps) / 100).toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                {/* Neuron Manager Fees - only show if there's a difference */}
+                                {premiumPricing.neuronManager && 
+                                 Number(premiumPricing.neuronManager.regularFeeE8s) > Number(premiumPricing.neuronManager.premiumFeeE8s) && (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '10px 14px',
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '8px',
+                                    }}>
+                                        <span style={{ color: theme.colors.secondaryText }}>ICP Neuron Manager Creation</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ 
+                                                color: theme.colors.mutedText, 
+                                                textDecoration: 'line-through',
+                                                fontSize: '0.9rem',
+                                            }}>
+                                                {formatIcp(premiumPricing.neuronManager.regularFeeE8s)} ICP
+                                            </span>
+                                            <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                {Number(premiumPricing.neuronManager.premiumFeeE8s) > 0 
+                                                    ? `${formatIcp(premiumPricing.neuronManager.premiumFeeE8s)} ICP`
+                                                    : 'FREE'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </section>
                 
                 {/* Purchase with ICP */}
