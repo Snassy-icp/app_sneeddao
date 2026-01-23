@@ -1170,7 +1170,7 @@ export default function Premium() {
                             gap: '12px',
                         }}>
                             <button
-                                onClick={premiumConfirmModal.onConfirm}
+                                onClick={() => premiumConfirmModal.onConfirm && premiumConfirmModal.onConfirm()}
                                 style={{
                                     flex: 1,
                                     padding: '14px 24px',
