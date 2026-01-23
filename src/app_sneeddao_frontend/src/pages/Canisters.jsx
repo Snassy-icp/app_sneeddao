@@ -16,8 +16,6 @@ import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
-import { useSneedMembership } from '../hooks/useSneedMembership';
-import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, GATE_TYPES } from '../components/SneedMemberGate';
 
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
@@ -68,14 +66,6 @@ export default function CanistersPage() {
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const navigate = useNavigate();
-    
-    // Sneed membership for premium features
-    const { 
-        isSneedMember, 
-        sneedNeurons, 
-        sneedVotingPower, 
-        loading: loadingSneedMembership 
-    } = useSneedMembership();
     
     // Premium status for folder limits
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
@@ -2177,149 +2167,128 @@ export default function CanistersPage() {
                                 {customExpanded ? <FaChevronDown /> : <FaChevronRight />}
                                 <FaCube />
                                 Custom Canisters
-                                {!isSneedMember && (
-                                    <FaCrown size={12} style={{ color: theme.colors.warning || '#f59e0b', marginLeft: '6px' }} title="Premium Feature" />
-                                )}
-                                {isSneedMember && getAllCanisterIds(canisterGroups).length > 0 && (
+                                {getAllCanisterIds(canisterGroups).length > 0 && (
                                     <span style={styles.sectionCount}>{getAllCanisterIds(canisterGroups).length}</span>
                                 )}
                                 {saving && <FaSpinner className="spin" size={12} style={{ marginLeft: '8px', color: theme.colors.textSecondary }} />}
                             </div>
-                            {isSneedMember && (
-                                <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
-                                    {showNewGroupInput ? (
-                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                            <input
-                                                type="text"
-                                                placeholder="Group name"
-                                                value={newGroupName}
-                                                onChange={(e) => setNewGroupName(e.target.value)}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()}
-                                                style={{ ...styles.input, padding: '6px 10px', fontSize: '12px', width: '150px' }}
-                                                autoFocus
-                                            />
-                                            <button
-                                                onClick={() => handleCreateGroup()}
-                                                disabled={!newGroupName.trim()}
-                                                style={{ 
-                                                    ...styles.addButton, 
-                                                    padding: '6px 10px', 
-                                                    fontSize: '12px',
-                                                    cursor: !newGroupName.trim() ? 'not-allowed' : 'pointer',
-                                                    backgroundColor: !newGroupName.trim() ? '#6c757d' : '#28a745',
-                                                    opacity: !newGroupName.trim() ? 0.6 : 1,
-                                                }}
-                                            >
-                                                <FaCheck size={10} />
-                                            </button>
-                                            <button
-                                                onClick={() => { setShowNewGroupInput(false); setNewGroupName(''); }}
-                                                style={{ ...styles.removeButton, padding: '6px 10px' }}
-                                            >
-                                                <FaTimes size={10} />
-                                            </button>
-                                        </div>
-                                    ) : (
+                            <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                                {showNewGroupInput ? (
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Group name"
+                                            value={newGroupName}
+                                            onChange={(e) => setNewGroupName(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()}
+                                            style={{ ...styles.input, padding: '6px 10px', fontSize: '12px', width: '150px' }}
+                                            autoFocus
+                                        />
                                         <button
-                                            onClick={() => setShowNewGroupInput(true)}
-                                            style={{
-                                                padding: '6px 12px',
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                backgroundColor: 'transparent',
-                                                color: theme.colors.textSecondary,
+                                            onClick={() => handleCreateGroup()}
+                                            disabled={!newGroupName.trim()}
+                                            style={{ 
+                                                ...styles.addButton, 
+                                                padding: '6px 10px', 
                                                 fontSize: '12px',
-                                                fontWeight: 500,
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
+                                                cursor: !newGroupName.trim() ? 'not-allowed' : 'pointer',
+                                                backgroundColor: !newGroupName.trim() ? '#6c757d' : '#28a745',
+                                                opacity: !newGroupName.trim() ? 0.6 : 1,
                                             }}
                                         >
-                                            <FaFolder size={10} /> New Group
+                                            <FaCheck size={10} />
                                         </button>
-                                    )}
-                                </div>
-                            )}
+                                        <button
+                                            onClick={() => { setShowNewGroupInput(false); setNewGroupName(''); }}
+                                            style={{ ...styles.removeButton, padding: '6px 10px' }}
+                                        >
+                                            <FaTimes size={10} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowNewGroupInput(true)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            backgroundColor: 'transparent',
+                                            color: theme.colors.textSecondary,
+                                            fontSize: '12px',
+                                            fontWeight: 500,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                        }}
+                                    >
+                                        <FaFolder size={10} /> New Group
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
                         {customExpanded && (
                             <>
-                                {/* Membership gating for Custom Canisters */}
-                                {loadingSneedMembership ? (
-                                    <SneedMemberGateLoading />
-                                ) : !isSneedMember ? (
-                                    <SneedMemberGateMessage 
-                                        gateType={GATE_TYPES.PREMIUM}
-                                        featureName="Custom Canisters"
-                                    />
-                                ) : (
-                                    <>
-                                        {/* Sneed Member Badge */}
-                                        <SneedMemberBadge 
-                                            sneedNeurons={sneedNeurons}
-                                            sneedVotingPower={sneedVotingPower}
-                                        />
-                                        
-                                        {/* Limits Info */}
-                                        {groupUsage && (
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                padding: '10px 14px',
-                                                backgroundColor: theme.colors.card,
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                marginBottom: '12px',
-                                                flexWrap: 'wrap',
-                                                gap: '10px',
+                                {/* Limits Info */}
+                                {groupUsage && (
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '10px 14px',
+                                        backgroundColor: theme.colors.card,
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        marginBottom: '12px',
+                                        flexWrap: 'wrap',
+                                        gap: '10px',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                                            <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                                Folders: <span style={{ 
+                                                    color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.text,
+                                                    fontWeight: 600 
+                                                }}>{groupUsage.groupCount}</span> / {groupUsage.groupLimit}
+                                            </span>
+                                            <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                                Canisters: <span style={{ 
+                                                    color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.text,
+                                                    fontWeight: 600 
+                                                }}>{groupUsage.totalCanisters}</span> / {groupUsage.totalLimit}
+                                            </span>
+                                            <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                                Per Folder: max {groupUsage.perGroupLimit}
+                                            </span>
+                                        </div>
+                                        {groupUsage.isPremium && (
+                                            <span style={{
+                                                backgroundColor: '#ffd700',
+                                                color: '#000',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '11px',
+                                                fontWeight: 600,
                                             }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                                                    <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
-                                                        Folders: <span style={{ 
-                                                            color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.text,
-                                                            fontWeight: 600 
-                                                        }}>{groupUsage.groupCount}</span> / {groupUsage.groupLimit}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
-                                                        Canisters: <span style={{ 
-                                                            color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.text,
-                                                            fontWeight: 600 
-                                                        }}>{groupUsage.totalCanisters}</span> / {groupUsage.totalLimit}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
-                                                        Per Folder: max {groupUsage.perGroupLimit}
-                                                    </span>
-                                                </div>
-                                                {groupUsage.isPremium && (
-                                                    <span style={{
-                                                        backgroundColor: '#ffd700',
-                                                        color: '#000',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '11px',
-                                                        fontWeight: 600,
-                                                    }}>
-                                                        ⭐ PREMIUM LIMITS
-                                                    </span>
-                                                )}
-                                            </div>
+                                                ⭐ PREMIUM LIMITS
+                                            </span>
                                         )}
-                                        
-                                        {loading ? (
-                                            <div style={styles.loadingSpinner}>
-                                                <FaSpinner className="spin" size={24} />
-                                            </div>
-                                        ) : getAllCanisterIds(canisterGroups).length === 0 && canisterGroups.groups.length === 0 ? (
-                                            <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
-                                                <div style={styles.emptyIcon}>📦</div>
-                                                <div style={styles.emptyText}>No custom canisters being tracked</div>
-                                                <div style={styles.emptySubtext}>
-                                                    Add a canister ID above to start tracking it, or create a group to organize your canisters.
-                                                </div>
-                                            </div>
-                                        ) : (
+                                    </div>
+                                )}
+                                
+                                {loading ? (
+                                    <div style={styles.loadingSpinner}>
+                                        <FaSpinner className="spin" size={24} />
+                                    </div>
+                                ) : getAllCanisterIds(canisterGroups).length === 0 && canisterGroups.groups.length === 0 ? (
+                                    <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
+                                        <div style={styles.emptyIcon}>📦</div>
+                                        <div style={styles.emptyText}>No custom canisters being tracked</div>
+                                        <div style={styles.emptySubtext}>
+                                            Add a canister ID above to start tracking it, or create a group to organize your canisters.
+                                        </div>
+                                    </div>
+                                ) : (
                                     <div style={{ marginBottom: '24px' }}>
                                         {/* Health Summary */}
                                         {(() => {
@@ -2553,8 +2522,6 @@ export default function CanistersPage() {
                                             </div>
                                         )}
                                     </div>
-                                )}
-                                    </>
                                 )}
                             </>
                         )}
