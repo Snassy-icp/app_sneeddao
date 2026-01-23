@@ -431,8 +431,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 {/* Theme Toggle */}
                 <ThemeToggle size="medium" />
 
-                {/* Feed Link */}
+                {/* Feed Link - hidden on narrow screens */}
                 <button
+                    className="hide-on-narrow"
                     onClick={() => navigate('/feed')}
                     style={{
                         background: 'none',

@@ -264,3 +264,14 @@ input:focus, textarea:focus, select:focus {
 .muted-text {
   color: var(--color-mutedText);
 }
+
+/* Hide on narrow screens */
+.hide-on-narrow {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  .hide-on-narrow {
+    display: none !important;
+  }
+}
