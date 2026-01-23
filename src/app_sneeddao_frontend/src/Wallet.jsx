@@ -33,6 +33,7 @@ import { get_available, get_available_backend, getTokenLogo, get_token_conversio
 import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
+import { usePremiumStatus } from './hooks/usePremiumStatus';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { fetchAndCacheSnsData, getAllSnses } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
@@ -329,6 +330,7 @@ function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
+    const { isPremium } = usePremiumStatus(identity);
     const navigate = useNavigate();
     
     // Compute account ID for the logged-in user
@@ -6057,6 +6059,8 @@ function Wallet() {
                     token={selectedToken}
                     locks={locks}
                     onAddLock={handleAddLock}
+                    identity={identity}
+                    isPremium={isPremium}
                 />
                 <SendLiquidityPositionModal
                     show={showSendLiquidityPositionModal}
@@ -6069,6 +6073,8 @@ function Wallet() {
                     onClose={() => setShowLockPositionModal(false)}
                     liquidityPosition={selectedLiquidityPosition}
                     onAddLockPosition={handleAddLockPosition}
+                    identity={identity}
+                    isPremium={isPremium}
                 />
                 <ConfirmationModal
                     show={showConfirmModal}
