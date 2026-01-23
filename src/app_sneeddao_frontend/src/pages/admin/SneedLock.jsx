@@ -51,7 +51,6 @@ export default function SneedLockAdmin() {
   const [returnTokenUser, setReturnTokenUser] = useState('');
   
   // Settings state
-  const [tokenLockFee, setTokenLockFee] = useState('');
   const [maxLockLengthDays, setMaxLockLengthDays] = useState('');
   
   // ICP Lock Fee state
@@ -88,12 +87,11 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) return;
 
-      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee, timer, activeReqs, completedReqs, failedReqs, admins, icpFees] = await Promise.all([
+      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, timer, activeReqs, completedReqs, failedReqs, admins, icpFees] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
         actor.get_claim_queue_status(),
         actor.get_enforce_zero_balance_before_claim(),
-        actor.get_token_lock_fee_sneed_e8s(),
         actor.get_timer_status(),
         actor.get_all_active_claim_requests(),
         actor.get_all_completed_claim_requests(),
@@ -109,7 +107,6 @@ export default function SneedLockAdmin() {
       setErrorRange(errorRangeData);
       setClaimQueueStatus(queueStatus);
       setEnforceZeroBalance(enforceZero);
-      setTokenLockFee(Number(lockFee).toString());
       setTimerStatus(timer);
       setActiveClaimRequests(activeReqs);
       setCompletedClaimRequests(completedReqs);
@@ -2062,23 +2059,6 @@ export default function SneedLockAdmin() {
             {enforceZeroBalance ? 'Disable' : 'Enable'}
           </button>
         </div>
-      </div>
-
-      {/* Token Lock Fee (Read Only) - Legacy SNEED */}
-      <div style={{
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '20px',
-        marginBottom: '20px',
-        border: '1px solid #3a3a3a'
-      }}>
-        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Token Lock Fee (SNEED - Legacy)</h3>
-        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
-          Current fee in SNEED (e8s): <strong style={{ color: '#ffffff' }}>{tokenLockFee}</strong>
-        </p>
-        <p style={{ color: '#666', fontSize: '12px' }}>
-          Note: Use set_token_lock_fee_sneed_e8s function via dfx to update this value
-        </p>
       </div>
 
       {/* Premium Integration */}
