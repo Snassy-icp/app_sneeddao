@@ -455,9 +455,33 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <FaRss size={16} />
                 </button>
 
-                {/* Wallet Link */}
-                
+                {/* Sneedex Link - hidden on narrow screens */}
                 <button
+                    className="hide-on-narrow"
+                    onClick={() => navigate('/sneedex_offers')}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: theme.colors.primaryText,
+                        cursor: 'pointer',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '18px',
+                        marginRight: '0px',
+                        transition: 'background-color 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                    title="Go to Sneedex Marketplace"
+                >
+                    <FaExchangeAlt size={16} />
+                </button>
+
+                {/* Wallet Link - hidden on narrow screens */}
+                <button
+                    className="hide-on-narrow"
                     onClick={() => navigate('/wallet')}
                     style={{
                         background: 'none',
