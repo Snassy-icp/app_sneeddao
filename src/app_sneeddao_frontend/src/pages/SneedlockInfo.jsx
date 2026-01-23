@@ -975,45 +975,49 @@ function SneedlockInfo() {
                         gap: '10px',
                         flexWrap: 'wrap'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <PrincipalInput
-                                value={ownerFilter}
-                                onChange={handleOwnerFilterChange}
-                                placeholder="Filter by owner"
-                                style={{ width: '300px' }}
-                                isAuthenticated={!!identity}
-                            />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {identity && (
-                                <button
-                                    onClick={() => handleOwnerFilterChange(identity.getPrincipal().toString())}
-                                    style={{
-                                        padding: '8px 12px',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.tertiaryBg,
-                                        color: theme.colors.primaryText,
-                                        cursor: 'pointer'
-                                    }}
-                                    title="Show only your locks"
-                                >
-                                    My Locks
-                                </button>
+                                <div>
+                                    <button
+                                        onClick={() => handleOwnerFilterChange(identity.getPrincipal().toString())}
+                                        style={{
+                                            padding: '8px 12px',
+                                            borderRadius: '4px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.tertiaryBg,
+                                            color: theme.colors.primaryText,
+                                            cursor: 'pointer'
+                                        }}
+                                        title="Show only your locks"
+                                    >
+                                        My Locks
+                                    </button>
+                                </div>
                             )}
-                            {ownerFilter && (
-                                <button
-                                    onClick={() => handleOwnerFilterChange('')}
-                                    style={{
-                                        padding: '8px 12px',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.tertiaryBg,
-                                        color: theme.colors.primaryText,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Clear
-                                </button>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <PrincipalInput
+                                    value={ownerFilter}
+                                    onChange={handleOwnerFilterChange}
+                                    placeholder="Filter by owner"
+                                    style={{ width: '300px' }}
+                                    isAuthenticated={!!identity}
+                                />
+                                {ownerFilter && (
+                                    <button
+                                        onClick={() => handleOwnerFilterChange('')}
+                                        style={{
+                                            padding: '8px 12px',
+                                            borderRadius: '4px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.tertiaryBg,
+                                            color: theme.colors.primaryText,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <TokenSelector
