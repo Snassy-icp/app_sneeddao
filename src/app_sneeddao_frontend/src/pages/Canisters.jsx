@@ -11,7 +11,8 @@ import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } 
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
@@ -66,6 +67,7 @@ export default function CanistersPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
+    const navigate = useNavigate();
     
     // Sneed membership for premium features
     const { 
@@ -81,6 +83,10 @@ export default function CanistersPage() {
     // Canister groups limits
     const [groupLimits, setGroupLimits] = useState(null);
     const [groupUsage, setGroupUsage] = useState(null);
+    
+    // Premium upgrade modal
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+    const [upgradeModalMessage, setUpgradeModalMessage] = useState('');
     
     // Canister Groups state
     const [canisterGroups, setCanisterGroupsState] = useState({ groups: [], ungrouped: [] });
@@ -346,19 +352,42 @@ export default function CanistersPage() {
             } else {
                 // Handle limit errors
                 const errorMsg = result.err || 'Failed to save changes';
-                setError(errorMsg);
+                
+                // Check if this is a limit error and user is not premium
+                const isLimitError = errorMsg.toLowerCase().includes('exceeded') || 
+                                    errorMsg.toLowerCase().includes('maximum') ||
+                                    errorMsg.toLowerCase().includes('limit');
+                
+                if (isLimitError && groupUsage && !groupUsage.isPremium) {
+                    // Show premium upgrade modal
+                    setUpgradeModalMessage(errorMsg);
+                    setShowUpgradeModal(true);
+                } else {
+                    setError(errorMsg);
+                }
                 throw new Error(errorMsg);
             }
         } catch (err) {
             console.error('Error saving canister groups:', err);
-            if (!err.message.includes('exceeded')) {
-                setError('Failed to save changes: ' + (err.message || 'Unknown error'));
+            const errorMsg = err.message || 'Unknown error';
+            const isLimitError = errorMsg.toLowerCase().includes('exceeded') || 
+                                errorMsg.toLowerCase().includes('maximum') ||
+                                errorMsg.toLowerCase().includes('limit');
+            
+            if (isLimitError && groupUsage && !groupUsage.isPremium) {
+                // Show premium upgrade modal (if not already shown)
+                if (!showUpgradeModal) {
+                    setUpgradeModalMessage(errorMsg);
+                    setShowUpgradeModal(true);
+                }
+            } else if (!isLimitError) {
+                setError('Failed to save changes: ' + errorMsg);
             }
             throw err;  // Re-throw so callers know save failed
         } finally {
             setSaving(false);
         }
-    }, [identity]);
+    }, [identity, groupUsage, showUpgradeModal]);
     
     // Persist collapsible states
     useEffect(() => {
@@ -1927,6 +1956,153 @@ export default function CanistersPage() {
     return (
         <div style={styles.pageContainer}>
             <Header />
+            
+            {/* Premium Upgrade Modal */}
+            {showUpgradeModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'rgba(0, 0, 0, 0.75)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10001,
+                    backdropFilter: 'blur(4px)',
+                }}>
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.card} 0%, ${theme.colors.primaryBg} 100%)`,
+                        border: `2px solid #ffd700`,
+                        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.15)',
+                        borderRadius: '20px',
+                        padding: '32px',
+                        width: '460px',
+                        maxWidth: '90vw',
+                        textAlign: 'center',
+                    }}>
+                        {/* Premium Icon */}
+                        <div style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 20px auto',
+                            boxShadow: '0 8px 24px rgba(255, 215, 0, 0.4)',
+                        }}>
+                            <FaStar size={32} color="#000" />
+                        </div>
+                        
+                        {/* Title */}
+                        <h2 style={{
+                            color: '#ffd700',
+                            marginTop: '0',
+                            marginBottom: '12px',
+                            fontSize: '1.5rem',
+                            fontWeight: '700',
+                        }}>
+                            Upgrade to Premium
+                        </h2>
+                        
+                        {/* Message */}
+                        <p style={{
+                            color: theme.colors.secondaryText,
+                            marginBottom: '16px',
+                            lineHeight: '1.6',
+                            fontSize: '0.95rem',
+                        }}>
+                            {upgradeModalMessage}
+                        </p>
+                        
+                        {/* Benefits teaser */}
+                        <div style={{
+                            background: `${theme.colors.inputBackground}`,
+                            borderRadius: '12px',
+                            padding: '16px',
+                            marginBottom: '24px',
+                            textAlign: 'left',
+                        }}>
+                            <div style={{ color: '#ffd700', fontWeight: '600', marginBottom: '10px', fontSize: '0.9rem' }}>
+                                ⭐ Premium members get:
+                            </div>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.8' }}>
+                                {groupLimits && (
+                                    <>
+                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxGroups}</strong> folders (vs {groupLimits.maxGroups})</div>
+                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxPerGroup}</strong> canisters per folder (vs {groupLimits.maxPerGroup})</div>
+                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxTotal}</strong> total canisters (vs {groupLimits.maxTotal})</div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* Buttons */}
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button 
+                                onClick={() => setShowUpgradeModal(false)}
+                                style={{
+                                    flex: 1,
+                                    background: 'transparent',
+                                    color: theme.colors.secondaryText,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '10px',
+                                    padding: '14px 20px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.95rem',
+                                    fontWeight: '500',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.borderColor = theme.colors.secondaryText;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.borderColor = theme.colors.border;
+                                }}
+                            >
+                                Maybe Later
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    setShowUpgradeModal(false);
+                                    navigate('/premium');
+                                }}
+                                style={{
+                                    flex: 1,
+                                    background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
+                                    color: '#000',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    padding: '14px 20px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.95rem',
+                                    fontWeight: '700',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 4px 16px rgba(255, 215, 0, 0.3)',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.transform = 'translateY(-2px)';
+                                    e.target.style.boxShadow = '0 6px 20px rgba(255, 215, 0, 0.4)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.transform = 'translateY(0)';
+                                    e.target.style.boxShadow = '0 4px 16px rgba(255, 215, 0, 0.3)';
+                                }}
+                            >
+                                View Premium <FaArrowRight size={14} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <div style={styles.container}>
                 <h1 style={styles.title}>
                     <FaCube /> Canister Manager
