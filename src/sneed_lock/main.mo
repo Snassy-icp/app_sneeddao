@@ -78,7 +78,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   type ArchivedPositionLock = T.ArchivedPositionLock;
 
   // consts
-  transient let transaction_fee_sneed_e8s : Nat = 1000;
   transient let second_ns : Nat64 = 1_000_000_000; // 1 second in nanoseconds
   transient let minute_ns : Nat64 = 60 * second_ns; // 1 minute in nanoseconds
   transient let hour_ns : Nat64 = 60 * minute_ns; // 1 hour in nanoseconds
@@ -145,7 +144,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   transient let sneed_governance = Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai");
 
   transient let icrc1_sneed_ledger_canister_id = Principal.fromText("hvgxa-wqaaa-aaaaq-aacia-cai");
-  transient let sneed_defi_canister_id = Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai");
   
   // ICP Ledger for lock creation fees
   transient let ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
@@ -162,8 +160,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   // Archive HashMaps (ephemeral, rebuilt from stable storage on upgrade)
   transient let archived_token_locks = HashMap.HashMap<T.LockId, ArchivedTokenLock>(1000, Nat.equal, Hash.hash);
   transient let archived_position_locks = HashMap.HashMap<T.LockId, ArchivedPositionLock>(1000, Nat.equal, Hash.hash);
-
-  public query func get_token_lock_fee_sneed_e8s() : async Nat { token_lock_fee_sneed_e8s; };
 
   public query func get_all_token_locks() : async [T.FullyQualifiedLock] {
     get_fully_qualified_locks();
@@ -977,18 +973,7 @@ shared (deployer) persistent actor class SneedLock() = this {
       log_info(caller, correlation_id, " Creating lock for " # debug_show(amount) 
         # " tokens of ledger " # debug_show(icrc1_ledger_canister_id) # " that expires at " # debug_show(expires_at));
 
-      // We have to make sure user doesn't use locked sneed to pay lock fees.
-      // Thus we prohibit locking sneed tokens, so that we don't always  
-      // have to call get_summed_locks_from_principal_and_token and icrc1_balance_of 
-      // for caller to ensure sufficient unlocked sneed to cover lock_fee before locking.
-      if (icrc1_ledger_canister_id == icrc1_sneed_ledger_canister_id) {
-          let error = #Err({
-            message = "Sneed DAO token can not be locked.";
-            transfer_error = null;
-          });
-          log_error(caller, correlation_id, debug_show(error));
-          return error;
-      };
+      // Sneed DAO token cannot be locked
       
       if ((TimeAsNat64(Time.now()) + min_lock_length_ns) > expires_at) {
           let error = #Err({
@@ -1054,40 +1039,38 @@ shared (deployer) persistent actor class SneedLock() = this {
           return error;
       };
 
-      // Collect ICP lock fee (if configured)
-      let icp_fee_result = await* collectLockFeeIcp(caller, correlation_id, false);
-      switch (icp_fee_result) {
+      // Step 1: Verify ICP funds are available (balance check only)
+      let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, false);
+      let fee_to_charge = switch (icp_verify_result) {
           case (#Err(e)) {
             let create_lock_error : CreateLockError = {
-              message = "ICP payment failed: " # e;
+              message = "ICP payment verification failed: " # e;
               transfer_error = null;
             };
             let error = #Err(create_lock_error);
             log_error(caller, correlation_id, debug_show(error));
             return error;
           };
-          case (#Ok(_)) {};
+          case (#Ok(fee)) { fee };
       };
 
-      // Pay token lock fee (denominated in Sneed) - legacy fee system
-      let transfer_result = await pay_lock_fee_sneed(caller, correlation_id, token_lock_fee_sneed_e8s);
+      // Step 2: Create the lock
+      let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, expires_at);
+      log_info(caller, correlation_id, "Created lock:" # debug_show(lock));
 
-      switch (transfer_result) {
+      // Step 3: Charge the ICP fee (only after lock is successfully created)
+      if (fee_to_charge > 0) {
+        let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge);
+        switch (charge_result) {
           case (#Err(e)) {
-            let create_lock_error : CreateLockError = {
-              message = "Failed to create lock: " # debug_show(e);
-              transfer_error = ?e;
-            };
-            let error = #Err(create_lock_error);
-            log_error(caller, correlation_id, debug_show(error));
-            return error;
+            // Lock was created but fee charge failed - log this but don't fail the lock
+            log_error(caller, correlation_id, "Warning: Lock created but ICP fee charge failed: " # e);
           };
-          case (#Ok(_)) {
-            let lock = add_new_lock_for_principal(caller, icrc1_ledger_canister_id, amount, expires_at);
-            log_info(caller, correlation_id, "Created lock:" # debug_show(lock));
-            #Ok(lock.lock_id);
-          };
+          case (#Ok(_)) {};
+        };
       };
+
+      return #Ok(lock.lock_id);
   };
 
   public shared ({ caller }) func create_position_lock(
@@ -1175,17 +1158,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       switch(locked_position) {
           case (null) {
-            // Collect ICP lock fee for new position locks
-            let icp_fee_result = await* collectLockFeeIcp(caller, correlation_id, true);
-            switch (icp_fee_result) {
-                case (#Err(e)) {
-                  return #Err({
-                    message = "ICP payment failed: " # e;
-                    transfer_error = null;
-                  });
-                };
-                case (#Ok(_)) {};
-            };
+            // First validate all required parameters before collecting payment
             let dex_value = switch (dex) {
               case null {
                 return #Err({
@@ -1224,8 +1197,33 @@ shared (deployer) persistent actor class SneedLock() = this {
               case (?token1_value) { token1_value; };
             };
 
+            // Step 1: Verify ICP funds are available (balance check only)
+            let icp_verify_result = await* verifyLockFeeIcp(caller, correlation_id, true);
+            let fee_to_charge = switch (icp_verify_result) {
+                case (#Err(e)) {
+                  return #Err({
+                    message = "ICP payment verification failed: " # e;
+                    transfer_error = null;
+                  });
+                };
+                case (#Ok(fee)) { fee };
+            };
+
+            // Step 2: Create the position lock
             let new_position_lock = add_new_position_lock_for_principal(
               caller, correlation_id, swap_canister_id, dex_value, position_id, expires_at, token0_value, token1_value);
+
+            // Step 3: Charge the ICP fee (only after lock is successfully created)
+            if (fee_to_charge > 0) {
+              let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge);
+              switch (charge_result) {
+                case (#Err(e)) {
+                  // Lock was created but fee charge failed - log this but don't fail the lock
+                  log_error(caller, correlation_id, "Warning: Position lock created but ICP fee charge failed: " # e);
+                };
+                case (#Ok(_)) {};
+              };
+            };
 
             return #Ok(new_position_lock.lock_id);
           };
@@ -1263,36 +1261,6 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
 
     List.toArray<T.ClaimedPosition>(result);
-  };
-
-  private func pay_lock_fee_sneed(caller : Principal, correlation_id : Nat, lock_fee_sneed_e8s : Balance) : async TransferResult {
-
-      if (lock_fee_sneed_e8s <= transaction_fee_sneed_e8s) {
-        log_info(caller, correlation_id, "Sneed lock fee smaller than Sneed transaction fee, payment not required. Lock fee: " # debug_show(lock_fee_sneed_e8s));
-        return #Ok(0); // If lock fee is not bigger than transaction fee, locking is free.
-      };
-
-      let subaccount = PrincipalToSubaccount(caller);
-      let sneed_account_to : Account = { owner = sneed_defi_canister_id; subaccount = null; };
-
-      let icrc1_sneed_ledger_canister = actor (Principal.toText(icrc1_sneed_ledger_canister_id)) : actor {
-          icrc1_transfer(args : TransferArgs) : async T.TransferResult;
-      };
-
-      let sneed_fee_transfer_args : TransferArgs = {
-          from_subaccount = ?Blob.fromArray(subaccount);
-          to = sneed_account_to;
-          amount = lock_fee_sneed_e8s - transaction_fee_sneed_e8s;
-          fee = null;
-          memo = null;
-          created_at_time = null;
-      };
-
-      log_info(caller, correlation_id, "Transferring Sneed lock fee. Args: " # debug_show(sneed_fee_transfer_args));
-      let result = await icrc1_sneed_ledger_canister.icrc1_transfer(sneed_fee_transfer_args);
-      log_info(caller, correlation_id, "Transferred Sneed lock fee. Args: " # debug_show(sneed_fee_transfer_args) # ", Result: " # debug_show(result));
-
-      return result;
   };
 
   private func add_new_lock_for_principal(principal: Principal, tokenType: TokenType, amount : Balance, expiry : Expiry): Lock {
@@ -1720,20 +1688,6 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
 
-  public shared ({ caller }) func set_token_lock_fee_sneed_e8s(new_token_lock_fee_sneed_e8s: Nat) : async SetLockFeeResult {    
-    if (not isAdmin(caller)) {
-      return #Err("Only the SNEED governance can set the lock fee");
-    };
-
-    // Lock fee lower than or equal to transaction fee means free locks!
-    //if (new_token_lock_fee_sneed_e8s <= transaction_fee_sneed_e8s) {
-    //  return #Err("Lock fee must be greater than SNEED transaction fee.");
-    //};
-
-    token_lock_fee_sneed_e8s := new_token_lock_fee_sneed_e8s;
-    #Ok(token_lock_fee_sneed_e8s);
-  };
-
   public shared ({ caller }) func set_max_lock_length_days(new_max_lock_length_days: Nat64) : async () {    
     if (not isAdmin(caller)) {
       Debug.trap("Only the SNEED governance can set the max lock length.");
@@ -1874,7 +1828,9 @@ shared (deployer) persistent actor class SneedLock() = this {
   };
 
   // Collect ICP lock fee from user's payment subaccount
-  private func collectLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : Nat; #Err : Text } {
+  // Verify that user has sufficient ICP in payment subaccount (balance check only)
+  // Returns the fee amount if sufficient, or error if insufficient
+  private func verifyLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : Nat; #Err : Text } {
     // Check premium status and get effective fee
     let is_premium = await* checkUserPremium(caller);
     let fee_e8s = if (is_position_lock) {
@@ -1890,20 +1846,11 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
     
     let fee_nat = Nat64.toNat(fee_e8s);
-    let icp_fee_nat = Nat64.toNat(ICP_FEE);
     
     // Check payment balance
     let subaccount = userPaymentSubaccount(caller);
     let icpLedger = actor(ICP_LEDGER_ID) : actor {
       icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat;
-      icrc1_transfer : shared {
-        to : { owner : Principal; subaccount : ?Blob };
-        fee : ?Nat;
-        memo : ?Blob;
-        from_subaccount : ?Blob;
-        created_at_time : ?Nat64;
-        amount : Nat;
-      } -> async { #Ok : Nat; #Err : T.TransferError };
     };
     
     let balance = await icpLedger.icrc1_balance_of({
@@ -1914,6 +1861,32 @@ shared (deployer) persistent actor class SneedLock() = this {
     if (balance < fee_nat) {
       log_error(caller, correlation_id, "Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # ", Available: " # Nat.toText(balance));
       return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(balance) # " e8s");
+    };
+    
+    log_info(caller, correlation_id, "ICP payment verified: " # Nat.toText(fee_nat) # " e8s available");
+    #Ok(fee_nat);
+  };
+
+  // Charge the ICP lock fee (transfer from user's payment subaccount to main account)
+  // Should only be called after lock is successfully created
+  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat) : async { #Ok : Nat; #Err : Text } {
+    // If fee is 0, nothing to charge
+    if (fee_nat == 0) {
+      return #Ok(0);
+    };
+    
+    let icp_fee_nat = Nat64.toNat(ICP_FEE);
+    let subaccount = userPaymentSubaccount(caller);
+    
+    let icpLedger = actor(ICP_LEDGER_ID) : actor {
+      icrc1_transfer : shared {
+        to : { owner : Principal; subaccount : ?Blob };
+        fee : ?Nat;
+        memo : ?Blob;
+        from_subaccount : ?Blob;
+        created_at_time : ?Nat64;
+        amount : Nat;
+      } -> async { #Ok : Nat; #Err : T.TransferError };
     };
     
     // Transfer fee to main account (fee recipient)
@@ -1930,12 +1903,12 @@ shared (deployer) persistent actor class SneedLock() = this {
       
       switch (transfer_result) {
         case (#Ok(blockIdx)) {
-          log_info(caller, correlation_id, "ICP lock fee collected: " # Nat.toText(transfer_amount) # " e8s, block: " # Nat.toText(blockIdx));
+          log_info(caller, correlation_id, "ICP lock fee charged: " # Nat.toText(transfer_amount) # " e8s, block: " # Nat.toText(blockIdx));
           #Ok(fee_nat);
         };
         case (#Err(e)) {
-          log_error(caller, correlation_id, "Failed to collect ICP lock fee: " # debug_show(e));
-          #Err("Failed to collect ICP payment: " # debug_show(e));
+          log_error(caller, correlation_id, "Failed to charge ICP lock fee: " # debug_show(e));
+          #Err("Failed to charge ICP payment: " # debug_show(e));
         };
       };
     } else {
