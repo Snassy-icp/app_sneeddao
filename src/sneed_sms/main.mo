@@ -705,22 +705,17 @@ actor SneedSMS {
     // DATA IMPORT - For restoring data after migration
     // ============================================================================
     
-    // Import admins from backup
-    public shared ({ caller }) func import_admins(admins_to_import: [Principal]) : async Result<Nat, SMSError> {
+    // Import admins from backup - accepts exact output of get_admins()
+    public shared ({ caller }) func import_admins(admins_to_import: [AdminInfo]) : async Result<Nat, SMSError> {
         // Only controllers can import
         if (not Principal.isController(caller)) {
             return #err(#Unauthorized("Only controllers can import data"));
         };
         
         var imported = 0;
-        for (admin_principal in admins_to_import.vals()) {
+        for (admin_info in admins_to_import.vals()) {
             // Skip if already admin
-            if (not is_admin(admin_principal)) {
-                let admin_info : AdminInfo = {
-                    principal = admin_principal;
-                    added_by = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
-                    added_at = Time.now();
-                };
+            if (not is_admin(admin_info.principal)) {
                 Vector.add(state.admins, admin_info);
                 imported += 1;
             };
