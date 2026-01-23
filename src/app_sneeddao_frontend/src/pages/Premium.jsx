@@ -892,29 +892,101 @@ export default function Premium() {
                     
                     {vpTiers.length > 0 ? (
                         <>
-                            <div style={styles.tierGrid}>
-                                {vpTiers.map((tier, index) => (
-                                    <div
-                                        key={index}
-                                        style={{
-                                            ...styles.tierCard,
-                                            cursor: 'default',
-                                            opacity: !tier.active ? 0.5 : 1,
-                                        }}
-                                    >
-                                        <div style={styles.vpBadge}>
-                                            ≥ {formatVotingPower(tier.minVotingPowerE8s)}
-                                        </div>
-                                        <div style={styles.tierName}>{tier.name}</div>
-                                        <div style={styles.tierDuration}>
-                                            <FaClock /> {formatDuration(tier.durationNs)}
-                                        </div>
-                                        <div style={{ marginTop: '0.5rem', color: theme.colors.mutedText, fontSize: '0.85rem' }}>
-                                            <FaArrowRight style={{ marginRight: '4px' }} />
-                                            Grants membership
+                            {/* Show user's VP if authenticated */}
+                            {isAuthenticated && !loadingVp && sneedVotingPower > 0 && (
+                                <div style={{
+                                    background: `linear-gradient(135deg, ${theme.colors.info || theme.colors.accent}20, ${theme.colors.accent}10)`,
+                                    border: `1px solid ${theme.colors.info || theme.colors.accent}40`,
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    marginBottom: '1rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                }}>
+                                    <div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Your Voting Power</div>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: '700', color: theme.colors.info || theme.colors.accent }}>
+                                            {formatVotingPower(sneedVotingPower)}
                                         </div>
                                     </div>
-                                ))}
+                                    {(() => {
+                                        const activeTiers = vpTiers.filter(t => t.active);
+                                        const matchedTier = [...activeTiers]
+                                            .sort((a, b) => Number(b.minVotingPowerE8s) - Number(a.minVotingPowerE8s))
+                                            .find(t => sneedVotingPower >= Number(t.minVotingPowerE8s));
+                                        return matchedTier ? (
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>You qualify for</div>
+                                                <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.success }}>
+                                                    {matchedTier.name} ✓
+                                                </div>
+                                            </div>
+                                        ) : null;
+                                    })()}
+                                </div>
+                            )}
+                            
+                            <div style={styles.tierGrid}>
+                                {vpTiers.map((tier, index) => {
+                                    // Check if user qualifies for this tier (and it's their best match)
+                                    const activeTiers = vpTiers.filter(t => t.active);
+                                    const matchedTier = isAuthenticated && sneedVotingPower > 0
+                                        ? [...activeTiers]
+                                            .sort((a, b) => Number(b.minVotingPowerE8s) - Number(a.minVotingPowerE8s))
+                                            .find(t => sneedVotingPower >= Number(t.minVotingPowerE8s))
+                                        : null;
+                                    const isMatchedTier = matchedTier && tier.name === matchedTier.name;
+                                    
+                                    return (
+                                        <div
+                                            key={index}
+                                            style={{
+                                                ...styles.tierCard,
+                                                cursor: 'default',
+                                                opacity: !tier.active ? 0.5 : 1,
+                                                ...(isMatchedTier ? {
+                                                    borderColor: theme.colors.success,
+                                                    background: `${theme.colors.success}15`,
+                                                    boxShadow: `0 0 20px ${theme.colors.success}30`,
+                                                } : {}),
+                                            }}
+                                        >
+                                            {isMatchedTier && (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: '-10px',
+                                                    right: '10px',
+                                                    background: theme.colors.success,
+                                                    color: '#fff',
+                                                    padding: '4px 12px',
+                                                    borderRadius: '20px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '700',
+                                                }}>
+                                                    ✓ YOUR TIER
+                                                </div>
+                                            )}
+                                            <div style={{
+                                                ...styles.vpBadge,
+                                                ...(isMatchedTier ? {
+                                                    background: `${theme.colors.success}20`,
+                                                    color: theme.colors.success,
+                                                } : {}),
+                                            }}>
+                                                ≥ {formatVotingPower(tier.minVotingPowerE8s)}
+                                            </div>
+                                            <div style={styles.tierName}>{tier.name}</div>
+                                            <div style={styles.tierDuration}>
+                                                <FaClock /> {formatDuration(tier.durationNs)}
+                                            </div>
+                                            <div style={{ marginTop: '0.5rem', color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                                <FaArrowRight style={{ marginRight: '4px' }} />
+                                                Grants membership
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                             
                             {isAuthenticated ? (
