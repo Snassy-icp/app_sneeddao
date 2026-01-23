@@ -231,6 +231,14 @@ export interface SneedLock {
     Array<FullyQualifiedLock>
   >,
   'get_lock_by_id' : ActorMethod<[LockId], [] | [LockInfo]>,
+  'get_lock_fee_stats' : ActorMethod<
+    [],
+    {
+      'total_position_lock_fees_collected_e8s' : bigint,
+      'total_fees_collected_e8s' : bigint,
+      'total_token_lock_fees_collected_e8s' : bigint,
+    }
+  >,
   'get_lock_fees_icp' : ActorMethod<
     [],
     {

@@ -66,6 +66,9 @@ export default function SneedLockAdmin() {
   // Admin list state
   const [adminList, setAdminList] = useState([]);
   const [removeAdminPrincipal, setRemoveAdminPrincipal] = useState('');
+  
+  // Fee stats state
+  const [feeStats, setFeeStats] = useState(null);
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -89,7 +92,7 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) return;
 
-      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, timer, activeReqs, completedReqs, failedReqs, admins, icpFees] = await Promise.all([
+      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, timer, activeReqs, completedReqs, failedReqs, admins, icpFees, lockFeeStats] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
         actor.get_claim_queue_status(),
@@ -99,7 +102,8 @@ export default function SneedLockAdmin() {
         actor.get_all_completed_claim_requests(),
         actor.get_all_failed_claim_requests(),
         actor.get_admin_list(),
-        actor.get_lock_fees_icp()
+        actor.get_lock_fees_icp(),
+        actor.get_lock_fee_stats()
       ]);
 
       const infoRangeData = infoRangeResult.length > 0 ? infoRangeResult[0] : null;
@@ -114,6 +118,7 @@ export default function SneedLockAdmin() {
       setCompletedClaimRequests(completedReqs);
       setFailedClaimRequests(failedReqs);
       setAdminList(admins);
+      setFeeStats(lockFeeStats);
       
       // Set ICP fee config
       setIcpFeeConfig(icpFees);
@@ -2427,6 +2432,52 @@ export default function SneedLockAdmin() {
             Update Fee Recipient
           </button>
         </form>
+      </div>
+
+      {/* Fee Collection Stats */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>📊 Fee Collection Statistics</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Total ICP collected from lock creation fees.
+        </p>
+        
+        {feeStats ? (
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(3, 1fr)', 
+            gap: '15px',
+            padding: '15px',
+            backgroundColor: '#1a1a1a',
+            borderRadius: '8px'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>Token Lock Fees</p>
+              <p style={{ color: '#3498db', fontSize: '20px', fontWeight: 'bold' }}>
+                {formatIcpFee(feeStats.total_token_lock_fees_collected_e8s)}
+              </p>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>Position Lock Fees</p>
+              <p style={{ color: '#e67e22', fontSize: '20px', fontWeight: 'bold' }}>
+                {formatIcpFee(feeStats.total_position_lock_fees_collected_e8s)}
+              </p>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>Total Collected</p>
+              <p style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
+                {formatIcpFee(feeStats.total_fees_collected_e8s)}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p style={{ color: '#666' }}>Loading stats...</p>
+        )}
       </div>
     </div>
   );

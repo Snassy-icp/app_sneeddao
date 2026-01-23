@@ -162,6 +162,12 @@ type SneedLock =
    get_ledger_token_locks: (ledger_canister_id: TokenType) ->
     (vec FullyQualifiedLock) query;
    get_lock_by_id: (lock_id: LockId) -> (opt LockInfo) query;
+   get_lock_fee_stats: () ->
+    (record {
+       total_fees_collected_e8s: nat;
+       total_position_lock_fees_collected_e8s: nat;
+       total_token_lock_fees_collected_e8s: nat;
+     }) query;
    get_lock_fees_icp: () ->
     (record {
        fee_recipient_principal: opt principal;

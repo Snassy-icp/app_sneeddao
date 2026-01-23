@@ -141,6 +141,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var icp_fee_recipient_principal : ?Principal = null; // Default: this canister
   stable var icp_fee_recipient_subaccount : ?Blob = null; // Default: null (main account)
   
+  // ICP fee collection stats
+  stable var total_token_lock_fees_collected_e8s : Nat = 0;
+  stable var total_position_lock_fees_collected_e8s : Nat = 0;
+  
   // Ephemeral timer state (not stable - timer IDs don't persist across upgrades)
   transient var next_scheduled_timer_time : ?T.Timestamp = null;
 
@@ -1064,7 +1068,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
       // Step 3: Charge the ICP fee (only after lock is successfully created)
       if (fee_to_charge > 0) {
-        let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge);
+        let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge, #TokenLock);
         switch (charge_result) {
           case (#Err(e)) {
             // Lock was created but fee charge failed - log this but don't fail the lock
@@ -1219,7 +1223,7 @@ shared (deployer) persistent actor class SneedLock() = this {
 
             // Step 3: Charge the ICP fee (only after lock is successfully created)
             if (fee_to_charge > 0) {
-              let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge);
+              let charge_result = await chargeLockFeeIcp(caller, correlation_id, fee_to_charge, #PositionLock);
               switch (charge_result) {
                 case (#Err(e)) {
                   // Lock was created but fee charge failed - log this but don't fail the lock
@@ -1815,6 +1819,19 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
   };
 
+  // Query: Get ICP lock fee collection stats
+  public query func get_lock_fee_stats() : async {
+    total_token_lock_fees_collected_e8s : Nat;
+    total_position_lock_fees_collected_e8s : Nat;
+    total_fees_collected_e8s : Nat;
+  } {
+    {
+      total_token_lock_fees_collected_e8s = total_token_lock_fees_collected_e8s;
+      total_position_lock_fees_collected_e8s = total_position_lock_fees_collected_e8s;
+      total_fees_collected_e8s = total_token_lock_fees_collected_e8s + total_position_lock_fees_collected_e8s;
+    };
+  };
+
   // Query: Get payment subaccount for a user
   public query func getPaymentSubaccount(user : Principal) : async Blob {
     userPaymentSubaccount(user);
@@ -1899,9 +1916,12 @@ shared (deployer) persistent actor class SneedLock() = this {
     #Ok(fee_nat);
   };
 
+  // Lock type for fee tracking
+  public type LockType = { #TokenLock; #PositionLock };
+
   // Charge the ICP lock fee (transfer from user's payment subaccount to main account)
   // Should only be called after lock is successfully created
-  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat) : async { #Ok : Nat; #Err : Text } {
+  private func chargeLockFeeIcp(caller : Principal, correlation_id : Nat, fee_nat : Nat, lock_type : LockType) : async { #Ok : Nat; #Err : Text } {
     // If fee is 0, nothing to charge
     if (fee_nat == 0) {
       return #Ok(0);
@@ -1939,6 +1959,11 @@ shared (deployer) persistent actor class SneedLock() = this {
       
       switch (transfer_result) {
         case (#Ok(blockIdx)) {
+          // Update stats based on lock type
+          switch (lock_type) {
+            case (#TokenLock) { total_token_lock_fees_collected_e8s += fee_nat; };
+            case (#PositionLock) { total_position_lock_fees_collected_e8s += fee_nat; };
+          };
           log_info(caller, correlation_id, "ICP lock fee charged: " # Nat.toText(transfer_amount) # " e8s, block: " # Nat.toText(blockIdx));
           #Ok(fee_nat);
         };

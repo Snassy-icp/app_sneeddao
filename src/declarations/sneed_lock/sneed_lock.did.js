@@ -347,6 +347,17 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_lock_by_id' : IDL.Func([LockId], [IDL.Opt(LockInfo)], ['query']),
+    'get_lock_fee_stats' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'total_position_lock_fees_collected_e8s' : IDL.Nat,
+            'total_fees_collected_e8s' : IDL.Nat,
+            'total_token_lock_fees_collected_e8s' : IDL.Nat,
+          }),
+        ],
+        ['query'],
+      ),
     'get_lock_fees_icp' : IDL.Func(
         [],
         [
