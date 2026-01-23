@@ -60,6 +60,8 @@ export default function SneedLockAdmin() {
   const [premiumTokenLockFeeIcp, setPremiumTokenLockFeeIcp] = useState('');
   const [premiumPositionLockFeeIcp, setPremiumPositionLockFeeIcp] = useState('');
   const [premiumCanisterId, setPremiumCanisterId] = useState('');
+  const [feeRecipientPrincipal, setFeeRecipientPrincipal] = useState('');
+  const [feeRecipientSubaccount, setFeeRecipientSubaccount] = useState('');
   
   // Admin list state
   const [adminList, setAdminList] = useState([]);
@@ -121,6 +123,16 @@ export default function SneedLockAdmin() {
       setPremiumPositionLockFeeIcp(Number(icpFees.premium_position_lock_fee_icp_e8s).toString());
       if (icpFees.sneed_premium_canister_id && icpFees.sneed_premium_canister_id.length > 0) {
         setPremiumCanisterId(icpFees.sneed_premium_canister_id[0].toString());
+      }
+      if (icpFees.fee_recipient_principal && icpFees.fee_recipient_principal.length > 0) {
+        setFeeRecipientPrincipal(icpFees.fee_recipient_principal[0].toString());
+      }
+      if (icpFees.fee_recipient_subaccount && icpFees.fee_recipient_subaccount.length > 0) {
+        // Convert Uint8Array to hex string for display
+        const subaccountHex = Array.from(icpFees.fee_recipient_subaccount[0])
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        setFeeRecipientSubaccount(subaccountHex);
       }
 
       // Fetch first page of logs with the range data directly
@@ -705,6 +717,49 @@ export default function SneedLockAdmin() {
     } catch (err) {
       console.error('Error setting premium canister:', err);
       setError('Failed to set premium canister: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetFeeRecipient = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      // Parse principal (optional - empty means use default/this canister)
+      let principalArg = [];
+      if (feeRecipientPrincipal && feeRecipientPrincipal.trim()) {
+        principalArg = [Principal.fromText(feeRecipientPrincipal.trim())];
+      }
+      
+      // Parse subaccount from hex string (optional)
+      let subaccountArg = [];
+      if (feeRecipientSubaccount && feeRecipientSubaccount.trim()) {
+        const hex = feeRecipientSubaccount.trim().replace(/^0x/, '');
+        if (hex.length > 0) {
+          const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+          subaccountArg = [bytes];
+        }
+      }
+      
+      const result = await actor.admin_set_icp_fee_recipient(principalArg, subaccountArg);
+      
+      if ('Ok' in result) {
+        setSuccess(result.Ok);
+        // Refresh fee config
+        const icpFees = await actor.get_lock_fees_icp();
+        setIcpFeeConfig(icpFees);
+      } else {
+        setError(`Failed to set fee recipient: ${result.Err}`);
+      }
+    } catch (err) {
+      console.error('Error setting fee recipient:', err);
+      setError('Failed to set fee recipient: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -2273,6 +2328,103 @@ export default function SneedLockAdmin() {
             }}
           >
             Update ICP Fees
+          </button>
+        </form>
+      </div>
+
+      {/* ICP Fee Recipient */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>🏦 Fee Recipient Account</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Configure where ICP lock fees are sent. Leave empty to use this canister's main account.
+        </p>
+        
+        {icpFeeConfig && (
+          <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+            <p style={{ color: '#888', fontSize: '13px', marginBottom: '8px' }}>
+              <strong>Current Recipient:</strong>
+            </p>
+            <p style={{ color: '#ffffff', fontSize: '13px', fontFamily: 'monospace', marginBottom: '4px' }}>
+              Principal: {icpFeeConfig.fee_recipient_principal && icpFeeConfig.fee_recipient_principal.length > 0 
+                ? <span style={{ color: '#3498db' }}>{icpFeeConfig.fee_recipient_principal[0].toString()}</span>
+                : <span style={{ color: '#888' }}>This canister (default)</span>}
+            </p>
+            <p style={{ color: '#ffffff', fontSize: '13px', fontFamily: 'monospace' }}>
+              Subaccount: {icpFeeConfig.fee_recipient_subaccount && icpFeeConfig.fee_recipient_subaccount.length > 0 
+                ? <span style={{ color: '#3498db' }}>
+                    {Array.from(icpFeeConfig.fee_recipient_subaccount[0]).map(b => b.toString(16).padStart(2, '0')).join('')}
+                  </span>
+                : <span style={{ color: '#888' }}>Main account (default)</span>}
+            </p>
+          </div>
+        )}
+        
+        <form onSubmit={handleSetFeeRecipient}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Recipient Principal (leave empty for this canister)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., xxxxx-xxxxx-xxxxx-xxxxx-cai"
+                value={feeRecipientPrincipal}
+                onChange={(e) => setFeeRecipientPrincipal(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Recipient Subaccount (hex, leave empty for main account)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., 0000000000000000000000000000000000000000000000000000000000000001"
+                value={feeRecipientSubaccount}
+                onChange={(e) => setFeeRecipientSubaccount(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace'
+                }}
+              />
+              <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+                32-byte subaccount as hex string (64 characters)
+              </p>
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              backgroundColor: '#e67e22',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            Update Fee Recipient
           </button>
         </form>
       </div>

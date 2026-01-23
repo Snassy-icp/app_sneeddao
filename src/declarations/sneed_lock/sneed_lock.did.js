@@ -196,6 +196,11 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'admin_set_icp_fee_recipient' : IDL.Func(
+        [IDL.Opt(IDL.Principal), IDL.Opt(IDL.Vec(IDL.Nat8))],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_set_lock_fees_icp' : IDL.Func(
         [
           IDL.Opt(IDL.Nat64),
@@ -346,11 +351,13 @@ export const idlFactory = ({ IDL }) => {
         [],
         [
           IDL.Record({
+            'fee_recipient_principal' : IDL.Opt(IDL.Principal),
             'premium_position_lock_fee_icp_e8s' : IDL.Nat64,
             'token_lock_fee_icp_e8s' : IDL.Nat64,
             'sneed_premium_canister_id' : IDL.Opt(IDL.Principal),
             'premium_token_lock_fee_icp_e8s' : IDL.Nat64,
             'position_lock_fee_icp_e8s' : IDL.Nat64,
+            'fee_recipient_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
           }),
         ],
         ['query'],

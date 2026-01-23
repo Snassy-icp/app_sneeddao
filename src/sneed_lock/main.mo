@@ -137,6 +137,10 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var premium_token_lock_fee_icp_e8s : Nat64 = 0; // Default 0 - free for premium
   stable var premium_position_lock_fee_icp_e8s : Nat64 = 0; // Default 0 - free for premium
   
+  // ICP fee recipient account (where lock fees are sent)
+  stable var icp_fee_recipient_principal : ?Principal = null; // Default: this canister
+  stable var icp_fee_recipient_subaccount : ?Blob = null; // Default: null (main account)
+  
   // Ephemeral timer state (not stable - timer IDs don't persist across upgrades)
   transient var next_scheduled_timer_time : ?T.Timestamp = null;
 
@@ -1766,6 +1770,30 @@ shared (deployer) persistent actor class SneedLock() = this {
     #Ok("Lock fees updated successfully");
   };
 
+  // Admin: Set ICP fee recipient account
+  public shared ({ caller }) func admin_set_icp_fee_recipient(
+    recipient_principal : ?Principal,
+    recipient_subaccount : ?Blob
+  ) : async { #Ok : Text; #Err : Text } {
+    if (not isAdmin(caller)) {
+      return #Err("Only admins can set the fee recipient");
+    };
+    
+    icp_fee_recipient_principal := recipient_principal;
+    icp_fee_recipient_subaccount := recipient_subaccount;
+    
+    let principal_text = switch (recipient_principal) {
+      case (?p) { Principal.toText(p) };
+      case null { "this canister (default)" };
+    };
+    let subaccount_text = switch (recipient_subaccount) {
+      case (?s) { "custom subaccount" };
+      case null { "main account" };
+    };
+    
+    #Ok("Fee recipient set to: " # principal_text # " / " # subaccount_text);
+  };
+
   // Query: Get ICP lock fee configuration
   public query func get_lock_fees_icp() : async {
     token_lock_fee_icp_e8s : Nat64;
@@ -1773,6 +1801,8 @@ shared (deployer) persistent actor class SneedLock() = this {
     premium_token_lock_fee_icp_e8s : Nat64;
     premium_position_lock_fee_icp_e8s : Nat64;
     sneed_premium_canister_id : ?Principal;
+    fee_recipient_principal : ?Principal;
+    fee_recipient_subaccount : ?Blob;
   } {
     {
       token_lock_fee_icp_e8s = token_lock_fee_icp_e8s;
@@ -1780,6 +1810,8 @@ shared (deployer) persistent actor class SneedLock() = this {
       premium_token_lock_fee_icp_e8s = premium_token_lock_fee_icp_e8s;
       premium_position_lock_fee_icp_e8s = premium_position_lock_fee_icp_e8s;
       sneed_premium_canister_id = sneed_premium_canister_id;
+      fee_recipient_principal = icp_fee_recipient_principal;
+      fee_recipient_subaccount = icp_fee_recipient_subaccount;
     };
   };
 
@@ -1889,11 +1921,15 @@ shared (deployer) persistent actor class SneedLock() = this {
       } -> async { #Ok : Nat; #Err : T.TransferError };
     };
     
-    // Transfer fee to main account (fee recipient)
+    // Transfer fee to configured recipient (or this canister's main account by default)
+    let recipient_owner = switch (icp_fee_recipient_principal) {
+      case (?p) { p };
+      case null { this_canister_id() };
+    };
     let transfer_amount = if (fee_nat > icp_fee_nat) { fee_nat - icp_fee_nat } else { 0 };
     if (transfer_amount > 0) {
       let transfer_result = await icpLedger.icrc1_transfer({
-        to = { owner = this_canister_id(); subaccount = null }; // Main account collects fees
+        to = { owner = recipient_owner; subaccount = icp_fee_recipient_subaccount };
         fee = ?icp_fee_nat;
         memo = null;
         from_subaccount = ?subaccount;

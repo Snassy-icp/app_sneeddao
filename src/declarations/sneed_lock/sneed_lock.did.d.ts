@@ -145,6 +145,11 @@ export interface SneedLock {
     [boolean],
     undefined
   >,
+  'admin_set_icp_fee_recipient' : ActorMethod<
+    [[] | [Principal], [] | [Uint8Array | number[]]],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
   'admin_set_lock_fees_icp' : ActorMethod<
     [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
     { 'Ok' : string } |
@@ -229,11 +234,13 @@ export interface SneedLock {
   'get_lock_fees_icp' : ActorMethod<
     [],
     {
+      'fee_recipient_principal' : [] | [Principal],
       'premium_position_lock_fee_icp_e8s' : bigint,
       'token_lock_fee_icp_e8s' : bigint,
       'sneed_premium_canister_id' : [] | [Principal],
       'premium_token_lock_fee_icp_e8s' : bigint,
       'position_lock_fee_icp_e8s' : bigint,
+      'fee_recipient_subaccount' : [] | [Uint8Array | number[]],
     }
   >,
   'get_lock_type' : ActorMethod<[LockId], [] | [LockType]>,

@@ -83,6 +83,11 @@ type SneedLock =
     principal, amount: nat, recipient_principal: principal) ->
     (TransferResult);
    admin_set_enforce_zero_balance_before_claim: (enforce: bool) -> ();
+   admin_set_icp_fee_recipient: (recipient_principal: opt principal,
+    recipient_subaccount: opt blob) -> (variant {
+                                          Err: text;
+                                          Ok: text;
+                                        });
    admin_set_lock_fees_icp: (token_lock_fee: opt nat64, position_lock_fee:
     opt nat64, premium_token_lock_fee: opt nat64, premium_position_lock_fee:
     opt nat64) -> (variant {
@@ -159,6 +164,8 @@ type SneedLock =
    get_lock_by_id: (lock_id: LockId) -> (opt LockInfo) query;
    get_lock_fees_icp: () ->
     (record {
+       fee_recipient_principal: opt principal;
+       fee_recipient_subaccount: opt blob;
        position_lock_fee_icp_e8s: nat64;
        premium_position_lock_fee_icp_e8s: nat64;
        premium_token_lock_fee_icp_e8s: nat64;
