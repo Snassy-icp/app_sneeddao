@@ -428,8 +428,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <SnsDropdown onSnsChange={onSnsChange} />
                 )}
 
-                {/* Theme Toggle */}
-                <ThemeToggle size="medium" />
+                {/* Theme Toggle - hidden on narrow screens */}
+                <div className="hide-on-narrow">
+                    <ThemeToggle size="medium" />
+                </div>
 
                 {/* Feed Link - hidden on narrow screens */}
                 <button

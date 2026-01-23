@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { computeAccountId } from './utils/PrincipalUtils';
+import ThemeToggle from './components/ThemeToggle';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
@@ -236,6 +237,25 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           {copyFeedback}
                       </div>
                   )}
+
+                  {/* Theme Toggle */}
+                  <div style={{ 
+                      marginBottom: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 0',
+                      borderTop: `1px solid ${theme.colors.border}`,
+                      borderBottom: `1px solid ${theme.colors.border}`
+                  }}>
+                      <span style={{ 
+                          color: theme.colors.mutedText, 
+                          fontSize: '12px'
+                      }}>
+                          Theme
+                      </span>
+                      <ThemeToggle size="small" />
+                  </div>
 
                   {/* Action Buttons */}
                   <div className="action-buttons">
