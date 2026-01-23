@@ -219,8 +219,8 @@ function Discussion({
     const { identity } = useAuth();
     const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
     
-    // Text limits hook
-    const { textLimits, loading: textLimitsLoading } = useTextLimits(forumActor);
+    // Text limits hook (includes premium-aware limits if user is premium)
+    const { textLimits, regularLimits, isPremium, loading: textLimitsLoading } = useTextLimits(forumActor);
     
     // Admin check
     const { isAdmin } = useAdminCheck({
@@ -1872,12 +1872,28 @@ function Discussion({
                                             color: commentText.length > textLimits.max_body_length ? '#e74c3c' : 
                                                    (textLimits.max_body_length - commentText.length) < 100 ? '#f39c12' : '#888',
                                             marginBottom: '10px',
-                                            textAlign: 'right'
+                                            textAlign: 'right',
+                                            display: 'flex',
+                                            justifyContent: 'flex-end',
+                                            alignItems: 'center',
+                                            gap: '8px'
                                         }}>
-                                            Body: {commentText.length}/{textLimits.max_body_length} characters
+                                            <span>Body: {commentText.length}/{textLimits.max_body_length} characters</span>
                                             {commentText.length > textLimits.max_body_length && 
-                                                <span style={{ marginLeft: '10px' }}>({commentText.length - textLimits.max_body_length} over limit)</span>
+                                                <span>({commentText.length - textLimits.max_body_length} over limit)</span>
                                             }
+                                            {isPremium && regularLimits && textLimits.max_body_length > regularLimits.max_body_length && (
+                                                <span style={{
+                                                    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                                    color: '#ffd700',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '10px',
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    ⭐ PREMIUM
+                                                </span>
+                                            )}
                                         </div>
                                     )}
                                     <div style={{ display: 'flex', gap: '10px' }}>

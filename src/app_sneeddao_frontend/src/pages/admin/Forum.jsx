@@ -32,6 +32,12 @@ export default function Forum() {
   const [textLimitsError, setTextLimitsError] = useState('');
   const [updatingTextLimits, setUpdatingTextLimits] = useState(false);
   
+  // State for premium config
+  const [premiumConfig, setPremiumConfig] = useState(null);
+  const [premiumConfigLoading, setPremiumConfigLoading] = useState(false);
+  const [premiumConfigError, setPremiumConfigError] = useState('');
+  const [updatingPremiumConfig, setUpdatingPremiumConfig] = useState(false);
+  
   // Loading states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -120,6 +126,9 @@ export default function Forum() {
           break;
         case 'textlimits':
           await fetchTextLimits();
+          break;
+        case 'premium':
+          await fetchPremiumConfig();
           break;
       }
       setError('');
@@ -248,6 +257,67 @@ export default function Forum() {
       setTextLimitsError('Failed to update text limits: ' + err.message);
     } finally {
       setUpdatingTextLimits(false);
+    }
+  };
+
+  const fetchPremiumConfig = async () => {
+    setPremiumConfigLoading(true);
+    setPremiumConfigError('');
+    try {
+      const result = await forumActor.get_premium_config();
+      setPremiumConfig({
+        sneed_premium_canister_id: result.sneed_premium_canister_id && result.sneed_premium_canister_id.length > 0 
+          ? result.sneed_premium_canister_id[0].toString() 
+          : '',
+        premium_post_body_max_length: Number(result.premium_post_body_max_length),
+        premium_thread_body_max_length: Number(result.premium_thread_body_max_length),
+      });
+    } catch (err) {
+      console.error('Error fetching premium config:', err);
+      setPremiumConfigError('Failed to fetch premium config: ' + err.message);
+    } finally {
+      setPremiumConfigLoading(false);
+    }
+  };
+
+  const handleUpdatePremiumConfig = async () => {
+    setUpdatingPremiumConfig(true);
+    setPremiumConfigError('');
+    try {
+      // Build the update input - using optional fields
+      const updateInput = {
+        premium_post_body_max_length: [premiumConfig.premium_post_body_max_length],
+        premium_thread_body_max_length: [premiumConfig.premium_thread_body_max_length],
+      };
+      
+      // Handle the canister ID - use nested optional [[Principal]] or [[]] or []
+      if (premiumConfig.sneed_premium_canister_id && premiumConfig.sneed_premium_canister_id.trim()) {
+        try {
+          const principal = Principal.fromText(premiumConfig.sneed_premium_canister_id.trim());
+          updateInput.sneed_premium_canister_id = [[principal]];
+        } catch (e) {
+          setPremiumConfigError('Invalid Principal ID format');
+          setUpdatingPremiumConfig(false);
+          return;
+        }
+      } else {
+        // Set to null (clear)
+        updateInput.sneed_premium_canister_id = [[]];
+      }
+      
+      const result = await forumActor.update_premium_config(updateInput);
+      if ('ok' in result) {
+        await fetchPremiumConfig(); // Refresh
+        setPremiumConfigError('');
+        alert('Premium config updated successfully!');
+      } else {
+        setPremiumConfigError('Failed to update premium config: ' + formatError(result.err));
+      }
+    } catch (err) {
+      console.error('Error updating premium config:', err);
+      setPremiumConfigError('Failed to update premium config: ' + err.message);
+    } finally {
+      setUpdatingPremiumConfig(false);
     }
   };
 
@@ -1329,6 +1399,137 @@ export default function Forum() {
     </div>
   );
 
+  const renderPremiumConfig = () => (
+    <div className="forum-section">
+      <div className="section-header">
+        <h2>Premium Configuration</h2>
+        <button 
+          className="create-btn"
+          onClick={fetchPremiumConfig}
+          disabled={premiumConfigLoading}
+        >
+          Refresh
+        </button>
+      </div>
+      
+      <p style={{ color: '#aaa', marginBottom: '20px' }}>
+        Configure premium membership integration. Premium members get higher character limits for posts and threads.
+      </p>
+
+      {premiumConfigError && (
+        <div style={{
+          backgroundColor: 'rgba(231, 76, 60, 0.1)',
+          border: '1px solid #e74c3c',
+          color: '#e74c3c',
+          padding: '15px',
+          borderRadius: '4px',
+          marginBottom: '20px'
+        }}>
+          {premiumConfigError}
+        </div>
+      )}
+
+      {premiumConfig && (
+        <div className="create-form">
+          <div className="form-group">
+            <label>Sneed Premium Canister ID</label>
+            <input
+              type="text"
+              placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai (leave empty to disable)"
+              value={premiumConfig.sneed_premium_canister_id}
+              onChange={(e) => setPremiumConfig({
+                ...premiumConfig,
+                sneed_premium_canister_id: e.target.value
+              })}
+            />
+            <small style={{ color: '#888', display: 'block', marginTop: '5px' }}>
+              The canister ID of the Sneed Premium membership canister. Leave empty to disable premium features.
+            </small>
+          </div>
+          
+          <div className="form-group">
+            <label>Premium Post Body Max Length</label>
+            <input
+              type="number"
+              value={premiumConfig.premium_post_body_max_length}
+              onChange={(e) => setPremiumConfig({
+                ...premiumConfig,
+                premium_post_body_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1000"
+              max="100000"
+            />
+            <small style={{ color: '#888', display: 'block', marginTop: '5px' }}>
+              Maximum characters allowed in post body for premium members (default: 50,000).
+            </small>
+          </div>
+          
+          <div className="form-group">
+            <label>Premium Thread Body Max Length</label>
+            <input
+              type="number"
+              value={premiumConfig.premium_thread_body_max_length}
+              onChange={(e) => setPremiumConfig({
+                ...premiumConfig,
+                premium_thread_body_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1000"
+              max="100000"
+            />
+            <small style={{ color: '#888', display: 'block', marginTop: '5px' }}>
+              Maximum characters allowed in thread body for premium members (default: 50,000).
+            </small>
+          </div>
+
+          <div style={{ 
+            backgroundColor: 'rgba(255, 193, 7, 0.1)', 
+            border: '1px solid #ffc107', 
+            padding: '15px', 
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <strong style={{ color: '#ffc107' }}>Comparison with Regular Limits:</strong>
+            <div style={{ color: '#ccc', marginTop: '10px' }}>
+              {textLimits ? (
+                <>
+                  <div>Regular Post Body Max: <strong>{Number(textLimits.post_body_max_length).toLocaleString()}</strong> chars</div>
+                  <div>Premium Post Body Max: <strong style={{ color: '#4caf50' }}>{premiumConfig.premium_post_body_max_length.toLocaleString()}</strong> chars</div>
+                  <div style={{ marginTop: '10px' }}>Regular Thread Body Max: <strong>{Number(textLimits.thread_body_max_length).toLocaleString()}</strong> chars</div>
+                  <div>Premium Thread Body Max: <strong style={{ color: '#4caf50' }}>{premiumConfig.premium_thread_body_max_length.toLocaleString()}</strong> chars</div>
+                </>
+              ) : (
+                <span>Load Text Limits tab to see comparison</span>
+              )}
+            </div>
+          </div>
+
+          <div className="form-actions">
+            <button 
+              type="button"
+              onClick={handleUpdatePremiumConfig}
+              disabled={updatingPremiumConfig}
+              className="create-btn"
+            >
+              {updatingPremiumConfig ? 'Updating...' : 'Update Premium Config'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!premiumConfig && !premiumConfigLoading && (
+        <div className="no-selection">
+          Click "Refresh" to load current premium configuration.
+        </div>
+      )}
+      
+      {premiumConfigLoading && (
+        <div className="no-selection">
+          Loading premium configuration...
+        </div>
+      )}
+    </div>
+  );
+
   const handleAddAdmin = async (e) => {
     e.preventDefault();
     if (!forumActor || !newAdminPrincipal.trim()) return;
@@ -1484,7 +1685,7 @@ export default function Forum() {
         <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Forum Administration</h1>
         
         <div className="forum-tabs">
-          {['forums', 'topics', 'threads', 'posts', 'stats', 'textlimits'].map(tab => (
+          {['forums', 'topics', 'threads', 'posts', 'stats', 'textlimits', 'premium'].map(tab => (
             <button
               key={tab}
               className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -1510,6 +1711,7 @@ export default function Forum() {
           {activeTab === 'posts' && renderPosts()}
           {activeTab === 'stats' && renderStats()}
           {activeTab === 'textlimits' && renderTextLimits()}
+          {activeTab === 'premium' && renderPremiumConfig()}
         </div>
       </main>
     </div>

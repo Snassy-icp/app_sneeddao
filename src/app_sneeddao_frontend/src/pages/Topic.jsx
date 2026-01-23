@@ -416,8 +416,8 @@ function Topic() {
         }) : null;
     }, [identity]);
     
-    // Get text limits
-    const { textLimits } = useTextLimits(forumActor);
+    // Get text limits (includes premium-aware limits if user is premium)
+    const { textLimits, regularLimits, isPremium } = useTextLimits(forumActor);
 
     // Load SNS information and logo
     const loadSnsInfo = async () => {
@@ -1741,12 +1741,27 @@ function Topic() {
                                 fontSize: '12px',
                                 color: createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : 
                                        (textLimits.thread_body_max_length - createThreadBody.length) < 100 ? '#f39c12' : '#888',
-                                marginBottom: '10px'
+                                marginBottom: '10px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
                             }}>
-                                Body: {createThreadBody.length}/{textLimits.thread_body_max_length} characters
+                                <span>Body: {createThreadBody.length}/{textLimits.thread_body_max_length} characters</span>
                                 {createThreadBody.length > textLimits.thread_body_max_length && 
-                                    <span style={{ marginLeft: '10px' }}>({createThreadBody.length - textLimits.thread_body_max_length} over limit)</span>
+                                    <span>({createThreadBody.length - textLimits.thread_body_max_length} over limit)</span>
                                 }
+                                {isPremium && regularLimits && textLimits.thread_body_max_length > regularLimits.thread_body_max_length && (
+                                    <span style={{
+                                        backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                        color: '#ffd700',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '10px',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        ⭐ PREMIUM
+                                    </span>
+                                )}
                             </div>
                         )}
                         
