@@ -188,6 +188,20 @@ module {
         forum_title_max_length: ?Nat;
         forum_description_max_length: ?Nat;
     };
+    
+    // Premium configuration
+    public type PremiumConfig = {
+        sneed_premium_canister_id: ?Principal;
+        premium_post_body_max_length: Nat;
+        premium_thread_body_max_length: Nat;
+    };
+    
+    // Input type for updating premium config
+    public type UpdatePremiumConfigInput = {
+        sneed_premium_canister_id: ??Principal; // null = no change, ?null = clear, ?(?id) = set
+        premium_post_body_max_length: ?Nat;
+        premium_thread_body_max_length: ?Nat;
+    };
 
     // State type for the forum system
     public type ForumState = {
@@ -196,6 +210,9 @@ module {
         
         // Text limits configuration
         var text_limits: TextLimits;
+        
+        // Premium configuration
+        var premium_config: PremiumConfig;
         
         // Core data storage
         forums: Map.Map<Nat, Forum>;

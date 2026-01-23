@@ -8,6 +8,7 @@ import Time "mo:base/Time";
 
 import T "Types";
 import Lib "lib";
+import PremiumClient "../PremiumClient";
 
 persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
@@ -104,11 +105,20 @@ persistent actor SneedSNSForum {
     stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
     stable let stable_user_thread_reads = Map.new<Text, T.UserThreadReadData>();
     stable var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
+    
+    // Premium configuration and cache
+    stable var stable_premium_config : T.PremiumConfig = {
+        sneed_premium_canister_id = null;
+        premium_post_body_max_length = 50000;      // 50k chars for premium (vs 10k default)
+        premium_thread_body_max_length = 50000;    // 50k chars for premium (vs 10k default)
+    };
+    stable var stable_premium_cache = PremiumClient.emptyCache();
 
     // Runtime state that directly references stable storage
     private transient var state : T.ForumState = {
         var next_id = stable_next_id;
         var text_limits = stable_text_limits;
+        var premium_config = stable_premium_config;
         forums = stable_forums;
         topics = stable_topics;
         threads = stable_threads;
@@ -214,11 +224,35 @@ persistent actor SneedSNSForum {
 
     // Thread API endpoints
     public shared ({ caller }) func create_thread(input: T.CreateThreadInput) : async T.Result<Nat, T.ForumError> {
-        Lib.create_thread(state, caller, input)
+        // Check if user is premium and get appropriate body max length
+        let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
+            case null { null }; // No premium canister configured
+            case (?canisterId) {
+                let isPremium = await* PremiumClient.isPremium(stable_premium_cache, canisterId, caller);
+                if (isPremium) {
+                    ?state.premium_config.premium_thread_body_max_length
+                } else {
+                    null
+                };
+            };
+        };
+        Lib.create_thread(state, caller, input, body_max_override)
     };
 
     public shared ({ caller }) func update_thread(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
-        Lib.update_thread(state, caller, id, title, body)
+        // Check if user is premium and get appropriate body max length
+        let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
+            case null { null }; // No premium canister configured
+            case (?canisterId) {
+                let isPremium = await* PremiumClient.isPremium(stable_premium_cache, canisterId, caller);
+                if (isPremium) {
+                    ?state.premium_config.premium_thread_body_max_length
+                } else {
+                    null
+                };
+            };
+        };
+        Lib.update_thread(state, caller, id, title, body, body_max_override)
     };
 
     public query ({ caller }) func get_thread(id: Nat) : async ?T.ThreadResponse {
@@ -256,13 +290,37 @@ persistent actor SneedSNSForum {
         title: ?Text,
         body: Text
     ) : async T.Result<Nat, T.ForumError> {
-        let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, thread_id, reply_to_post_id, title, body, sns_cache);
+        // Check if user is premium and get appropriate body max length
+        let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
+            case null { null }; // No premium canister configured
+            case (?canisterId) {
+                let isPremium = await* PremiumClient.isPremium(stable_premium_cache, canisterId, caller);
+                if (isPremium) {
+                    ?state.premium_config.premium_post_body_max_length
+                } else {
+                    null
+                };
+            };
+        };
+        let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, thread_id, reply_to_post_id, title, body, sns_cache, body_max_override);
         sns_cache := updated_cache;
         result
     };
 
     public shared ({ caller }) func update_post(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
-        Lib.update_post(state, caller, id, title, body)
+        // Check if user is premium and get appropriate body max length
+        let body_max_override = switch (state.premium_config.sneed_premium_canister_id) {
+            case null { null }; // No premium canister configured
+            case (?canisterId) {
+                let isPremium = await* PremiumClient.isPremium(stable_premium_cache, canisterId, caller);
+                if (isPremium) {
+                    ?state.premium_config.premium_post_body_max_length
+                } else {
+                    null
+                };
+            };
+        };
+        Lib.update_post(state, caller, id, title, body, body_max_override)
     };
 
     public query ({ caller }) func get_post(id: Nat) : async ?T.PostResponse {
@@ -628,6 +686,49 @@ persistent actor SneedSNSForum {
 
     public shared ({ caller }) func update_text_limits(input: T.UpdateTextLimitsInput) : async T.Result<(), T.ForumError> {
         Lib.update_text_limits(state, caller, input)
+    };
+    
+    // Premium configuration management endpoints
+    public query func get_premium_config() : async T.PremiumConfig {
+        state.premium_config
+    };
+    
+    public shared ({ caller }) func update_premium_config(input: T.UpdatePremiumConfigInput) : async T.Result<(), T.ForumError> {
+        // Check if caller is admin
+        if (not Lib.is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+        
+        // Update config fields
+        state.premium_config := {
+            sneed_premium_canister_id = switch (input.sneed_premium_canister_id) {
+                case (?maybeId) { maybeId };
+                case null { state.premium_config.sneed_premium_canister_id };
+            };
+            premium_post_body_max_length = switch (input.premium_post_body_max_length) {
+                case (?len) { len };
+                case null { state.premium_config.premium_post_body_max_length };
+            };
+            premium_thread_body_max_length = switch (input.premium_thread_body_max_length) {
+                case (?len) { len };
+                case null { state.premium_config.premium_thread_body_max_length };
+            };
+        };
+        
+        // Sync to stable storage
+        stable_premium_config := state.premium_config;
+        
+        #ok(())
+    };
+    
+    // Helper to check if a user is a Sneed Premium member
+    public func check_user_premium_status(user: Principal) : async Bool {
+        switch (state.premium_config.sneed_premium_canister_id) {
+            case null { false }; // No premium canister configured
+            case (?canisterId) {
+                await* PremiumClient.isPremium(stable_premium_cache, canisterId, user);
+            };
+        };
     };
 
     // Read tracking endpoints

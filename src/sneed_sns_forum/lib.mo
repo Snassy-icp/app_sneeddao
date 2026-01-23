@@ -170,7 +170,8 @@ module {
         reply_to_post_id: ?Nat,
         title: ?Text,
         body: Text,
-        cache: SnsCache
+        cache: SnsCache,
+        body_max_length_override: ?Nat
     ) : async (T.Result<Nat, T.ForumError>, SnsCache) {
         let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_thread(state, thread_id, cache, Time.now());
         
@@ -179,7 +180,7 @@ module {
                 try {
                     // Allow post creation without checking for neurons - users can post without voting power
                     // Just create the post with 0 initial voting power - voting will be done separately
-                    let post_id = create_post(state, caller, thread_id, reply_to_post_id, title, body, 0, Time.now());
+                    let post_id = create_post(state, caller, thread_id, reply_to_post_id, title, body, 0, Time.now(), body_max_length_override);
                     
                     (post_id, updated_cache)
                 } catch (error) {
@@ -1002,7 +1003,8 @@ module {
     public func create_thread(
         state: ForumState,
         caller: Principal,
-        input: T.CreateThreadInput
+        input: T.CreateThreadInput,
+        body_max_length_override: ?Nat
     ) : Result<Nat, ForumError> {
         // Check that user is authenticated (not anonymous)
         if (Principal.isAnonymous(caller)) {
@@ -1019,7 +1021,12 @@ module {
             };
             case null {};
         };
-        switch (validate_text(input.body, "Body", state.text_limits.thread_body_max_length)) {
+        // Use override body max length if provided (for premium users)
+        let effective_body_max = switch (body_max_length_override) {
+            case (?override) { override };
+            case null { state.text_limits.thread_body_max_length };
+        };
+        switch (validate_text(input.body, "Body", effective_body_max)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -1181,7 +1188,8 @@ module {
         title: ?Text,
         body: Text,
         initial_voting_power: Nat,
-        current_time: Int
+        current_time: Int,
+        body_max_length_override: ?Nat
     ) : Result<Nat, ForumError> {
         // Check that user is authenticated (not anonymous)
         if (Principal.isAnonymous(caller)) {
@@ -1198,7 +1206,12 @@ module {
             };
             case null {};
         };
-        switch (validate_text(body, "Body", state.text_limits.post_body_max_length)) {
+        // Use override body max length if provided (for premium users)
+        let effective_body_max = switch (body_max_length_override) {
+            case (?override) { override };
+            case null { state.text_limits.post_body_max_length };
+        };
+        switch (validate_text(body, "Body", effective_body_max)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -3194,7 +3207,8 @@ module {
         caller: Principal,
         thread_id: Nat,
         title: ?Text,
-        body: Text
+        body: Text,
+        body_max_length_override: ?Nat
     ) : Result<(), ForumError> {
         // Check admin access
         if (not is_admin(state, caller)) {
@@ -3213,7 +3227,12 @@ module {
                     };
                     case null {};
                 };
-                switch (validate_text(body, "Body", state.text_limits.thread_body_max_length)) {
+                // Use override body max length if provided (for premium users)
+                let effective_body_max = switch (body_max_length_override) {
+                    case (?override) { override };
+                    case null { state.text_limits.thread_body_max_length };
+                };
+                switch (validate_text(body, "Body", effective_body_max)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
@@ -3238,7 +3257,8 @@ module {
         caller: Principal,
         post_id: Nat,
         title: ?Text,
-        body: Text
+        body: Text,
+        body_max_length_override: ?Nat
     ) : Result<(), ForumError> {
         switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?post) {
@@ -3260,7 +3280,12 @@ module {
                     };
                     case null {};
                 };
-                switch (validate_text(body, "Body", state.text_limits.post_body_max_length)) {
+                // Use override body max length if provided (for premium users)
+                let effective_body_max = switch (body_max_length_override) {
+                    case (?override) { override };
+                    case null { state.text_limits.post_body_max_length };
+                };
+                switch (validate_text(body, "Body", effective_body_max)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
