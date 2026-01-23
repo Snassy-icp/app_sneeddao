@@ -14,6 +14,7 @@ import Time "mo:base/Time";
 import Int "mo:base/Int";
 
 import T "Types";
+import PremiumClient "../PremiumClient";
 
 shared (deployer) actor class AppSneedDaoBackend() = this {
 
@@ -101,6 +102,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   
   // Authorized callers for "for" methods (e.g., Sneedex)
   stable var stable_authorized_for_callers : [Principal] = [];
+
+  // Nickname limits configuration and premium integration
+  stable var stable_sneed_premium_canister_id : ?Principal = null;
+  stable var stable_max_neuron_nicknames : Nat = 10;
+  stable var stable_max_principal_nicknames : Nat = 10;
+  stable var stable_premium_max_neuron_nicknames : Nat = 100;
+  stable var stable_premium_max_principal_nicknames : Nat = 100;
+  stable var stable_premium_cache = PremiumClient.emptyCache();
 
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
@@ -198,6 +207,34 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Add public query function for admin check
   public query ({ caller }) func caller_is_admin() : async Bool {
     is_admin(caller)
+  };
+
+  // Helper function to check if a user is a Sneed Premium member
+  private func is_premium_member(user : Principal) : async* Bool {
+    switch (stable_sneed_premium_canister_id) {
+      case (?canister_id) {
+        try {
+          await* PremiumClient.isPremium(stable_premium_cache, canister_id, user);
+        } catch (e) {
+          // If check fails, default to non-premium
+          false
+        };
+      };
+      case null {
+        // No premium canister configured
+        false
+      };
+    };
+  };
+
+  // Get effective nickname limits based on premium status
+  private func get_nickname_limits(user : Principal) : async* (Nat, Nat) {
+    let is_premium = await* is_premium_member(user);
+    if (is_premium) {
+      (stable_premium_max_neuron_nicknames, stable_premium_max_principal_nicknames)
+    } else {
+      (stable_max_neuron_nicknames, stable_max_principal_nicknames)
+    }
   };
 
   // Whitelist management functions
@@ -1144,6 +1181,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         };
         return #ok("Successfully removed neuron nickname");
     } else {
+        // Check nickname limit (only when adding a new nickname)
+        let (neuron_limit, _) = await* get_nickname_limits(caller);
+        switch (neuron_nicknames.get(caller)) {
+            case (?existing_map) {
+                // Only check limit if this is a new nickname (not updating existing)
+                if (existing_map.get(key) == null and existing_map.size() >= neuron_limit) {
+                    return #err("You have reached the maximum number of neuron nicknames (" # Nat.toText(neuron_limit) # "). Get Sneed Premium for more!");
+                };
+            };
+            case null { };
+        };
+        
         // Get or create the user's nickname map
         let user_map = switch (neuron_nicknames.get(caller)) {
             case (?existing_map) { existing_map };
@@ -1514,6 +1563,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
           };
           return #ok("Successfully removed principal nickname");
       } else {
+          // Check nickname limit (only when adding a new nickname)
+          let (_, principal_limit) = await* get_nickname_limits(caller);
+          switch (principal_nicknames.get(caller)) {
+              case (?existing_map) {
+                  // Only check limit if this is a new nickname (not updating existing)
+                  if (existing_map.get(principal) == null and existing_map.size() >= principal_limit) {
+                      return #err("You have reached the maximum number of principal nicknames (" # Nat.toText(principal_limit) # "). Get Sneed Premium for more!");
+                  };
+              };
+              case null { };
+          };
+          
           // Get or create the user's nickname map
           let user_map = switch (principal_nicknames.get(caller)) {
               case (?existing_map) { existing_map };
@@ -1582,6 +1643,92 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       return [];
     };
     Iter.toArray(blacklisted_words.keys())
+  };
+
+  // ============================================
+  // NICKNAME LIMITS CONFIGURATION
+  // ============================================
+
+  // Set the Sneed Premium canister ID for premium membership checks
+  public shared ({ caller }) func set_nickname_premium_canister(canister_id : ?Principal) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    stable_sneed_premium_canister_id := canister_id;
+    #ok()
+  };
+
+  // Update nickname limits
+  public shared ({ caller }) func update_nickname_limits(
+    max_neuron_nicknames : ?Nat,
+    max_principal_nicknames : ?Nat,
+    premium_max_neuron_nicknames : ?Nat,
+    premium_max_principal_nicknames : ?Nat
+  ) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    switch (max_neuron_nicknames) {
+      case (?limit) { stable_max_neuron_nicknames := limit };
+      case null {};
+    };
+    switch (max_principal_nicknames) {
+      case (?limit) { stable_max_principal_nicknames := limit };
+      case null {};
+    };
+    switch (premium_max_neuron_nicknames) {
+      case (?limit) { stable_premium_max_neuron_nicknames := limit };
+      case null {};
+    };
+    switch (premium_max_principal_nicknames) {
+      case (?limit) { stable_premium_max_principal_nicknames := limit };
+      case null {};
+    };
+    #ok()
+  };
+
+  // Get nickname limits configuration
+  public query func get_nickname_limits_config() : async {
+    sneed_premium_canister_id : ?Principal;
+    max_neuron_nicknames : Nat;
+    max_principal_nicknames : Nat;
+    premium_max_neuron_nicknames : Nat;
+    premium_max_principal_nicknames : Nat;
+  } {
+    {
+      sneed_premium_canister_id = stable_sneed_premium_canister_id;
+      max_neuron_nicknames = stable_max_neuron_nicknames;
+      max_principal_nicknames = stable_max_principal_nicknames;
+      premium_max_neuron_nicknames = stable_premium_max_neuron_nicknames;
+      premium_max_principal_nicknames = stable_premium_max_principal_nicknames;
+    }
+  };
+
+  // Get the caller's current nickname counts and limits
+  public shared ({ caller }) func get_my_nickname_usage() : async {
+    neuron_nickname_count : Nat;
+    principal_nickname_count : Nat;
+    neuron_nickname_limit : Nat;
+    principal_nickname_limit : Nat;
+    is_premium : Bool;
+  } {
+    let neuron_count = switch (neuron_nicknames.get(caller)) {
+      case (?map) { map.size() };
+      case null { 0 };
+    };
+    let principal_count = switch (principal_nicknames.get(caller)) {
+      case (?map) { map.size() };
+      case null { 0 };
+    };
+    let (neuron_limit, principal_limit) = await* get_nickname_limits(caller);
+    let is_premium = await* is_premium_member(caller);
+    {
+      neuron_nickname_count = neuron_count;
+      principal_nickname_count = principal_count;
+      neuron_nickname_limit = neuron_limit;
+      principal_nickname_limit = principal_limit;
+      is_premium = is_premium;
+    }
   };
 
   // Partner management functions

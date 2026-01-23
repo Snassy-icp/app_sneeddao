@@ -223,6 +223,14 @@ type AppSneedDaoBackend =
    get_canister_groups: () -> (opt CanisterGroupsRoot) query;
    get_canister_info: (canister_id: principal) -> (Result_4);
    get_ledger_canister_ids: () -> (vec principal) query;
+   get_my_nickname_usage: () ->
+    (record {
+       is_premium: bool;
+       neuron_nickname_count: nat;
+       neuron_nickname_limit: nat;
+       principal_nickname_count: nat;
+       principal_nickname_limit: nat;
+     });
    get_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId) ->
     (opt record {
            text;
@@ -230,6 +238,14 @@ type AppSneedDaoBackend =
          }) query;
    get_neuron_nickname: (sns_root_canister_id: principal, neuron_id:
     NeuronId) -> (opt text) query;
+   get_nickname_limits_config: () ->
+    (record {
+       max_neuron_nicknames: nat;
+       max_principal_nicknames: nat;
+       premium_max_neuron_nicknames: nat;
+       premium_max_principal_nicknames: nat;
+       sneed_premium_canister_id: opt principal;
+     }) query;
    get_partner: (id: nat) -> (opt Partner) query;
    get_partners: () -> (vec Partner) query;
    get_principal_name: ("principal": principal) ->
@@ -271,6 +287,7 @@ type AppSneedDaoBackend =
     name: text) -> (Result);
    set_neuron_nickname: (sns_root_canister_id: principal, neuron_id:
     NeuronId, nickname: text) -> (Result);
+   set_nickname_premium_canister: (canister_id: opt principal) -> (Result_1);
    set_principal_name: (name: text) -> (Result);
    set_principal_name_for: ("principal": principal, name: text,
     sns_root_canister_id: opt principal) -> (Result);
@@ -290,6 +307,9 @@ type AppSneedDaoBackend =
    unverify_neuron_name: (sns_root_canister_id: principal, neuron_id:
     NeuronId) -> (Result);
    unverify_principal_name: ("principal": principal) -> (Result);
+   update_nickname_limits: (max_neuron_nicknames: opt nat,
+    max_principal_nicknames: opt nat, premium_max_neuron_nicknames: opt nat,
+    premium_max_principal_nicknames: opt nat) -> (Result_1);
    update_partner: (id: nat, name: text, logo_url: text, description: 
     text, links: vec PartnerLink, index: opt nat) -> (Result_1);
    update_project: (id: nat, name: text, logo_url: opt text, description:

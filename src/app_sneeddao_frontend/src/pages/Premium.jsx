@@ -19,6 +19,7 @@ import { createActor as createSneedexActor, canisterId as SNEEDEX_CANISTER_ID } 
 import { createActor as createNeuronManagerFactoryActor, canisterId as NEURON_MANAGER_FACTORY_CANISTER_ID } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createForumActor, canisterId as FORUM_CANISTER_ID } from 'declarations/sneed_sns_forum';
 import { createActor as createSmsActor, canisterId as SMS_CANISTER_ID } from 'declarations/sneed_sms';
+import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import InfoModal from '../components/InfoModal';
 import { 
@@ -268,8 +269,33 @@ export default function Premium() {
                     }
                 }
                 
+                // Fetch nickname limits from main backend
+                if (BACKEND_CANISTER_ID) {
+                    try {
+                        const backendActor = createBackendActor(BACKEND_CANISTER_ID, {});
+                        const nicknameConfig = await backendActor.get_nickname_limits_config();
+                        
+                        const regularNeuronLimit = Number(nicknameConfig.max_neuron_nicknames);
+                        const premiumNeuronLimit = Number(nicknameConfig.premium_max_neuron_nicknames);
+                        const regularPrincipalLimit = Number(nicknameConfig.max_principal_nicknames);
+                        const premiumPrincipalLimit = Number(nicknameConfig.premium_max_principal_nicknames);
+                        
+                        // Only show if premium has higher limits
+                        if (premiumNeuronLimit > regularNeuronLimit || premiumPrincipalLimit > regularPrincipalLimit) {
+                            pricing.nicknames = {
+                                regularNeuronLimit,
+                                premiumNeuronLimit,
+                                regularPrincipalLimit,
+                                premiumPrincipalLimit,
+                            };
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch nickname limits:', err);
+                    }
+                }
+                
                 // Only update if we got at least some pricing
-                if (pricing.sneedex || pricing.neuronManager || pricing.forum || pricing.sms) {
+                if (pricing.sneedex || pricing.neuronManager || pricing.forum || pricing.sms || pricing.nicknames) {
                     setPremiumPricing(pricing);
                 }
             } catch (err) {
@@ -1154,6 +1180,60 @@ export default function Premium() {
                                                     </span>
                                                     <span style={{ color: theme.colors.success, fontWeight: '600' }}>
                                                         {premiumPricing.sms.premiumMaxRecipients}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                
+                                {/* Nickname Limits */}
+                                {premiumPricing.nicknames && (
+                                    <>
+                                        {premiumPricing.nicknames.premiumNeuronLimit > premiumPricing.nicknames.regularNeuronLimit && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Neuron Nicknames</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.nicknames.regularNeuronLimit}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.nicknames.premiumNeuronLimit}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {premiumPricing.nicknames.premiumPrincipalLimit > premiumPricing.nicknames.regularPrincipalLimit && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Principal Nicknames</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.nicknames.regularPrincipalLimit}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.nicknames.premiumPrincipalLimit}
                                                     </span>
                                                 </div>
                                             </div>

@@ -45,11 +45,31 @@ export interface AppSneedDaoBackend {
   'get_canister_groups' : ActorMethod<[], [] | [CanisterGroupsRoot]>,
   'get_canister_info' : ActorMethod<[Principal], Result_4>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
+  'get_my_nickname_usage' : ActorMethod<
+    [],
+    {
+      'neuron_nickname_count' : bigint,
+      'is_premium' : boolean,
+      'neuron_nickname_limit' : bigint,
+      'principal_nickname_count' : bigint,
+      'principal_nickname_limit' : bigint,
+    }
+  >,
   'get_neuron_name' : ActorMethod<
     [Principal, NeuronId],
     [] | [[string, boolean]]
   >,
   'get_neuron_nickname' : ActorMethod<[Principal, NeuronId], [] | [string]>,
+  'get_nickname_limits_config' : ActorMethod<
+    [],
+    {
+      'premium_max_neuron_nicknames' : bigint,
+      'premium_max_principal_nicknames' : bigint,
+      'sneed_premium_canister_id' : [] | [Principal],
+      'max_principal_nicknames' : bigint,
+      'max_neuron_nicknames' : bigint,
+    }
+  >,
   'get_partner' : ActorMethod<[bigint], [] | [Partner]>,
   'get_partners' : ActorMethod<[], Array<Partner>>,
   'get_principal_name' : ActorMethod<[Principal], [] | [[string, boolean]]>,
@@ -85,6 +105,7 @@ export interface AppSneedDaoBackend {
   'set_canister_name' : ActorMethod<[Principal, string], Result>,
   'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result>,
+  'set_nickname_premium_canister' : ActorMethod<[[] | [Principal]], Result_1>,
   'set_principal_name' : ActorMethod<[string], Result>,
   'set_principal_name_for' : ActorMethod<
     [Principal, string, [] | [Principal]],
@@ -108,6 +129,10 @@ export interface AppSneedDaoBackend {
   'unregister_user_token_for' : ActorMethod<[Principal, Principal], undefined>,
   'unverify_neuron_name' : ActorMethod<[Principal, NeuronId], Result>,
   'unverify_principal_name' : ActorMethod<[Principal], Result>,
+  'update_nickname_limits' : ActorMethod<
+    [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
+    Result_1
+  >,
   'update_partner' : ActorMethod<
     [bigint, string, string, string, Array<PartnerLink>, [] | [bigint]],
     Result_1

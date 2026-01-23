@@ -191,6 +191,19 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Principal)],
         ['query'],
       ),
+    'get_my_nickname_usage' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'neuron_nickname_count' : IDL.Nat,
+            'is_premium' : IDL.Bool,
+            'neuron_nickname_limit' : IDL.Nat,
+            'principal_nickname_count' : IDL.Nat,
+            'principal_nickname_limit' : IDL.Nat,
+          }),
+        ],
+        [],
+      ),
     'get_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId],
         [IDL.Opt(IDL.Tuple(IDL.Text, IDL.Bool))],
@@ -199,6 +212,19 @@ export const idlFactory = ({ IDL }) => {
     'get_neuron_nickname' : IDL.Func(
         [IDL.Principal, NeuronId],
         [IDL.Opt(IDL.Text)],
+        ['query'],
+      ),
+    'get_nickname_limits_config' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'premium_max_neuron_nicknames' : IDL.Nat,
+            'premium_max_principal_nicknames' : IDL.Nat,
+            'sneed_premium_canister_id' : IDL.Opt(IDL.Principal),
+            'max_principal_nicknames' : IDL.Nat,
+            'max_neuron_nicknames' : IDL.Nat,
+          }),
+        ],
         ['query'],
       ),
     'get_partner' : IDL.Func([IDL.Nat], [IDL.Opt(Partner)], ['query']),
@@ -265,6 +291,11 @@ export const idlFactory = ({ IDL }) => {
         [Result],
         [],
       ),
+    'set_nickname_premium_canister' : IDL.Func(
+        [IDL.Opt(IDL.Principal)],
+        [Result_1],
+        [],
+      ),
     'set_principal_name' : IDL.Func([IDL.Text], [Result], []),
     'set_principal_name_for' : IDL.Func(
         [IDL.Principal, IDL.Text, IDL.Opt(IDL.Principal)],
@@ -299,6 +330,16 @@ export const idlFactory = ({ IDL }) => {
       ),
     'unverify_neuron_name' : IDL.Func([IDL.Principal, NeuronId], [Result], []),
     'unverify_principal_name' : IDL.Func([IDL.Principal], [Result], []),
+    'update_nickname_limits' : IDL.Func(
+        [
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+        ],
+        [Result_1],
+        [],
+      ),
     'update_partner' : IDL.Func(
         [
           IDL.Nat,
