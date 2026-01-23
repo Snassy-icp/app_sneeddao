@@ -433,6 +433,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <ThemeToggle size="medium" />
                 </div>
 
+                {/* Icon-only theme toggle for non-logged-in users on narrow screens */}
+                {!isAuthenticated && (
+                    <div className="show-on-narrow">
+                        <ThemeToggle iconOnly />
+                    </div>
+                )}
+
                 {/* Feed Link - hidden on narrow screens */}
                 <button
                     className="hide-on-narrow"

@@ -2,8 +2,39 @@ import React from 'react';
 import { FaSun, FaMoon } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 
-const ThemeToggle = ({ size = 'medium', showLabel = false }) => {
+const ThemeToggle = ({ size = 'medium', showLabel = false, iconOnly = false }) => {
   const { toggleTheme, isDark, theme } = useTheme();
+
+  // Icon-only mode: just a clickable sun/moon icon
+  if (iconOnly) {
+    return (
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleTheme();
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: isDark ? '#f39c12' : '#ffc107',
+          cursor: 'pointer',
+          padding: '4px',
+          borderRadius: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '16px',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+        title={`Switch to ${isDark ? 'bright' : 'dark'} mode`}
+      >
+        {isDark ? <FaMoon size={16} /> : <FaSun size={16} />}
+      </button>
+    );
+  }
 
   const sizes = {
     small: {

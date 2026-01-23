@@ -1,12 +1,41 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { FaSpinner } from 'react-icons/fa';
 
 function HelpSneedlock() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
+    
+    // State for lock fees
+    const [lockFees, setLockFees] = useState(null);
+    const [loadingFees, setLoadingFees] = useState(true);
+    
+    // Fetch lock fees on mount
+    useEffect(() => {
+        const fetchFees = async () => {
+            try {
+                const actor = createSneedLockActor(sneedLockCanisterId);
+                const fees = await actor.get_lock_fees_icp();
+                setLockFees(fees);
+            } catch (error) {
+                console.error('Error fetching lock fees:', error);
+            } finally {
+                setLoadingFees(false);
+            }
+        };
+        fetchFees();
+    }, []);
+    
+    // Format ICP amount from e8s
+    const formatIcp = (e8s) => {
+        if (e8s === null || e8s === undefined) return '...';
+        const icp = Number(e8s) / 100_000_000;
+        return icp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' ICP';
+    };
 
     const styles = {
         container: {
@@ -119,6 +148,41 @@ function HelpSneedlock() {
                     It allows you to lock assets for a specified period, proving commitment and enabling various use cases 
                     like vesting schedules, governance participation, and trust-building mechanisms.
                 </p>
+                
+                <div style={{
+                    ...styles.successBox,
+                    background: `linear-gradient(135deg, ${theme.colors.accent}20, ${theme.colors.success || '#4CAF50'}15)`,
+                    border: `2px solid ${theme.colors.accent}60`
+                }}>
+                    <h3 style={{...styles.subsubheading, marginTop: 0, color: theme.colors.accent}}>
+                        🧙 Get Started with the Lock Wizard
+                    </h3>
+                    <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                        New to locking? The <Link to="/lock_wizard" style={{...styles.link, fontWeight: '700'}}>Lock Wizard</Link> provides 
+                        a guided, step-by-step experience that walks you through:
+                    </p>
+                    <ul style={{...styles.list, marginBottom: '0.5rem'}}>
+                        <li style={styles.listItem}>Choosing between token locks and LP position locks</li>
+                        <li style={styles.listItem}>Selecting the asset you want to lock</li>
+                        <li style={styles.listItem}>Handling the ICP payment</li>
+                        <li style={styles.listItem}>Setting up your lock parameters</li>
+                    </ul>
+                    <p style={{...styles.paragraph, marginBottom: 0}}>
+                        <Link to="/lock_wizard" style={{
+                            ...styles.link,
+                            display: 'inline-block',
+                            padding: '8px 16px',
+                            background: theme.colors.accent,
+                            color: '#fff',
+                            borderRadius: '6px',
+                            textDecoration: 'none',
+                            fontWeight: '600',
+                            marginTop: '8px'
+                        }}>
+                            Launch Lock Wizard →
+                        </Link>
+                    </p>
+                </div>
 
                 {/* What is Sneedlock */}
                 <div style={styles.section}>
@@ -553,9 +617,44 @@ function HelpSneedlock() {
                     
                     <h3 style={styles.subsubheading}>Lock Fees</h3>
                     <p style={styles.paragraph}>
-                        Creating a lock requires a small fee paid in SNEED tokens. This fee helps maintain the Sneedlock 
-                        canister and prevents spam. The current fee is displayed when you create a lock.
+                        Creating a lock requires a small fee paid in <strong style={styles.strong}>ICP</strong>. This fee 
+                        helps maintain the Sneedlock canister and prevents spam. The fee is charged after your lock is 
+                        successfully created.
                     </p>
+                    
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                            <strong style={styles.strong}>💰 Current Lock Fees:</strong>
+                        </p>
+                        {loadingFees ? (
+                            <p style={{...styles.paragraph, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                <FaSpinner className="fa-spin" /> Loading fees...
+                            </p>
+                        ) : lockFees ? (
+                            <ul style={{...styles.list, marginBottom: 0}}>
+                                <li style={styles.listItem}>
+                                    <strong style={styles.strong}>Standard fee:</strong> {formatIcp(lockFees.lock_fee_icp_e8s)} per lock
+                                </li>
+                                <li style={styles.listItem}>
+                                    <strong style={styles.strong}>Premium member fee:</strong> {formatIcp(lockFees.premium_lock_fee_icp_e8s)} per lock
+                                </li>
+                            </ul>
+                        ) : (
+                            <p style={{...styles.paragraph, marginBottom: 0}}>
+                                Unable to load fees. Please check the lock creation dialog for current pricing.
+                            </p>
+                        )}
+                    </div>
+                    
+                    <div style={styles.successBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>⭐ Save with Sneed Premium!</strong> <Link to="/premium" style={styles.link}>Sneed Premium</Link> members 
+                            enjoy reduced lock fees. Premium membership also unlocks other benefits across the Sneed ecosystem. 
+                            {lockFees && lockFees.lock_fee_icp_e8s > lockFees.premium_lock_fee_icp_e8s && (
+                                <span> That's a savings of {formatIcp(lockFees.lock_fee_icp_e8s - lockFees.premium_lock_fee_icp_e8s)} per lock!</span>
+                            )}
+                        </p>
+                    </div>
                     
                     <h3 style={styles.subsubheading}>Maximum Lock Duration</h3>
                     <p style={styles.paragraph}>
@@ -568,14 +667,6 @@ function HelpSneedlock() {
                         Each lock must meet a minimum amount to be created. This is typically the token's transfer fee 
                         plus a small buffer to ensure the lock is economically meaningful.
                     </p>
-                    
-                    <div style={styles.errorBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>⚠️ SNEED Cannot Be Locked:</strong> SNEED tokens (the governance 
-                            token of Sneed DAO) cannot be locked in Sneedlock. If you try to lock SNEED, you'll receive 
-                            an error message. All other ICRC-1 tokens can be locked normally.
-                        </p>
-                    </div>
                 </div>
 
                 {/* Use Cases and Examples */}
@@ -703,14 +794,6 @@ function HelpSneedlock() {
                             even while the position remains locked!</strong> This means your locked liquidity keeps working for you.
                         </li>
                     </ul>
-                    
-                    <h3 style={styles.subsubheading}>Why can't I lock SNEED tokens?</h3>
-                    <p style={styles.paragraph}>
-                        SNEED is the governance token for Sneed DAO. To prevent potential conflicts between token locking 
-                        and governance participation (where tokens need to be staked in neurons), SNEED tokens are 
-                        explicitly excluded from Sneedlock. If you want to demonstrate commitment with SNEED, use the 
-                        neuron system instead (see <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link>).
-                    </p>
                     
                     <h3 style={styles.subsubheading}>Can I add more tokens to an existing lock?</h3>
                     <p style={styles.paragraph}>
