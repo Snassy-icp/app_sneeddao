@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
-import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'external/sneed_lock';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import Header from '../../components/Header';
 import { Principal } from '@dfinity/principal';
 

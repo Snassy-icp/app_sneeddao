@@ -9,7 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'external/sneed_lock';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from '../utils/TokenUtils';
 import { formatAmount } from '../utils/StringUtils';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from '../utils/DateUtils';
