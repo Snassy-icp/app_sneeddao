@@ -97,11 +97,11 @@ export type LockType = { 'PositionLock' : null } |
   { 'TokenLock' : null };
 export interface PaymentLogEntry {
   'id' : bigint,
-  'timestamp' : Timestamp,
-  'payer' : Principal,
   'amount_e8s' : bigint,
   'icp_transaction_id' : bigint,
+  'timestamp' : Timestamp,
   'lock_type' : LockType,
+  'payer' : Principal,
   'correlation_id' : bigint,
 }
 export type PositionId = bigint;

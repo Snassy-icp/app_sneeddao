@@ -255,11 +255,6 @@ type PositionLock =
    token1: TokenType;
  };
 type PositionId = nat;
-type LockType = 
- variant {
-   PositionLock;
-   TokenLock;
- };
 type PaymentLogEntry = 
  record {
    amount_e8s: nat;
@@ -269,6 +264,11 @@ type PaymentLogEntry =
    lock_type: LockType;
    payer: principal;
    timestamp: Timestamp;
+ };
+type LockType = 
+ variant {
+   PositionLock;
+   TokenLock;
  };
 type LockInfo = 
  variant {

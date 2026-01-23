@@ -1,9 +1,22 @@
 export const idlFactory = ({ IDL }) => {
+  const Timestamp = IDL.Nat64;
+  const LockType = IDL.Variant({
+    'PositionLock' : IDL.Null,
+    'TokenLock' : IDL.Null,
+  });
+  const PaymentLogEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'amount_e8s' : IDL.Nat,
+    'icp_transaction_id' : IDL.Nat,
+    'timestamp' : Timestamp,
+    'lock_type' : LockType,
+    'payer' : IDL.Principal,
+    'correlation_id' : IDL.Nat,
+  });
   const ClaimRequestId = IDL.Nat;
   const TokenType = IDL.Principal;
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
-  const Timestamp = IDL.Nat64;
   const TransferError = IDL.Variant({
     'GenericError' : IDL.Record({
       'message' : IDL.Text,
@@ -118,19 +131,6 @@ export const idlFactory = ({ IDL }) => {
     'PositionLock' : FullyQualifiedPositionLock,
     'TokenLock' : FullyQualifiedLock,
   });
-  const LockType = IDL.Variant({
-    'PositionLock' : IDL.Null,
-    'TokenLock' : IDL.Null,
-  });
-  const PaymentLogEntry = IDL.Record({
-    'id' : IDL.Nat,
-    'timestamp' : Timestamp,
-    'payer' : IDL.Principal,
-    'amount_e8s' : IDL.Nat,
-    'icp_transaction_id' : IDL.Nat,
-    'lock_type' : LockType,
-    'correlation_id' : IDL.Nat,
-  });
   const ClaimAndWithdrawResult = IDL.Variant({
     'Ok' : ClaimRequestId,
     'Err' : IDL.Text,
@@ -170,11 +170,13 @@ export const idlFactory = ({ IDL }) => {
     'admin_emergency_stop_timer' : IDL.Func([], [], []),
     'admin_get_payment_log' : IDL.Func(
         [IDL.Nat, IDL.Nat],
-        [IDL.Record({
-          'payments' : IDL.Vec(PaymentLogEntry),
-          'total_count' : IDL.Nat,
-          'has_more' : IDL.Bool,
-        })],
+        [
+          IDL.Record({
+            'payments' : IDL.Vec(PaymentLogEntry),
+            'total_count' : IDL.Nat,
+            'has_more' : IDL.Bool,
+          }),
+        ],
         ['query'],
       ),
     'admin_get_payment_log_count' : IDL.Func([], [IDL.Nat], ['query']),
