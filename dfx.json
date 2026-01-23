@@ -4,6 +4,10 @@
       "main": "src/app_sneeddao_backend/main.mo",
       "type": "motoko"
     },
+    "sneed_lock": {
+      "main": "src/sneed_lock/main.mo",
+      "type": "motoko"
+    },
     "sneed_sns_forum": {
       "main": "src/sneed_sns_forum/main.mo",
       "type": "motoko"
@@ -49,18 +53,6 @@
         "id": {
           "ic": "lvc4n-7aaaa-aaaam-adm6a-cai",
           "staging": "twapx-riaaa-aaaak-qlojq-cai"
-        }
-      }
-    },
-    "sneed_lock": {
-      "type": "custom",
-      "candid": "src/external/sneed_lock/sneed_lock.did",
-      "wasm": "none",
-      "build": "false",
-      "remote": {
-        "id": {
-          "ic": "pqsms-lqaaa-aaaal-ajjza-cai",
-          "staging": "25fsc-7yaaa-aaaal-qjt5q-cai"
         }
       }
     },
