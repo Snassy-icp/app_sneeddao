@@ -1352,6 +1352,35 @@ function CreateIcpNeuron() {
                         <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
                     </ol>
                     
+                    {/* Cycles Safety Info */}
+                    <div style={{ 
+                        marginTop: '20px', 
+                        padding: '16px', 
+                        background: `${theme.colors.success || '#22c55e'}10`,
+                        borderRadius: '8px',
+                        borderLeft: `3px solid ${theme.colors.success || '#22c55e'}`,
+                    }}>
+                        <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span>✅</span> Your Neurons Are Always Safe
+                        </h4>
+                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: '1.6', marginBottom: '10px' }}>
+                            <strong>What if my canister runs out of cycles?</strong> Your neurons are stored on the NNS governance 
+                            system, not in your canister. Even if your canister freezes or is deleted, your neurons remain safe, 
+                            you stay the controller, and you can always top up cycles and reinstall the code. No critical data is lost.
+                        </p>
+                        <Link 
+                            to="/help/icp-neuron-manager#cycles-depletion" 
+                            style={{ 
+                                color: theme.colors.accent, 
+                                fontSize: '12px',
+                                textDecoration: 'none',
+                                fontWeight: '600'
+                            }}
+                        >
+                            Learn more about cycles and safety →
+                        </Link>
+                    </div>
+                    
                     {/* Access Points Info */}
                     <div style={{ 
                         marginTop: '20px', 

@@ -652,13 +652,100 @@ function HelpIcpNeuronManager() {
                         </p>
                     </div>
 
-                    <div style={styles.highlight}>
+                    <div style={styles.highlight} id="cycles-depletion">
                         <h3 style={styles.subsubheading}>What happens if my canister runs out of cycles?</h3>
                         <p style={styles.paragraph}>
-                            If a canister runs out of cycles, it will stop responding to calls. Your neurons remain safe on 
-                            the NNS - you just won't be able to manage them until you top up the canister with more cycles. 
-                            Monitor your cycles balance regularly and top up before it gets too low.
+                            <strong style={styles.strong}>Your neurons are completely safe.</strong> Here's exactly what happens 
+                            and why you don't need to worry:
                         </p>
+                        
+                        <div style={styles.successBox}>
+                            <h4 style={{...styles.subsubheading, marginTop: 0, fontSize: '1.1rem'}}>✅ What Stays Safe</h4>
+                            <ul style={{...styles.list, marginBottom: 0}}>
+                                <li style={styles.listItem}>
+                                    <strong style={styles.strong}>Your neurons are stored on the NNS, not in your canister.</strong> The 
+                                    NNS governance canister (rrkah-fqaaa-aaaaa-aaaaq-cai) holds all neuron data. Your neuron manager 
+                                    canister is just a "remote control" that sends commands to the NNS.
+                                </li>
+                                <li style={styles.listItem}>
+                                    <strong style={styles.strong}>You remain the controller.</strong> The Internet Computer's protocol-level 
+                                    controller mechanism is independent of cycles. Even if your canister is frozen or deleted, you remain 
+                                    listed as the controller and can still manage it.
+                                </li>
+                                <li style={styles.listItem}>
+                                    <strong style={styles.strong}>No important state is stored in the canister.</strong> Your canister doesn't 
+                                    store any private keys, neuron IDs, or ownership data that can't be recovered. All critical data lives on-chain 
+                                    in the NNS governance system.
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div style={styles.infoBox}>
+                            <h4 style={{...styles.subsubheading, marginTop: 0, fontSize: '1.1rem'}}>🔄 How to Recover</h4>
+                            <p style={styles.paragraph}>
+                                If your canister runs out of cycles:
+                            </p>
+                            <ol style={{...styles.stepList, marginBottom: 0}}>
+                                <li style={styles.stepItem}>
+                                    <strong style={styles.strong}>Top up cycles:</strong> As the controller, you can always send more cycles 
+                                    to your canister using <code style={styles.code}>dfx canister deposit-cycles</code> or any wallet that supports 
+                                    ICP-to-cycles conversion. The canister will resume operation.
+                                </li>
+                                <li style={styles.stepItem}>
+                                    <strong style={styles.strong}>Reinstall if needed:</strong> Controllers can update or reinstall the WASM module 
+                                    on any canister they control, regardless of its cycles balance. You can reinstall the neuron manager code 
+                                    after topping up.
+                                </li>
+                                <li style={styles.stepItem}>
+                                    <strong style={styles.strong}>Query your neurons:</strong> Even if the canister is frozen, your neurons still 
+                                    exist on the NNS. You can query them directly using dfx or any NNS interface.
+                                </li>
+                            </ol>
+                        </div>
+                        
+                        <div style={styles.warningBox}>
+                            <h4 style={{...styles.subsubheading, marginTop: 0, fontSize: '1.1rem'}}>⏰ Freezing Threshold</h4>
+                            <p style={{...styles.paragraph, marginBottom: 0}}>
+                                When a canister's cycles balance drops below a certain threshold, it enters a "frozen" state. 
+                                While frozen, it cannot execute code, but the canister and its controllers are preserved. 
+                                Controllers can still top up the canister to unfreeze it. Only if a canister remains frozen 
+                                without sufficient cycles for an extended period may it be deleted - but even then, your neurons 
+                                remain safe on the NNS.
+                            </p>
+                        </div>
+                        
+                        <div style={{
+                            marginTop: '1rem',
+                            paddingTop: '1rem',
+                            borderTop: `1px solid ${theme.colors.border}`,
+                        }}>
+                            <p style={{...styles.paragraph, fontSize: '0.95rem', marginBottom: '0.5rem'}}>
+                                📚 <strong style={styles.strong}>Learn More:</strong> For technical details on canister lifecycle 
+                                and control, see the official ICP documentation:
+                            </p>
+                            <ul style={{...styles.list, marginBottom: 0}}>
+                                <li style={{...styles.listItem, fontSize: '0.95rem'}}>
+                                    <a 
+                                        href="https://docs.internetcomputer.org/references/ic-interface-spec" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                    >
+                                        IC Interface Specification
+                                    </a> - Official protocol documentation
+                                </li>
+                                <li style={{...styles.listItem, fontSize: '0.95rem'}}>
+                                    <a 
+                                        href="https://learn.internetcomputer.org/hc/en-us/articles/34573932107796-Canister-Control" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                    >
+                                        Canister Control
+                                    </a> - How canister controllers work
+                                </li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div style={styles.highlight}>
