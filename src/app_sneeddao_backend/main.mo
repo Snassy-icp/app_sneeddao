@@ -110,6 +110,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_premium_max_neuron_nicknames : Nat = 100;
   stable var stable_premium_max_principal_nicknames : Nat = 100;
   stable var stable_premium_cache = PremiumClient.emptyCache();
+  
+  // Canister groups limits configuration
+  stable var stable_max_canister_groups : Nat = 5;          // Max folders/groups for regular users
+  stable var stable_max_canisters_per_group : Nat = 20;     // Max canisters in a single group
+  stable var stable_max_total_grouped_canisters : Nat = 50; // Max total canisters across all groups
+  stable var stable_premium_max_canister_groups : Nat = 50;
+  stable var stable_premium_max_canisters_per_group : Nat = 100;
+  stable var stable_premium_max_total_grouped_canisters : Nat = 500;
 
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
@@ -234,6 +242,51 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       (stable_premium_max_neuron_nicknames, stable_premium_max_principal_nicknames)
     } else {
       (stable_max_neuron_nicknames, stable_max_principal_nicknames)
+    }
+  };
+
+  // Helper functions for counting canister groups
+  private func count_groups_recursive(groups : [CanisterGroup]) : Nat {
+    var count : Nat = 0;
+    for (group in groups.vals()) {
+      count += 1; // Count this group
+      count += count_groups_recursive(group.subgroups); // Count nested groups
+    };
+    count
+  };
+
+  private func count_canisters_recursive(groups : [CanisterGroup]) : Nat {
+    var count : Nat = 0;
+    for (group in groups.vals()) {
+      count += group.canisters.size(); // Count canisters in this group
+      count += count_canisters_recursive(group.subgroups); // Count canisters in nested groups
+    };
+    count
+  };
+
+  private func find_max_canisters_in_single_group(groups : [CanisterGroup]) : Nat {
+    var max_count : Nat = 0;
+    for (group in groups.vals()) {
+      let this_count = group.canisters.size();
+      if (this_count > max_count) {
+        max_count := this_count;
+      };
+      // Check nested groups too
+      let nested_max = find_max_canisters_in_single_group(group.subgroups);
+      if (nested_max > max_count) {
+        max_count := nested_max;
+      };
+    };
+    max_count
+  };
+
+  // Get effective canister group limits based on premium status
+  private func get_canister_group_limits(user : Principal) : async* (Nat, Nat, Nat) {
+    let is_premium = await* is_premium_member(user);
+    if (is_premium) {
+      (stable_premium_max_canister_groups, stable_premium_max_canisters_per_group, stable_premium_max_total_grouped_canisters)
+    } else {
+      (stable_max_canister_groups, stable_max_canisters_per_group, stable_max_total_grouped_canisters)
     }
   };
 
@@ -531,8 +584,30 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     principal_canister_groups.get(caller);
   };
 
-  public shared ({ caller }) func set_canister_groups(groups: CanisterGroupsRoot) : async () {
+  public shared ({ caller }) func set_canister_groups(groups: CanisterGroupsRoot) : async Result.Result<(), Text> {
+    // Get limits based on premium status
+    let (maxGroups, maxCanistersPerGroup, maxTotalCanisters) = await* get_canister_group_limits(caller);
+    
+    // Count totals in the submitted structure
+    let totalGroups = count_groups_recursive(groups.groups);
+    let totalCanisters = count_canisters_recursive(groups.groups) + groups.ungrouped.size();
+    let maxInSingleGroup = find_max_canisters_in_single_group(groups.groups);
+    
+    // Validate limits
+    if (totalGroups > maxGroups) {
+      return #err("You have exceeded your maximum number of folders (" # Nat.toText(maxGroups) # "). You have " # Nat.toText(totalGroups) # " folders.");
+    };
+    
+    if (maxInSingleGroup > maxCanistersPerGroup) {
+      return #err("One of your folders contains more than " # Nat.toText(maxCanistersPerGroup) # " canisters (max per folder).");
+    };
+    
+    if (totalCanisters > maxTotalCanisters) {
+      return #err("You have exceeded your maximum total canisters (" # Nat.toText(maxTotalCanisters) # "). You have " # Nat.toText(totalCanisters) # " canisters.");
+    };
+    
     principal_canister_groups.put(caller, groups);
+    #ok()
   };
 
   public shared ({ caller }) func delete_canister_groups() : async () {
@@ -1727,6 +1802,103 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       principal_nickname_count = principal_count;
       neuron_nickname_limit = neuron_limit;
       principal_nickname_limit = principal_limit;
+      is_premium = is_premium;
+    }
+  };
+
+  // Canister Groups Limits Configuration (admin functions)
+  public query func get_canister_groups_limits_config() : async {
+    max_canister_groups : Nat;
+    max_canisters_per_group : Nat;
+    max_total_grouped_canisters : Nat;
+    premium_max_canister_groups : Nat;
+    premium_max_canisters_per_group : Nat;
+    premium_max_total_grouped_canisters : Nat;
+  } {
+    {
+      max_canister_groups = stable_max_canister_groups;
+      max_canisters_per_group = stable_max_canisters_per_group;
+      max_total_grouped_canisters = stable_max_total_grouped_canisters;
+      premium_max_canister_groups = stable_premium_max_canister_groups;
+      premium_max_canisters_per_group = stable_premium_max_canisters_per_group;
+      premium_max_total_grouped_canisters = stable_premium_max_total_grouped_canisters;
+    }
+  };
+
+  // Update canister groups limits (admin only)
+  public shared ({ caller }) func update_canister_groups_limits(
+    max_groups : ?Nat,
+    max_per_group : ?Nat,
+    max_total : ?Nat,
+    premium_max_groups : ?Nat,
+    premium_max_per_group : ?Nat,
+    premium_max_total : ?Nat
+  ) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized: admin access required");
+    };
+    
+    switch (max_groups) {
+      case (?val) { stable_max_canister_groups := val };
+      case null {};
+    };
+    switch (max_per_group) {
+      case (?val) { stable_max_canisters_per_group := val };
+      case null {};
+    };
+    switch (max_total) {
+      case (?val) { stable_max_total_grouped_canisters := val };
+      case null {};
+    };
+    switch (premium_max_groups) {
+      case (?val) { stable_premium_max_canister_groups := val };
+      case null {};
+    };
+    switch (premium_max_per_group) {
+      case (?val) { stable_premium_max_canisters_per_group := val };
+      case null {};
+    };
+    switch (premium_max_total) {
+      case (?val) { stable_premium_max_total_grouped_canisters := val };
+      case null {};
+    };
+    
+    #ok()
+  };
+
+  // Get the caller's current canister groups usage and limits
+  public shared ({ caller }) func get_my_canister_groups_usage() : async {
+    group_count : Nat;
+    total_canisters : Nat;
+    max_in_single_group : Nat;
+    ungrouped_count : Nat;
+    group_limit : Nat;
+    per_group_limit : Nat;
+    total_limit : Nat;
+    is_premium : Bool;
+  } {
+    let groups_root = principal_canister_groups.get(caller);
+    let (group_count, total_canisters, max_in_single, ungrouped) = switch (groups_root) {
+      case (?root) {
+        let gc = count_groups_recursive(root.groups);
+        let tc = count_canisters_recursive(root.groups) + root.ungrouped.size();
+        let max_single = find_max_canisters_in_single_group(root.groups);
+        (gc, tc, max_single, root.ungrouped.size())
+      };
+      case null { (0, 0, 0, 0) };
+    };
+    
+    let (group_limit, per_group_limit, total_limit) = await* get_canister_group_limits(caller);
+    let is_premium = await* is_premium_member(caller);
+    
+    {
+      group_count = group_count;
+      total_canisters = total_canisters;
+      max_in_single_group = max_in_single;
+      ungrouped_count = ungrouped;
+      group_limit = group_limit;
+      per_group_limit = per_group_limit;
+      total_limit = total_limit;
       is_premium = is_premium;
     }
   };
