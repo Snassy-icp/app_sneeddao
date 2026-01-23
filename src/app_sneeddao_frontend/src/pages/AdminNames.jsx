@@ -15,6 +15,7 @@ import {
     verifyPrincipalName, 
     unverifyPrincipalName 
 } from '../utils/BackendUtils';
+import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -38,6 +39,10 @@ function AdminNames() {
         fetchAllNames 
     } = useNaming();
     
+    // Tab state
+    const [activeTab, setActiveTab] = useState('names');
+    
+    // Names tab state
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('all'); // all, principals, neurons
     const [filterVerified, setFilterVerified] = useState('all'); // all, verified, unverified
@@ -47,6 +52,113 @@ function AdminNames() {
     const [loading, setLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(50);
+    
+    // Nicknames tab state
+    const [nicknameConfig, setNicknameConfig] = useState(null);
+    const [formNicknameConfig, setFormNicknameConfig] = useState({
+        sneed_premium_canister_id: '',
+        max_neuron_nicknames: 10,
+        max_principal_nicknames: 10,
+        premium_max_neuron_nicknames: 100,
+        premium_max_principal_nicknames: 100
+    });
+    const [savingNicknameConfig, setSavingNicknameConfig] = useState(false);
+    const [nicknameConfigError, setNicknameConfigError] = useState(null);
+    const [nicknameConfigSuccess, setNicknameConfigSuccess] = useState(null);
+    const [loadingNicknameConfig, setLoadingNicknameConfig] = useState(false);
+
+    // Create backend actor
+    const getBackendActor = () => {
+        if (!identity) return null;
+        return createBackendActor(BACKEND_CANISTER_ID, {
+            agentOptions: { identity }
+        });
+    };
+
+    // Fetch nickname limits config
+    useEffect(() => {
+        const fetchNicknameConfig = async () => {
+            if (activeTab !== 'nicknames') return;
+            
+            setLoadingNicknameConfig(true);
+            try {
+                const actor = getBackendActor();
+                if (!actor) return;
+                
+                const config = await actor.get_nickname_limits_config();
+                setNicknameConfig(config);
+                setFormNicknameConfig({
+                    sneed_premium_canister_id: config.sneed_premium_canister_id?.[0]?.toString() || '',
+                    max_neuron_nicknames: Number(config.max_neuron_nicknames),
+                    max_principal_nicknames: Number(config.max_principal_nicknames),
+                    premium_max_neuron_nicknames: Number(config.premium_max_neuron_nicknames),
+                    premium_max_principal_nicknames: Number(config.premium_max_principal_nicknames)
+                });
+            } catch (err) {
+                console.error('Error fetching nickname config:', err);
+                setNicknameConfigError('Failed to load nickname configuration');
+            } finally {
+                setLoadingNicknameConfig(false);
+            }
+        };
+        
+        fetchNicknameConfig();
+    }, [activeTab, identity]);
+
+    // Handle nickname config update
+    const handleNicknameConfigUpdate = async (e) => {
+        e.preventDefault();
+        
+        setSavingNicknameConfig(true);
+        setNicknameConfigError(null);
+        setNicknameConfigSuccess(null);
+        
+        try {
+            const actor = getBackendActor();
+            if (!actor) throw new Error('Failed to create backend actor');
+            
+            // Update premium canister ID
+            let premiumCanisterId = [];
+            if (formNicknameConfig.sneed_premium_canister_id && formNicknameConfig.sneed_premium_canister_id.trim()) {
+                try {
+                    const principal = Principal.fromText(formNicknameConfig.sneed_premium_canister_id.trim());
+                    premiumCanisterId = [principal];
+                } catch (e) {
+                    setNicknameConfigError('Invalid Principal ID format for Sneed Premium Canister');
+                    setSavingNicknameConfig(false);
+                    return;
+                }
+            }
+            
+            // Set premium canister ID
+            const setPremiumResult = await actor.set_nickname_premium_canister(premiumCanisterId.length > 0 ? premiumCanisterId : []);
+            if ('err' in setPremiumResult) {
+                throw new Error(setPremiumResult.err);
+            }
+            
+            // Update limits
+            const updateResult = await actor.update_nickname_limits(
+                [BigInt(formNicknameConfig.max_neuron_nicknames)],
+                [BigInt(formNicknameConfig.max_principal_nicknames)],
+                [BigInt(formNicknameConfig.premium_max_neuron_nicknames)],
+                [BigInt(formNicknameConfig.premium_max_principal_nicknames)]
+            );
+            
+            if ('ok' in updateResult) {
+                setNicknameConfigSuccess('Nickname configuration updated successfully!');
+                // Refresh the config
+                const newConfig = await actor.get_nickname_limits_config();
+                setNicknameConfig(newConfig);
+            } else {
+                throw new Error(updateResult.err);
+            }
+        } catch (err) {
+            console.error('Error updating nickname config:', err);
+            setNicknameConfigError('Failed to update nickname configuration: ' + err.message);
+        } finally {
+            setSavingNicknameConfig(false);
+        }
+    };
 
     // Get all entries and combine them
     const getAllEntries = () => {
@@ -210,17 +322,264 @@ function AdminNames() {
         setCurrentPage(newPage);
     };
 
+    // Render the Nicknames tab content
+    const renderNicknamesTab = () => (
+        <div>
+            <div style={{ marginBottom: '20px' }}>
+                <h2 style={{ color: '#ffffff', marginBottom: '10px' }}>Nickname Limits Configuration</h2>
+                <p style={{ color: '#888', margin: 0 }}>
+                    Configure limits for how many nicknames users can create. Premium members get higher limits.
+                </p>
+            </div>
+
+            {loadingNicknameConfig ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                    Loading configuration...
+                </div>
+            ) : (
+                <div style={{
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '12px',
+                    padding: '30px'
+                }}>
+                    {nicknameConfigError && (
+                        <div style={{
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            border: '1px solid #e74c3c',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '20px',
+                            color: '#e74c3c'
+                        }}>
+                            {nicknameConfigError}
+                        </div>
+                    )}
+
+                    {nicknameConfigSuccess && (
+                        <div style={{
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            border: '1px solid #2ecc71',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '20px',
+                            color: '#2ecc71'
+                        }}>
+                            {nicknameConfigSuccess}
+                        </div>
+                    )}
+
+                    <form onSubmit={handleNicknameConfigUpdate}>
+                        {/* Premium Canister ID */}
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                Sneed Premium Canister ID
+                            </label>
+                            <input
+                                type="text"
+                                placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai (leave empty to disable premium limits)"
+                                value={formNicknameConfig.sneed_premium_canister_id}
+                                onChange={(e) => setFormNicknameConfig(prev => ({ ...prev, sneed_premium_canister_id: e.target.value }))}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #3a3a3a',
+                                    backgroundColor: '#1a1a1a',
+                                    color: '#ffffff',
+                                    fontSize: '16px'
+                                }}
+                            />
+                            <div style={{ color: '#888', fontSize: '12px', marginTop: '4px' }}>
+                                The canister ID of the Sneed Premium membership canister. Leave empty to disable premium limits.
+                            </div>
+                        </div>
+
+                        {/* Regular Limits */}
+                        <h3 style={{ color: '#ffffff', marginBottom: '15px', marginTop: '30px' }}>Regular User Limits</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Max Neuron Nicknames
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formNicknameConfig.max_neuron_nicknames}
+                                    onChange={(e) => setFormNicknameConfig(prev => ({ ...prev, max_neuron_nicknames: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Max Principal Nicknames
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formNicknameConfig.max_principal_nicknames}
+                                    onChange={(e) => setFormNicknameConfig(prev => ({ ...prev, max_principal_nicknames: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #3a3a3a',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Premium Limits */}
+                        <h3 style={{ color: '#ffd700', marginBottom: '15px', marginTop: '30px' }}>⭐ Premium User Limits</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Premium Max Neuron Nicknames
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formNicknameConfig.premium_max_neuron_nicknames}
+                                    onChange={(e) => setFormNicknameConfig(prev => ({ ...prev, premium_max_neuron_nicknames: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #ffd700',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                                    Premium Max Principal Nicknames
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={formNicknameConfig.premium_max_principal_nicknames}
+                                    onChange={(e) => setFormNicknameConfig(prev => ({ ...prev, premium_max_principal_nicknames: parseInt(e.target.value) || 1 }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #ffd700',
+                                        backgroundColor: '#1a1a1a',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Comparison Box */}
+                        <div style={{ 
+                            backgroundColor: 'rgba(255, 215, 0, 0.1)', 
+                            border: '1px solid #ffd700', 
+                            padding: '15px', 
+                            borderRadius: '8px',
+                            marginTop: '30px'
+                        }}>
+                            <strong style={{ color: '#ffd700' }}>Limits Comparison:</strong>
+                            <div style={{ color: '#ccc', marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div>Regular Neuron Nicknames: <strong>{formNicknameConfig.max_neuron_nicknames}</strong></div>
+                                <div>Premium Neuron Nicknames: <strong style={{ color: '#4caf50' }}>{formNicknameConfig.premium_max_neuron_nicknames}</strong></div>
+                                <div>Regular Principal Nicknames: <strong>{formNicknameConfig.max_principal_nicknames}</strong></div>
+                                <div>Premium Principal Nicknames: <strong style={{ color: '#4caf50' }}>{formNicknameConfig.premium_max_principal_nicknames}</strong></div>
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={savingNicknameConfig}
+                            style={{
+                                backgroundColor: savingNicknameConfig ? '#555' : '#3498db',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '12px 24px',
+                                fontSize: '16px',
+                                fontWeight: '600',
+                                cursor: savingNicknameConfig ? 'not-allowed' : 'pointer',
+                                marginTop: '30px',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                        >
+                            {savingNicknameConfig ? 'Saving...' : 'Update Configuration'}
+                        </button>
+                    </form>
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} />
             <main className="wallet-container">
                 <div style={{ marginBottom: '20px' }}>
-                    <h1 style={{ color: '#ffffff', marginBottom: '10px' }}>Admin - Names Management</h1>
+                    <h1 style={{ color: '#ffffff', marginBottom: '10px' }}>Admin - Names & Nicknames</h1>
                     <p style={{ color: '#888', margin: 0 }}>
-                        Manage principal and neuron names across all SNS instances
+                        Manage principal and neuron names, and configure nickname limits
                     </p>
                 </div>
 
+                {/* Tabs */}
+                <div style={{ 
+                    display: 'flex', 
+                    gap: '10px', 
+                    marginBottom: '20px',
+                    borderBottom: '1px solid #3a3a3a',
+                    paddingBottom: '10px'
+                }}>
+                    <button
+                        onClick={() => setActiveTab('names')}
+                        style={{
+                            backgroundColor: activeTab === 'names' ? '#3498db' : 'transparent',
+                            color: activeTab === 'names' ? '#ffffff' : '#888',
+                            border: activeTab === 'names' ? 'none' : '1px solid #3a3a3a',
+                            borderRadius: '8px',
+                            padding: '10px 20px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        📝 Names
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('nicknames')}
+                        style={{
+                            backgroundColor: activeTab === 'nicknames' ? '#3498db' : 'transparent',
+                            color: activeTab === 'nicknames' ? '#ffffff' : '#888',
+                            border: activeTab === 'nicknames' ? 'none' : '1px solid #3a3a3a',
+                            borderRadius: '8px',
+                            padding: '10px 20px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        ⭐ Nicknames Config
+                    </button>
+                </div>
+
+                {activeTab === 'nicknames' ? renderNicknamesTab() : (
+                <>
                 {/* Filters */}
                 <div style={{ 
                     backgroundColor: '#2a2a2a',
@@ -601,6 +960,8 @@ function AdminNames() {
                     }}>
                         No names found matching your filters.
                     </div>
+                )}
+                </>
                 )}
             </main>
         </div>
