@@ -106,8 +106,6 @@ export interface PositionLock {
 }
 export type QueueProcessingState = { 'Paused' : string } |
   { 'Active' : null };
-export type SetLockFeeResult = { 'Ok' : bigint } |
-  { 'Err' : string };
 export interface SneedLock {
   'admin_add_admin' : ActorMethod<
     [Principal],
@@ -147,6 +145,16 @@ export interface SneedLock {
     [boolean],
     undefined
   >,
+  'admin_set_lock_fees_icp' : ActorMethod<
+    [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
+  'admin_set_sneed_premium_canister_id' : ActorMethod<
+    [[] | [Principal]],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
   'admin_trigger_claim_processing' : ActorMethod<[], string>,
   'claim_position' : ActorMethod<[Principal, PositionId], boolean>,
   'clear_expired_locks' : ActorMethod<[], undefined>,
@@ -156,6 +164,12 @@ export interface SneedLock {
     [Principal, Dex, PositionId, Expiry, TokenType, TokenType],
     CreateLockResult
   >,
+  'getEffectiveLockFee' : ActorMethod<
+    [Principal, boolean],
+    { 'is_premium' : boolean, 'fee_e8s' : bigint }
+  >,
+  'getPaymentBalance' : ActorMethod<[Principal], bigint>,
+  'getPaymentSubaccount' : ActorMethod<[Principal], Uint8Array | number[]>,
   'get_active_claim_request' : ActorMethod<
     [ClaimRequestId],
     [] | [ClaimRequest]
@@ -212,6 +226,16 @@ export interface SneedLock {
     Array<FullyQualifiedLock>
   >,
   'get_lock_by_id' : ActorMethod<[LockId], [] | [LockInfo]>,
+  'get_lock_fees_icp' : ActorMethod<
+    [],
+    {
+      'premium_position_lock_fee_icp_e8s' : bigint,
+      'token_lock_fee_icp_e8s' : bigint,
+      'sneed_premium_canister_id' : [] | [Principal],
+      'premium_token_lock_fee_icp_e8s' : bigint,
+      'position_lock_fee_icp_e8s' : bigint,
+    }
+  >,
   'get_lock_type' : ActorMethod<[LockId], [] | [LockType]>,
   'get_my_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
   'get_position_lock_by_id' : ActorMethod<
@@ -239,7 +263,6 @@ export interface SneedLock {
     }
   >,
   'get_token_lock_by_id' : ActorMethod<[LockId], [] | [FullyQualifiedLock]>,
-  'get_token_lock_fee_sneed_e8s' : ActorMethod<[], bigint>,
   'get_token_locks' : ActorMethod<
     [],
     Array<[LockId, TokenType, Balance, Expiry]>
@@ -255,7 +278,6 @@ export interface SneedLock {
     ClaimAndWithdrawResult
   >,
   'set_max_lock_length_days' : ActorMethod<[bigint], undefined>,
-  'set_token_lock_fee_sneed_e8s' : ActorMethod<[bigint], SetLockFeeResult>,
   'transfer_position' : ActorMethod<
     [Principal, Principal, PositionId],
     TransferPositionResult

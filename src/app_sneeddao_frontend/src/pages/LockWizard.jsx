@@ -16,7 +16,6 @@ import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry }
 import ConfirmationModal from '../ConfirmationModal';
 import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
 
-const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const dex_icpswap = 1;
 
@@ -388,13 +387,6 @@ function LockWizard() {
         setLockError('');
         
         if (lockType === 'token') {
-            // Check if SNEED token
-            const tokenId = selectedToken.ledgerId;
-            if (tokenId === SNEED_CANISTER_ID) {
-                setLockError("SNEED tokens cannot be locked.");
-                return false;
-            }
-            
             if (!lockAmount) {
                 setLockError("Please enter an amount.");
                 return false;

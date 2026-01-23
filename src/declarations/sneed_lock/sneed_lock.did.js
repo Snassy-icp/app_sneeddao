@@ -126,7 +126,6 @@ export const idlFactory = ({ IDL }) => {
     'Ok' : ClaimRequestId,
     'Err' : IDL.Text,
   });
-  const SetLockFeeResult = IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text });
   const TransferPositionError = IDL.Variant({
     'CommonError' : IDL.Null,
     'InternalError' : IDL.Text,
@@ -197,6 +196,21 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'admin_set_lock_fees_icp' : IDL.Func(
+        [
+          IDL.Opt(IDL.Nat64),
+          IDL.Opt(IDL.Nat64),
+          IDL.Opt(IDL.Nat64),
+          IDL.Opt(IDL.Nat64),
+        ],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_set_sneed_premium_canister_id' : IDL.Func(
+        [IDL.Opt(IDL.Principal)],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_trigger_claim_processing' : IDL.Func([], [IDL.Text], []),
     'claim_position' : IDL.Func([IDL.Principal, PositionId], [IDL.Bool], []),
     'clear_expired_locks' : IDL.Func([], [], []),
@@ -210,6 +224,17 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Principal, Dex, PositionId, Expiry, TokenType, TokenType],
         [CreateLockResult],
         [],
+      ),
+    'getEffectiveLockFee' : IDL.Func(
+        [IDL.Principal, IDL.Bool],
+        [IDL.Record({ 'is_premium' : IDL.Bool, 'fee_e8s' : IDL.Nat64 })],
+        [],
+      ),
+    'getPaymentBalance' : IDL.Func([IDL.Principal], [IDL.Nat], []),
+    'getPaymentSubaccount' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(IDL.Nat8)],
+        ['query'],
       ),
     'get_active_claim_request' : IDL.Func(
         [ClaimRequestId],
@@ -317,6 +342,19 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_lock_by_id' : IDL.Func([LockId], [IDL.Opt(LockInfo)], ['query']),
+    'get_lock_fees_icp' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'premium_position_lock_fee_icp_e8s' : IDL.Nat64,
+            'token_lock_fee_icp_e8s' : IDL.Nat64,
+            'sneed_premium_canister_id' : IDL.Opt(IDL.Principal),
+            'premium_token_lock_fee_icp_e8s' : IDL.Nat64,
+            'position_lock_fee_icp_e8s' : IDL.Nat64,
+          }),
+        ],
+        ['query'],
+      ),
     'get_lock_type' : IDL.Func([LockId], [IDL.Opt(LockType)], ['query']),
     'get_my_active_claim_requests' : IDL.Func(
         [],
@@ -362,7 +400,6 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(FullyQualifiedLock)],
         ['query'],
       ),
-    'get_token_lock_fee_sneed_e8s' : IDL.Func([], [IDL.Nat], ['query']),
     'get_token_locks' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(LockId, TokenType, Balance, Expiry))],
@@ -381,11 +418,6 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'set_max_lock_length_days' : IDL.Func([IDL.Nat64], [], []),
-    'set_token_lock_fee_sneed_e8s' : IDL.Func(
-        [IDL.Nat],
-        [SetLockFeeResult],
-        [],
-      ),
     'transfer_position' : IDL.Func(
         [IDL.Principal, IDL.Principal, PositionId],
         [TransferPositionResult],

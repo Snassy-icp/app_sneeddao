@@ -83,6 +83,17 @@ type SneedLock =
     principal, amount: nat, recipient_principal: principal) ->
     (TransferResult);
    admin_set_enforce_zero_balance_before_claim: (enforce: bool) -> ();
+   admin_set_lock_fees_icp: (token_lock_fee: opt nat64, position_lock_fee:
+    opt nat64, premium_token_lock_fee: opt nat64, premium_position_lock_fee:
+    opt nat64) -> (variant {
+                     Err: text;
+                     Ok: text;
+                   });
+   admin_set_sneed_premium_canister_id: (canister_id: opt principal) ->
+    (variant {
+       Err: text;
+       Ok: text;
+     });
    admin_trigger_claim_processing: () -> (text);
    claim_position: (swap_canister_id: principal, position_id: PositionId) ->
     (bool);
@@ -93,6 +104,13 @@ type SneedLock =
    create_position_lock: (swap_canister_id: principal, dex: Dex, position_id:
     PositionId, expires_at: Expiry, token0: TokenType, token1: TokenType) ->
     (CreateLockResult);
+   getEffectiveLockFee: (user: principal, is_position_lock: bool) ->
+    (record {
+       fee_e8s: nat64;
+       is_premium: bool;
+     });
+   getPaymentBalance: (user: principal) -> (nat);
+   getPaymentSubaccount: (user: principal) -> (blob) query;
    get_active_claim_request: (request_id: ClaimRequestId) ->
     (opt ClaimRequest) query;
    get_admin_list: () -> (vec principal) query;
@@ -139,6 +157,14 @@ type SneedLock =
    get_ledger_token_locks: (ledger_canister_id: TokenType) ->
     (vec FullyQualifiedLock) query;
    get_lock_by_id: (lock_id: LockId) -> (opt LockInfo) query;
+   get_lock_fees_icp: () ->
+    (record {
+       position_lock_fee_icp_e8s: nat64;
+       premium_position_lock_fee_icp_e8s: nat64;
+       premium_token_lock_fee_icp_e8s: nat64;
+       sneed_premium_canister_id: opt principal;
+       token_lock_fee_icp_e8s: nat64;
+     }) query;
    get_lock_type: (lock_id: LockId) -> (opt LockType) query;
    get_my_active_claim_requests: () -> (vec ClaimRequest) query;
    get_position_lock_by_id: (lock_id: LockId) ->
@@ -164,7 +190,6 @@ type SneedLock =
        timer_id: opt nat;
      }) query;
    get_token_lock_by_id: (lock_id: LockId) -> (opt FullyQualifiedLock) query;
-   get_token_lock_fee_sneed_e8s: () -> (nat) query;
    get_token_locks: () ->
     (vec record {
            LockId;
@@ -179,8 +204,6 @@ type SneedLock =
    request_claim_and_withdraw: (swap_canister_id: SwapCanisterId,
     position_id: PositionId) -> (ClaimAndWithdrawResult);
    set_max_lock_length_days: (new_max_lock_length_days: nat64) -> ();
-   set_token_lock_fee_sneed_e8s: (new_token_lock_fee_sneed_e8s: nat) ->
-    (SetLockFeeResult);
    transfer_position: (to: principal, swap_canister_id: principal,
     position_id: PositionId) -> (TransferPositionResult);
    transfer_position_ownership: (to_principal: principal, swap_canister_id:
@@ -192,11 +215,6 @@ type SneedLock =
     icrc1_ledger_canister_id: principal, amount: Balance) -> (TransferResult);
    update_position_lock: (swap_canister_id: principal, position_id:
     PositionId, expires_at: Expiry) -> (CreateLockResult);
- };
-type SetLockFeeResult = 
- variant {
-   Err: text;
-   Ok: nat;
  };
 type QueueProcessingState = 
  variant {

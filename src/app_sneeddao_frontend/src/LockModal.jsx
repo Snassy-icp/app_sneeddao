@@ -10,7 +10,6 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaSpinner, FaWallet, FaCheck, FaCrown } from 'react-icons/fa';
 
-const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
 function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium }) {
@@ -162,13 +161,6 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
     
     const handleAddLock = async () => {
         setErrorText('');
-
-        // Check if this is the SNEED token - it cannot be locked
-        const tokenId = token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
-        if (tokenId === SNEED_CANISTER_ID) {
-            setErrorText("SNEED tokens cannot be locked.");
-            return;
-        }
 
         if (newLockAmount == "") {
             setErrorText("Please enter an amount first!");
