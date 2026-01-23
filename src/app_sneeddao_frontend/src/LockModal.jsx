@@ -346,6 +346,25 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                     />
                 </div>
 
+                {/* Lock Fee Section - Loading */}
+                {loadingPayment && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '16px',
+                        background: theme.colors.secondaryBg,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                    }}>
+                        <FaSpinner className="spin" style={{ color: theme.colors.accent }} />
+                        <span style={{ color: theme.colors.secondaryText }}>
+                            Loading payment info...
+                        </span>
+                    </div>
+                )}
+
                 {/* Lock Fee Section */}
                 {!loadingPayment && lockFeeConfig && (
                     <div style={{

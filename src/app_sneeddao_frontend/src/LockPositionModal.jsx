@@ -238,6 +238,25 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                             Add New Lock
                         </h3>
 
+                        {/* ICP Lock Fee Section - Loading */}
+                        {loadingPayment && (
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '8px',
+                                padding: '16px',
+                                marginBottom: '20px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px'
+                            }}>
+                                <FaSpinner className="spin" style={{ color: theme.colors.accent }} />
+                                <span style={{ color: theme.colors.secondaryText }}>
+                                    Loading payment info...
+                                </span>
+                            </div>
+                        )}
+
                         {/* ICP Lock Fee Section */}
                         {!loadingPayment && lockFeeConfig && (
                             <div style={{
