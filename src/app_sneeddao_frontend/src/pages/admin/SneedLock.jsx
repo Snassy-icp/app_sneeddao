@@ -69,6 +69,14 @@ export default function SneedLockAdmin() {
   
   // Fee stats state
   const [feeStats, setFeeStats] = useState(null);
+  
+  // Payment log state
+  const [paymentLog, setPaymentLog] = useState([]);
+  const [paymentLogTotalCount, setPaymentLogTotalCount] = useState(0);
+  const [paymentLogHasMore, setPaymentLogHasMore] = useState(false);
+  const [paymentLogPage, setPaymentLogPage] = useState(1);
+  const [paymentLogLoading, setPaymentLogLoading] = useState(false);
+  const paymentLogPageSize = 25;
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -197,6 +205,27 @@ export default function SneedLockAdmin() {
     } catch (err) {
       console.error('Error fetching error logs:', err);
       setError('Failed to fetch error logs: ' + err.message);
+    }
+  };
+
+  const fetchPaymentLog = async (page) => {
+    try {
+      setPaymentLogLoading(true);
+      const actor = getSneedLockActor();
+      if (!actor) return;
+
+      const offset = (page - 1) * paymentLogPageSize;
+      const result = await actor.admin_get_payment_log(BigInt(offset), BigInt(paymentLogPageSize));
+      
+      setPaymentLog(result.payments);
+      setPaymentLogTotalCount(Number(result.total_count));
+      setPaymentLogHasMore(result.has_more);
+      setPaymentLogPage(page);
+    } catch (err) {
+      console.error('Error fetching payment log:', err);
+      setError('Failed to fetch payment log: ' + err.message);
+    } finally {
+      setPaymentLogLoading(false);
     }
   };
 
@@ -1479,6 +1508,213 @@ export default function SneedLockAdmin() {
     </div>
   );
 
+  const getLockTypeText = (lockType) => {
+    if ('TokenLock' in lockType) return 'Token Lock';
+    if ('PositionLock' in lockType) return 'Position Lock';
+    return 'Unknown';
+  };
+
+  const getLockTypeColor = (lockType) => {
+    if ('TokenLock' in lockType) return '#3498db';
+    if ('PositionLock' in lockType) return '#e67e22';
+    return '#888';
+  };
+
+  const renderPaymentLog = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Payment Log</h2>
+        <div style={{ color: '#888' }}>
+          Total payments: {paymentLogTotalCount}
+        </div>
+      </div>
+      
+      <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <button
+          onClick={() => fetchPaymentLog(Math.max(1, paymentLogPage - 1))}
+          disabled={paymentLogPage === 1 || paymentLogLoading}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: paymentLogPage === 1 || paymentLogLoading ? 'not-allowed' : 'pointer',
+            opacity: paymentLogPage === 1 || paymentLogLoading ? 0.5 : 1
+          }}
+        >
+          ← Newer
+        </button>
+        <button
+          onClick={() => fetchPaymentLog(paymentLogPage + 1)}
+          disabled={!paymentLogHasMore || paymentLogLoading}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: !paymentLogHasMore || paymentLogLoading ? 'not-allowed' : 'pointer',
+            opacity: !paymentLogHasMore || paymentLogLoading ? 0.5 : 1
+          }}
+        >
+          Older →
+        </button>
+        <span style={{ color: '#888', marginLeft: '10px' }}>
+          Page {paymentLogPage} • Showing {paymentLog.length} of {paymentLogTotalCount}
+        </span>
+        <button
+          onClick={() => fetchPaymentLog(paymentLogPage)}
+          disabled={paymentLogLoading}
+          style={{
+            backgroundColor: '#2ecc71',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            marginLeft: 'auto',
+            cursor: paymentLogLoading ? 'not-allowed' : 'pointer',
+            opacity: paymentLogLoading ? 0.5 : 1
+          }}
+        >
+          {paymentLogLoading ? 'Loading...' : 'Refresh'}
+        </button>
+      </div>
+
+      <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
+        {paymentLogLoading && paymentLog.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>Loading payment log...</div>
+        ) : paymentLog.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+            No payments recorded yet.
+            <br />
+            <button
+              onClick={() => fetchPaymentLog(1)}
+              style={{
+                marginTop: '15px',
+                backgroundColor: '#3498db',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: 'pointer'
+              }}
+            >
+              Load Payment Log
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Header Row */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '80px 1fr 140px 100px 120px 100px',
+              gap: '10px',
+              padding: '10px',
+              backgroundColor: '#2a2a2a',
+              borderRadius: '4px',
+              fontWeight: 'bold',
+              color: '#888',
+              fontSize: '12px'
+            }}>
+              <div>ID</div>
+              <div>Payer</div>
+              <div>Amount</div>
+              <div>Type</div>
+              <div>ICP TX ID</div>
+              <div>Timestamp</div>
+            </div>
+            
+            {paymentLog.map((payment) => (
+              <div
+                key={Number(payment.id)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '80px 1fr 140px 100px 120px 100px',
+                  gap: '10px',
+                  padding: '12px 10px',
+                  backgroundColor: '#2a2a2a',
+                  borderRadius: '4px',
+                  border: `1px solid ${getLockTypeColor(payment.lock_type)}33`,
+                  alignItems: 'center',
+                  fontSize: '13px'
+                }}
+              >
+                <div style={{ color: '#3498db', fontWeight: 'bold' }}>
+                  #{Number(payment.id)}
+                </div>
+                <div style={{ 
+                  color: '#ffffff', 
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {payment.payer.toString()}
+                </div>
+                <div style={{ color: '#2ecc71', fontWeight: 'bold' }}>
+                  {formatIcpFee(payment.amount_e8s)}
+                </div>
+                <div style={{ 
+                  color: getLockTypeColor(payment.lock_type),
+                  fontWeight: 'bold',
+                  fontSize: '11px'
+                }}>
+                  {getLockTypeText(payment.lock_type)}
+                </div>
+                <div>
+                  <a
+                    href={`https://dashboard.internetcomputer.org/transaction/${Number(payment.icp_transaction_id)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#9b59b6', textDecoration: 'none' }}
+                    title="View on IC Dashboard"
+                  >
+                    {Number(payment.icp_transaction_id)}
+                    <span style={{ fontSize: '10px', marginLeft: '4px' }}>🔗</span>
+                  </a>
+                </div>
+                <div style={{ color: '#888', fontSize: '11px' }}>
+                  {formatTimestamp(payment.timestamp)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Payment Stats Summary */}
+      {paymentLogTotalCount > 0 && (
+        <div style={{
+          marginTop: '20px',
+          padding: '15px',
+          backgroundColor: '#2a2a2a',
+          borderRadius: '8px',
+          border: '1px solid #3a3a3a'
+        }}>
+          <h3 style={{ color: '#ffffff', fontSize: '16px', marginBottom: '10px' }}>Payment Statistics</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px' }}>Total Payments</div>
+              <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>{paymentLogTotalCount}</div>
+            </div>
+            {feeStats && (
+              <>
+                <div>
+                  <div style={{ color: '#888', fontSize: '12px' }}>Total ICP Collected</div>
+                  <div style={{ color: '#2ecc71', fontSize: '20px', fontWeight: 'bold' }}>
+                    {formatIcpFee(feeStats.total_fees_collected_e8s)}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const renderAdminFunctions = () => (
     <div>
       <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Admin Functions</h2>
@@ -2550,10 +2786,16 @@ export default function SneedLockAdmin() {
           paddingBottom: '10px',
           flexWrap: 'wrap'
         }}>
-          {['queue', 'completed', 'failed', 'timer', 'info', 'error', 'functions', 'settings'].map(tab => (
+          {['queue', 'completed', 'failed', 'timer', 'payments', 'info', 'error', 'functions', 'settings'].map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => {
+                setActiveTab(tab);
+                // Auto-load payment log when switching to payments tab
+                if (tab === 'payments' && paymentLog.length === 0 && paymentLogTotalCount === 0) {
+                  fetchPaymentLog(1);
+                }
+              }}
               style={{
                 backgroundColor: activeTab === tab ? '#3498db' : 'transparent',
                 color: activeTab === tab ? '#ffffff' : '#888',
@@ -2570,6 +2812,7 @@ export default function SneedLockAdmin() {
               {tab === 'completed' && 'Completed'}
               {tab === 'failed' && 'Failed'}
               {tab === 'timer' && 'Timer Status'}
+              {tab === 'payments' && 'Payments'}
               {tab === 'info' && 'Info Logs'}
               {tab === 'error' && 'Error Logs'}
               {tab === 'functions' && 'Admin Functions'}
@@ -2589,6 +2832,7 @@ export default function SneedLockAdmin() {
             {activeTab === 'completed' && renderCompletedClaimRequests()}
             {activeTab === 'failed' && renderFailedClaimRequests()}
             {activeTab === 'timer' && renderTimerStatus()}
+            {activeTab === 'payments' && renderPaymentLog()}
             {activeTab === 'info' && renderInfoLogs()}
             {activeTab === 'error' && renderErrorLogs()}
             {activeTab === 'functions' && renderAdminFunctions()}
