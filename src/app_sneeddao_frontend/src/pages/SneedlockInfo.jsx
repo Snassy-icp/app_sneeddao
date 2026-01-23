@@ -13,6 +13,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useTheme } from '../contexts/ThemeContext';
 import PrincipalInput from '../components/PrincipalInput';
+import TokenSelector from '../components/TokenSelector';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
@@ -1014,12 +1015,19 @@ function SneedlockInfo() {
                                 </button>
                             )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <TokenSelector
+                                value={ledgerFilter}
+                                onChange={handleLedgerFilterChange}
+                                placeholder="Select token..."
+                                style={{ width: '200px' }}
+                            />
+                            <span style={{ color: theme.colors.mutedText, fontSize: '14px' }}>or</span>
                             <PrincipalInput
                                 value={ledgerFilter}
                                 onChange={handleLedgerFilterChange}
                                 placeholder="Filter by ledger"
-                                style={{ width: '300px' }}
+                                style={{ width: '280px' }}
                                 isAuthenticated={!!identity}
                             />
                             {ledgerFilter && (
