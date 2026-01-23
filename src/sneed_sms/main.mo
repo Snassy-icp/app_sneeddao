@@ -701,6 +701,89 @@ actor SneedSMS {
         Buffer.toArray(results)
     };
 
+    // ============================================================================
+    // DATA IMPORT - For restoring data after migration
+    // ============================================================================
+    
+    // Import admins from backup
+    public shared ({ caller }) func import_admins(admins_to_import: [Principal]) : async Result<Nat, SMSError> {
+        // Only controllers can import
+        if (not Principal.isController(caller)) {
+            return #err(#Unauthorized("Only controllers can import data"));
+        };
+        
+        var imported = 0;
+        for (admin_principal in admins_to_import.vals()) {
+            // Skip if already admin
+            if (not is_admin(admin_principal)) {
+                let admin_info : AdminInfo = {
+                    principal = admin_principal;
+                    added_by = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                    added_at = Time.now();
+                };
+                Vector.add(state.admins, admin_info);
+                imported += 1;
+            };
+        };
+        
+        #ok(imported)
+    };
+    
+    // Import messages from backup (accepts MessageResponse format from get_all_messages_admin)
+    public shared ({ caller }) func import_messages(messages_to_import: [MessageResponse]) : async Result<Nat, SMSError> {
+        // Only controllers can import
+        if (not Principal.isController(caller)) {
+            return #err(#Unauthorized("Only controllers can import data"));
+        };
+        
+        var imported = 0;
+        for (msg in messages_to_import.vals()) {
+            // Skip if message ID already exists
+            switch (Map.get(state.messages, Map.nhash, msg.id)) {
+                case (?_) {}; // Already exists, skip
+                case null {
+                    // Convert sender principal to index
+                    let sender_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, msg.sender);
+                    
+                    // Convert recipient principals to indices
+                    let recipient_indices_buffer = Buffer.Buffer<Nat32>(msg.recipients.size());
+                    for (recipient in msg.recipients.vals()) {
+                        let recipient_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, recipient);
+                        recipient_indices_buffer.add(recipient_index);
+                    };
+                    let recipient_indices = Buffer.toArray(recipient_indices_buffer);
+                    
+                    // Create message with internal format
+                    let message : Message = {
+                        id = msg.id;
+                        sender = sender_index;
+                        recipients = recipient_indices;
+                        subject = msg.subject;
+                        body = msg.body;
+                        reply_to = msg.reply_to;
+                        created_at = msg.created_at;
+                        updated_at = msg.updated_at;
+                    };
+                    
+                    // Store message
+                    Map.set(state.messages, Map.nhash, msg.id, message);
+                    
+                    // Rebuild indexes
+                    add_to_indexes(msg.id, sender_index, recipient_indices);
+                    
+                    // Update next_id if needed
+                    if (msg.id >= state.next_id) {
+                        state.next_id := msg.id + 1;
+                    };
+                    
+                    imported += 1;
+                };
+            };
+        };
+        
+        #ok(imported)
+    };
+
     // Notification functions
     public query func get_recent_messages_count(user_principal: Principal) : async Nat {
         let user_index_opt = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal);
