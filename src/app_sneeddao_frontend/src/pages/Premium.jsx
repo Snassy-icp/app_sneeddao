@@ -359,7 +359,30 @@ export default function Premium() {
                 } else if ('NoActiveTiers' in err) {
                     errorMessage = 'No active voting power tiers configured';
                 } else if ('AlreadyClaimedRecently' in err) {
-                    errorMessage = 'You have already claimed recently. Please wait before claiming again.';
+                    const { lastClaimTime, intervalNs, nextClaimTime } = err.AlreadyClaimedRecently;
+                    const nextClaimDate = new Date(Number(nextClaimTime) / 1_000_000);
+                    const intervalHours = Number(intervalNs) / (1_000_000_000 * 60 * 60);
+                    const now = Date.now();
+                    const waitMs = nextClaimDate.getTime() - now;
+                    
+                    let waitTime;
+                    if (waitMs <= 0) {
+                        waitTime = 'now (please try again)';
+                    } else if (waitMs < 60 * 1000) {
+                        waitTime = `${Math.ceil(waitMs / 1000)} seconds`;
+                    } else if (waitMs < 60 * 60 * 1000) {
+                        waitTime = `${Math.ceil(waitMs / (60 * 1000))} minutes`;
+                    } else if (waitMs < 24 * 60 * 60 * 1000) {
+                        const hours = Math.floor(waitMs / (60 * 60 * 1000));
+                        const mins = Math.ceil((waitMs % (60 * 60 * 1000)) / (60 * 1000));
+                        waitTime = mins > 0 ? `${hours}h ${mins}m` : `${hours} hours`;
+                    } else {
+                        const days = Math.floor(waitMs / (24 * 60 * 60 * 1000));
+                        const hours = Math.ceil((waitMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+                        waitTime = hours > 0 ? `${days}d ${hours}h` : `${days} days`;
+                    }
+                    
+                    errorMessage = `You have already claimed recently.\n\nClaim interval: ${intervalHours >= 24 ? `${Math.round(intervalHours / 24)} days` : `${Math.round(intervalHours)} hours`}\n\nYou can claim again in: ${waitTime}`;
                 } else if ('InternalError' in err) {
                     errorMessage = err.InternalError;
                 } else {

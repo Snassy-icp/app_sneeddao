@@ -316,7 +316,12 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         switch (getLastVpClaimTime(caller)) {
             case (?lastClaim) {
                 if (now - lastClaim < config.minClaimIntervalNs) {
-                    return #err(#AlreadyClaimedRecently);
+                    let nextClaimTime = lastClaim + config.minClaimIntervalNs;
+                    return #err(#AlreadyClaimedRecently({
+                        lastClaimTime = lastClaim;
+                        intervalNs = config.minClaimIntervalNs;
+                        nextClaimTime = nextClaimTime;
+                    }));
                 };
             };
             case null {};

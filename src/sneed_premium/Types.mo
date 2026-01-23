@@ -220,7 +220,7 @@ module {
         #NoEligibleNeurons;
         #InsufficientVotingPower : { required : Nat; found : Nat };
         #NoActiveTiers;
-        #AlreadyClaimedRecently;  // Prevent spam
+        #AlreadyClaimedRecently : { lastClaimTime : Time.Time; intervalNs : Nat; nextClaimTime : Time.Time };
         #InternalError : Text;
     };
     

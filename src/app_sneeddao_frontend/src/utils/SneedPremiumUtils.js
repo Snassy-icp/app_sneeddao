@@ -71,7 +71,7 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         NoEligibleNeurons: IDL.Null,
         InsufficientVotingPower: IDL.Record({ required: IDL.Nat, found: IDL.Nat }),
         NoActiveTiers: IDL.Null,
-        AlreadyClaimedRecently: IDL.Null,
+        AlreadyClaimedRecently: IDL.Record({ lastClaimTime: IDL.Int, intervalNs: IDL.Nat, nextClaimTime: IDL.Int }),
         InternalError: IDL.Text,
     });
     
