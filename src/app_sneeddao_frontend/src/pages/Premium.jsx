@@ -17,6 +17,8 @@ import {
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSneedexActor, canisterId as SNEEDEX_CANISTER_ID } from 'declarations/sneedex';
 import { createActor as createNeuronManagerFactoryActor, canisterId as NEURON_MANAGER_FACTORY_CANISTER_ID } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createForumActor, canisterId as FORUM_CANISTER_ID } from 'declarations/sneed_sns_forum';
+import { createActor as createSmsActor, canisterId as SMS_CANISTER_ID } from 'declarations/sneed_sms';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import InfoModal from '../components/InfoModal';
 import { 
@@ -156,7 +158,7 @@ export default function Premium() {
     useEffect(() => {
         const fetchPremiumPricing = async () => {
             try {
-                const pricing = { sneedex: null, neuronManager: null };
+                const pricing = { sneedex: null, neuronManager: null, forum: null, sms: null };
                 
                 // Fetch sneedex fees
                 if (SNEEDEX_CANISTER_ID) {
@@ -195,8 +197,79 @@ export default function Premium() {
                     }
                 }
                 
+                // Fetch forum text limits
+                if (FORUM_CANISTER_ID) {
+                    try {
+                        const forumActor = createForumActor(FORUM_CANISTER_ID, {});
+                        const [textLimits, premiumConfig] = await Promise.all([
+                            forumActor.get_text_limits(),
+                            forumActor.get_premium_config().catch(() => null),
+                        ]);
+                        
+                        if (textLimits && premiumConfig) {
+                            const regularPostBodyLimit = Number(textLimits.post_body_max_length);
+                            const premiumPostBodyLimit = Number(premiumConfig.premium_post_body_max_length);
+                            const regularThreadBodyLimit = Number(textLimits.thread_body_max_length);
+                            const premiumThreadBodyLimit = Number(premiumConfig.premium_thread_body_max_length);
+                            
+                            // Only show if premium has higher limits
+                            if (premiumPostBodyLimit > regularPostBodyLimit || premiumThreadBodyLimit > regularThreadBodyLimit) {
+                                pricing.forum = {
+                                    regularPostBodyLimit,
+                                    premiumPostBodyLimit,
+                                    regularThreadBodyLimit,
+                                    premiumThreadBodyLimit,
+                                };
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch forum limits:', err);
+                    }
+                }
+                
+                // Fetch SMS limits
+                if (SMS_CANISTER_ID) {
+                    try {
+                        const smsActor = createSmsActor(SMS_CANISTER_ID, {});
+                        const [config, premiumConfig] = await Promise.all([
+                            smsActor.get_config(),
+                            smsActor.get_premium_config().catch(() => null),
+                        ]);
+                        
+                        if (config && premiumConfig) {
+                            const regularSubjectLimit = Number(config.max_subject_length);
+                            const premiumSubjectLimit = Number(premiumConfig.premium_max_subject_length);
+                            const regularBodyLimit = Number(config.max_body_length);
+                            const premiumBodyLimit = Number(premiumConfig.premium_max_body_length);
+                            const regularRateLimit = Number(config.rate_limit_minutes);
+                            const premiumRateLimit = Number(premiumConfig.premium_rate_limit_minutes);
+                            const regularMaxRecipients = Number(config.max_recipients);
+                            const premiumMaxRecipients = Number(premiumConfig.premium_max_recipients);
+                            
+                            // Only show if premium has better limits
+                            if (premiumSubjectLimit > regularSubjectLimit || 
+                                premiumBodyLimit > regularBodyLimit || 
+                                premiumRateLimit < regularRateLimit ||
+                                premiumMaxRecipients > regularMaxRecipients) {
+                                pricing.sms = {
+                                    regularSubjectLimit,
+                                    premiumSubjectLimit,
+                                    regularBodyLimit,
+                                    premiumBodyLimit,
+                                    regularRateLimit,
+                                    premiumRateLimit,
+                                    regularMaxRecipients,
+                                    premiumMaxRecipients,
+                                };
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch SMS limits:', err);
+                    }
+                }
+                
                 // Only update if we got at least some pricing
-                if (pricing.sneedex || pricing.neuronManager) {
+                if (pricing.sneedex || pricing.neuronManager || pricing.forum || pricing.sms) {
                     setPremiumPricing(pricing);
                 }
             } catch (err) {
@@ -849,7 +922,7 @@ export default function Premium() {
                     </div>
                     
                     {/* Actual Pricing Comparison */}
-                    {premiumPricing && (premiumPricing.sneedex || premiumPricing.neuronManager) && (
+                    {premiumPricing && (premiumPricing.sneedex || premiumPricing.neuronManager || premiumPricing.forum || premiumPricing.sms) && (
                         <div style={{
                             marginTop: '1.5rem',
                             background: theme.colors.tertiaryBg,
@@ -952,6 +1025,140 @@ export default function Premium() {
                                             </span>
                                         </div>
                                     </div>
+                                )}
+                                
+                                {/* Forum Limits */}
+                                {premiumPricing.forum && (
+                                    <>
+                                        {premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Forum Post Length</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.forum.regularPostBodyLimit.toLocaleString()} chars
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.forum.premiumPostBodyLimit.toLocaleString()} chars
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {premiumPricing.forum.premiumThreadBodyLimit > premiumPricing.forum.regularThreadBodyLimit && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Forum Thread Length</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.forum.regularThreadBodyLimit.toLocaleString()} chars
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.forum.premiumThreadBodyLimit.toLocaleString()} chars
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                
+                                {/* SMS Limits */}
+                                {premiumPricing.sms && (
+                                    <>
+                                        {premiumPricing.sms.premiumBodyLimit > premiumPricing.sms.regularBodyLimit && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>SMS Message Length</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.sms.regularBodyLimit.toLocaleString()} chars
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.sms.premiumBodyLimit.toLocaleString()} chars
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {premiumPricing.sms.premiumRateLimit < premiumPricing.sms.regularRateLimit && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>SMS Rate Limit</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.sms.regularRateLimit} min
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.sms.premiumRateLimit > 0 
+                                                            ? `${premiumPricing.sms.premiumRateLimit} min` 
+                                                            : 'No limit'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {premiumPricing.sms.premiumMaxRecipients > premiumPricing.sms.regularMaxRecipients && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>SMS Max Recipients</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.sms.regularMaxRecipients}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.sms.premiumMaxRecipients}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
