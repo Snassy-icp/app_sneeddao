@@ -54,6 +54,14 @@ export default function SneedLockAdmin() {
   const [tokenLockFee, setTokenLockFee] = useState('');
   const [maxLockLengthDays, setMaxLockLengthDays] = useState('');
   
+  // ICP Lock Fee state
+  const [icpFeeConfig, setIcpFeeConfig] = useState(null);
+  const [tokenLockFeeIcp, setTokenLockFeeIcp] = useState('');
+  const [positionLockFeeIcp, setPositionLockFeeIcp] = useState('');
+  const [premiumTokenLockFeeIcp, setPremiumTokenLockFeeIcp] = useState('');
+  const [premiumPositionLockFeeIcp, setPremiumPositionLockFeeIcp] = useState('');
+  const [premiumCanisterId, setPremiumCanisterId] = useState('');
+  
   // Admin list state
   const [adminList, setAdminList] = useState([]);
   const [removeAdminPrincipal, setRemoveAdminPrincipal] = useState('');
@@ -80,7 +88,7 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) return;
 
-      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee, timer, activeReqs, completedReqs, failedReqs, admins] = await Promise.all([
+      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee, timer, activeReqs, completedReqs, failedReqs, admins, icpFees] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
         actor.get_claim_queue_status(),
@@ -90,7 +98,8 @@ export default function SneedLockAdmin() {
         actor.get_all_active_claim_requests(),
         actor.get_all_completed_claim_requests(),
         actor.get_all_failed_claim_requests(),
-        actor.get_admin_list()
+        actor.get_admin_list(),
+        actor.get_lock_fees_icp()
       ]);
 
       const infoRangeData = infoRangeResult.length > 0 ? infoRangeResult[0] : null;
@@ -106,6 +115,16 @@ export default function SneedLockAdmin() {
       setCompletedClaimRequests(completedReqs);
       setFailedClaimRequests(failedReqs);
       setAdminList(admins);
+      
+      // Set ICP fee config
+      setIcpFeeConfig(icpFees);
+      setTokenLockFeeIcp(Number(icpFees.token_lock_fee_icp_e8s).toString());
+      setPositionLockFeeIcp(Number(icpFees.position_lock_fee_icp_e8s).toString());
+      setPremiumTokenLockFeeIcp(Number(icpFees.premium_token_lock_fee_icp_e8s).toString());
+      setPremiumPositionLockFeeIcp(Number(icpFees.premium_position_lock_fee_icp_e8s).toString());
+      if (icpFees.sneed_premium_canister_id && icpFees.sneed_premium_canister_id.length > 0) {
+        setPremiumCanisterId(icpFees.sneed_premium_canister_id[0].toString());
+      }
 
       // Fetch first page of logs with the range data directly
       if (infoRangeData) {
@@ -628,6 +647,75 @@ export default function SneedLockAdmin() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpdateIcpFees = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const result = await actor.admin_set_lock_fees_icp(
+        tokenLockFeeIcp ? [BigInt(tokenLockFeeIcp)] : [],
+        positionLockFeeIcp ? [BigInt(positionLockFeeIcp)] : [],
+        premiumTokenLockFeeIcp ? [BigInt(premiumTokenLockFeeIcp)] : [],
+        premiumPositionLockFeeIcp ? [BigInt(premiumPositionLockFeeIcp)] : []
+      );
+      
+      if ('Ok' in result) {
+        setSuccess(`ICP lock fees updated successfully`);
+        // Refresh fee config
+        const icpFees = await actor.get_lock_fees_icp();
+        setIcpFeeConfig(icpFees);
+      } else {
+        setError(`Failed to update ICP fees: ${result.Err}`);
+      }
+    } catch (err) {
+      console.error('Error updating ICP fees:', err);
+      setError('Failed to update ICP fees: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetPremiumCanister = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      let canisterIdArg = [];
+      if (premiumCanisterId && premiumCanisterId.trim()) {
+        canisterIdArg = [Principal.fromText(premiumCanisterId.trim())];
+      }
+      
+      const result = await actor.admin_set_sneed_premium_canister_id(canisterIdArg);
+      
+      if ('Ok' in result) {
+        setSuccess(result.Ok);
+        // Refresh fee config
+        const icpFees = await actor.get_lock_fees_icp();
+        setIcpFeeConfig(icpFees);
+      } else {
+        setError(`Failed to set premium canister: ${result.Err}`);
+      }
+    } catch (err) {
+      console.error('Error setting premium canister:', err);
+      setError('Failed to set premium canister: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatIcpFee = (e8s) => {
+    const icp = Number(e8s) / 100_000_000;
+    return `${icp.toFixed(4)} ICP (${e8s} e8s)`;
   };
 
   const formatTimestamp = (timestamp) => {
@@ -1976,7 +2064,7 @@ export default function SneedLockAdmin() {
         </div>
       </div>
 
-      {/* Token Lock Fee (Read Only) */}
+      {/* Token Lock Fee (Read Only) - Legacy SNEED */}
       <div style={{
         backgroundColor: '#2a2a2a',
         borderRadius: '8px',
@@ -1984,13 +2072,229 @@ export default function SneedLockAdmin() {
         marginBottom: '20px',
         border: '1px solid #3a3a3a'
       }}>
-        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Token Lock Fee</h3>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Token Lock Fee (SNEED - Legacy)</h3>
         <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
           Current fee in SNEED (e8s): <strong style={{ color: '#ffffff' }}>{tokenLockFee}</strong>
         </p>
         <p style={{ color: '#666', fontSize: '12px' }}>
           Note: Use set_token_lock_fee_sneed_e8s function via dfx to update this value
         </p>
+      </div>
+
+      {/* Premium Integration */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>🔶 Sneed Premium Integration</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Configure the Sneed Premium canister ID for premium pricing tiers.
+        </p>
+        
+        {icpFeeConfig && (
+          <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+            <p style={{ color: '#888', fontSize: '13px' }}>
+              Current: {icpFeeConfig.sneed_premium_canister_id && icpFeeConfig.sneed_premium_canister_id.length > 0 
+                ? <span style={{ color: '#2ecc71', fontFamily: 'monospace' }}>{icpFeeConfig.sneed_premium_canister_id[0].toString()}</span>
+                : <span style={{ color: '#e74c3c' }}>Not configured</span>}
+            </p>
+          </div>
+        )}
+        
+        <form onSubmit={handleSetPremiumCanister}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Sneed Premium Canister ID (leave empty to clear)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., xxxxx-xxxxx-xxxxx-xxxxx-cai"
+                value={premiumCanisterId}
+                onChange={(e) => setPremiumCanisterId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                backgroundColor: '#f39c12',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Set Premium Canister
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ICP Lock Fees */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>💰 ICP Lock Fees</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Configure ICP fees for creating locks. Users must send ICP to their payment subaccount before creating a lock.
+          Set to 0 for free locks.
+        </p>
+        
+        {icpFeeConfig && (
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(2, 1fr)', 
+            gap: '15px', 
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#1a1a1a',
+            borderRadius: '8px'
+          }}>
+            <div>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Token Lock Fee (Regular)</p>
+              <p style={{ color: '#ffffff', fontSize: '14px', fontWeight: 'bold' }}>
+                {formatIcpFee(icpFeeConfig.token_lock_fee_icp_e8s)}
+              </p>
+            </div>
+            <div>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Position Lock Fee (Regular)</p>
+              <p style={{ color: '#ffffff', fontSize: '14px', fontWeight: 'bold' }}>
+                {formatIcpFee(icpFeeConfig.position_lock_fee_icp_e8s)}
+              </p>
+            </div>
+            <div>
+              <p style={{ color: '#FFD700', fontSize: '12px', marginBottom: '4px' }}>⭐ Token Lock Fee (Premium)</p>
+              <p style={{ color: '#FFD700', fontSize: '14px', fontWeight: 'bold' }}>
+                {formatIcpFee(icpFeeConfig.premium_token_lock_fee_icp_e8s)}
+              </p>
+            </div>
+            <div>
+              <p style={{ color: '#FFD700', fontSize: '12px', marginBottom: '4px' }}>⭐ Position Lock Fee (Premium)</p>
+              <p style={{ color: '#FFD700', fontSize: '14px', fontWeight: 'bold' }}>
+                {formatIcpFee(icpFeeConfig.premium_position_lock_fee_icp_e8s)}
+              </p>
+            </div>
+          </div>
+        )}
+        
+        <form onSubmit={handleUpdateIcpFees}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Token Lock Fee (e8s)
+              </label>
+              <input
+                type="number"
+                placeholder="0"
+                value={tokenLockFeeIcp}
+                onChange={(e) => setTokenLockFeeIcp(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+              <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+                100,000,000 e8s = 1 ICP
+              </p>
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Position Lock Fee (e8s)
+              </label>
+              <input
+                type="number"
+                placeholder="0"
+                value={positionLockFeeIcp}
+                onChange={(e) => setPositionLockFeeIcp(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#FFD700', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                ⭐ Premium Token Lock Fee (e8s)
+              </label>
+              <input
+                type="number"
+                placeholder="0"
+                value={premiumTokenLockFeeIcp}
+                onChange={(e) => setPremiumTokenLockFeeIcp(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#FFD700', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                ⭐ Premium Position Lock Fee (e8s)
+              </label>
+              <input
+                type="number"
+                placeholder="0"
+                value={premiumPositionLockFeeIcp}
+                onChange={(e) => setPremiumPositionLockFeeIcp(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              backgroundColor: '#3498db',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            Update ICP Fees
+          </button>
+        </form>
       </div>
     </div>
   );

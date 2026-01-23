@@ -14,9 +14,13 @@ import Bool "mo:base/Bool";
 import Debug "mo:base/Debug";
 import Timer "mo:base/Timer";
 
+import Map "mo:map/Map";
+import { phash } "mo:map/Map";
+
 import T "Types";
 
 import CircularBuffer "CircularBuffer";
+import PremiumClient "../PremiumClient";
 
 // TODO: figure out when new instances of actors are created, whether or not that depends on the client at all, and how this effects the persistent state of the actor.
 //       https://internetcomputer.org/docs/current/motoko/main/writing-motoko/actor-classes
@@ -124,6 +128,16 @@ shared (deployer) persistent actor class SneedLock() = this {
   stable var archived_token_locks_stable : T.StableArchivedTokenLocks = [];
   stable var archived_position_locks_stable : T.StableArchivedPositionLocks = [];
   
+  // Premium integration - ICP pricing for locks
+  stable var sneed_premium_canister_id : ?Principal = null;
+  stable var premium_cache = PremiumClient.emptyCache();
+  
+  // ICP lock fee settings (in e8s - 1 ICP = 100_000_000 e8s)
+  stable var token_lock_fee_icp_e8s : Nat64 = 0; // Default 0 - free for non-premium
+  stable var position_lock_fee_icp_e8s : Nat64 = 0; // Default 0 - free for non-premium
+  stable var premium_token_lock_fee_icp_e8s : Nat64 = 0; // Default 0 - free for premium
+  stable var premium_position_lock_fee_icp_e8s : Nat64 = 0; // Default 0 - free for premium
+  
   // Ephemeral timer state (not stable - timer IDs don't persist across upgrades)
   transient var next_scheduled_timer_time : ?T.Timestamp = null;
 
@@ -132,6 +146,10 @@ shared (deployer) persistent actor class SneedLock() = this {
 
   transient let icrc1_sneed_ledger_canister_id = Principal.fromText("hvgxa-wqaaa-aaaaq-aacia-cai");
   transient let sneed_defi_canister_id = Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai");
+  
+  // ICP Ledger for lock creation fees
+  transient let ICP_LEDGER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+  transient let ICP_FEE : Nat64 = 10_000; // 0.0001 ICP
 
   // ephemeral state
   transient let state : State = object { 
@@ -1036,7 +1054,22 @@ shared (deployer) persistent actor class SneedLock() = this {
           return error;
       };
 
-      // Pay token lock fee (denominated in Sneed)
+      // Collect ICP lock fee (if configured)
+      let icp_fee_result = await* collectLockFeeIcp(caller, correlation_id, false);
+      switch (icp_fee_result) {
+          case (#Err(e)) {
+            let create_lock_error : CreateLockError = {
+              message = "ICP payment failed: " # e;
+              transfer_error = null;
+            };
+            let error = #Err(create_lock_error);
+            log_error(caller, correlation_id, debug_show(error));
+            return error;
+          };
+          case (#Ok(_)) {};
+      };
+
+      // Pay token lock fee (denominated in Sneed) - legacy fee system
       let transfer_result = await pay_lock_fee_sneed(caller, correlation_id, token_lock_fee_sneed_e8s);
 
       switch (transfer_result) {
@@ -1136,14 +1169,23 @@ shared (deployer) persistent actor class SneedLock() = this {
          });
       };
 
-      // TODO: Claim lock fee!
-
       clear_expired_position_locks_for_principal(caller, correlation_id);
 
       var locked_position = get_position_lock(caller, swap_canister_id, position_id);
 
       switch(locked_position) {
           case (null) {
+            // Collect ICP lock fee for new position locks
+            let icp_fee_result = await* collectLockFeeIcp(caller, correlation_id, true);
+            switch (icp_fee_result) {
+                case (#Err(e)) {
+                  return #Err({
+                    message = "ICP payment failed: " # e;
+                    transfer_error = null;
+                  });
+                };
+                case (#Ok(_)) {};
+            };
             let dex_value = switch (dex) {
               case null {
                 return #Err({
@@ -1698,6 +1740,209 @@ shared (deployer) persistent actor class SneedLock() = this {
     };
 
     max_lock_length_ns := new_max_lock_length_days * day_ns;
+  };
+
+  ////////////////
+  // Premium & ICP Lock Fee System
+  ////////////////
+
+  // Generate payment subaccount for a user
+  // Structure: principal bytes + 'P' marker byte at position 23
+  private func userPaymentSubaccount(user : Principal) : Blob {
+    let a = Array.init<Nat8>(32, 0);
+    let pa = Principal.toBlob(user);
+    let size = pa.size();
+    
+    // Byte 0: principal length
+    a[0] := Nat8.fromNat(size);
+    
+    // Bytes 1-N: principal bytes
+    var pos = 1;
+    for (x in Blob.toArray(pa).vals()) {
+      a[pos] := x;
+      pos += 1;
+    };
+    
+    // Byte 23: type marker for payment
+    a[23] := 0x50; // 'P' for Payment
+    
+    Blob.fromArray(Array.freeze(a));
+  };
+
+  // Admin: Set Sneed Premium canister ID
+  public shared ({ caller }) func admin_set_sneed_premium_canister_id(canister_id : ?Principal) : async { #Ok : Text; #Err : Text } {
+    if (not isAdmin(caller)) {
+      return #Err("Only admins can set the premium canister ID");
+    };
+    sneed_premium_canister_id := canister_id;
+    switch (canister_id) {
+      case (?id) { #Ok("Sneed Premium canister ID set to: " # Principal.toText(id)) };
+      case null { #Ok("Sneed Premium canister ID cleared") };
+    };
+  };
+
+  // Admin: Set ICP lock fees
+  public shared ({ caller }) func admin_set_lock_fees_icp(
+    token_lock_fee : ?Nat64,
+    position_lock_fee : ?Nat64,
+    premium_token_lock_fee : ?Nat64,
+    premium_position_lock_fee : ?Nat64
+  ) : async { #Ok : Text; #Err : Text } {
+    if (not isAdmin(caller)) {
+      return #Err("Only admins can set lock fees");
+    };
+    
+    switch (token_lock_fee) {
+      case (?fee) { token_lock_fee_icp_e8s := fee };
+      case null {};
+    };
+    switch (position_lock_fee) {
+      case (?fee) { position_lock_fee_icp_e8s := fee };
+      case null {};
+    };
+    switch (premium_token_lock_fee) {
+      case (?fee) { premium_token_lock_fee_icp_e8s := fee };
+      case null {};
+    };
+    switch (premium_position_lock_fee) {
+      case (?fee) { premium_position_lock_fee_icp_e8s := fee };
+      case null {};
+    };
+    
+    #Ok("Lock fees updated successfully");
+  };
+
+  // Query: Get ICP lock fee configuration
+  public query func get_lock_fees_icp() : async {
+    token_lock_fee_icp_e8s : Nat64;
+    position_lock_fee_icp_e8s : Nat64;
+    premium_token_lock_fee_icp_e8s : Nat64;
+    premium_position_lock_fee_icp_e8s : Nat64;
+    sneed_premium_canister_id : ?Principal;
+  } {
+    {
+      token_lock_fee_icp_e8s = token_lock_fee_icp_e8s;
+      position_lock_fee_icp_e8s = position_lock_fee_icp_e8s;
+      premium_token_lock_fee_icp_e8s = premium_token_lock_fee_icp_e8s;
+      premium_position_lock_fee_icp_e8s = premium_position_lock_fee_icp_e8s;
+      sneed_premium_canister_id = sneed_premium_canister_id;
+    };
+  };
+
+  // Query: Get payment subaccount for a user
+  public query func getPaymentSubaccount(user : Principal) : async Blob {
+    userPaymentSubaccount(user);
+  };
+
+  // Query: Get payment balance for a user
+  public func getPaymentBalance(user : Principal) : async Nat {
+    let subaccount = userPaymentSubaccount(user);
+    let icpLedger = actor(ICP_LEDGER_ID) : actor {
+      icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat;
+    };
+    
+    await icpLedger.icrc1_balance_of({
+      owner = this_canister_id();
+      subaccount = ?subaccount;
+    });
+  };
+
+  // Check if user is premium
+  private func checkUserPremium(user : Principal) : async* Bool {
+    switch (sneed_premium_canister_id) {
+      case (?canisterId) {
+        await* PremiumClient.isPremium(premium_cache, canisterId, user);
+      };
+      case null { false };
+    };
+  };
+
+  // Get effective lock fee for a user (based on premium status and lock type)
+  public func getEffectiveLockFee(user : Principal, is_position_lock : Bool) : async {
+    fee_e8s : Nat64;
+    is_premium : Bool;
+  } {
+    let is_premium = await* checkUserPremium(user);
+    
+    let fee_e8s = if (is_position_lock) {
+      if (is_premium) { premium_position_lock_fee_icp_e8s } else { position_lock_fee_icp_e8s }
+    } else {
+      if (is_premium) { premium_token_lock_fee_icp_e8s } else { token_lock_fee_icp_e8s }
+    };
+    
+    { fee_e8s; is_premium };
+  };
+
+  // Collect ICP lock fee from user's payment subaccount
+  private func collectLockFeeIcp(caller : Principal, correlation_id : Nat, is_position_lock : Bool) : async* { #Ok : Nat; #Err : Text } {
+    // Check premium status and get effective fee
+    let is_premium = await* checkUserPremium(caller);
+    let fee_e8s = if (is_position_lock) {
+      if (is_premium) { premium_position_lock_fee_icp_e8s } else { position_lock_fee_icp_e8s }
+    } else {
+      if (is_premium) { premium_token_lock_fee_icp_e8s } else { token_lock_fee_icp_e8s }
+    };
+    
+    // If fee is 0, no payment needed
+    if (fee_e8s == 0) {
+      log_info(caller, correlation_id, "Lock fee is 0, no payment required");
+      return #Ok(0);
+    };
+    
+    let fee_nat = Nat64.toNat(fee_e8s);
+    let icp_fee_nat = Nat64.toNat(ICP_FEE);
+    
+    // Check payment balance
+    let subaccount = userPaymentSubaccount(caller);
+    let icpLedger = actor(ICP_LEDGER_ID) : actor {
+      icrc1_balance_of : shared query { owner : Principal; subaccount : ?Blob } -> async Nat;
+      icrc1_transfer : shared {
+        to : { owner : Principal; subaccount : ?Blob };
+        fee : ?Nat;
+        memo : ?Blob;
+        from_subaccount : ?Blob;
+        created_at_time : ?Nat64;
+        amount : Nat;
+      } -> async { #Ok : Nat; #Err : T.TransferError };
+    };
+    
+    let balance = await icpLedger.icrc1_balance_of({
+      owner = this_canister_id();
+      subaccount = ?subaccount;
+    });
+    
+    if (balance < fee_nat) {
+      log_error(caller, correlation_id, "Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # ", Available: " # Nat.toText(balance));
+      return #Err("Insufficient ICP payment. Required: " # Nat.toText(fee_nat) # " e8s, Available: " # Nat.toText(balance) # " e8s");
+    };
+    
+    // Transfer fee to main account (fee recipient)
+    let transfer_amount = if (fee_nat > icp_fee_nat) { fee_nat - icp_fee_nat } else { 0 };
+    if (transfer_amount > 0) {
+      let transfer_result = await icpLedger.icrc1_transfer({
+        to = { owner = this_canister_id(); subaccount = null }; // Main account collects fees
+        fee = ?icp_fee_nat;
+        memo = null;
+        from_subaccount = ?subaccount;
+        created_at_time = null;
+        amount = transfer_amount;
+      });
+      
+      switch (transfer_result) {
+        case (#Ok(blockIdx)) {
+          log_info(caller, correlation_id, "ICP lock fee collected: " # Nat.toText(transfer_amount) # " e8s, block: " # Nat.toText(blockIdx));
+          #Ok(fee_nat);
+        };
+        case (#Err(e)) {
+          log_error(caller, correlation_id, "Failed to collect ICP lock fee: " # debug_show(e));
+          #Err("Failed to collect ICP payment: " # debug_show(e));
+        };
+      };
+    } else {
+      // Fee is less than ICP transaction fee, consider it paid
+      log_info(caller, correlation_id, "Lock fee less than ICP tx fee, considered paid");
+      #Ok(fee_nat);
+    };
   };
 
   ////////////////

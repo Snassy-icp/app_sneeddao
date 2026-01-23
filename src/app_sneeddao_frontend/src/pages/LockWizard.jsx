@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner } from 'react-icons/fa';
+import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaWallet } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
@@ -14,8 +14,10 @@ import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from '..
 import { formatAmount } from '../utils/StringUtils';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from '../utils/DateUtils';
 import ConfirmationModal from '../ConfirmationModal';
+import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
 
 const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
+const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const dex_icpswap = 1;
 
 function LockWizard() {
@@ -23,7 +25,10 @@ function LockWizard() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     
-    // Wizard state
+    // Premium status
+    const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
+    
+    // Wizard state - now 4 steps: Type -> Select -> Payment -> Configure
     const [currentStep, setCurrentStep] = useState(1);
     const [lockType, setLockType] = useState(null); // 'token' or 'position'
     const [isHovering, setIsHovering] = useState(null);
@@ -36,7 +41,17 @@ function LockWizard() {
     const [selectedToken, setSelectedToken] = useState(null);
     const [selectedPosition, setSelectedPosition] = useState(null);
     
-    // Step 3: Lock configuration state
+    // Step 3: Payment state
+    const [lockFeeConfig, setLockFeeConfig] = useState(null);
+    const [requiredFee, setRequiredFee] = useState(0n);
+    const [paymentBalance, setPaymentBalance] = useState(0n);
+    const [paymentSubaccount, setPaymentSubaccount] = useState(null);
+    const [loadingPayment, setLoadingPayment] = useState(false);
+    const [isPayingFee, setIsPayingFee] = useState(false);
+    const [paymentError, setPaymentError] = useState('');
+    const [icpWalletBalance, setIcpWalletBalance] = useState(0n);
+    
+    // Step 4: Lock configuration state
     const [lockAmount, setLockAmount] = useState('');
     const [lockExpiry, setLockExpiry] = useState('');
     const [isLocking, setIsLocking] = useState(false);
@@ -48,9 +63,9 @@ function LockWizard() {
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
 
-    // Reset expiry when entering step 3
+    // Reset expiry when entering step 4 (Configure)
     useEffect(() => {
-        if (currentStep === 3) {
+        if (currentStep === 4) {
             setLockExpiry(getInitialExpiry());
             setLockError('');
         }
@@ -69,6 +84,115 @@ function LockWizard() {
             fetchPositions();
         }
     }, [currentStep, lockType, isAuthenticated, identity]);
+
+    // Fetch payment info when entering step 3 (Payment)
+    useEffect(() => {
+        if (currentStep === 3 && isAuthenticated && identity) {
+            fetchPaymentInfo();
+        }
+    }, [currentStep, isAuthenticated, identity, lockType]);
+
+    const fetchPaymentInfo = async () => {
+        setLoadingPayment(true);
+        setPaymentError('');
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
+            
+            // Get fee configuration
+            const feeConfig = await sneedLockActor.get_lock_fees_icp();
+            setLockFeeConfig(feeConfig);
+            
+            // Determine required fee based on lock type and premium status
+            const isPositionLock = lockType === 'position';
+            let fee;
+            if (isPremium) {
+                fee = isPositionLock ? feeConfig.premium_position_lock_fee_icp_e8s : feeConfig.premium_token_lock_fee_icp_e8s;
+            } else {
+                fee = isPositionLock ? feeConfig.position_lock_fee_icp_e8s : feeConfig.token_lock_fee_icp_e8s;
+            }
+            setRequiredFee(fee);
+            
+            // Get payment subaccount
+            const subaccount = await sneedLockActor.getPaymentSubaccount(identity.getPrincipal());
+            setPaymentSubaccount(subaccount);
+            
+            // Get current payment balance
+            const payBal = await sneedLockActor.getPaymentBalance(identity.getPrincipal());
+            setPaymentBalance(BigInt(payBal));
+            
+            // Get ICP wallet balance
+            const walletBal = await icpLedgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            setIcpWalletBalance(BigInt(walletBal));
+        } catch (error) {
+            console.error('Error fetching payment info:', error);
+            setPaymentError('Failed to load payment information');
+        } finally {
+            setLoadingPayment(false);
+        }
+    };
+
+    const handlePayFee = async () => {
+        if (!identity || !paymentSubaccount) return;
+        
+        setIsPayingFee(true);
+        setPaymentError('');
+        
+        try {
+            const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
+            
+            // Calculate amount to send (required fee minus any existing balance, plus ICP transaction fee)
+            const existingBalance = paymentBalance;
+            const amountNeeded = BigInt(requiredFee) - existingBalance;
+            const icpTxFee = 10_000n; // 0.0001 ICP
+            const amountToSend = amountNeeded + icpTxFee;
+            
+            if (icpWalletBalance < amountToSend) {
+                setPaymentError(`Insufficient ICP balance. Need ${formatIcp(amountToSend)}, have ${formatIcp(icpWalletBalance)}`);
+                setIsPayingFee(false);
+                return;
+            }
+            
+            // Transfer ICP to payment subaccount
+            const result = await icpLedgerActor.icrc1_transfer({
+                to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [paymentSubaccount] },
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: amountToSend - icpTxFee // The fee will be deducted by the ledger
+            });
+            
+            if (result.Err) {
+                throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
+            }
+            
+            // Refresh payment balance
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const newBalance = await sneedLockActor.getPaymentBalance(identity.getPrincipal());
+            setPaymentBalance(BigInt(newBalance));
+            
+            // Refresh wallet balance
+            const walletBal = await icpLedgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            setIcpWalletBalance(BigInt(walletBal));
+        } catch (error) {
+            console.error('Payment error:', error);
+            setPaymentError(error.message || 'Failed to send payment');
+        } finally {
+            setIsPayingFee(false);
+        }
+    };
+
+    const formatIcp = (e8s) => {
+        const icp = Number(e8s) / 100_000_000;
+        return `${icp.toFixed(4)} ICP`;
+    };
 
     const fetchTokens = async () => {
         setLoadingTokens(true);
@@ -450,7 +574,12 @@ function LockWizard() {
                 setSelectedPosition(null);
                 setLockAmount('');
                 setLockSuccess(false);
+                setPaymentError('');
             } else if (step === 2) {
+                setLockAmount('');
+                setLockSuccess(false);
+                setPaymentError('');
+            } else if (step === 3) {
                 setLockAmount('');
                 setLockSuccess(false);
             }
@@ -771,10 +900,12 @@ function LockWizard() {
         );
     }
 
+    const stepLabels = ['Type', 'Select', 'Payment', 'Configure'];
+    
     const renderStepProgress = () => (
         <div style={styles.stepProgress}>
             <style>{spinnerKeyframes}</style>
-            {[1, 2, 3].map((stepNum, index) => (
+            {[1, 2, 3, 4].map((stepNum, index) => (
                 <React.Fragment key={stepNum}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <div 
@@ -784,10 +915,10 @@ function LockWizard() {
                             {stepNum < currentStep ? <FaCheck size={16} /> : stepNum}
                         </div>
                         <div style={styles.stepLabel(stepNum === currentStep)}>
-                            {stepNum === 1 ? 'Type' : stepNum === 2 ? 'Select' : 'Configure'}
+                            {stepLabels[stepNum - 1]}
                         </div>
                     </div>
-                    {index < 2 && <div style={styles.stepLine(stepNum < currentStep)} />}
+                    {index < 3 && <div style={styles.stepLine(stepNum < currentStep)} />}
                 </React.Fragment>
             ))}
         </div>
@@ -970,7 +1101,211 @@ function LockWizard() {
         );
     };
 
+    // Step 3: Payment
     const renderStep3 = () => {
+        const feeAmount = BigInt(requiredFee);
+        const hasSufficientPayment = paymentBalance >= feeAmount;
+        const isFreeToLock = feeAmount === 0n;
+        
+        return (
+            <>
+                <div style={styles.hero}>
+                    <h1 style={styles.title}>
+                        <FaWallet style={{ color: theme.colors.accent }} />
+                        Payment
+                    </h1>
+                    <p style={styles.subtitle}>
+                        {isFreeToLock 
+                            ? 'No payment required for this lock!' 
+                            : 'Send the required ICP to proceed with your lock'}
+                    </p>
+                </div>
+
+                <div style={styles.configCard}>
+                    {/* Premium status */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        paddingBottom: '1rem',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: '1.5rem'
+                    }}>
+                        <div>
+                            <span style={{ color: theme.colors.secondaryText, marginRight: '10px' }}>Status:</span>
+                            {loadingPremium ? (
+                                <FaSpinner style={styles.spinner} />
+                            ) : isPremium ? (
+                                <PremiumBadge size="small" />
+                            ) : (
+                                <span style={{ color: theme.colors.mutedText }}>Standard User</span>
+                            )}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Lock Type</div>
+                            <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                {lockType === 'token' ? 'Token Lock' : 'Position Lock'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {loadingPayment ? (
+                        <div style={styles.loadingContainer}>
+                            <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
+                            <p style={{ color: theme.colors.mutedText }}>Loading payment information...</p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Fee breakdown */}
+                            <div style={{ 
+                                background: theme.colors.secondaryBg, 
+                                borderRadius: '12px', 
+                                padding: '1.5rem',
+                                marginBottom: '1.5rem'
+                            }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <span style={{ color: theme.colors.secondaryText }}>Lock Fee:</span>
+                                    <span style={{ 
+                                        color: isFreeToLock ? theme.colors.success : theme.colors.primaryText,
+                                        fontSize: '1.2rem',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {isFreeToLock ? 'FREE' : formatIcp(feeAmount)}
+                                    </span>
+                                </div>
+                                
+                                {!isFreeToLock && (
+                                    <>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center',
+                                            marginBottom: '1rem'
+                                        }}>
+                                            <span style={{ color: theme.colors.secondaryText }}>Payment Deposited:</span>
+                                            <span style={{ 
+                                                color: hasSufficientPayment ? theme.colors.success : theme.colors.warning,
+                                                fontWeight: '500'
+                                            }}>
+                                                {formatIcp(paymentBalance)}
+                                            </span>
+                                        </div>
+                                        
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center',
+                                            paddingTop: '1rem',
+                                            borderTop: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <span style={{ color: theme.colors.secondaryText }}>Your ICP Wallet:</span>
+                                            <span style={{ color: theme.colors.primaryText }}>
+                                                {formatIcp(icpWalletBalance)}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Payment status / action */}
+                            {!isFreeToLock && (
+                                <div style={{ 
+                                    background: hasSufficientPayment 
+                                        ? `${theme.colors.success}15` 
+                                        : `${theme.colors.warning}15`,
+                                    border: `1px solid ${hasSufficientPayment ? theme.colors.success : theme.colors.warning}30`,
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    marginBottom: '1rem'
+                                }}>
+                                    {hasSufficientPayment ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <FaCheck style={{ color: theme.colors.success }} />
+                                            <span style={{ color: theme.colors.success }}>
+                                                Payment ready! You can proceed to configure your lock.
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <p style={{ color: theme.colors.warning, marginBottom: '1rem' }}>
+                                                Please deposit {formatIcp(feeAmount - paymentBalance)} more ICP to proceed.
+                                            </p>
+                                            <button
+                                                onClick={handlePayFee}
+                                                disabled={isPayingFee || icpWalletBalance < (feeAmount - paymentBalance + 10_000n)}
+                                                style={{
+                                                    background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+                                                    color: theme.colors.primaryBg,
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '12px 24px',
+                                                    fontWeight: '600',
+                                                    cursor: isPayingFee ? 'not-allowed' : 'pointer',
+                                                    opacity: isPayingFee ? 0.7 : 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px'
+                                                }}
+                                            >
+                                                {isPayingFee ? (
+                                                    <>
+                                                        <FaSpinner style={styles.spinner} />
+                                                        Sending...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <FaWallet />
+                                                        Send {formatIcp(feeAmount - paymentBalance + 10_000n)}
+                                                    </>
+                                                )}
+                                            </button>
+                                            {icpWalletBalance < (feeAmount - paymentBalance + 10_000n) && (
+                                                <p style={{ color: theme.colors.error, fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                                    Insufficient ICP balance in wallet
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {paymentError && (
+                                <div style={styles.errorBox}>
+                                    {paymentError}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                <div style={styles.buttonRow}>
+                    <button
+                        style={styles.backButton}
+                        onClick={() => goToStep(2)}
+                    >
+                        <FaArrowLeft />
+                        Back
+                    </button>
+                    <button
+                        style={styles.continueButton(isFreeToLock || hasSufficientPayment)}
+                        onClick={() => (isFreeToLock || hasSufficientPayment) && setCurrentStep(4)}
+                        disabled={!isFreeToLock && !hasSufficientPayment}
+                    >
+                        Continue
+                        <FaArrowRight />
+                    </button>
+                </div>
+            </>
+        );
+    };
+
+    // Step 4: Configure
+    const renderStep4 = () => {
         if (lockSuccess) {
             return (
                 <div style={styles.successCard}>
@@ -1121,7 +1456,7 @@ function LockWizard() {
                 <div style={styles.buttonRow}>
                     <button
                         style={styles.backButton}
-                        onClick={() => goToStep(2)}
+                        onClick={() => goToStep(3)}
                         disabled={isLocking}
                     >
                         <FaArrowLeft />
@@ -1157,6 +1492,7 @@ function LockWizard() {
                 {currentStep === 1 && renderStep1()}
                 {currentStep === 2 && renderStep2()}
                 {currentStep === 3 && renderStep3()}
+                {currentStep === 4 && renderStep4()}
             </main>
             <ConfirmationModal
                 show={showConfirmModal}
