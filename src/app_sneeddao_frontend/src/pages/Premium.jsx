@@ -15,6 +15,7 @@ import {
     SNEED_PREMIUM_CANISTER_ID
 } from '../utils/SneedPremiumUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
+import { useSneedMembership } from '../hooks/useSneedMembership';
 import InfoModal from '../components/InfoModal';
 import { 
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
@@ -44,6 +45,9 @@ export default function Premium() {
     // User wallet balance
     const [walletBalance, setWalletBalance] = useState(null);
     const [icpFee, setIcpFee] = useState(null);
+    
+    // User voting power (from Sneed membership hook)
+    const { sneedVotingPower, loading: loadingVp, refresh: refreshVp } = useSneedMembership();
     
     // Promo code state
     const [promoCode, setPromoCode] = useState('');
@@ -268,9 +272,39 @@ export default function Premium() {
     
     // Claim with Voting Power
     const handleClaimVP = async () => {
+        // Refresh voting power first if needed
+        if (loadingVp) {
+            showInfo('Loading', 'Still loading your voting power. Please wait...', 'info');
+            return;
+        }
+        
+        // Use the voting power from the hook
+        const vp = sneedVotingPower || 0;
+        
         // Find the best VP tier to show
         const activeTiers = vpTiers.filter(t => t.active);
-        const bestTier = activeTiers.length > 0 ? activeTiers[activeTiers.length - 1] : null;
+        
+        // Find matching tier for user's VP
+        let matchedTier = null;
+        for (const tier of [...activeTiers].sort((a, b) => Number(b.minVotingPowerE8s) - Number(a.minVotingPowerE8s))) {
+            if (vp >= Number(tier.minVotingPowerE8s)) {
+                matchedTier = tier;
+                break;
+            }
+        }
+        
+        // Find minimum required if no match
+        const minRequired = activeTiers.length > 0 
+            ? activeTiers.reduce((min, t) => Number(t.minVotingPowerE8s) < min ? Number(t.minVotingPowerE8s) : min, Number(activeTiers[0].minVotingPowerE8s))
+            : 0;
+        
+        if (!matchedTier && activeTiers.length > 0) {
+            showInfo('Insufficient Voting Power', 
+                `Your voting power: ${formatVotingPower(vp)}\n\nMinimum required: ${formatVotingPower(minRequired)}\n\nStake more SNEED tokens to qualify for premium membership!`, 
+                'error'
+            );
+            return;
+        }
         
         setPremiumConfirmModal({
             show: true,
@@ -278,12 +312,16 @@ export default function Premium() {
             title: 'Claim with Voting Power',
             icon: <FaVoteYea style={{ fontSize: '2.5rem', color: theme.colors.info || theme.colors.accent }} />,
             details: [
-                { label: 'Method', value: 'Sneed Staking' },
-                { label: 'Available Tiers', value: `${activeTiers.length} tier${activeTiers.length !== 1 ? 's' : ''}` },
-                ...(bestTier ? [{ label: 'Best Tier', value: `${formatVotingPower(bestTier.minVotingPowerE8s)} → ${formatDuration(bestTier.durationNs)}` }] : []),
+                { label: 'Your Voting Power', value: formatVotingPower(vp), highlight: true },
+                ...(matchedTier ? [
+                    { label: 'Matched Tier', value: matchedTier.name },
+                    { label: 'Duration', value: formatDuration(matchedTier.durationNs) },
+                ] : []),
             ],
-            highlight: 'Your staked SNEED neurons will be checked to determine your membership duration',
-            confirmText: 'Check My Neurons',
+            highlight: matchedTier 
+                ? `You qualify for "${matchedTier.name}" - ${formatDuration(matchedTier.durationNs)} of membership!`
+                : 'Your staked SNEED neurons will be checked to determine your membership duration',
+            confirmText: 'Claim Membership',
             onConfirm: doClaimVP,
         });
     };
@@ -1075,11 +1113,18 @@ export default function Premium() {
                                     alignItems: 'center',
                                     padding: '0.5rem 0',
                                     borderBottom: idx < premiumConfirmModal.details.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                    ...(detail.highlight ? {
+                                        background: `linear-gradient(90deg, transparent, ${theme.colors.info || theme.colors.accent}15)`,
+                                        margin: '0 -1rem',
+                                        padding: '0.75rem 1rem',
+                                        borderRadius: '8px',
+                                    } : {}),
                                 }}>
-                                    <span style={{ color: theme.colors.mutedText }}>{detail.label}</span>
+                                    <span style={{ color: detail.highlight ? theme.colors.primaryText : theme.colors.mutedText }}>{detail.label}</span>
                                     <span style={{ 
-                                        color: theme.colors.primaryText, 
-                                        fontWeight: '600',
+                                        color: detail.highlight ? (theme.colors.info || theme.colors.accent) : theme.colors.primaryText, 
+                                        fontWeight: detail.highlight ? '700' : '600',
+                                        fontSize: detail.highlight ? '1.1rem' : 'inherit',
                                         fontFamily: detail.mono ? 'monospace' : 'inherit',
                                         letterSpacing: detail.mono ? '1px' : 'normal',
                                     }}>
