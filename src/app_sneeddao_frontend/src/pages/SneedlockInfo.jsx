@@ -12,6 +12,7 @@ import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanis
 import { useLocation, useNavigate } from 'react-router-dom';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useTheme } from '../contexts/ThemeContext';
+import PrincipalInput from '../components/PrincipalInput';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
@@ -974,19 +975,12 @@ function SneedlockInfo() {
                         flexWrap: 'wrap'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input
-                                type="text"
+                            <PrincipalInput
                                 value={ownerFilter}
-                                onChange={(e) => handleOwnerFilterChange(e.target.value)}
-                                placeholder="Filter by owner principal"
-                                style={{
-                                    padding: '8px 12px',
-                                    borderRadius: '4px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    background: theme.colors.secondaryBg,
-                                    color: theme.colors.primaryText,
-                                    width: '300px'
-                                }}
+                                onChange={handleOwnerFilterChange}
+                                placeholder="Filter by owner"
+                                style={{ width: '300px' }}
+                                isAuthenticated={!!identity}
                             />
                             {identity && (
                                 <button
@@ -1021,19 +1015,12 @@ function SneedlockInfo() {
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input
-                                type="text"
+                            <PrincipalInput
                                 value={ledgerFilter}
-                                onChange={(e) => handleLedgerFilterChange(e.target.value)}
-                                placeholder="Filter by ledger principal"
-                                style={{
-                                    padding: '8px 12px',
-                                    borderRadius: '4px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    background: theme.colors.secondaryBg,
-                                    color: theme.colors.primaryText,
-                                    width: '300px'
-                                }}
+                                onChange={handleLedgerFilterChange}
+                                placeholder="Filter by ledger"
+                                style={{ width: '300px' }}
+                                isAuthenticated={!!identity}
                             />
                             {ledgerFilter && (
                                 <button
