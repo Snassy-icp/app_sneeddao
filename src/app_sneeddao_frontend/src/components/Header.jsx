@@ -39,8 +39,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/me', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Locks';
-        if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'DEX';
+        if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
+        if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
@@ -60,9 +60,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path)) {
-            setActiveSection('Locks');
+            setActiveSection('Sneed Lock');
         } else if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) {
-            setActiveSection('DEX');
+            setActiveSection('Sneedex');
         } else if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || path.startsWith('/tools/')) {
             setActiveSection('Tools');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
@@ -110,9 +110,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) {
-            setActiveSection('Locks');
+            setActiveSection('Sneed Lock');
         } else if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) {
-            setActiveSection('DEX');
+            setActiveSection('Sneedex');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
         } else if (['/help', '/doc'].includes(path) || path.startsWith('/help/')) {
@@ -201,7 +201,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
-        'Locks': {
+        'Sneed Lock': {
             icon: <FaLock size={18} />,
             displayName: 'Sneed Lock',
             defaultPath: '/sneedlock_info',
@@ -211,7 +211,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'About', path: '/sneedlock' }
             ]
         },
-        'DEX': {
+        'Sneedex': {
             icon: <FaExchangeAlt size={18} />,
             displayName: 'Sneedex',
             defaultPath: '/sneedex_offers',
@@ -389,8 +389,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         <>Admin</>
                     ) : (
                         <>
-                            {/* Extract just the section name without "Sneed" prefix */}
-                            {menuSections[activeSection]?.displayName?.replace('Sneed ', '')}
+                            {menuSections[activeSection]?.displayName}
                         </>
                     )}
                     
