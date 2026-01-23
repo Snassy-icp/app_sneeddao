@@ -43,8 +43,32 @@ export interface AppSneedDaoBackend {
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
   'get_cached_token_meta' : ActorMethod<[Principal], [] | [TokenMeta]>,
   'get_canister_groups' : ActorMethod<[], [] | [CanisterGroupsRoot]>,
+  'get_canister_groups_limits_config' : ActorMethod<
+    [],
+    {
+      'premium_max_canisters_per_group' : bigint,
+      'premium_max_total_grouped_canisters' : bigint,
+      'max_canisters_per_group' : bigint,
+      'max_total_grouped_canisters' : bigint,
+      'premium_max_canister_groups' : bigint,
+      'max_canister_groups' : bigint,
+    }
+  >,
   'get_canister_info' : ActorMethod<[Principal], Result_4>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
+  'get_my_canister_groups_usage' : ActorMethod<
+    [],
+    {
+      'total_limit' : bigint,
+      'is_premium' : boolean,
+      'max_in_single_group' : bigint,
+      'per_group_limit' : bigint,
+      'ungrouped_count' : bigint,
+      'group_count' : bigint,
+      'group_limit' : bigint,
+      'total_canisters' : bigint,
+    }
+  >,
   'get_my_nickname_usage' : ActorMethod<
     [],
     {
@@ -101,7 +125,7 @@ export interface AppSneedDaoBackend {
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
-  'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], undefined>,
+  'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], Result_1>,
   'set_canister_name' : ActorMethod<[Principal, string], Result>,
   'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result>,
@@ -129,6 +153,17 @@ export interface AppSneedDaoBackend {
   'unregister_user_token_for' : ActorMethod<[Principal, Principal], undefined>,
   'unverify_neuron_name' : ActorMethod<[Principal, NeuronId], Result>,
   'unverify_principal_name' : ActorMethod<[Principal], Result>,
+  'update_canister_groups_limits' : ActorMethod<
+    [
+      [] | [bigint],
+      [] | [bigint],
+      [] | [bigint],
+      [] | [bigint],
+      [] | [bigint],
+      [] | [bigint],
+    ],
+    Result_1
+  >,
   'update_nickname_limits' : ActorMethod<
     [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
     Result_1

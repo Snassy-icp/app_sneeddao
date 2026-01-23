@@ -221,8 +221,28 @@ type AppSneedDaoBackend =
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
    get_canister_groups: () -> (opt CanisterGroupsRoot) query;
+   get_canister_groups_limits_config: () ->
+    (record {
+       max_canister_groups: nat;
+       max_canisters_per_group: nat;
+       max_total_grouped_canisters: nat;
+       premium_max_canister_groups: nat;
+       premium_max_canisters_per_group: nat;
+       premium_max_total_grouped_canisters: nat;
+     }) query;
    get_canister_info: (canister_id: principal) -> (Result_4);
    get_ledger_canister_ids: () -> (vec principal) query;
+   get_my_canister_groups_usage: () ->
+    (record {
+       group_count: nat;
+       group_limit: nat;
+       is_premium: bool;
+       max_in_single_group: nat;
+       per_group_limit: nat;
+       total_canisters: nat;
+       total_limit: nat;
+       ungrouped_count: nat;
+     });
    get_my_nickname_usage: () ->
     (record {
        is_premium: bool;
@@ -281,7 +301,7 @@ type AppSneedDaoBackend =
     principal) -> (TransferResult);
    set_cached_token_meta: (swap_canister_id: principal, new_token_meta:
     TokenMeta) -> ();
-   set_canister_groups: (groups: CanisterGroupsRoot) -> ();
+   set_canister_groups: (groups: CanisterGroupsRoot) -> (Result_1);
    set_canister_name: (canister_id: principal, name: text) -> (Result);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
     name: text) -> (Result);
@@ -307,6 +327,9 @@ type AppSneedDaoBackend =
    unverify_neuron_name: (sns_root_canister_id: principal, neuron_id:
     NeuronId) -> (Result);
    unverify_principal_name: ("principal": principal) -> (Result);
+   update_canister_groups_limits: (max_groups: opt nat, max_per_group:
+    opt nat, max_total: opt nat, premium_max_groups: opt nat,
+    premium_max_per_group: opt nat, premium_max_total: opt nat) -> (Result_1);
    update_nickname_limits: (max_neuron_nicknames: opt nat,
     max_principal_nicknames: opt nat, premium_max_neuron_nicknames: opt nat,
     premium_max_principal_nicknames: opt nat) -> (Result_1);

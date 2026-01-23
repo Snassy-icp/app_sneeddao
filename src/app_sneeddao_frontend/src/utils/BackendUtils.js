@@ -797,14 +797,18 @@ export const getCanisterGroups = async (identity) => {
 };
 
 export const setCanisterGroups = async (identity, groupsRoot) => {
-    if (!identity) return false;
+    if (!identity) return { ok: false, err: 'Not authenticated' };
     
     try {
         const actor = createBackendActor(identity);
         // Convert canister IDs to Principal objects if they're strings
         const convertedGroups = convertGroupsForBackend(groupsRoot);
-        await actor.set_canister_groups(convertedGroups);
-        return true;
+        const result = await actor.set_canister_groups(convertedGroups);
+        if ('ok' in result) {
+            return { ok: true };
+        } else {
+            return { ok: false, err: result.err };
+        }
     } catch (error) {
         console.error('Error setting canister groups:', error);
         throw error;

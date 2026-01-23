@@ -7,6 +7,8 @@ import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend, getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
+import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';
+import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock } from 'react-icons/fa';
@@ -72,6 +74,13 @@ export default function CanistersPage() {
         sneedVotingPower, 
         loading: loadingSneedMembership 
     } = useSneedMembership();
+    
+    // Premium status for folder limits
+    const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
+    
+    // Canister groups limits
+    const [groupLimits, setGroupLimits] = useState(null);
+    const [groupUsage, setGroupUsage] = useState(null);
     
     // Canister Groups state
     const [canisterGroups, setCanisterGroupsState] = useState({ groups: [], ungrouped: [] });
@@ -330,11 +339,21 @@ export default function CanistersPage() {
         
         setSaving(true);
         try {
-            await setCanisterGroups(identity, newGroups);
-            setCanisterGroupsState(newGroups);
+            const result = await setCanisterGroups(identity, newGroups);
+            if (result.ok) {
+                setCanisterGroupsState(newGroups);
+                setError(null);
+            } else {
+                // Handle limit errors
+                const errorMsg = result.err || 'Failed to save changes';
+                setError(errorMsg);
+                throw new Error(errorMsg);
+            }
         } catch (err) {
             console.error('Error saving canister groups:', err);
-            setError('Failed to save changes');
+            if (!err.message.includes('exceeded')) {
+                setError('Failed to save changes: ' + (err.message || 'Unknown error'));
+            }
             throw err;  // Re-throw so callers know save failed
         } finally {
             setSaving(false);
@@ -413,6 +432,53 @@ export default function CanistersPage() {
         
         fetchTracked();
     }, [identity]);
+
+    // Fetch canister group limits and usage
+    useEffect(() => {
+        const fetchGroupLimits = async () => {
+            if (!BACKEND_CANISTER_ID) return;
+            
+            try {
+                const backendActor = createBackendActor(BACKEND_CANISTER_ID, {
+                    agentOptions: identity ? { identity } : {}
+                });
+                
+                // Fetch config (public query)
+                const config = await backendActor.get_canister_groups_limits_config();
+                setGroupLimits({
+                    maxGroups: Number(config.max_canister_groups),
+                    maxPerGroup: Number(config.max_canisters_per_group),
+                    maxTotal: Number(config.max_total_grouped_canisters),
+                    premiumMaxGroups: Number(config.premium_max_canister_groups),
+                    premiumMaxPerGroup: Number(config.premium_max_canisters_per_group),
+                    premiumMaxTotal: Number(config.premium_max_total_grouped_canisters),
+                });
+                
+                // Fetch usage if authenticated
+                if (identity) {
+                    try {
+                        const usage = await backendActor.get_my_canister_groups_usage();
+                        setGroupUsage({
+                            groupCount: Number(usage.group_count),
+                            totalCanisters: Number(usage.total_canisters),
+                            maxInSingleGroup: Number(usage.max_in_single_group),
+                            ungroupedCount: Number(usage.ungrouped_count),
+                            groupLimit: Number(usage.group_limit),
+                            perGroupLimit: Number(usage.per_group_limit),
+                            totalLimit: Number(usage.total_limit),
+                            isPremium: usage.is_premium,
+                        });
+                    } catch (err) {
+                        console.warn('Failed to fetch group usage:', err);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to fetch group limits:', err);
+            }
+        };
+        
+        fetchGroupLimits();
+    }, [identity, canisterGroups]);
 
     // Add a wallet canister (tracked canister)
     const handleAddWalletCanister = async () => {
@@ -2018,6 +2084,52 @@ export default function CanistersPage() {
                                             sneedNeurons={sneedNeurons}
                                             sneedVotingPower={sneedVotingPower}
                                         />
+                                        
+                                        {/* Limits Info */}
+                                        {groupUsage && (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '10px 14px',
+                                                backgroundColor: theme.colors.card,
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                marginBottom: '12px',
+                                                flexWrap: 'wrap',
+                                                gap: '10px',
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                                                    <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                                        Folders: <span style={{ 
+                                                            color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.text,
+                                                            fontWeight: 600 
+                                                        }}>{groupUsage.groupCount}</span> / {groupUsage.groupLimit}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                                        Canisters: <span style={{ 
+                                                            color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.text,
+                                                            fontWeight: 600 
+                                                        }}>{groupUsage.totalCanisters}</span> / {groupUsage.totalLimit}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                                        Per Folder: max {groupUsage.perGroupLimit}
+                                                    </span>
+                                                </div>
+                                                {groupUsage.isPremium && (
+                                                    <span style={{
+                                                        backgroundColor: '#ffd700',
+                                                        color: '#000',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 600,
+                                                    }}>
+                                                        ⭐ PREMIUM LIMITS
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                         
                                         {loading ? (
                                             <div style={styles.loadingSpinner}>

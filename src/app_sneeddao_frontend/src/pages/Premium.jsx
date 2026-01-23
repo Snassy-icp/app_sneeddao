@@ -289,13 +289,35 @@ export default function Premium() {
                                 premiumPrincipalLimit,
                             };
                         }
+                        
+                        // Fetch canister groups limits from the same backend
+                        const canisterGroupsConfig = await backendActor.get_canister_groups_limits_config();
+                        
+                        const regularMaxGroups = Number(canisterGroupsConfig.max_canister_groups);
+                        const premiumMaxGroups = Number(canisterGroupsConfig.premium_max_canister_groups);
+                        const regularMaxPerGroup = Number(canisterGroupsConfig.max_canisters_per_group);
+                        const premiumMaxPerGroup = Number(canisterGroupsConfig.premium_max_canisters_per_group);
+                        const regularMaxTotal = Number(canisterGroupsConfig.max_total_grouped_canisters);
+                        const premiumMaxTotal = Number(canisterGroupsConfig.premium_max_total_grouped_canisters);
+                        
+                        // Only show if premium has higher limits
+                        if (premiumMaxGroups > regularMaxGroups || premiumMaxPerGroup > regularMaxPerGroup || premiumMaxTotal > regularMaxTotal) {
+                            pricing.canisterGroups = {
+                                regularMaxGroups,
+                                premiumMaxGroups,
+                                regularMaxPerGroup,
+                                premiumMaxPerGroup,
+                                regularMaxTotal,
+                                premiumMaxTotal,
+                            };
+                        }
                     } catch (err) {
-                        console.warn('Failed to fetch nickname limits:', err);
+                        console.warn('Failed to fetch nickname/canister limits:', err);
                     }
                 }
                 
                 // Only update if we got at least some pricing
-                if (pricing.sneedex || pricing.neuronManager || pricing.forum || pricing.sms || pricing.nicknames) {
+                if (pricing.sneedex || pricing.neuronManager || pricing.forum || pricing.sms || pricing.nicknames || pricing.canisterGroups) {
                     setPremiumPricing(pricing);
                 }
             } catch (err) {
@@ -1234,6 +1256,84 @@ export default function Premium() {
                                                     </span>
                                                     <span style={{ color: theme.colors.success, fontWeight: '600' }}>
                                                         {premiumPricing.nicknames.premiumPrincipalLimit}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                
+                                {/* Canister Groups Limits */}
+                                {premiumPricing.canisterGroups && (
+                                    <>
+                                        {premiumPricing.canisterGroups.premiumMaxGroups > premiumPricing.canisterGroups.regularMaxGroups && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Canister Folders</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.canisterGroups.regularMaxGroups}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.canisterGroups.premiumMaxGroups}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {premiumPricing.canisterGroups.premiumMaxPerGroup > premiumPricing.canisterGroups.regularMaxPerGroup && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Canisters per Folder</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.canisterGroups.regularMaxPerGroup}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.canisterGroups.premiumMaxPerGroup}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 14px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>Total Canisters</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        textDecoration: 'line-through',
+                                                        fontSize: '0.9rem',
+                                                    }}>
+                                                        {premiumPricing.canisterGroups.regularMaxTotal}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.success, fontWeight: '600' }}>
+                                                        {premiumPricing.canisterGroups.premiumMaxTotal}
                                                     </span>
                                                 </div>
                                             </div>

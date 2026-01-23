@@ -185,11 +185,41 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(CanisterGroupsRoot)],
         ['query'],
       ),
+    'get_canister_groups_limits_config' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'premium_max_canisters_per_group' : IDL.Nat,
+            'premium_max_total_grouped_canisters' : IDL.Nat,
+            'max_canisters_per_group' : IDL.Nat,
+            'max_total_grouped_canisters' : IDL.Nat,
+            'premium_max_canister_groups' : IDL.Nat,
+            'max_canister_groups' : IDL.Nat,
+          }),
+        ],
+        ['query'],
+      ),
     'get_canister_info' : IDL.Func([IDL.Principal], [Result_4], []),
     'get_ledger_canister_ids' : IDL.Func(
         [],
         [IDL.Vec(IDL.Principal)],
         ['query'],
+      ),
+    'get_my_canister_groups_usage' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'total_limit' : IDL.Nat,
+            'is_premium' : IDL.Bool,
+            'max_in_single_group' : IDL.Nat,
+            'per_group_limit' : IDL.Nat,
+            'ungrouped_count' : IDL.Nat,
+            'group_count' : IDL.Nat,
+            'group_limit' : IDL.Nat,
+            'total_canisters' : IDL.Nat,
+          }),
+        ],
+        [],
       ),
     'get_my_nickname_usage' : IDL.Func(
         [],
@@ -279,7 +309,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'set_cached_token_meta' : IDL.Func([IDL.Principal, TokenMeta], [], []),
-    'set_canister_groups' : IDL.Func([CanisterGroupsRoot], [], []),
+    'set_canister_groups' : IDL.Func([CanisterGroupsRoot], [Result_1], []),
     'set_canister_name' : IDL.Func([IDL.Principal, IDL.Text], [Result], []),
     'set_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],
@@ -330,6 +360,18 @@ export const idlFactory = ({ IDL }) => {
       ),
     'unverify_neuron_name' : IDL.Func([IDL.Principal, NeuronId], [Result], []),
     'unverify_principal_name' : IDL.Func([IDL.Principal], [Result], []),
+    'update_canister_groups_limits' : IDL.Func(
+        [
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+        ],
+        [Result_1],
+        [],
+      ),
     'update_nickname_limits' : IDL.Func(
         [
           IDL.Opt(IDL.Nat),
