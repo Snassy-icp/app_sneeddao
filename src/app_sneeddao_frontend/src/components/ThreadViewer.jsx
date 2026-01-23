@@ -30,7 +30,7 @@ import Poll from './Poll';
 import './ThreadViewer.css';
 
 // Separate EditForm component to prevent PostComponent re-renders
-const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits }) => {
+const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits, regularLimits, isPremium }) => {
     const { theme } = useTheme();
     const [title, setTitle] = useState(initialTitle || '');
     const [body, setBody] = useState(initialBody || '');
@@ -38,6 +38,8 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     // Character limit validation
     const maxTitleLength = textLimits?.post_title_max_length || 200;
     const maxBodyLength = textLimits?.post_body_max_length || 10000;
+    const regularMaxBodyLength = regularLimits?.post_body_max_length || maxBodyLength;
+    const hasPremiumBodyLimit = isPremium && maxBodyLength > regularMaxBodyLength;
     const isTitleOverLimit = title.length > maxTitleLength;
     const isBodyOverLimit = body.length > maxBodyLength;
     const isOverLimit = isTitleOverLimit || isBodyOverLimit;
@@ -91,10 +93,26 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 fontSize: '12px', 
                 color: isBodyOverLimit ? theme.colors.error : (maxBodyLength - body.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
                 marginBottom: '10px',
-                textAlign: 'right'
+                textAlign: 'right',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '8px'
             }}>
-                Body: {body.length}/{maxBodyLength} characters
-                {isBodyOverLimit && <span style={{ marginLeft: '10px' }}>({body.length - maxBodyLength} over limit)</span>}
+                <span>Body: {body.length}/{maxBodyLength} characters</span>
+                {isBodyOverLimit && <span>({body.length - maxBodyLength} over limit)</span>}
+                {hasPremiumBodyLimit && (
+                    <span style={{
+                        backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                        color: '#ffd700',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 'bold'
+                    }}>
+                        ⭐ PREMIUM
+                    </span>
+                )}
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
                 <button
@@ -130,7 +148,7 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
 };
 
 // ReplyForm component
-const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits }) => {
+const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits, regularLimits, isPremium }) => {
     const { theme } = useTheme();
     const [replyText, setReplyText] = useState('');
     
@@ -140,8 +158,10 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
     
     // Character limit validation
     const maxLength = textLimits?.max_comment_length || 5000;
+    const regularMaxLength = regularLimits?.max_comment_length || maxLength;
     const isOverLimit = replyText.length > maxLength;
     const remainingChars = maxLength - replyText.length;
+    const hasPremiumLimit = isPremium && maxLength > regularMaxLength;
     
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.primaryBg, borderRadius: '4px' }}>
@@ -172,9 +192,24 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
             }}>
                 <div style={{ 
                     fontSize: '12px', 
-                    color: isOverLimit ? theme.colors.error : theme.colors.mutedText
+                    color: isOverLimit ? theme.colors.error : theme.colors.mutedText,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
                 }}>
-                    {remainingChars} characters remaining
+                    <span>{remainingChars} characters remaining</span>
+                    {hasPremiumLimit && (
+                        <span style={{
+                            backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                            color: '#ffd700',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            fontWeight: 'bold'
+                        }}>
+                            ⭐ PREMIUM
+                        </span>
+                    )}
                 </div>
                 
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -234,8 +269,8 @@ function ThreadViewer({
     const { identity } = useAuth();
     const { theme } = useTheme();
     
-    // Text limits hook
-    const { textLimits, loading: textLimitsLoading } = useTextLimits(forumActor);
+    // Text limits hook (includes premium-aware limits if user is premium)
+    const { textLimits, regularLimits, isPremium, loading: textLimitsLoading } = useTextLimits(forumActor);
     
     // Admin check
     const { isAdmin } = useAdminCheck({
@@ -2226,12 +2261,27 @@ function ThreadViewer({
                                     fontSize: '12px',
                                     color: commentText.length > textLimits.max_body_length ? theme.colors.error : 
                                            (textLimits.max_body_length - commentText.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
-                                    marginBottom: '10px'
+                                    marginBottom: '10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
                                 }}>
-                                    Body: {commentText.length}/{textLimits.max_body_length} characters
+                                    <span>Body: {commentText.length}/{textLimits.max_body_length} characters</span>
                                     {commentText.length > textLimits.max_body_length && 
-                                        <span style={{ marginLeft: '10px' }}>({commentText.length - textLimits.max_body_length} over limit)</span>
+                                        <span>({commentText.length - textLimits.max_body_length} over limit)</span>
                                     }
+                                    {isPremium && regularLimits && textLimits.max_body_length > regularLimits.max_body_length && (
+                                        <span style={{
+                                            backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                            color: '#ffd700',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '10px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            ⭐ PREMIUM
+                                        </span>
+                                    )}
                                 </div>
                             )}
                             <div style={{ 
@@ -3027,6 +3077,8 @@ function ThreadViewer({
                             createdBy={post.created_by}
                             principalDisplayInfo={principalDisplayInfo}
                             textLimits={textLimits}
+                            regularLimits={regularLimits}
+                            isPremium={isPremium}
                         />
                     )}
 
@@ -3039,6 +3091,8 @@ function ThreadViewer({
                             onCancel={cancelEditPost}
                             submittingEdit={updatingPost}
                             textLimits={textLimits}
+                            regularLimits={regularLimits}
+                            isPremium={isPremium}
                         />
                     )}
 

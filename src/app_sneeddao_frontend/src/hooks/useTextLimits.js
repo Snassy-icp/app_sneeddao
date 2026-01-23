@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getTextLimits } from '../utils/BackendUtils';
 import { usePremiumStatus } from './usePremiumStatus';
+import { useAuth } from '../AuthContext';
 
 export const useTextLimits = (forumActor) => {
     const [textLimits, setTextLimits] = useState(null);
@@ -8,8 +9,11 @@ export const useTextLimits = (forumActor) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     
-    // Get premium status from the hook
-    const { isPremium, loading: premiumLoading } = usePremiumStatus();
+    // Get identity from auth context
+    const { identity } = useAuth();
+    
+    // Get premium status from the hook - pass identity for proper caching
+    const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
 
     useEffect(() => {
         const fetchTextLimits = async () => {
@@ -27,6 +31,7 @@ export const useTextLimits = (forumActor) => {
                 
                 console.log('Fetched text limits from backend:', limits);
                 console.log('Fetched premium config from backend:', premiumCfg);
+                console.log('User isPremium:', isPremium);
                 
                 if (premiumCfg) {
                     setPremiumConfig({
