@@ -3394,6 +3394,26 @@ function IcpNeuronManager() {
                             )}
                         </div>
 
+                        {/* Message for non-controllers */}
+                        {!isInvalidManager && !isController && (
+                            <div style={{
+                                ...cardStyle,
+                                backgroundColor: `${theme.colors.warning || '#f59e0b'}10`,
+                                border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                                textAlign: 'center',
+                            }}>
+                                <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔒</div>
+                                <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px 0' }}>
+                                    View Only Mode
+                                </h3>
+                                <p style={{ color: theme.colors.mutedText, margin: 0, fontSize: '14px' }}>
+                                    You are not a controller of this neuron manager canister.
+                                    <br />
+                                    Only controllers can view neurons, manage stakes, and withdraw tokens.
+                                </p>
+                            </div>
+                        )}
+
                         {/* Only show neuron management sections if canister is a valid manager AND user is a controller */}
                         {!isInvalidManager && isController && (
                         <>
