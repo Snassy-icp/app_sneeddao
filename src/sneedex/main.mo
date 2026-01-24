@@ -18,30 +18,6 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
 
-// Migration expression to add min_increment fields to config
-(with migration = func (old : { 
-    var config : {
-        admins : [Principal];
-        min_offer_duration_ns : Nat;
-        max_assets_per_offer : Nat;
-    }
-}) : { 
-    var config : T.Config 
-} {
-    {
-        var config : T.Config = {
-            admins = old.config.admins;
-            min_offer_duration_ns = old.config.min_offer_duration_ns;
-            max_assets_per_offer = old.config.max_assets_per_offer;
-            // New fields with default values
-            min_increment_usd_range_min = 100;  // $1.00
-            min_increment_usd_range_max = 1000; // $10.00
-            min_increment_usd_target = 500;     // $5.00
-            min_increment_fallback_tokens = 100000000; // 1 token (assuming 8 decimals)
-        };
-    }
-})
-
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
