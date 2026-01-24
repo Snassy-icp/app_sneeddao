@@ -3232,7 +3232,8 @@ function IcpNeuronManager() {
                             )}
                         </div>
 
-                        {/* Withdraw Tokens from Canister - Collapsible */}
+                        {/* Withdraw Tokens from Canister - Collapsible (only for controllers) */}
+                        {isController && (
                         <div style={cardStyle}>
                             <button
                                 onClick={() => setWithdrawSectionExpanded(!withdrawSectionExpanded)}
@@ -3388,12 +3389,13 @@ function IcpNeuronManager() {
                                 </div>
                             )}
                         </div>
+                        )}
                                 </div>
                             )}
                         </div>
 
-                        {/* Only show neuron management sections if canister is a valid manager */}
-                        {!isInvalidManager && (
+                        {/* Only show neuron management sections if canister is a valid manager AND user is a controller */}
+                        {!isInvalidManager && isController && (
                         <>
                         {/* ============================================ */}
                         {/* NEURONS SECTION */}
