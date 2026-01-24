@@ -4693,10 +4693,13 @@ function SneedexOffer() {
                                                             }}>
                                                                 <button
                                                                     onClick={() => {
-                                                                        if (bidInputMode === 'usd' && bidAmount && paymentPrice) {
+                                                                        if (bidInputMode === 'usd' && paymentPrice) {
                                                                             // Convert USD to token
-                                                                            const tokenAmount = parseFloat(bidAmount) / paymentPrice;
-                                                                            setBidAmount(tokenAmount.toFixed(Math.min(tokenInfo.decimals, 4)));
+                                                                            const usdValue = parseFloat(bidAmount) || 0;
+                                                                            if (usdValue > 0) {
+                                                                                const tokenAmount = usdValue / paymentPrice;
+                                                                                setBidAmount(tokenAmount.toFixed(Math.min(tokenInfo.decimals, 8)));
+                                                                            }
                                                                         }
                                                                         setBidInputMode('token');
                                                                     }}
@@ -4716,10 +4719,15 @@ function SneedexOffer() {
                                                                 </button>
                                                                 <button
                                                                     onClick={() => {
-                                                                        if (bidInputMode === 'token' && bidAmount && paymentPrice) {
+                                                                        if (bidInputMode === 'token' && paymentPrice) {
                                                                             // Convert token to USD
-                                                                            const usdAmount = parseFloat(bidAmount) * paymentPrice;
-                                                                            setBidAmount(usdAmount.toFixed(2));
+                                                                            const tokenValue = parseFloat(bidAmount) || 0;
+                                                                            if (tokenValue > 0) {
+                                                                                const usdAmount = tokenValue * paymentPrice;
+                                                                                // Use more decimal places for small amounts
+                                                                                const decimals = usdAmount < 0.01 ? 6 : usdAmount < 1 ? 4 : 2;
+                                                                                setBidAmount(usdAmount.toFixed(decimals));
+                                                                            }
                                                                         }
                                                                         setBidInputMode('usd');
                                                                     }}
@@ -4763,7 +4771,9 @@ function SneedexOffer() {
                                                         const minTokenAmount = formatAmount(getMinimumBidE8s(), tokenInfo.decimals);
                                                         if (bidInputMode === 'usd' && paymentPrice) {
                                                             const minUsd = parseFloat(minTokenAmount) * paymentPrice;
-                                                            setBidAmount(minUsd.toFixed(2));
+                                                            // Use more decimal places for small amounts
+                                                            const decimals = minUsd < 0.01 ? 6 : minUsd < 1 ? 4 : 2;
+                                                            setBidAmount(minUsd.toFixed(decimals));
                                                         } else {
                                                             setBidAmount(minTokenAmount);
                                                         }
@@ -4779,7 +4789,7 @@ function SneedexOffer() {
                                                         placeholder={bidInputMode === 'usd' ? 'Amount in USD' : `Amount in ${tokenInfo.symbol}`}
                                                         style={{
                                                             ...styles.bidInput,
-                                                            paddingRight: bidInputMode === 'usd' ? '40px' : '60px',
+                                                            paddingRight: bidInputMode === 'usd' ? '30px' : '55px',
                                                         }}
                                                         value={bidAmount}
                                                         onChange={(e) => setBidAmount(e.target.value)}
@@ -4834,7 +4844,9 @@ function SneedexOffer() {
                                                         
                                                         if (bidInputMode === 'usd' && paymentPrice) {
                                                             const newUsd = newTokenAmount * paymentPrice;
-                                                            setBidAmount(newUsd.toFixed(2));
+                                                            // Use more decimal places for small amounts
+                                                            const decimals = newUsd < 0.01 ? 6 : newUsd < 1 ? 4 : 2;
+                                                            setBidAmount(newUsd.toFixed(decimals));
                                                         } else {
                                                             const formatted = newTokenAmount.toFixed(Math.min(tokenInfo.decimals, 4));
                                                             setBidAmount(parseFloat(formatted).toString());
@@ -4876,8 +4888,10 @@ function SneedexOffer() {
                                                 const paymentPrice = tokenPrices[paymentLedger];
                                                 if (paymentPrice) {
                                                     if (bidInputMode === 'usd') {
-                                                        // Show token equivalent
+                                                        // Show token equivalent (this is the actual amount that will be used)
                                                         const tokenAmount = parseFloat(bidAmount) / paymentPrice;
+                                                        // Always show token amount with enough decimals to be meaningful
+                                                        const tokenDecimals = Math.min(tokenInfo.decimals, 8);
                                                         return (
                                                             <div style={{ 
                                                                 fontSize: '0.85rem', 
@@ -4886,13 +4900,14 @@ function SneedexOffer() {
                                                                 textAlign: 'right',
                                                             }}>
                                                                 = <strong style={{ color: theme.colors.primaryText }}>
-                                                                    {tokenAmount.toFixed(Math.min(tokenInfo.decimals, 4))} {tokenInfo.symbol}
+                                                                    {tokenAmount.toFixed(tokenDecimals)} {tokenInfo.symbol}
                                                                 </strong>
                                                             </div>
                                                         );
                                                     } else {
-                                                        // Show USD equivalent
+                                                        // Show USD equivalent with more decimals for small amounts
                                                         const bidUsd = parseFloat(bidAmount) * paymentPrice;
+                                                        const usdDecimals = bidUsd < 0.01 ? 6 : bidUsd < 1 ? 4 : 2;
                                                         return (
                                                             <div style={{ 
                                                                 fontSize: '0.85rem', 
@@ -4900,7 +4915,7 @@ function SneedexOffer() {
                                                                 marginTop: '8px',
                                                                 textAlign: 'right',
                                                             }}>
-                                                                ≈ <strong style={{ color: theme.colors.primaryText }}>${bidUsd.toFixed(2)}</strong> USD
+                                                                ≈ <strong style={{ color: theme.colors.primaryText }}>${bidUsd.toFixed(usdDecimals)}</strong> USD
                                                             </div>
                                                         );
                                                     }
