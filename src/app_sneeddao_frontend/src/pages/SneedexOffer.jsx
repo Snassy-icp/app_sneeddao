@@ -4746,6 +4746,25 @@ function SneedexOffer() {
                                                     );
                                                 })}
                                             </div>
+                                            {/* USD value of entered bid */}
+                                            {bidAmount && parseFloat(bidAmount) > 0 && (() => {
+                                                const paymentLedger = offer.price_token_ledger.toString();
+                                                const paymentPrice = tokenPrices[paymentLedger];
+                                                if (paymentPrice) {
+                                                    const bidUsd = parseFloat(bidAmount) * paymentPrice;
+                                                    return (
+                                                        <div style={{ 
+                                                            fontSize: '0.85rem', 
+                                                            color: theme.colors.mutedText, 
+                                                            marginTop: '8px',
+                                                            textAlign: 'right',
+                                                        }}>
+                                                            ≈ <strong style={{ color: theme.colors.primaryText }}>${bidUsd.toFixed(2)}</strong> USD
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                             {/* Warning when bid would trigger immediate buyout */}
                                             {bidAmount && offer.buyout_price?.[0] && (() => {
                                                 const bidAmountE8s = parseFloat(bidAmount) * Math.pow(10, tokenInfo.decimals);
