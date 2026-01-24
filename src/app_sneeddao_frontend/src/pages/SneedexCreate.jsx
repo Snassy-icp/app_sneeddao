@@ -214,6 +214,22 @@ function SneedexCreate() {
         fetchPrice();
     }, [priceTokenLedger, selectedPriceToken]);
     
+    // Set default min bid increment to 1 token when price token changes
+    useEffect(() => {
+        if (selectedPriceToken && selectedPriceToken.fee && selectedPriceToken.decimals !== undefined) {
+            const fee = Number(selectedPriceToken.fee);
+            const decimals = Number(selectedPriceToken.decimals);
+            if (fee > 0) {
+                // Calculate multiple needed for 1 token: 10^decimals / fee
+                const oneTokenInBaseUnits = Math.pow(10, decimals);
+                const defaultMultiple = Math.floor(oneTokenInBaseUnits / fee);
+                if (defaultMultiple >= 1) {
+                    setMinBidIncrementMultiple(defaultMultiple.toString());
+                }
+            }
+        }
+    }, [selectedPriceToken]);
+    
     // Fetch ICP price on mount
     useEffect(() => {
         const fetchIcpPrice = async () => {
