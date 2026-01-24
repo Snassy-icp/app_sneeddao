@@ -1219,6 +1219,7 @@ function Neuron() {
                                     onChange={setNeuronIdInput}
                                     placeholder="Enter neuron ID or search by name/nickname"
                                     snsRoot={selectedSnsRoot}
+                                    defaultTab="all"
                                 />
                             </div>
                         </div>
