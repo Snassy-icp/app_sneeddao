@@ -1612,7 +1612,7 @@ export default function CanistersPage() {
                         </span>
                     )}
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                     {/* Move to group dropdown */}
                     {allGroups.length > 0 && (
                         <select
