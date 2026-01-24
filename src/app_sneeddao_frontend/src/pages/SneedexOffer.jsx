@@ -4782,31 +4782,44 @@ function SneedexOffer() {
                                                 >
                                                     Min
                                                 </button>
-                                                <div style={{ flex: 1, position: 'relative' }}>
+                                                <div style={{ 
+                                                    flex: 1, 
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                }}>
+                                                    {bidInputMode === 'usd' && (
+                                                        <span style={{
+                                                            color: theme.colors.mutedText,
+                                                            fontSize: '0.9rem',
+                                                            flexShrink: 0,
+                                                        }}>
+                                                            $
+                                                        </span>
+                                                    )}
                                                     <input
                                                         type="number"
                                                         step={bidInputMode === 'usd' ? '0.01' : '0.0001'}
-                                                        placeholder={bidInputMode === 'usd' ? 'Amount in USD' : `Amount in ${tokenInfo.symbol}`}
+                                                        placeholder={bidInputMode === 'usd' ? 'Amount' : 'Amount'}
                                                         style={{
                                                             ...styles.bidInput,
-                                                            paddingRight: bidInputMode === 'usd' ? '30px' : '55px',
+                                                            flex: 1,
+                                                            minWidth: 0,
                                                         }}
                                                         value={bidAmount}
                                                         onChange={(e) => setBidAmount(e.target.value)}
                                                         onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
                                                         onBlur={(e) => e.target.style.borderColor = theme.colors.border}
                                                     />
-                                                    <span style={{
-                                                        position: 'absolute',
-                                                        right: '12px',
-                                                        top: '50%',
-                                                        transform: 'translateY(-50%)',
-                                                        color: theme.colors.mutedText,
-                                                        fontSize: '0.85rem',
-                                                        pointerEvents: 'none',
-                                                    }}>
-                                                        {bidInputMode === 'usd' ? '$' : tokenInfo.symbol}
-                                                    </span>
+                                                    {bidInputMode === 'token' && (
+                                                        <span style={{
+                                                            color: theme.colors.mutedText,
+                                                            fontSize: '0.9rem',
+                                                            flexShrink: 0,
+                                                        }}>
+                                                            {tokenInfo.symbol}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <button
                                                     style={styles.bidButton}
