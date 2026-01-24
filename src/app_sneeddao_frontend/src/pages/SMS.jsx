@@ -818,7 +818,7 @@ const SMS = () => {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 <div>
-                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '10px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <label style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span>Recipients:</span>
                                         <span style={{ 
                                             fontSize: '12px', 

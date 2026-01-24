@@ -4,14 +4,18 @@ import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { useTheme } from '../../contexts/ThemeContext';
 import Header from '../../components/Header';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
 import { createSneedexActor, formatFeeRate, formatAmount } from '../../utils/SneedexUtils';
+
+const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
+import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { PrincipalDisplay } from '../../utils/PrincipalUtils';
 import InfoModal from '../../components/InfoModal';
 import ConfirmationModal from '../../ConfirmationModal';
 import { 
     FaCog, FaPercent, FaWallet, FaSave, FaSpinner, FaUserShield, 
     FaPlus, FaTrash, FaClock, FaCubes, FaChartLine, FaLayerGroup,
-    FaCheckCircle, FaTimesCircle
+    FaCheckCircle, FaTimesCircle, FaCoins
 } from 'react-icons/fa';
 
 export default function SneedexAdmin() {
@@ -101,6 +105,10 @@ export default function SneedexAdmin() {
     const [cutLogLoading, setCutLogLoading] = useState(false);
     const [activeLogTab, setActiveLogTab] = useState('creation'); // 'creation' or 'cuts'
     const pageSize = 20;
+    
+    // Token metadata for cut log ledgers (ledgerId -> { symbol, logo })
+    const [ledgerMetadata, setLedgerMetadata] = useState({});
+    const [loadingLedgerMetadata, setLoadingLedgerMetadata] = useState({});
     
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
@@ -247,6 +255,58 @@ export default function SneedexAdmin() {
             setCutLogLoading(false);
         }
     }, [getSneedexActor]);
+    
+    // Fetch token metadata (logo and symbol) for a ledger
+    const fetchLedgerMetadata = useCallback(async (ledgerId) => {
+        if (ledgerMetadata[ledgerId] || loadingLedgerMetadata[ledgerId]) return;
+        
+        setLoadingLedgerMetadata(prev => ({ ...prev, [ledgerId]: true }));
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createICRC1Actor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Extract logo and symbol
+            let logo = null;
+            let symbol = null;
+            
+            for (const [key, value] of metadata) {
+                if (key === 'icrc1:logo' && value && 'Text' in value) {
+                    logo = value.Text;
+                }
+                if (key === 'icrc1:symbol' && value && 'Text' in value) {
+                    symbol = value.Text;
+                }
+            }
+            
+            setLedgerMetadata(prev => ({ ...prev, [ledgerId]: { logo, symbol } }));
+        } catch (e) {
+            console.error('Failed to fetch ledger metadata:', e);
+            // Set empty metadata to avoid retrying
+            setLedgerMetadata(prev => ({ ...prev, [ledgerId]: { logo: null, symbol: null } }));
+        } finally {
+            setLoadingLedgerMetadata(prev => ({ ...prev, [ledgerId]: false }));
+        }
+    }, [identity, ledgerMetadata, loadingLedgerMetadata]);
+    
+    // Progressively fetch metadata for ledgers in cut log
+    useEffect(() => {
+        if (cutLog.length > 0 && identity) {
+            // Get unique ledger IDs we don't have metadata for yet
+            const uniqueLedgers = [...new Set(cutLog.map(entry => entry.ledger.toString()))];
+            uniqueLedgers.forEach(ledgerId => {
+                if (!ledgerMetadata[ledgerId] && !loadingLedgerMetadata[ledgerId]) {
+                    fetchLedgerMetadata(ledgerId);
+                }
+            });
+        }
+    }, [cutLog, identity, ledgerMetadata, loadingLedgerMetadata, fetchLedgerMetadata]);
     
     // Load payment data when config is loaded (which means admin check is done)
     useEffect(() => {
@@ -1259,7 +1319,40 @@ export default function SneedexAdmin() {
                                                             <PrincipalDisplay principal={entry.buyer.toString()} short={true} />
                                                         </td>
                                                         <td style={{ padding: '12px' }}>
-                                                            <PrincipalDisplay principal={entry.ledger.toString()} short={true} />
+                                                            {(() => {
+                                                                const ledgerId = entry.ledger.toString();
+                                                                const meta = ledgerMetadata[ledgerId];
+                                                                const isLoading = loadingLedgerMetadata[ledgerId];
+                                                                
+                                                                if (isLoading) {
+                                                                    return (
+                                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.colors.mutedText }}>
+                                                                            <FaSpinner style={{ animation: 'spin 1s linear infinite' }} />
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                
+                                                                if (meta?.symbol) {
+                                                                    return (
+                                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            {meta.logo ? (
+                                                                                <img 
+                                                                                    src={meta.logo} 
+                                                                                    alt={meta.symbol} 
+                                                                                    style={{ width: '20px', height: '20px', borderRadius: '50%' }}
+                                                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                                                />
+                                                                            ) : (
+                                                                                <FaCoins style={{ color: theme.colors.warning }} />
+                                                                            )}
+                                                                            <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>{meta.symbol}</span>
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                
+                                                                // Fallback to principal display
+                                                                return <PrincipalDisplay principal={ledgerId} short={true} />;
+                                                            })()}
                                                         </td>
                                                         <td style={{ padding: '12px', color: theme.colors.success, fontWeight: '600' }}>
                                                             {formatAmount(entry.cut_amount, 8)}
