@@ -820,6 +820,20 @@ function SneedexOffer() {
         }
     }, [offer, identity, fetchSnsData, fetchSnsLogoForGovernance, snsLogos, snsSymbols, fetchSnsSymbol, neuronInfo, fetchNeuronInfo]);
     
+    // Proactively fetch neuronManagerInfo for ICP Neuron Manager canisters (for USD estimates)
+    useEffect(() => {
+        if (offer && identity) {
+            offer.assets?.forEach((assetEntry, idx) => {
+                if ('Canister' in assetEntry.asset && assetEntry.escrowed) {
+                    const details = getAssetDetails(assetEntry);
+                    if (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && !neuronManagerInfo[idx]) {
+                        fetchNeuronManagerInfo(idx, details.canister_id);
+                    }
+                }
+            });
+        }
+    }, [offer, identity, neuronManagerInfo, fetchNeuronManagerInfo]);
+    
     // Toggle asset expansion and fetch info if needed
     const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
         const isExpanding = !expandedAssets[assetIndex];
@@ -954,7 +968,9 @@ function SneedexOffer() {
     
     // Calculate USD estimates for assets (progressively as data loads)
     useEffect(() => {
-        if (!offer || Object.keys(tokenPrices).length === 0) return;
+        if (!offer) return;
+        // Need either tokenPrices or icpPrice for any estimates
+        if (Object.keys(tokenPrices).length === 0 && !icpPrice) return;
         
         const estimates = {};
         let total = 0;
@@ -999,18 +1015,37 @@ function SneedexOffer() {
                         total += usd;
                         hasAnyEstimate = true;
                     } else {
-                        // Use cached staked amount from SNS data if available
-                        // (neuronInfo not loaded yet, but we might have partial data)
+                        // neuronInfo not loaded yet
+                        estimates[idx] = null; // Loading
+                    }
+                }
+            } else if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                // ICP Neuron Manager - calculate from managed neurons' total ICP value
+                if (icpPrice) {
+                    const mInfo = neuronManagerInfo[idx];
+                    if (mInfo?.neurons && mInfo.neurons.length > 0) {
+                        let totalIcpE8s = 0;
+                        mInfo.neurons.forEach(n => {
+                            totalIcpE8s += Number(n.cached_neuron_stake_e8s || 0);
+                            totalIcpE8s += Number(n.maturity_e8s_equivalent || 0);
+                            totalIcpE8s += Number(n.staked_maturity_e8s_equivalent || 0);
+                        });
+                        const usd = calculateUsdValue(totalIcpE8s, 8, icpPrice);
+                        estimates[idx] = usd;
+                        total += usd;
+                        hasAnyEstimate = true;
+                    } else if (assetEntry.escrowed) {
+                        // Escrowed but neuronManagerInfo not loaded yet
                         estimates[idx] = null; // Loading
                     }
                 }
             }
-            // Canisters: can't easily price, skip
+            // Other canisters: can't easily price, skip
         });
         
         setAssetUsdEstimates(estimates);
         setTotalUsdEstimate(hasAnyEstimate ? total : null);
-    }, [offer, tokenPrices, tokenMetadata, neuronInfo, snsData]);
+    }, [offer, tokenPrices, icpPrice, tokenMetadata, neuronInfo, neuronManagerInfo, snsData]);
     
     // Get token info from whitelisted tokens
     const tokenInfo = (() => {
@@ -2423,6 +2458,35 @@ function SneedexOffer() {
                                                         }
                                                         return null;
                                                     })()}
+                                                    {/* ICP Neuron Manager summary line */}
+                                                    {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (() => {
+                                                        const mInfo = neuronManagerInfo[idx];
+                                                        if (mInfo?.neurons && mInfo.neurons.length > 0) {
+                                                            let totalIcpE8s = 0n;
+                                                            mInfo.neurons.forEach(n => {
+                                                                totalIcpE8s += BigInt(n.cached_neuron_stake_e8s || 0);
+                                                                totalIcpE8s += BigInt(n.maturity_e8s_equivalent || 0);
+                                                                totalIcpE8s += BigInt(n.staked_maturity_e8s_equivalent || 0);
+                                                            });
+                                                            const usdValue = assetUsdEstimates[idx];
+                                                            return (
+                                                                <div style={{
+                                                                    fontSize: '0.9rem',
+                                                                    fontWeight: '600',
+                                                                    color: theme.colors.accent,
+                                                                    marginTop: '4px',
+                                                                }}>
+                                                                    {formatAmount(totalIcpE8s, 8)} ICP total ({mInfo.neurons.length} neuron{mInfo.neurons.length !== 1 ? 's' : ''})
+                                                                    {usdValue > 0 && (
+                                                                        <span style={{ color: theme.colors.success, marginLeft: '8px', fontSize: '0.85rem', fontWeight: '500' }}>
+                                                                            (~{formatUsd(usdValue)})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
                                                     {details.type === 'Canister' && (
                                                         <div style={{...styles.assetDetail, display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap'}}>
                                                             ID: <PrincipalDisplay 
@@ -3115,6 +3179,7 @@ function SneedexOffer() {
                                                                             grandTotalStakedMaturity += Number(n.staked_maturity_e8s_equivalent || 0) / 1e8;
                                                                         });
                                                                         const grandTotal = grandTotalStake + grandTotalMaturity + grandTotalStakedMaturity;
+                                                                        const usdValue = assetUsdEstimates[idx];
                                                                         
                                                                         return (
                                                                             <div style={{
@@ -3129,8 +3194,20 @@ function SneedexOffer() {
                                                                                     color: theme.colors.text,
                                                                                     marginBottom: '8px',
                                                                                     fontSize: '0.9rem',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '10px',
                                                                                 }}>
-                                                                                    Total: {grandTotal.toFixed(4)} ICP
+                                                                                    <span>Total: {grandTotal.toFixed(4)} ICP</span>
+                                                                                    {usdValue > 0 && (
+                                                                                        <span style={{ 
+                                                                                            color: theme.colors.success, 
+                                                                                            fontWeight: '600',
+                                                                                            fontSize: '0.85rem',
+                                                                                        }}>
+                                                                                            (~{formatUsd(usdValue)})
+                                                                                        </span>
+                                                                                    )}
                                                                                 </div>
                                                                                 <div style={{
                                                                                     display: 'grid',
@@ -4228,6 +4305,22 @@ function SneedexOffer() {
                                     </>
                                 );
                             })()}
+                            {totalUsdEstimate !== null && totalUsdEstimate > 0 && (
+                                <div style={{
+                                    ...styles.priceRow,
+                                    background: `${theme.colors.success}10`,
+                                    borderRadius: '8px',
+                                    padding: '10px 12px',
+                                    margin: '8px 0',
+                                }}>
+                                    <span style={{ ...styles.priceLabel, color: theme.colors.success, fontWeight: '600' }}>
+                                        Est. Asset Value
+                                    </span>
+                                    <span style={{ ...styles.priceValue, color: theme.colors.success, fontWeight: '700' }}>
+                                        ~{formatUsd(totalUsdEstimate)}
+                                    </span>
+                                </div>
+                            )}
                             {offer.min_bid_increment_fee_multiple?.[0] && (
                                 <div style={styles.priceRow}>
                                     <span style={styles.priceLabel}>Min Bid Increment</span>
