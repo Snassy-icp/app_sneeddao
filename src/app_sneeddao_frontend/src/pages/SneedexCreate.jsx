@@ -126,6 +126,7 @@ function SneedexCreate() {
     
     // Minimum bid increment (in whole tokens, user-friendly)
     const [minBidIncrement, setMinBidIncrement] = useState('');
+    const [suggestedMinBidIncrement, setSuggestedMinBidIncrement] = useState('1'); // Fallback suggestion
     
     // Private offer / Approved bidders
     const [isPrivateOffer, setIsPrivateOffer] = useState(false);
@@ -214,8 +215,10 @@ function SneedexCreate() {
         fetchPrice();
     }, [priceTokenLedger, selectedPriceToken]);
     
-    // Set default min bid increment, targeting ~$5 USD
+    // Set default min bid increment, targeting ~$5 USD (or 1 token if no price)
     useEffect(() => {
+        let suggested = '1'; // Default fallback
+        
         if (selectedPriceToken && paymentTokenPrice && paymentTokenPrice > 0) {
             // Calculate token amount that equals $5
             const targetUsd = 5;
@@ -224,13 +227,11 @@ function SneedexCreate() {
             // Format nicely (avoid excessive decimals)
             const decimals = Number(selectedPriceToken.decimals) || 8;
             const maxDecimals = Math.min(decimals, 4);
-            const formatted = parseFloat(defaultIncrement.toFixed(maxDecimals)).toString();
-            
-            setMinBidIncrement(formatted);
-        } else if (selectedPriceToken && !paymentTokenPrice) {
-            // Fallback to 1 token if price not available yet
-            setMinBidIncrement('1');
+            suggested = parseFloat(defaultIncrement.toFixed(maxDecimals)).toString();
         }
+        
+        setSuggestedMinBidIncrement(suggested);
+        setMinBidIncrement(suggested);
     }, [selectedPriceToken, paymentTokenPrice]);
     
     // Fetch ICP price on mount
@@ -1535,9 +1536,13 @@ function SneedexCreate() {
             const approvedBidderPrincipals = approvedBidders.map(str => Principal.fromText(str));
             
             // Convert min bid increment from token amount to fee multiple
+            // Always use a minimum increment (fall back to suggested if empty)
+            const effectiveIncrement = (minBidIncrement && parseFloat(minBidIncrement) > 0) 
+                ? minBidIncrement 
+                : suggestedMinBidIncrement;
             let minBidIncrementFeeMultiple = [];
-            if (minBidIncrement && selectedPriceToken && Number(selectedPriceToken.fee) > 0) {
-                const incrementInBaseUnits = parseFloat(minBidIncrement) * Math.pow(10, Number(selectedPriceToken.decimals));
+            if (effectiveIncrement && selectedPriceToken && Number(selectedPriceToken.fee) > 0) {
+                const incrementInBaseUnits = parseFloat(effectiveIncrement) * Math.pow(10, Number(selectedPriceToken.decimals));
                 const feeMultiple = Math.ceil(incrementInBaseUnits / Number(selectedPriceToken.fee));
                 if (feeMultiple >= 1) {
                     minBidIncrementFeeMultiple = [BigInt(feeMultiple)];
@@ -2400,7 +2405,13 @@ function SneedexCreate() {
                                     style={{ ...styles.input, flex: 1 }}
                                     value={minBidIncrement}
                                     onChange={(e) => setMinBidIncrement(e.target.value)}
-                                    placeholder="e.g. 1, 0.5, 2.5"
+                                    onBlur={(e) => {
+                                        // Reset to suggested value if empty or invalid
+                                        if (!e.target.value || parseFloat(e.target.value) <= 0) {
+                                            setMinBidIncrement(suggestedMinBidIncrement);
+                                        }
+                                    }}
+                                    placeholder={suggestedMinBidIncrement}
                                     min="0"
                                     step="any"
                                 />
