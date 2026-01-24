@@ -10,7 +10,8 @@ const PrincipalInput = ({
     placeholder = 'Enter principal ID or search by name', 
     style = {},
     disabled = false,
-    isAuthenticated = false
+    isAuthenticated = false,
+    defaultTab = 'private' // 'private' | 'public' | 'all'
 }) => {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -18,12 +19,18 @@ const PrincipalInput = ({
     const [showDropdown, setShowDropdown] = useState(false);
     const [isValid, setIsValid] = useState(false);
     const [resolvedInfo, setResolvedInfo] = useState(null);
+    const [activeTab, setActiveTab] = useState(defaultTab);
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
 
+    // Keep tab in sync when component instance requests a different default
+    useEffect(() => {
+        if (defaultTab) setActiveTab(defaultTab);
+    }, [defaultTab]);
+
     // Search and rank principals
     const searchResults = useMemo(() => {
-        if (!inputValue.trim() || !principalNames || !principalNicknames) {
+        if (!inputValue.trim()) {
             return [];
         }
 
@@ -33,15 +40,16 @@ const PrincipalInput = ({
         // Collect all principals with their info
         const allPrincipals = new Set();
         
-        // Add principals from names
-        if (principalNames) {
+        const includeNicknames = activeTab === 'private' || activeTab === 'all';
+        const includeNames = activeTab === 'public' || activeTab === 'all';
+
+        if (includeNames && principalNames) {
             principalNames.forEach((name, principal) => {
                 allPrincipals.add(principal);
             });
         }
-        
-        // Add principals from nicknames
-        if (principalNicknames) {
+
+        if (includeNicknames && principalNicknames) {
             principalNicknames.forEach((nickname, principal) => {
                 allPrincipals.add(principal);
             });
@@ -61,32 +69,42 @@ const PrincipalInput = ({
                 let score = 0;
                 let matchType = '';
                 
-                // Check name matches
-                if (name) {
-                    if (name.toLowerCase() === query) {
-                        score = isVerified ? 1000 : 900; // Exact match
-                        matchType = 'name-exact';
-                    } else if (name.toLowerCase().startsWith(query)) {
-                        score = isVerified ? 800 : 700; // Starts with
-                        matchType = 'name-start';
-                    } else if (name.toLowerCase().includes(query)) {
-                        score = isVerified ? 600 : 500; // Contains
-                        matchType = 'name-contains';
-                    }
-                }
-                
-                // Check nickname matches (lower priority)
-                if (nickname && score === 0) {
-                    if (nickname.toLowerCase() === query) {
-                        score = 400; // Exact nickname match
-                        matchType = 'nickname-exact';
-                    } else if (nickname.toLowerCase().startsWith(query)) {
-                        score = 300; // Nickname starts with
-                        matchType = 'nickname-start';
-                    } else if (nickname.toLowerCase().includes(query)) {
-                        score = 200; // Nickname contains
-                        matchType = 'nickname-contains';
-                    }
+                // STRICT tab matching:
+                // - private: ONLY match on nickname
+                // - public: ONLY match on public name
+                // - all: match on either
+
+                const scoreNameStrict = () => {
+                    if (!includeNames || !name) return { score: 0, matchType: '' };
+                    const n = name.toLowerCase();
+                    if (n === query) return { score: isVerified ? 1000 : 900, matchType: 'name-exact' };
+                    if (n.startsWith(query)) return { score: isVerified ? 800 : 700, matchType: 'name-start' };
+                    if (n.includes(query)) return { score: isVerified ? 600 : 500, matchType: 'name-contains' };
+                    return { score: 0, matchType: '' };
+                };
+
+                const scoreNicknameStrict = () => {
+                    if (!includeNicknames || !nickname) return { score: 0, matchType: '' };
+                    const n = nickname.toLowerCase();
+                    if (n === query) return { score: 950, matchType: 'nickname-exact' };
+                    if (n.startsWith(query)) return { score: 850, matchType: 'nickname-start' };
+                    if (n.includes(query)) return { score: 750, matchType: 'nickname-contains' };
+                    return { score: 0, matchType: '' };
+                };
+
+                if (activeTab === 'private') {
+                    const a = scoreNicknameStrict();
+                    score = a.score;
+                    matchType = a.matchType;
+                } else if (activeTab === 'public') {
+                    const a = scoreNameStrict();
+                    score = a.score;
+                    matchType = a.matchType;
+                } else {
+                    const a = scoreNameStrict();
+                    const b = scoreNicknameStrict();
+                    score = a.score || b.score;
+                    matchType = a.matchType || b.matchType;
                 }
                 
                 // Check principal ID matches (lowest priority)
@@ -113,7 +131,7 @@ const PrincipalInput = ({
         return results
             .sort((a, b) => b.score - a.score)
             .slice(0, 20);
-    }, [inputValue, principalNames, principalNicknames]);
+    }, [inputValue, principalNames, principalNicknames, activeTab]);
 
     // Validate input and resolve info
     useEffect(() => {
@@ -278,6 +296,44 @@ const PrincipalInput = ({
                         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
                     }}
                 >
+                    {/* Tabs */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '6px',
+                        padding: '8px',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        position: 'sticky',
+                        top: 0,
+                        backgroundColor: theme.colors.tertiaryBg,
+                        zIndex: 1
+                    }}>
+                        {[
+                            { key: 'private', label: 'Private' },
+                            { key: 'public', label: 'Public' },
+                            { key: 'all', label: 'All' }
+                        ].map(tab => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()} // keep focus on input
+                                onClick={() => setActiveTab(tab.key)}
+                                style={{
+                                    flex: 1,
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${activeTab === tab.key ? theme.colors.accent : theme.colors.border}`,
+                                    backgroundColor: activeTab === tab.key ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                                    color: activeTab === tab.key ? theme.colors.accent : theme.colors.mutedText,
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: 600
+                                }}
+                                title={tab.label}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
                     {searchResults.map((item, index) => (
                         <div
                             key={item.principalStr}
