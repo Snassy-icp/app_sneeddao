@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
@@ -13,6 +13,7 @@ import {
     getLastSeenMessagesTimestamp
 } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
+import EmojiPicker from '../components/EmojiPicker';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
 const SMS = () => {
@@ -34,6 +35,8 @@ const SMS = () => {
         body: '',
         replyTo: null
     });
+    const composeSubjectRef = useRef(null);
+    const composeBodyRef = useRef(null);
     const [submitting, setSubmitting] = useState(false);
 
     const [config, setConfig] = useState(null);
@@ -911,12 +914,19 @@ const SMS = () => {
                                     <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
                                         Subject:
                                     </label>
+                                    <EmojiPicker
+                                        targetRef={composeSubjectRef}
+                                        getValue={() => composeForm.subject}
+                                        setValue={(v) => setComposeForm(prev => ({ ...prev, subject: v }))}
+                                        ariaLabel="Insert emoji into subject"
+                                    />
                                     <input
                                         type="text"
                                         value={composeForm.subject}
                                         onChange={(e) => setComposeForm(prev => ({ ...prev, subject: e.target.value }))}
                                         placeholder="Enter subject..."
                                         maxLength={effectiveSubjectLimit}
+                                        ref={composeSubjectRef}
                                         style={{
                                             width: '100%',
                                             padding: '10px',
@@ -956,12 +966,19 @@ const SMS = () => {
                                     <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
                                         Message:
                                     </label>
+                                    <EmojiPicker
+                                        targetRef={composeBodyRef}
+                                        getValue={() => composeForm.body}
+                                        setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
+                                        ariaLabel="Insert emoji into message body"
+                                    />
                                     <textarea
                                         value={composeForm.body}
                                         onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
                                         placeholder="Enter your message..."
                                         maxLength={effectiveBodyLimit}
                                         rows={8}
+                                        ref={composeBodyRef}
                                         style={{
                                             width: '100%',
                                             padding: '10px',

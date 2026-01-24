@@ -27,6 +27,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import Poll from './Poll';
+import EmojiPicker from './EmojiPicker';
 import './ThreadViewer.css';
 
 // Separate EditForm component to prevent PostComponent re-renders
@@ -34,6 +35,8 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     const { theme } = useTheme();
     const [title, setTitle] = useState(initialTitle || '');
     const [body, setBody] = useState(initialBody || '');
+    const titleRef = useRef(null);
+    const bodyRef = useRef(null);
     
     // Character limit validation
     const maxTitleLength = textLimits?.post_title_max_length || 200;
@@ -47,11 +50,18 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.secondaryBg, borderRadius: '4px' }}>
             <h4 style={{ color: theme.colors.accent, marginBottom: '10px' }}>Edit Post</h4>
+            <EmojiPicker
+                targetRef={titleRef}
+                getValue={() => title}
+                setValue={setTitle}
+                ariaLabel="Insert emoji into post title"
+            />
             <input
                 type="text"
                 placeholder="Post Title (optional)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                ref={titleRef}
                 style={{
                     width: '100%',
                     backgroundColor: theme.colors.primaryBg,
@@ -72,10 +82,17 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 Title: {title.length}/{maxTitleLength} characters
                 {isTitleOverLimit && <span style={{ marginLeft: '10px' }}>({title.length - maxTitleLength} over limit)</span>}
             </div>
+            <EmojiPicker
+                targetRef={bodyRef}
+                getValue={() => body}
+                setValue={setBody}
+                ariaLabel="Insert emoji into post body"
+            />
             <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Post body"
+                ref={bodyRef}
                 style={{
                     width: '100%',
                     minHeight: '120px',
@@ -151,6 +168,7 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
 const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits, regularLimits, isPremium }) => {
     const { theme } = useTheme();
     const [replyText, setReplyText] = useState('');
+    const replyRef = useRef(null);
     
     // Get display name for the user being replied to
     const displayInfo = principalDisplayInfo?.get(createdBy?.toString());
@@ -165,10 +183,17 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
     
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.primaryBg, borderRadius: '4px' }}>
+            <EmojiPicker
+                targetRef={replyRef}
+                getValue={() => replyText}
+                setValue={setReplyText}
+                ariaLabel="Insert emoji into reply"
+            />
             <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder={`Reply to ${displayName}`}
+                ref={replyRef}
                 style={{
                     width: '100%',
                     minHeight: '80px',
@@ -349,6 +374,8 @@ function ThreadViewer({
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
+    const commentTitleRef = useRef(null);
+    const commentBodyRef = useRef(null);
     
     // Responsive state for narrow screens
     const [isNarrowScreen, setIsNarrowScreen] = useState(false);
@@ -2210,11 +2237,18 @@ function ThreadViewer({
                         </button>
                     ) : (
                         <div style={{ marginTop: '15px' }}>
+                            <EmojiPicker
+                                targetRef={commentTitleRef}
+                                getValue={() => commentTitle}
+                                setValue={setCommentTitle}
+                                ariaLabel="Insert emoji into comment title"
+                            />
                             <input
                                 type="text"
                                 value={commentTitle}
                                 onChange={(e) => setCommentTitle(e.target.value)}
                                 placeholder="Title (optional)"
+                                ref={commentTitleRef}
                                 style={{
                                     width: '100%',
                                     backgroundColor: theme.colors.secondaryBg,
@@ -2239,10 +2273,17 @@ function ThreadViewer({
                                     }
                                 </div>
                             )}
+                            <EmojiPicker
+                                targetRef={commentBodyRef}
+                                getValue={() => commentText}
+                                setValue={setCommentText}
+                                ariaLabel="Insert emoji into comment body"
+                            />
                             <textarea
                                 value={commentText}
                                 onChange={(e) => setCommentText(e.target.value)}
                                 placeholder="Write your comment here..."
+                                ref={commentBodyRef}
                                 style={{
                                     width: '100%',
                                     backgroundColor: theme.colors.secondaryBg,

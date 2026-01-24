@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
+import EmojiPicker from '../components/EmojiPicker';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { formatError } from '../utils/errorUtils';
@@ -373,6 +374,8 @@ function Topic() {
     });
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
+    const createThreadTitleRef = useRef(null);
+    const createThreadBodyRef = useRef(null);
     const [submitting, setSubmitting] = useState(false);
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
@@ -1686,11 +1689,18 @@ function Topic() {
                     {/* Hide create thread form if we're in the Proposals topic */}
                     {topic?.title !== "Proposals" && (
                         <div style={{ marginBottom: '20px' }}>
+                        <EmojiPicker
+                            targetRef={createThreadTitleRef}
+                            getValue={() => createThreadTitle}
+                            setValue={setCreateThreadTitle}
+                            ariaLabel="Insert emoji into thread title"
+                        />
                         <input
                             type="text"
                             value={createThreadTitle}
                             onChange={(e) => setCreateThreadTitle(e.target.value)}
                             placeholder="Thread title"
+                            ref={createThreadTitleRef}
                             style={{
                                 width: '100%',
                                 backgroundColor: theme.colors.secondaryBg,
@@ -1717,10 +1727,17 @@ function Topic() {
                                 }
                             </div>
                         )}
+                        <EmojiPicker
+                            targetRef={createThreadBodyRef}
+                            getValue={() => createThreadBody}
+                            setValue={setCreateThreadBody}
+                            ariaLabel="Insert emoji into thread body"
+                        />
                         <textarea
                             value={createThreadBody}
                             onChange={(e) => setCreateThreadBody(e.target.value)}
                             placeholder="What would you like to discuss?"
+                            ref={createThreadBodyRef}
                             style={{
                                 width: '100%',
                                 backgroundColor: theme.colors.secondaryBg,
