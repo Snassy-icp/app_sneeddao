@@ -1848,24 +1848,53 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             case null {};
                         };
                         
-                        // Verify tokens in escrow
+                        // Cap bid at buyout price if it exceeds it (no overbidding)
+                        // If bid >= buyout, user only pays buyout price
+                        let effectiveAmount = switch (offer.buyout_price) {
+                            case (?buyout) {
+                                if (amount >= buyout) { buyout } else { amount };
+                            };
+                            case null { amount };
+                        };
+                        
+                        // Verify tokens in escrow (at least the effective amount)
                         let subaccount = Utils.bidEscrowSubaccount(caller, bidId);
                         let verifyResult = await* AssetHandlers.verifyTokenEscrow(
                             offer.price_token_ledger,
                             self(),
                             subaccount,
-                            amount
+                            effectiveAmount
                         );
                         
                         switch (verifyResult) {
                             case (#err(e)) { return #err(e) };
                             case (#ok(_)) {
-                                // Update bid
+                                // If user sent more than buyout, refund the excess immediately
+                                if (amount > effectiveAmount) {
+                                    let ledger : T.ICRC1Actor = actor(Principal.toText(offer.price_token_ledger));
+                                    let fee = await ledger.icrc1_fee();
+                                    let excessAmount = amount - effectiveAmount;
+                                    
+                                    // Only refund if excess is greater than fee
+                                    if (excessAmount > fee) {
+                                        let refundAmount = excessAmount - fee;
+                                        let _ = await ledger.icrc1_transfer({
+                                            from_subaccount = ?subaccount;
+                                            to = { owner = caller; subaccount = null };
+                                            amount = refundAmount;
+                                            fee = ?fee;
+                                            memo = ?Text.encodeUtf8("Excess bid refund");
+                                            created_at_time = ?Nat64.fromNat(Int.abs(Time.now()));
+                                        });
+                                    };
+                                };
+                                
+                                // Update bid with effective amount (capped at buyout)
                                 let updatedBid : T.Bid = {
                                     id = bid.id;
                                     offer_id = bid.offer_id;
                                     bidder = bid.bidder;
-                                    amount = amount;
+                                    amount = effectiveAmount;
                                     state = bid.state;
                                     created_at = bid.created_at;
                                     tokens_escrowed = true;
@@ -1880,7 +1909,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     if (otherBid.id != bidId and 
                                         otherBid.tokens_escrowed and 
                                         otherBid.state == #Pending and 
-                                        otherBid.amount < amount) {
+                                        otherBid.amount < effectiveAmount) {
                                         let lostBid : T.Bid = {
                                             id = otherBid.id;
                                             offer_id = otherBid.offer_id;
@@ -1897,10 +1926,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     };
                                 };
                                 
-                                // Check for buyout
+                                // Check for buyout (using effective amount which is capped at buyout)
                                 switch (offer.buyout_price) {
                                     case (?buyout) {
-                                        if (amount >= buyout) {
+                                        if (effectiveAmount >= buyout) {
                                             // Buyout! Complete the offer
                                             ignore await completeOfferInternal(bid.offer_id, bidId);
                                         };

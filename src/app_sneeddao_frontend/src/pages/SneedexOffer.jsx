@@ -4746,6 +4746,44 @@ function SneedexOffer() {
                                                     );
                                                 })}
                                             </div>
+                                            {/* Warning when bid would trigger immediate buyout */}
+                                            {bidAmount && offer.buyout_price?.[0] && (() => {
+                                                const bidAmountE8s = parseFloat(bidAmount) * Math.pow(10, tokenInfo.decimals);
+                                                const buyoutE8s = Number(offer.buyout_price[0]);
+                                                if (bidAmountE8s >= buyoutE8s) {
+                                                    return (
+                                                        <div style={{
+                                                            marginTop: '10px',
+                                                            padding: '10px 14px',
+                                                            backgroundColor: `${theme.colors.accent}15`,
+                                                            border: `1px solid ${theme.colors.accent}50`,
+                                                            borderRadius: '8px',
+                                                            fontSize: '0.85rem',
+                                                        }}>
+                                                            <div style={{ 
+                                                                color: theme.colors.accent, 
+                                                                fontWeight: '600',
+                                                                marginBottom: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                            }}>
+                                                                ⚡ Instant Buyout
+                                                            </div>
+                                                            <div style={{ color: theme.colors.text }}>
+                                                                Your bid of <strong>{bidAmount} {tokenInfo.symbol}</strong> meets or exceeds the buyout price.
+                                                                You will pay exactly <strong>{formatAmount(buyoutE8s, tokenInfo.decimals)} {tokenInfo.symbol}</strong> and win immediately.
+                                                                {bidAmountE8s > buyoutE8s && (
+                                                                    <span style={{ color: theme.colors.mutedText }}>
+                                                                        {' '}(excess will be refunded)
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </>
                                     ) : (
                                         /* Buyout-only mode - show wallet balance */
