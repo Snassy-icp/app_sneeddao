@@ -214,12 +214,33 @@ function SneedexCreate() {
         fetchPrice();
     }, [priceTokenLedger, selectedPriceToken]);
     
-    // Set default min bid increment to 1 token when price token changes
+    // Set default min bid increment, adjusted to be within $1-$10 USD range
     useEffect(() => {
-        if (selectedPriceToken) {
+        if (selectedPriceToken && paymentTokenPrice && paymentTokenPrice > 0) {
+            // Start with 1 token as the base
+            let defaultIncrement = 1;
+            let usdValue = defaultIncrement * paymentTokenPrice;
+            
+            // Adjust to be within $1-$10 range
+            if (usdValue < 1) {
+                // Increase to match $1
+                defaultIncrement = 1 / paymentTokenPrice;
+            } else if (usdValue > 10) {
+                // Decrease to match $10
+                defaultIncrement = 10 / paymentTokenPrice;
+            }
+            
+            // Format nicely (avoid excessive decimals)
+            const decimals = Number(selectedPriceToken.decimals) || 8;
+            const maxDecimals = Math.min(decimals, 4);
+            const formatted = parseFloat(defaultIncrement.toFixed(maxDecimals)).toString();
+            
+            setMinBidIncrement(formatted);
+        } else if (selectedPriceToken && !paymentTokenPrice) {
+            // Fallback to 1 token if price not available yet
             setMinBidIncrement('1');
         }
-    }, [selectedPriceToken]);
+    }, [selectedPriceToken, paymentTokenPrice]);
     
     // Fetch ICP price on mount
     useEffect(() => {
@@ -2396,11 +2417,31 @@ function SneedexCreate() {
                                     {priceTokenSymbol}
                                 </span>
                             </div>
-                            {minBidIncrement && parseFloat(minBidIncrement) > 0 && paymentTokenPrice && (
-                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
-                                    ≈ ${(parseFloat(minBidIncrement) * paymentTokenPrice).toFixed(2)} USD
-                                </div>
-                            )}
+                            {minBidIncrement && parseFloat(minBidIncrement) > 0 && paymentTokenPrice && (() => {
+                                const usdValue = parseFloat(minBidIncrement) * paymentTokenPrice;
+                                const isOutsideRange = usdValue < 1 || usdValue > 10;
+                                return (
+                                    <>
+                                        <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                            ≈ ${usdValue.toFixed(2)} USD
+                                        </div>
+                                        {isOutsideRange && (
+                                            <div style={{ 
+                                                fontSize: '0.8rem', 
+                                                color: theme.colors.warning || '#f59e0b',
+                                                marginTop: '4px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                            }}>
+                                                ⚠️ {usdValue < 1 
+                                                    ? 'Very small increment - may lead to many small bids' 
+                                                    : 'Large increment - may discourage bidders'}
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </div>
                         
                         <div style={{ 
