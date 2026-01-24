@@ -4305,22 +4305,66 @@ function SneedexOffer() {
                                     </>
                                 );
                             })()}
-                            {totalUsdEstimate !== null && totalUsdEstimate > 0 && (
-                                <div style={{
-                                    ...styles.priceRow,
-                                    background: `${theme.colors.success}10`,
-                                    borderRadius: '8px',
-                                    padding: '10px 12px',
-                                    margin: '8px 0',
-                                }}>
-                                    <span style={{ ...styles.priceLabel, color: theme.colors.success, fontWeight: '600' }}>
-                                        Est. Asset Value
-                                    </span>
-                                    <span style={{ ...styles.priceValue, color: theme.colors.success, fontWeight: '700' }}>
-                                        ~{formatUsd(totalUsdEstimate)}
-                                    </span>
-                                </div>
-                            )}
+                            {totalUsdEstimate !== null && totalUsdEstimate > 0 && (() => {
+                                // Calculate relevant USD values for Good Deal determination
+                                const paymentLedger = offer.price_token_ledger.toString();
+                                const paymentPrice = tokenPrices[paymentLedger];
+                                const minBidUsd = offer.min_bid_price[0] && paymentPrice
+                                    ? calculateUsdValue(offer.min_bid_price[0], tokenInfo.decimals, paymentPrice)
+                                    : null;
+                                const buyoutUsd = offer.buyout_price[0] && paymentPrice
+                                    ? calculateUsdValue(offer.buyout_price[0], tokenInfo.decimals, paymentPrice)
+                                    : null;
+                                const highestBidUsd = highestBid?.amount && paymentPrice
+                                    ? calculateUsdValue(highestBid.amount, tokenInfo.decimals, paymentPrice)
+                                    : null;
+                                
+                                // Determine if this is a "good deal"
+                                // Compare against buyout, current highest bid, or min bid (if no bids yet)
+                                const isGoodDeal = totalUsdEstimate > 0 && (
+                                    (buyoutUsd && totalUsdEstimate > buyoutUsd * 1.2) || // 20%+ undervalued vs buyout
+                                    (highestBidUsd && totalUsdEstimate > highestBidUsd * 1.5) || // 50%+ undervalued vs current bid
+                                    (!highestBidUsd && minBidUsd && totalUsdEstimate > minBidUsd * 1.5) // 50%+ undervalued vs min bid (no bids yet)
+                                );
+                                
+                                return (
+                                    <div style={{
+                                        ...styles.priceRow,
+                                        background: isGoodDeal ? `${theme.colors.success}20` : `${theme.colors.success}10`,
+                                        borderRadius: '8px',
+                                        padding: '10px 12px',
+                                        margin: '8px 0',
+                                        border: isGoodDeal ? `2px solid ${theme.colors.success}` : 'none',
+                                    }}>
+                                        <span style={{ ...styles.priceLabel, color: theme.colors.success, fontWeight: '600' }}>
+                                            Est. Asset Value
+                                        </span>
+                                        <span style={{ 
+                                            ...styles.priceValue, 
+                                            color: theme.colors.success, 
+                                            fontWeight: '700',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
+                                            ~{formatUsd(totalUsdEstimate)}
+                                            {isGoodDeal && (
+                                                <span style={{
+                                                    background: theme.colors.success,
+                                                    color: '#fff',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: '700',
+                                                    fontSize: '0.7rem',
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                    🔥 GOOD DEAL
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
                             {offer.min_bid_increment_fee_multiple?.[0] && (
                                 <div style={styles.priceRow}>
                                     <span style={styles.priceLabel}>Min Bid Increment</span>
