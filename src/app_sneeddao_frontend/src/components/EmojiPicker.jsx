@@ -121,7 +121,7 @@ function insertAtCursor({ el, value, setValue, text }) {
  * - shows a small button to open a larger palette (with category + search)
  * - inserts emoji at cursor into a target input/textarea
  */
-export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel = 'Insert emoji' }) {
+export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel = 'Insert emoji', rightSlot = null }) {
   const { theme } = useTheme();
   const wrapperRef = useRef(null);
   const searchRef = useRef(null);
@@ -392,6 +392,7 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
         >
           🙂
         </button>
+        {rightSlot}
       </div>
 
       {open && (

@@ -14,6 +14,7 @@ import {
 } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
+import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
@@ -964,6 +965,13 @@ const SMS = () => {
                                         getValue={() => composeForm.body}
                                         setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
                                         ariaLabel="Insert emoji into message body"
+                                        rightSlot={
+                                            <MarkdownButtons
+                                                targetRef={composeBodyRef}
+                                                getValue={() => composeForm.body}
+                                                setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
+                                            />
+                                        }
                                     />
                                     <textarea
                                         value={composeForm.body}

@@ -28,6 +28,7 @@ import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import Poll from './Poll';
 import EmojiPicker from './EmojiPicker';
+import MarkdownButtons from './MarkdownButtons';
 import MarkdownBody from './MarkdownBody';
 import './ThreadViewer.css';
 
@@ -80,6 +81,13 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 getValue={() => body}
                 setValue={setBody}
                 ariaLabel="Insert emoji into post body"
+                rightSlot={
+                    <MarkdownButtons
+                        targetRef={bodyRef}
+                        getValue={() => body}
+                        setValue={setBody}
+                    />
+                }
             />
             <textarea
                 value={body}
@@ -181,6 +189,13 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                 getValue={() => replyText}
                 setValue={setReplyText}
                 ariaLabel="Insert emoji into reply"
+                rightSlot={
+                    <MarkdownButtons
+                        targetRef={replyRef}
+                        getValue={() => replyText}
+                        setValue={setReplyText}
+                    />
+                }
             />
             <textarea
                 value={replyText}
@@ -2263,6 +2278,13 @@ function ThreadViewer({
                                 getValue={() => commentText}
                                 setValue={setCommentText}
                                 ariaLabel="Insert emoji into comment body"
+                                rightSlot={
+                                    <MarkdownButtons
+                                        targetRef={commentBodyRef}
+                                        getValue={() => commentText}
+                                        setValue={setCommentText}
+                                    />
+                                }
                             />
                             <textarea
                                 value={commentText}

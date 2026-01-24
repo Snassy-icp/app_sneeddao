@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -6,6 +6,8 @@ import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import PrincipalInput from './PrincipalInput';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
+import EmojiPicker from './EmojiPicker';
+import MarkdownButtons from './MarkdownButtons';
 
 const MessageDialog = ({ 
     isOpen, 
@@ -26,6 +28,7 @@ const MessageDialog = ({
         body: initialBody,
         replyTo: replyToId
     });
+    const bodyRef = useRef(null);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [recipientValidation, setRecipientValidation] = useState('');
@@ -408,12 +411,26 @@ const MessageDialog = ({
                     <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px' }}>
                         Message *
                     </label>
+                    <EmojiPicker
+                        targetRef={bodyRef}
+                        getValue={() => composeForm.body}
+                        setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
+                        ariaLabel="Insert emoji into message body"
+                        rightSlot={
+                            <MarkdownButtons
+                                targetRef={bodyRef}
+                                getValue={() => composeForm.body}
+                                setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
+                            />
+                        }
+                    />
                     <textarea
                         value={composeForm.body}
                         onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
                         placeholder="Enter your message..."
                         maxLength={effectiveBodyLimit}
                         rows={6}
+                        ref={bodyRef}
                         style={{
                             width: '100%',
                             padding: '10px',

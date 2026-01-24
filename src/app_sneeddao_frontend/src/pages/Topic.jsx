@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import EmojiPicker from '../components/EmojiPicker';
+import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
@@ -1725,6 +1726,13 @@ function Topic() {
                             getValue={() => createThreadBody}
                             setValue={setCreateThreadBody}
                             ariaLabel="Insert emoji into thread body"
+                            rightSlot={
+                                <MarkdownButtons
+                                    targetRef={createThreadBodyRef}
+                                    getValue={() => createThreadBody}
+                                    setValue={setCreateThreadBody}
+                                />
+                            }
                         />
                         <textarea
                             value={createThreadBody}
