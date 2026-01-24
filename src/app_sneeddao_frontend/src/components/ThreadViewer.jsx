@@ -35,7 +35,6 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     const { theme } = useTheme();
     const [title, setTitle] = useState(initialTitle || '');
     const [body, setBody] = useState(initialBody || '');
-    const titleRef = useRef(null);
     const bodyRef = useRef(null);
     
     // Character limit validation
@@ -50,18 +49,11 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.secondaryBg, borderRadius: '4px' }}>
             <h4 style={{ color: theme.colors.accent, marginBottom: '10px' }}>Edit Post</h4>
-            <EmojiPicker
-                targetRef={titleRef}
-                getValue={() => title}
-                setValue={setTitle}
-                ariaLabel="Insert emoji into post title"
-            />
             <input
                 type="text"
                 placeholder="Post Title (optional)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                ref={titleRef}
                 style={{
                     width: '100%',
                     backgroundColor: theme.colors.primaryBg,
@@ -374,7 +366,6 @@ function ThreadViewer({
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
-    const commentTitleRef = useRef(null);
     const commentBodyRef = useRef(null);
     
     // Responsive state for narrow screens
@@ -2237,18 +2228,11 @@ function ThreadViewer({
                         </button>
                     ) : (
                         <div style={{ marginTop: '15px' }}>
-                            <EmojiPicker
-                                targetRef={commentTitleRef}
-                                getValue={() => commentTitle}
-                                setValue={setCommentTitle}
-                                ariaLabel="Insert emoji into comment title"
-                            />
                             <input
                                 type="text"
                                 value={commentTitle}
                                 onChange={(e) => setCommentTitle(e.target.value)}
                                 placeholder="Title (optional)"
-                                ref={commentTitleRef}
                                 style={{
                                     width: '100%',
                                     backgroundColor: theme.colors.secondaryBg,

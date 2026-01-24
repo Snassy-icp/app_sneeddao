@@ -76,7 +76,14 @@ const MessageDialog = ({
                         actor.get_config(),
                         actor.get_premium_config().catch(() => null)
                     ]);
-                    setConfig(configData);
+                    // Normalize candid nat values (BigInt) into Numbers for safe arithmetic in the UI.
+                    // (Otherwise expressions like `effectiveSubjectLimit - subject.length` can throw.)
+                    setConfig({
+                        ...configData,
+                        max_subject_length: Number(configData?.max_subject_length ?? 200),
+                        max_body_length: Number(configData?.max_body_length ?? 5000),
+                        max_recipients: Number(configData?.max_recipients ?? 20)
+                    });
                     if (premiumCfg) {
                         setPremiumConfig({
                             sneed_premium_canister_id: premiumCfg.sneed_premium_canister_id?.[0]?.toString() || null,

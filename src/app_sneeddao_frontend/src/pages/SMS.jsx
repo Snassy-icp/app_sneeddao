@@ -35,7 +35,6 @@ const SMS = () => {
         body: '',
         replyTo: null
     });
-    const composeSubjectRef = useRef(null);
     const composeBodyRef = useRef(null);
     const [submitting, setSubmitting] = useState(false);
 
@@ -914,19 +913,12 @@ const SMS = () => {
                                     <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
                                         Subject:
                                     </label>
-                                    <EmojiPicker
-                                        targetRef={composeSubjectRef}
-                                        getValue={() => composeForm.subject}
-                                        setValue={(v) => setComposeForm(prev => ({ ...prev, subject: v }))}
-                                        ariaLabel="Insert emoji into subject"
-                                    />
                                     <input
                                         type="text"
                                         value={composeForm.subject}
                                         onChange={(e) => setComposeForm(prev => ({ ...prev, subject: e.target.value }))}
                                         placeholder="Enter subject..."
                                         maxLength={effectiveSubjectLimit}
-                                        ref={composeSubjectRef}
                                         style={{
                                             width: '100%',
                                             padding: '10px',

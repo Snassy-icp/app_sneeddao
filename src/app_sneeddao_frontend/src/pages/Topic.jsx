@@ -374,7 +374,6 @@ function Topic() {
     });
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
-    const createThreadTitleRef = useRef(null);
     const createThreadBodyRef = useRef(null);
     const [submitting, setSubmitting] = useState(false);
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
@@ -1689,18 +1688,11 @@ function Topic() {
                     {/* Hide create thread form if we're in the Proposals topic */}
                     {topic?.title !== "Proposals" && (
                         <div style={{ marginBottom: '20px' }}>
-                        <EmojiPicker
-                            targetRef={createThreadTitleRef}
-                            getValue={() => createThreadTitle}
-                            setValue={setCreateThreadTitle}
-                            ariaLabel="Insert emoji into thread title"
-                        />
                         <input
                             type="text"
                             value={createThreadTitle}
                             onChange={(e) => setCreateThreadTitle(e.target.value)}
                             placeholder="Thread title"
-                            ref={createThreadTitleRef}
                             style={{
                                 width: '100%',
                                 backgroundColor: theme.colors.secondaryBg,
