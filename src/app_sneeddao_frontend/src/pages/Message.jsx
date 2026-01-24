@@ -7,6 +7,7 @@ import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import MarkdownBody from '../components/MarkdownBody';
 
 const Message = () => {
     const { theme } = useTheme();
@@ -730,15 +731,14 @@ const Message = () => {
                         <>
                             {/* Message Body */}
                             <div style={{ marginBottom: '10px', paddingLeft: '25px' }}>
-                                <div style={{ 
-                                    color: '#cccccc', 
-                                    lineHeight: '1.5',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    fontSize: '14px'
-                                }}>
-                                    {displayBody}
-                                </div>
+                                <MarkdownBody
+                                    text={displayBody}
+                                    style={{
+                                        color: '#cccccc',
+                                        fontSize: '14px',
+                                        wordBreak: 'break-word'
+                                    }}
+                                />
                                 {isLongMessage && (
                                     <button
                                         onClick={() => toggleMessageExpansion(messageId)}

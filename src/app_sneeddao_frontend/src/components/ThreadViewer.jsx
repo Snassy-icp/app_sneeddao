@@ -28,6 +28,7 @@ import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import Poll from './Poll';
 import EmojiPicker from './EmojiPicker';
+import MarkdownBody from './MarkdownBody';
 import './ThreadViewer.css';
 
 // Separate EditForm component to prevent PostComponent re-renders
@@ -2019,7 +2020,7 @@ function ThreadViewer({
                 <h2>{getDisplayTitle()}</h2>
                 {threadDetails && threadDetails.body && (
                     <div className="thread-description">
-                        <p style={{ whiteSpace: 'pre-wrap', color: theme.colors.secondaryText }}>{threadDetails.body}</p>
+                        <MarkdownBody text={threadDetails.body} style={{ color: theme.colors.secondaryText }} />
                     </div>
                 )}
                 
@@ -2826,7 +2827,7 @@ function ThreadViewer({
                             {/* Post body - hide when editing */}
                             {editingPost !== Number(post.id) && (
                                 <div className="post-body">
-                                    <p style={{ whiteSpace: 'pre-wrap', color: theme.colors.primaryText }}>{post.body}</p>
+                                    <MarkdownBody text={post.body} style={{ color: theme.colors.primaryText }} />
                                 </div>
                             )}
                             

@@ -14,6 +14,7 @@ import {
 } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
+import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
 const SMS = () => {
@@ -1247,17 +1248,16 @@ const SMS = () => {
 
                                 <div style={{ marginBottom: '20px' }}>
                                     <strong style={{ color: theme.colors.mutedText }}>Message:</strong>
-                                    <div style={{ 
-                                        color: theme.colors.primaryText, 
-                                        marginTop: '10px',
-                                        backgroundColor: theme.colors.tertiaryBg,
-                                        padding: '15px',
-                                        borderRadius: '6px',
-                                        whiteSpace: 'pre-wrap',
-                                        lineHeight: '1.5'
-                                    }}>
-                                        {selectedMessage.body}
-                                    </div>
+                                    <MarkdownBody
+                                        text={selectedMessage.body}
+                                        style={{
+                                            color: theme.colors.primaryText,
+                                            marginTop: '10px',
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            padding: '15px',
+                                            borderRadius: '6px'
+                                        }}
+                                    />
                                 </div>
                             </div>
 

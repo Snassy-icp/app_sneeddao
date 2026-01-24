@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import EmojiPicker from '../components/EmojiPicker';
+import MarkdownBody from '../components/MarkdownBody';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { formatError } from '../utils/errorUtils';
@@ -1614,7 +1615,7 @@ function Topic() {
                                                 </span>
                                             )}
                                         </h3>
-                                        <p style={{...getStyles(theme).threadBody, whiteSpace: 'pre-wrap'}}>{thread.body}</p>
+                                        <MarkdownBody text={thread.body} style={{ ...getStyles(theme).threadBody }} />
                                         
                                         {/* Show proposal link if this thread is linked to a proposal */}
                                         {threadProposals.has(thread.id.toString()) && (
