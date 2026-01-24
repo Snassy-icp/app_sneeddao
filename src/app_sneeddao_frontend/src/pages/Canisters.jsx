@@ -986,6 +986,140 @@ export default function CanistersPage() {
         }
     };
 
+    // Move canister from wallet to groups or neuron managers
+    const handleMoveFromWallet = async (canisterId, destination) => {
+        try {
+            // Remove from wallet
+            await unregisterTrackedCanister(identity, canisterId);
+            const canisters = await getTrackedCanisters(identity);
+            setTrackedCanisters(canisters.map(p => p.toText()));
+            
+            // Add to destination
+            if (destination === 'neuron_managers') {
+                // Register as neuron manager
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ identity, host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                const result = await factory.registerManager(Principal.fromText(canisterId));
+                if ('Err' in result) {
+                    throw new Error(result.Err);
+                }
+                await fetchNeuronManagers();
+                setSuccessMessage('Canister moved to Neuron Managers');
+            } else {
+                // Add to a canister group
+                let newGroups = canisterGroups;
+                if (destination === 'ungrouped') {
+                    newGroups = {
+                        ...newGroups,
+                        ungrouped: [canisterId, ...newGroups.ungrouped],
+                    };
+                } else {
+                    newGroups = addCanisterToGroup(newGroups, canisterId, destination);
+                }
+                await saveCanisterGroups(newGroups);
+                setSuccessMessage('Canister moved to groups');
+            }
+        } catch (err) {
+            console.error('Error moving canister from wallet:', err);
+            setError('Failed to move canister: ' + (err.message || 'Unknown error'));
+        }
+    };
+
+    // Move canister from groups to wallet or neuron managers
+    const handleMoveFromGroups = async (canisterId, fromGroupId, destination) => {
+        try {
+            // Remove from current group
+            let newGroups = canisterGroups;
+            if (fromGroupId === 'ungrouped') {
+                newGroups = {
+                    ...newGroups,
+                    ungrouped: newGroups.ungrouped.filter(c => c !== canisterId),
+                };
+            } else {
+                newGroups = removeCanisterFromGroup(newGroups, canisterId, fromGroupId);
+            }
+            await saveCanisterGroups(newGroups);
+            
+            // Add to destination
+            if (destination === 'wallet') {
+                await registerTrackedCanister(identity, canisterId);
+                const canisters = await getTrackedCanisters(identity);
+                setTrackedCanisters(canisters.map(p => p.toText()));
+                setSuccessMessage('Canister moved to Wallet');
+            } else if (destination === 'neuron_managers') {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ identity, host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                const result = await factory.registerManager(Principal.fromText(canisterId));
+                if ('Err' in result) {
+                    throw new Error(result.Err);
+                }
+                await fetchNeuronManagers();
+                setSuccessMessage('Canister moved to Neuron Managers');
+            }
+        } catch (err) {
+            console.error('Error moving canister from groups:', err);
+            setError('Failed to move canister: ' + (err.message || 'Unknown error'));
+        }
+    };
+
+    // Move neuron manager to wallet or groups
+    const handleMoveFromNeuronManagers = async (canisterId, destination) => {
+        try {
+            // Remove from neuron managers
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.deregisterManager(canisterId);
+            if ('Err' in result) {
+                throw new Error(result.Err);
+            }
+            await fetchNeuronManagers();
+            
+            const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toText();
+            
+            // Add to destination
+            if (destination === 'wallet') {
+                await registerTrackedCanister(identity, canisterIdStr);
+                const canisters = await getTrackedCanisters(identity);
+                setTrackedCanisters(canisters.map(p => p.toText()));
+                setSuccessMessage('Canister moved to Wallet');
+            } else if (destination === 'ungrouped' || destination !== 'neuron_managers') {
+                // Add to a canister group
+                let newGroups = canisterGroups;
+                if (destination === 'ungrouped') {
+                    newGroups = {
+                        ...newGroups,
+                        ungrouped: [canisterIdStr, ...newGroups.ungrouped],
+                    };
+                } else {
+                    newGroups = addCanisterToGroup(newGroups, canisterIdStr, destination);
+                }
+                await saveCanisterGroups(newGroups);
+                setSuccessMessage('Canister moved to groups');
+            }
+        } catch (err) {
+            console.error('Error moving canister from neuron managers:', err);
+            setError('Failed to move canister: ' + (err.message || 'Unknown error'));
+        }
+    };
+
     // Recursive component for rendering a group
     const GroupComponent = ({ 
         group, depth, styles, theme, expandedGroups, setExpandedGroups,
@@ -993,7 +1127,7 @@ export default function CanistersPage() {
         handleRenameGroup, handleDeleteGroup, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
         confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
-        canisterGroups, handleMoveCanister,
+        canisterGroups, handleMoveCanister, handleMoveFromGroups,
         // New props for subgroups and adding canisters
         newSubgroupParent, setNewSubgroupParent, newSubgroupName, setNewSubgroupName,
         handleCreateSubgroup, addingCanisterToGroupId, setAddingCanisterToGroupId,
@@ -1276,6 +1410,7 @@ export default function CanistersPage() {
                                 handleRemoveCanister={handleRemoveCanister}
                                 canisterGroups={canisterGroups}
                                 handleMoveCanister={handleMoveCanister}
+                                handleMoveFromGroups={handleMoveFromGroups}
                                 newSubgroupParent={newSubgroupParent}
                                 setNewSubgroupParent={setNewSubgroupParent}
                                 newSubgroupName={newSubgroupName}
@@ -1311,6 +1446,7 @@ export default function CanistersPage() {
                                         handleRemoveCanister={handleRemoveCanister}
                                         canisterGroups={canisterGroups}
                                         handleMoveCanister={handleMoveCanister}
+                                        handleMoveFromGroups={handleMoveFromGroups}
                                     />
                                 ))}
                             </div>
@@ -1404,6 +1540,56 @@ export default function CanistersPage() {
             default: return '#6b7280'; // gray for unknown
         }
     };
+
+    // Helper to get individual canister health status (cycles only)
+    // Returns: 'red' | 'orange' | 'green' | 'unknown'
+    const getCanisterHealthStatus = useCallback((canisterId, statusMap, cycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        const status = statusMap[canisterId];
+        
+        if (!status || status.cycles === null || status.cycles === undefined) {
+            return 'unknown';
+        }
+        
+        const cycles = status.cycles;
+        if (cycles < cycleThresholdRed) return 'red';
+        if (cycles < cycleThresholdOrange) return 'orange';
+        return 'green';
+    }, []);
+
+    // Helper to calculate overall health statistics for wallet canisters
+    const getWalletHealthStats = useCallback((canisterIds, statusMap, cycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        
+        let red = 0, orange = 0, green = 0, unknown = 0;
+        
+        for (const canisterId of canisterIds) {
+            const status = statusMap[canisterId];
+            if (!status || status.cycles === null || status.cycles === undefined) {
+                unknown++;
+            } else {
+                const cycles = status.cycles;
+                if (cycles < cycleThresholdRed) red++;
+                else if (cycles < cycleThresholdOrange) orange++;
+                else green++;
+            }
+        }
+        
+        // Determine overall status (worst wins)
+        let overallStatus = 'unknown';
+        if (red > 0) overallStatus = 'red';
+        else if (orange > 0) overallStatus = 'orange';
+        else if (green > 0) overallStatus = 'green';
+        
+        return {
+            red,
+            orange,
+            green,
+            unknown,
+            total: canisterIds.length,
+            overallStatus
+        };
+    }, []);
 
     // Helper to calculate overall health statistics for all canisters
     const getOverallHealthStats = useCallback((groupsRoot, canisterStatus, cycleSettings) => {
@@ -1521,7 +1707,7 @@ export default function CanistersPage() {
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
         confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
-        canisterGroups, handleMoveCanister
+        canisterGroups, handleMoveCanister, handleMoveFromGroups
     }) => {
         const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
         const status = canisterStatus[canisterId];
@@ -1543,6 +1729,12 @@ export default function CanistersPage() {
             { id: 'ungrouped', name: 'Ungrouped' },
             ...collectGroups(canisterGroups.groups)
         ].filter(g => g.id !== groupId);
+        
+        // Special destinations
+        const specialDestinations = [
+            { id: 'wallet', name: '💼 Wallet' },
+            { id: 'neuron_managers', name: '🧠 Neuron Managers' }
+        ];
 
         return (
             <div style={styles.canisterCard}>
@@ -1614,32 +1806,42 @@ export default function CanistersPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                     {/* Move to group dropdown */}
-                    {allGroups.length > 0 && (
-                        <select
-                            onChange={(e) => {
-                                if (e.target.value) {
-                                    handleMoveCanister(canisterId, groupId, e.target.value);
-                                    e.target.value = '';
+                    <select
+                        onChange={(e) => {
+                            if (e.target.value) {
+                                const dest = e.target.value;
+                                if (dest === 'wallet' || dest === 'neuron_managers') {
+                                    handleMoveFromGroups(canisterId, groupId, dest);
+                                } else {
+                                    handleMoveCanister(canisterId, groupId, dest);
                                 }
-                            }}
-                            style={{
-                                padding: '6px 8px',
-                                borderRadius: '6px',
-                                border: `1px solid ${theme.colors.border}`,
-                                backgroundColor: theme.colors.card,
-                                color: theme.colors.textSecondary,
-                                fontSize: '11px',
-                                cursor: 'pointer',
-                                maxWidth: '90px',
-                            }}
-                            defaultValue=""
-                        >
-                            <option value="" disabled>Move to...</option>
+                                e.target.value = '';
+                            }
+                        }}
+                        style={{
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme.colors.border}`,
+                            backgroundColor: theme.colors.card,
+                            color: theme.colors.textSecondary,
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            maxWidth: '110px',
+                        }}
+                        defaultValue=""
+                    >
+                        <option value="" disabled>Move to...</option>
+                        <optgroup label="Special">
+                            {specialDestinations.map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Groups">
                             {allGroups.map(g => (
                                 <option key={g.id} value={g.id}>{g.name}</option>
                             ))}
-                        </select>
-                    )}
+                        </optgroup>
+                    </select>
                     <Link
                         to={`/canister?id=${canisterId}`}
                         style={styles.viewLink}
@@ -2478,6 +2680,7 @@ export default function CanistersPage() {
                                                 handleRemoveCanister={handleRemoveCanister}
                                                 canisterGroups={canisterGroups}
                                                 handleMoveCanister={handleMoveCanister}
+                                                handleMoveFromGroups={handleMoveFromGroups}
                                                 newSubgroupParent={newSubgroupParent}
                                                 setNewSubgroupParent={setNewSubgroupParent}
                                                 newSubgroupName={newSubgroupName}
@@ -2522,6 +2725,7 @@ export default function CanistersPage() {
                                                             handleRemoveCanister={handleRemoveCanister}
                                                             canisterGroups={canisterGroups}
                                                             handleMoveCanister={handleMoveCanister}
+                                                            handleMoveFromGroups={handleMoveFromGroups}
                                                         />
                                                     ))}
                                                 </div>
@@ -2628,6 +2832,107 @@ export default function CanistersPage() {
                                     </div>
                                 ) : (
                                     <div style={{ marginBottom: '24px' }}>
+                                        {/* Wallet Health Summary */}
+                                        {(() => {
+                                            const walletStats = getWalletHealthStats(trackedCanisters, trackedCanisterStatus, cycleSettings);
+                                            const walletOverallColor = getStatusLampColor(walletStats.overallStatus);
+                                            
+                                            return (
+                                                <div style={{
+                                                    padding: '12px 16px',
+                                                    backgroundColor: theme.colors.card,
+                                                    borderRadius: '10px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    marginBottom: '16px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    flexWrap: 'wrap',
+                                                    gap: '12px',
+                                                }}>
+                                                    {/* Overall status lamp */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <span
+                                                            style={{
+                                                                width: '14px',
+                                                                height: '14px',
+                                                                borderRadius: '50%',
+                                                                backgroundColor: walletOverallColor,
+                                                                boxShadow: walletStats.overallStatus !== 'unknown' ? `0 0 10px ${walletOverallColor}` : 'none',
+                                                                flexShrink: 0,
+                                                            }}
+                                                            title={`Overall health: ${walletStats.overallStatus}`}
+                                                        />
+                                                        <span style={{ 
+                                                            fontWeight: 600, 
+                                                            fontSize: '13px',
+                                                            color: theme.colors.text,
+                                                        }}>
+                                                            Wallet Health
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Status breakdown */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: 'auto' }}>
+                                                        {walletStats.red > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#ef4444',
+                                                                    boxShadow: '0 0 6px #ef4444',
+                                                                }} />
+                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {walletStats.red} critical
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {walletStats.orange > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#f59e0b',
+                                                                    boxShadow: '0 0 6px #f59e0b',
+                                                                }} />
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {walletStats.orange} low
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {walletStats.green > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#22c55e',
+                                                                    boxShadow: '0 0 6px #22c55e',
+                                                                }} />
+                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {walletStats.green} healthy
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {walletStats.unknown > 0 && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: '#6b7280',
+                                                                }} />
+                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
+                                                                    {walletStats.unknown} unknown
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        
                                         <div style={styles.canisterList}>
                                             {trackedCanisters.map((canisterId) => {
                                                 const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
@@ -2637,10 +2942,40 @@ export default function CanistersPage() {
                                                 const isController = status?.isController;
                                                 const isConfirming = confirmRemoveWalletCanister === canisterId;
                                                 const isRemoving = removingWalletCanister === canisterId;
+                                                
+                                                // Get health status for this canister
+                                                const canisterHealth = getCanisterHealthStatus(canisterId, trackedCanisterStatus, cycleSettings);
+                                                const canisterLampColor = getStatusLampColor(canisterHealth);
+                                                
+                                                // Build move destinations
+                                                const collectGroups = (groups, prefix = '') => {
+                                                    let result = [];
+                                                    for (const g of groups) {
+                                                        result.push({ id: g.id, name: prefix + g.name });
+                                                        result = result.concat(collectGroups(g.subgroups, prefix + g.name + ' / '));
+                                                    }
+                                                    return result;
+                                                };
+                                                const allMoveDestinations = [
+                                                    { id: 'ungrouped', name: 'Ungrouped' },
+                                                    ...collectGroups(canisterGroups.groups)
+                                                ];
 
                                                 return (
                                                     <div key={canisterId} style={styles.canisterCard}>
                                                         <div style={styles.canisterInfo}>
+                                                            {/* Health status lamp */}
+                                                            <span
+                                                                style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: canisterLampColor,
+                                                                    boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                                                    flexShrink: 0,
+                                                                }}
+                                                                title={`Health: ${canisterHealth}`}
+                                                            />
                                                             <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                                                                 <FaCube size={18} />
                                                                 {isController && (
@@ -2706,7 +3041,37 @@ export default function CanistersPage() {
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            {/* Move to dropdown */}
+                                                            <select
+                                                                onChange={(e) => {
+                                                                    if (e.target.value) {
+                                                                        handleMoveFromWallet(canisterId, e.target.value);
+                                                                        e.target.value = '';
+                                                                    }
+                                                                }}
+                                                                style={{
+                                                                    padding: '6px 8px',
+                                                                    borderRadius: '6px',
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    backgroundColor: theme.colors.card,
+                                                                    color: theme.colors.textSecondary,
+                                                                    fontSize: '11px',
+                                                                    cursor: 'pointer',
+                                                                    maxWidth: '110px',
+                                                                }}
+                                                                defaultValue=""
+                                                            >
+                                                                <option value="" disabled>Move to...</option>
+                                                                <optgroup label="Special">
+                                                                    <option value="neuron_managers">🧠 Neuron Managers</option>
+                                                                </optgroup>
+                                                                <optgroup label="Groups">
+                                                                    {allMoveDestinations.map(g => (
+                                                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                                                    ))}
+                                                                </optgroup>
+                                                            </select>
                                                             <Link
                                                                 to={`/canister?id=${canisterId}`}
                                                                 style={styles.viewLink}
@@ -2982,6 +3347,20 @@ export default function CanistersPage() {
                                             const managerHealth = getManagerHealthStatus(manager, cycleSettings);
                                             const managerLampColor = getStatusLampColor(managerHealth);
                                             
+                                            // Build move destinations for neuron managers
+                                            const collectGroups = (groups, prefix = '') => {
+                                                let result = [];
+                                                for (const g of groups) {
+                                                    result.push({ id: g.id, name: prefix + g.name });
+                                                    result = result.concat(collectGroups(g.subgroups, prefix + g.name + ' / '));
+                                                }
+                                                return result;
+                                            };
+                                            const managerMoveDestinations = [
+                                                { id: 'ungrouped', name: 'Ungrouped' },
+                                                ...collectGroups(canisterGroups.groups)
+                                            ];
+                                            
                                             return (
                                                 <div 
                                                     key={canisterId} 
@@ -3079,7 +3458,39 @@ export default function CanistersPage() {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        {/* Move to dropdown */}
+                                                        <select
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                if (e.target.value) {
+                                                                    handleMoveFromNeuronManagers(manager.canisterId, e.target.value);
+                                                                    e.target.value = '';
+                                                                }
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            style={{
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                backgroundColor: theme.colors.card,
+                                                                color: theme.colors.textSecondary,
+                                                                fontSize: '11px',
+                                                                cursor: 'pointer',
+                                                                maxWidth: '110px',
+                                                            }}
+                                                            defaultValue=""
+                                                        >
+                                                            <option value="" disabled>Move to...</option>
+                                                            <optgroup label="Special">
+                                                                <option value="wallet">💼 Wallet</option>
+                                                            </optgroup>
+                                                            <optgroup label="Groups">
+                                                                {managerMoveDestinations.map(g => (
+                                                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                        </select>
                                                         <Link
                                                             to={`/icp_neuron_manager/${canisterId}`}
                                                             style={{
