@@ -1150,6 +1150,14 @@ export default function CanistersPage() {
     const isDropAllowed = (targetType, targetId) => {
         if (!draggedItem) return false;
         
+        // Groups can only be dropped into other groups (within Custom Canisters)
+        // They cannot be dropped into wallet or neuron_managers
+        if (draggedItem.type === 'group') {
+            if (targetType === 'wallet' || targetType === 'neuron_managers' || targetType === 'ungrouped') {
+                return false;
+            }
+        }
+        
         // Don't allow dropping a group onto itself or its children
         if (draggedItem.type === 'group' && targetType === 'group') {
             if (draggedItem.id === targetId) return false;
