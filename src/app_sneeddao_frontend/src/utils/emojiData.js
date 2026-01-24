@@ -2,7 +2,9 @@
 // If you want a fully exhaustive Unicode emoji list later, we can swap this for a generated dataset or a library.
 
 export const EMOJI_CATEGORIES = [
+  { key: 'all', label: 'All' },
   { key: 'frequent', label: 'Frequent' },
+  { key: 'custom', label: 'Custom' },
   { key: 'smileys', label: 'Smileys' },
   { key: 'people', label: 'People' },
   { key: 'animals', label: 'Animals' },

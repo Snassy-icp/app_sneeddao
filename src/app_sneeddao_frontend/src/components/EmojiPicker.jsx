@@ -3,6 +3,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { DEFAULT_FAVORITES, EMOJI_CATEGORIES, EMOJI_LIST } from '../utils/emojiData';
 
 const STORAGE_KEY = 'sneed_emoji_usage_v1';
+const CUSTOM_STORAGE_KEY = 'sneed_custom_emojis_v1';
 
 function safeParseJson(str, fallback) {
   try {
@@ -23,6 +24,43 @@ function loadUsage() {
 function saveUsage(usage) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(usage));
+}
+
+function loadCustomEmojis() {
+  if (typeof window === 'undefined') return [];
+  const raw = window.localStorage.getItem(CUSTOM_STORAGE_KEY);
+  if (!raw) return [];
+  const parsed = safeParseJson(raw, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((x) => typeof x === 'string' && x.trim().length > 0).slice(0, 200);
+}
+
+function saveCustomEmojis(list) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(list));
+}
+
+function extractEmojiCandidates(input) {
+  const str = (input || '').trim();
+  if (!str) return [];
+
+  // Prefer grapheme segmentation to preserve ZWJ sequences / flags / skin tones.
+  const segs = [];
+  try {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const part of seg.segment(str)) segs.push(part.segment);
+  } catch {
+    segs.push(...Array.from(str));
+  }
+
+  const emojiRegex = /\p{Extended_Pictographic}/u;
+  const out = [];
+  for (const s of segs) {
+    // allow whitespace/punctuation to be ignored
+    if (!s || !s.trim()) continue;
+    if (emojiRegex.test(s)) out.push(s);
+  }
+  return out;
 }
 
 function bumpUsage(usage, emoji) {
@@ -90,30 +128,51 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('frequent');
-  const [usage, setUsage] = useState(() => loadUsage());
+  const [category, setCategory] = useState('all');
+  const [customInput, setCustomInput] = useState('');
+  const [customEmojis, setCustomEmojis] = useState(() => loadCustomEmojis());
 
-  const favorites = useMemo(() => computeTopEmojis(usage, 16), [usage]);
+  // Snapshot favorites ONCE per mount so the row doesn't jump around while typing/clicking.
+  const [favoritesSnapshot, setFavoritesSnapshot] = useState(() => computeTopEmojis(loadUsage(), 16));
+  const favorites = favoritesSnapshot;
 
   const frequentSet = useMemo(() => new Set(favorites), [favorites]);
 
+  const customEmojiObjects = useMemo(() => {
+    return (customEmojis || []).map((e) => ({
+      emoji: e,
+      name: 'custom emoji',
+      keywords: ['custom'],
+      category: 'custom'
+    }));
+  }, [customEmojis]);
+
+  const allEmojiObjects = useMemo(() => {
+    // Custom first so they're easy to find near top when not searching.
+    return [...customEmojiObjects, ...EMOJI_LIST];
+  }, [customEmojiObjects]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = EMOJI_LIST.filter((e) => {
-      const catOk = category === 'frequent' ? frequentSet.has(e.emoji) : e.category === category;
-      if (!catOk) return false;
-      if (!q) return true;
-      const hay = `${e.name} ${e.keywords.join(' ')}`.toLowerCase();
-      return hay.includes(q);
+    const list = allEmojiObjects.filter((e) => {
+      // If searching, search ACROSS ALL emojis (user request), ignoring category filtering.
+      if (q) {
+        const hay = `${e.emoji} ${e.name} ${e.keywords.join(' ')}`.toLowerCase();
+        return hay.includes(q);
+      }
+
+      if (category === 'all') return true;
+      if (category === 'frequent') return frequentSet.has(e.emoji);
+      return e.category === category;
     });
 
     // For "frequent", keep the order as in favorites.
-    if (category === 'frequent') {
+    if (!q && category === 'frequent') {
       const idx = new Map(favorites.map((em, i) => [em, i]));
       return list.sort((a, b) => (idx.get(a.emoji) ?? 9999) - (idx.get(b.emoji) ?? 9999));
     }
     return list;
-  }, [category, query, frequentSet, favorites]);
+  }, [category, query, frequentSet, favorites, allEmojiObjects]);
 
   useEffect(() => {
     if (!open) return;
@@ -140,10 +199,12 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
   }, [open]);
 
   useEffect(() => {
-    // Keep favorites in sync if multiple tabs are open.
+    // Keep custom emojis in sync if multiple tabs are open.
     const onStorage = (e) => {
-      if (e.key !== STORAGE_KEY) return;
-      setUsage(loadUsage());
+      if (e.key === CUSTOM_STORAGE_KEY) {
+        setCustomEmojis(loadCustomEmojis());
+      }
+      // Don't live-update favorites row; we keep it stable for this editor session.
     };
     window.addEventListener?.('storage', onStorage);
     return () => window.removeEventListener?.('storage', onStorage);
@@ -155,7 +216,27 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
     insertAtCursor({ el, value, setValue, text: emoji });
     const nextUsage = bumpUsage(loadUsage(), emoji);
     saveUsage(nextUsage);
-    setUsage(nextUsage);
+  };
+
+  const addCustomFromInput = () => {
+    const candidates = extractEmojiCandidates(customInput);
+    if (candidates.length === 0) return;
+    const set = new Set(customEmojis);
+    for (const e of candidates) set.add(e);
+    const next = Array.from(set).slice(0, 200);
+    saveCustomEmojis(next);
+    setCustomEmojis(next);
+    setCustomInput('');
+  };
+
+  const removeCustom = (emoji) => {
+    const next = (customEmojis || []).filter((e) => e !== emoji);
+    saveCustomEmojis(next);
+    setCustomEmojis(next);
+  };
+
+  const refreshFavoritesSnapshot = () => {
+    setFavoritesSnapshot(computeTopEmojis(loadUsage(), 16));
   };
 
   const styles = {
@@ -251,6 +332,34 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
       padding: '14px',
       color: theme.colors.mutedText,
       fontSize: '13px'
+    },
+    customRow: {
+      padding: '10px',
+      borderBottom: `1px solid ${theme.colors.border}`,
+      display: 'flex',
+      gap: '8px',
+      alignItems: 'center'
+    },
+    customInput: {
+      flex: 1,
+      padding: '10px',
+      borderRadius: '8px',
+      border: `1px solid ${theme.colors.border}`,
+      backgroundColor: theme.colors.primaryBg,
+      color: theme.colors.primaryText,
+      fontSize: '14px',
+      outline: 'none',
+      boxSizing: 'border-box'
+    },
+    smallBtn: {
+      padding: '10px 12px',
+      borderRadius: '8px',
+      border: `1px solid ${theme.colors.border}`,
+      backgroundColor: theme.colors.primaryBg,
+      color: theme.colors.primaryText,
+      cursor: 'pointer',
+      fontSize: '12px',
+      whiteSpace: 'nowrap'
     }
   };
 
@@ -270,7 +379,13 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
         ))}
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            setOpen((v) => {
+              const next = !v;
+              if (next) refreshFavoritesSnapshot(); // refresh only when user opens palette
+              return next;
+            });
+          }}
           style={styles.paletteBtn}
           title={open ? 'Close emoji palette' : 'Open emoji palette'}
           aria-expanded={open}
@@ -290,6 +405,19 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
               style={styles.search}
             />
           </div>
+
+          <div style={styles.customRow}>
+            <input
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              placeholder="Add custom emoji (paste here)…"
+              style={styles.customInput}
+            />
+            <button type="button" onClick={addCustomFromInput} style={styles.smallBtn} title="Add to custom list">
+              Add
+            </button>
+          </div>
+
           <div style={styles.cats}>
             {EMOJI_CATEGORIES.map((c) => (
               <button
@@ -319,6 +447,49 @@ export default function EmojiPicker({ targetRef, getValue, setValue, ariaLabel =
                   {e.emoji}
                 </button>
               ))}
+            </div>
+          )}
+
+          {customEmojis.length > 0 && (
+            <div style={{ padding: '10px', borderTop: `1px solid ${theme.colors.border}` }}>
+              <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '8px' }}>
+                Custom emojis (click × to remove):
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {customEmojis.map((e) => (
+                  <div
+                    key={`custom-chip-${e}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 8px',
+                      borderRadius: '999px',
+                      border: `1px solid ${theme.colors.border}`,
+                      backgroundColor: theme.colors.primaryBg
+                    }}
+                  >
+                    <button type="button" onClick={() => handlePick(e)} style={{ ...styles.emojiBtn, width: '26px', height: '26px' }}>
+                      {e}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeCustom(e)}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: theme.colors.mutedText,
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        lineHeight: 1
+                      }}
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
