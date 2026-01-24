@@ -463,6 +463,9 @@ function Wallet() {
     const [addTrackedCanisterError, setAddTrackedCanisterError] = useState('');
     const [confirmRemoveTrackedCanister, setConfirmRemoveTrackedCanister] = useState(null);
     const [removingTrackedCanister, setRemovingTrackedCanister] = useState(null);
+    // Tracked canister status (cycles, memory, isController)
+    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
+    const [expandedCanisterCards, setExpandedCanisterCards] = useState({}); // canisterId -> boolean
     
     // Expanded manager cards and their neurons
     const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
@@ -1256,7 +1259,46 @@ function Wallet() {
         try {
             const canisters = await getTrackedCanisters(identity);
             // Convert Principal objects to strings
-            setTrackedCanisters(canisters.map(p => p.toText()));
+            const canisterIds = canisters.map(p => p.toText());
+            setTrackedCanisters(canisterIds);
+            
+            // Fetch status for each canister in parallel
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const statusMap = {};
+            await Promise.all(canisterIds.map(async (canisterId) => {
+                try {
+                    const canisterIdPrincipal = Principal.fromText(canisterId);
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        callTransform: (methodName, args, callConfig) => ({
+                            ...callConfig,
+                            effectiveCanisterId: canisterIdPrincipal,
+                        }),
+                    });
+                    const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                    statusMap[canisterId] = {
+                        cycles: Number(status.cycles),
+                        memory: Number(status.memory_size),
+                        isController: true,
+                    };
+                } catch (err) {
+                    // Not a controller, can't get status
+                    statusMap[canisterId] = {
+                        cycles: null,
+                        memory: null,
+                        isController: false,
+                    };
+                }
+            }));
+            setTrackedCanisterStatus(statusMap);
         } catch (err) {
             console.error('Error fetching tracked canisters:', err);
         } finally {
@@ -5694,103 +5736,257 @@ function Wallet() {
                                 </p>
                             </div>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div className="card-grid">
                                 {trackedCanisters.map((canisterId) => {
                                     const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
                                     const isConfirming = confirmRemoveTrackedCanister === canisterId;
                                     const isRemoving = removingTrackedCanister === canisterId;
+                                    const status = trackedCanisterStatus[canisterId];
+                                    const isExpanded = expandedCanisterCards[canisterId];
+                                    const isController = status?.isController;
+                                    const cycles = status?.cycles;
+                                    const memory = status?.memory;
+                                    
+                                    // Helper to format memory
+                                    const formatMemory = (bytes) => {
+                                        if (bytes === null || bytes === undefined) return 'N/A';
+                                        const MB = 1024 * 1024;
+                                        const GB = 1024 * 1024 * 1024;
+                                        if (bytes >= GB) return `${(bytes / GB).toFixed(2)} GB`;
+                                        if (bytes >= MB) return `${(bytes / MB).toFixed(1)} MB`;
+                                        return `${(bytes / 1024).toFixed(0)} KB`;
+                                    };
                                     
                                     return (
                                         <div 
                                             key={canisterId}
-                                            style={{
-                                                backgroundColor: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                                padding: '12px 16px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: '12px',
-                                            }}
+                                            className="card"
                                         >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                                                <span style={{ fontSize: '20px' }}>📦</span>
-                                                <PrincipalDisplay
-                                                    principal={canisterId}
-                                                    displayInfo={displayInfo}
-                                                    showCopyButton={true}
-                                                    isAuthenticated={isAuthenticated}
-                                                    noLink={true}
-                                                />
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <Link
-                                                    to={`/canister?id=${canisterId}`}
-                                                    style={{
-                                                        padding: '6px 12px',
-                                                        borderRadius: '6px',
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        backgroundColor: 'transparent',
-                                                        color: theme.colors.primaryText,
-                                                        fontSize: '12px',
-                                                        textDecoration: 'none',
-                                                        fontWeight: '500',
-                                                    }}
-                                                >
-                                                    View
-                                                </Link>
-                                                {isConfirming ? (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Remove?</span>
-                                                        <button
-                                                            onClick={() => handleRemoveTrackedCanister(canisterId)}
-                                                            disabled={isRemoving}
-                                                            style={{
-                                                                backgroundColor: '#ef4444',
-                                                                color: '#fff',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                padding: '4px 10px',
-                                                                cursor: isRemoving ? 'not-allowed' : 'pointer',
-                                                                fontSize: '12px',
-                                                                opacity: isRemoving ? 0.6 : 1,
+                                            {/* Card Header - Similar to TokenCard */}
+                                            <div 
+                                                className="card-header"
+                                                onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
+                                            >
+                                                <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                                    <span style={{ fontSize: '36px' }}>📦</span>
+                                                    {isController && (
+                                                        <span 
+                                                            style={{ 
+                                                                position: 'absolute', 
+                                                                top: 0, 
+                                                                right: 0, 
+                                                                fontSize: '14px',
                                                             }}
+                                                            title="You are a controller"
                                                         >
-                                                            {isRemoving ? '...' : 'Yes'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setConfirmRemoveTrackedCanister(null)}
-                                                            style={{
-                                                                backgroundColor: theme.colors.secondaryBg,
-                                                                color: theme.colors.primaryText,
-                                                                border: `1px solid ${theme.colors.border}`,
-                                                                borderRadius: '4px',
-                                                                padding: '4px 10px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '12px',
-                                                            }}
-                                                        >
-                                                            No
-                                                        </button>
+                                                            👑
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="header-content-column">
+                                                    {/* Row 1: Name */}
+                                                    <div className="header-row-1" style={{ minWidth: 0 }}>
+                                                        <span className="token-name">
+                                                            <PrincipalDisplay
+                                                                principal={canisterId}
+                                                                displayInfo={displayInfo}
+                                                                showCopyButton={false}
+                                                                isAuthenticated={isAuthenticated}
+                                                                noLink={true}
+                                                            />
+                                                        </span>
                                                     </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => setConfirmRemoveTrackedCanister(canisterId)}
-                                                        style={{
-                                                            padding: '6px 10px',
-                                                            borderRadius: '6px',
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            backgroundColor: 'transparent',
-                                                            color: theme.colors.mutedText,
-                                                            fontSize: '12px',
-                                                            cursor: 'pointer',
-                                                        }}
-                                                        title="Remove from wallet"
-                                                    >
-                                                        🗑️
-                                                    </button>
-                                                )}
+                                                    {/* Row 2: Status indicator */}
+                                                    <div className="header-row-2">
+                                                        <div className="amount-symbol">
+                                                            <span className="token-amount">
+                                                                {isController ? 'Controller' : 'Tracked'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    {/* Row 3: Cycles & Memory badges */}
+                                                    <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        {/* Cycles badge */}
+                                                        {cycles !== undefined && cycles !== null && (
+                                                            <span 
+                                                                style={{
+                                                                    background: `${getCyclesColor(cycles, cycleSettings)}20`,
+                                                                    color: getCyclesColor(cycles, cycleSettings),
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                }}
+                                                                title={`${cycles.toLocaleString()} cycles`}
+                                                            >
+                                                                ⚡ {formatCyclesCompact(cycles)}
+                                                            </span>
+                                                        )}
+                                                        {/* Memory badge */}
+                                                        {memory !== undefined && memory !== null && (
+                                                            <span 
+                                                                style={{
+                                                                    background: `${theme.colors.accent || '#3b82f6'}20`,
+                                                                    color: theme.colors.accent || '#3b82f6',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                }}
+                                                                title={`${memory.toLocaleString()} bytes`}
+                                                            >
+                                                                💾 {formatMemory(memory)}
+                                                            </span>
+                                                        )}
+                                                        {/* Loading indicator if status not yet fetched */}
+                                                        {!status && (
+                                                            <span 
+                                                                style={{
+                                                                    background: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                                                    color: theme.colors.mutedText,
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                }}
+                                                            >
+                                                                ⚡ ...
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
+                                            
+                                            {/* Expanded Section */}
+                                            {isExpanded && (
+                                                <div className="card-content">
+                                                    {/* Canister Info */}
+                                                    <div style={{ 
+                                                        padding: '12px 16px',
+                                                        backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.05)',
+                                                        borderRadius: '8px',
+                                                        marginBottom: '12px',
+                                                    }}>
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            justifyContent: 'space-between', 
+                                                            alignItems: 'center',
+                                                            flexWrap: 'wrap',
+                                                            gap: '12px'
+                                                        }}>
+                                                            <div>
+                                                                <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '2px' }}>Canister ID</div>
+                                                                <div style={{ 
+                                                                    color: theme.colors.secondaryText, 
+                                                                    fontFamily: 'monospace', 
+                                                                    fontSize: '12px',
+                                                                }}>
+                                                                    {canisterId}
+                                                                </div>
+                                                            </div>
+                                                            {isController && (
+                                                                <>
+                                                                    <div style={{ textAlign: 'center' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Cycles</div>
+                                                                        <div style={{ 
+                                                                            color: cycles ? getCyclesColor(cycles, cycleSettings) : theme.colors.mutedText,
+                                                                            fontWeight: '600',
+                                                                            fontSize: '13px'
+                                                                        }}>
+                                                                            {cycles !== null && cycles !== undefined ? formatCyclesCompact(cycles) : '...'}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={{ textAlign: 'center' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Memory</div>
+                                                                        <div style={{ 
+                                                                            color: theme.colors.accent || '#3b82f6',
+                                                                            fontWeight: '600',
+                                                                            fontSize: '13px'
+                                                                        }}>
+                                                                            {memory !== null && memory !== undefined ? formatMemory(memory) : '...'}
+                                                                        </div>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Actions */}
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        gap: '8px', 
+                                                        flexWrap: 'wrap',
+                                                        justifyContent: 'flex-end',
+                                                        alignItems: 'center',
+                                                    }}>
+                                                        <Link
+                                                            to={`/canister?id=${canisterId}`}
+                                                            style={{
+                                                                padding: '8px 16px',
+                                                                borderRadius: '8px',
+                                                                backgroundColor: theme.colors.accent,
+                                                                color: '#fff',
+                                                                fontSize: '13px',
+                                                                textDecoration: 'none',
+                                                                fontWeight: '600',
+                                                            }}
+                                                        >
+                                                            View Details
+                                                        </Link>
+                                                        {isConfirming ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Remove?</span>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleRemoveTrackedCanister(canisterId); }}
+                                                                    disabled={isRemoving}
+                                                                    style={{
+                                                                        backgroundColor: '#ef4444',
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                                                        fontSize: '13px',
+                                                                        opacity: isRemoving ? 0.6 : 1,
+                                                                    }}
+                                                                >
+                                                                    {isRemoving ? '...' : 'Yes'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); setConfirmRemoveTrackedCanister(null); }}
+                                                                    style={{
+                                                                        backgroundColor: theme.colors.secondaryBg,
+                                                                        color: theme.colors.primaryText,
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '13px',
+                                                                    }}
+                                                                >
+                                                                    No
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setConfirmRemoveTrackedCanister(canisterId); }}
+                                                                style={{
+                                                                    padding: '8px 16px',
+                                                                    borderRadius: '8px',
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    backgroundColor: 'transparent',
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '13px',
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                                title="Remove from wallet"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
