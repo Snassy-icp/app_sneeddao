@@ -977,6 +977,7 @@ function Neurons() {
                                 onChange={setSearchTerm}
                                 placeholder="Search by neuron ID, name, or nickname..."
                                 snsRoot={selectedSnsRoot}
+                                defaultTab="all"
                             />
                         </div>
                         <select

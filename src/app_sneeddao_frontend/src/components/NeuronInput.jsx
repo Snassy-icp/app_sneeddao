@@ -266,7 +266,7 @@ const NeuronInput = ({
     };
 
     return (
-        <div style={{ position: 'relative', ...style }}>
+        <div style={{ position: 'relative', width: '100%', minWidth: 0, ...style }}>
             <input
                 ref={inputRef}
                 type="text"
@@ -285,7 +285,8 @@ const NeuronInput = ({
                     color: theme.colors.primaryText,
                     fontSize: '14px',
                     outline: 'none',
-                    transition: 'border-color 0.2s ease'
+                    transition: 'border-color 0.2s ease',
+                    boxSizing: 'border-box'
                 }}
             />
             
@@ -326,7 +327,7 @@ const NeuronInput = ({
             )}
             
             {/* Dropdown */}
-            {showDropdown && searchResults.length > 0 && (
+            {showDropdown && inputValue.trim() && snsRoot && (
                 <div
                     ref={dropdownRef}
                     style={{
@@ -382,52 +383,59 @@ const NeuronInput = ({
                             </button>
                         ))}
                     </div>
-                    {searchResults.map((item, index) => (
-                        <div
-                            key={item.neuronIdHex}
-                            onClick={(e) => handleSelect(item, e)}
-                            style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                borderBottom: index < searchResults.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
-                                backgroundColor: 'transparent',
-                                transition: 'background-color 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = theme.colors.accentHover;
-                                e.stopPropagation();
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.backgroundColor = 'transparent';
-                                e.stopPropagation();
-                            }}
-                        >
-                            {(() => {
-                                try {
-                                    // Convert hex to Uint8Array for display
-                                    const neuronIdArray = new Uint8Array(item.neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-                                    
-                                    return formatNeuronDisplayWithContext(
-                                        neuronIdArray,
-                                        snsRoot,
-                                        item.displayInfo,
-                                        { 
-                                            onNicknameUpdate: handleNicknameUpdate,
-                                            style: { fontSize: '14px' },
-                                            noLink: true,
-                                            isAuthenticated: isAuthenticated
-                                        }
-                                    );
-                                } catch (e) {
-                                    return (
-                                        <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace' }}>
-                                            {item.neuronIdHex}
-                                        </span>
-                                    );
-                                }
-                            })()}
+                    {searchResults.length === 0 ? (
+                        <div style={{ padding: '10px 12px', color: theme.colors.mutedText, fontSize: '12px' }}>
+                            No matches in <strong>{activeTab === 'private' ? 'Private (nicknames)' : activeTab === 'public' ? 'Public (names)' : 'All'}</strong>.
+                            Try switching tabs or typing part of the neuron ID.
                         </div>
-                    ))}
+                    ) : (
+                        searchResults.map((item, index) => (
+                            <div
+                                key={item.neuronIdHex}
+                                onClick={(e) => handleSelect(item, e)}
+                                style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    borderBottom: index < searchResults.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                    backgroundColor: 'transparent',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.backgroundColor = theme.colors.accentHover;
+                                    e.stopPropagation();
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.backgroundColor = 'transparent';
+                                    e.stopPropagation();
+                                }}
+                            >
+                                {(() => {
+                                    try {
+                                        // Convert hex to Uint8Array for display
+                                        const neuronIdArray = new Uint8Array(item.neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                                        
+                                        return formatNeuronDisplayWithContext(
+                                            neuronIdArray,
+                                            snsRoot,
+                                            item.displayInfo,
+                                            { 
+                                                onNicknameUpdate: handleNicknameUpdate,
+                                                style: { fontSize: '14px' },
+                                                noLink: true,
+                                                isAuthenticated: isAuthenticated
+                                            }
+                                        );
+                                    } catch (e) {
+                                        return (
+                                            <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace' }}>
+                                                {item.neuronIdHex}
+                                            </span>
+                                        );
+                                    }
+                                })()}
+                            </div>
+                        ))
+                    )}
                 </div>
             )}
         </div>
