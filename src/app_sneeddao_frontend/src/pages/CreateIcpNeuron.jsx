@@ -7,6 +7,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
@@ -85,6 +86,9 @@ function CreateIcpNeuron() {
     // Premium membership for discounted pricing
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
     
+    // Admin check (for showing total managers)
+    const [isAdmin, setIsAdmin] = useState(false);
+    
     const [managers, setManagers] = useState([]);
     const [neuronCounts, setNeuronCounts] = useState({}); // canisterId -> neuron count
     const [managerVersions, setManagerVersions] = useState({}); // canisterId -> version object
@@ -113,6 +117,30 @@ function CreateIcpNeuron() {
     const [timeUntilPublic, setTimeUntilPublic] = useState(null);
     const [isBetaEnded, setIsBetaEnded] = useState(false);
 
+    // Check admin status (for showing total managers)
+    useEffect(() => {
+        const checkAdmin = async () => {
+            if (!isAuthenticated || !identity) {
+                setIsAdmin(false);
+                return;
+            }
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: {
+                        identity,
+                        host: 'https://ic0.app'
+                    }
+                });
+                const result = await backendActor.caller_is_admin();
+                setIsAdmin(result);
+            } catch (err) {
+                console.error('Error checking admin status:', err);
+                setIsAdmin(false);
+            }
+        };
+        checkAdmin();
+    }, [isAuthenticated, identity]);
+    
     // Check if beta has ended and update countdown
     useEffect(() => {
         const updateCountdown = () => {
@@ -694,12 +722,14 @@ function CreateIcpNeuron() {
                                     v{factoryInfo.version}
                                 </div>
                             </div>
-                            <div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Total Managers</div>
-                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
-                                    {factoryInfo.managerCount}
+                            {isAdmin && (
+                                <div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Total Managers</div>
+                                    <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
+                                        {factoryInfo.managerCount}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                             <div>
                                 <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Factory Cycles</div>
                                 <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
