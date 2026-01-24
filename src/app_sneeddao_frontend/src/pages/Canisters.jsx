@@ -1132,17 +1132,14 @@ export default function CanistersPage() {
         setDraggedItem({ type, id, sourceGroupId });
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', JSON.stringify({ type, id, sourceGroupId }));
-        // Use setTimeout to set opacity after the drag image is captured
-        setTimeout(() => {
-            e.target.style.opacity = '0.5';
-        }, 0);
+        // Set a custom drag image (optional - let browser handle it)
+        // The opacity will be handled by React state (isDragging prop)
     };
 
     const handleDragEnd = (e) => {
         setDraggedItem(null);
         setDragOverTarget(null);
         dragCounterRef.current = {};
-        e.target.style.opacity = '1';
     };
 
     // Check if dropping is allowed for this target
@@ -1377,10 +1374,22 @@ export default function CanistersPage() {
                     marginBottom: '8px',
                     marginLeft: depth > 0 ? '20px' : '0',
                 }}
-                onDragEnter={(e) => onDragEnter && onDragEnter(e, 'group', group.id)}
-                onDragOver={(e) => onDragOver && onDragOver(e, 'group', group.id)}
-                onDragLeave={(e) => onDragLeave && onDragLeave(e, 'group', group.id)}
-                onDrop={(e) => onDrop && onDrop(e, 'group', group.id)}
+                onDragEnter={(e) => {
+                    e.stopPropagation(); // Stop bubbling to parent groups
+                    onDragEnter && onDragEnter(e, 'group', group.id);
+                }}
+                onDragOver={(e) => {
+                    e.stopPropagation(); // Stop bubbling to parent groups
+                    onDragOver && onDragOver(e, 'group', group.id);
+                }}
+                onDragLeave={(e) => {
+                    e.stopPropagation(); // Stop bubbling to parent groups
+                    onDragLeave && onDragLeave(e, 'group', group.id);
+                }}
+                onDrop={(e) => {
+                    e.stopPropagation(); // Stop bubbling to parent groups
+                    onDrop && onDrop(e, 'group', group.id);
+                }}
             >
                 {/* Group Header */}
                 <div 
@@ -1394,20 +1403,19 @@ export default function CanistersPage() {
                         border: isDropTarget 
                             ? `2px dashed ${theme.colors.primary}` 
                             : `1px solid ${theme.colors.border}`,
-                        cursor: 'grab',
-                        opacity: isBeingDragged ? 0.5 : 1,
-                        transition: 'all 0.2s ease',
+                        cursor: isBeingDragged ? 'grabbing' : 'grab',
+                        opacity: isBeingDragged ? 0.4 : 1,
+                        transition: 'all 0.15s ease',
                         userSelect: 'none',
+                        WebkitUserDrag: 'element',
                     }}
                     draggable="true"
                     onDragStart={(e) => {
-                        e.stopPropagation();
                         if (onDragStart) {
                             onDragStart(e, 'group', group.id, null);
                         }
                     }}
                     onDragEnd={(e) => {
-                        e.stopPropagation();
                         if (onDragEnd) {
                             onDragEnd(e);
                         }
@@ -2008,28 +2016,33 @@ export default function CanistersPage() {
             { id: 'neuron_managers', name: '🧠 Neuron Managers' }
         ];
 
+        // Handler for drag start - needs to be a separate function for proper event handling
+        const onDragStartHandler = (e) => {
+            // Don't stop propagation here - let the drag start naturally
+            if (onDragStart) {
+                onDragStart(e, 'canister', canisterId, groupId);
+            }
+        };
+        
+        const onDragEndHandler = (e) => {
+            if (onDragEnd) {
+                onDragEnd(e);
+            }
+        };
+
         return (
             <div 
                 style={{
                     ...styles.canisterCard,
-                    cursor: 'grab',
-                    opacity: isDragging ? 0.5 : 1,
-                    transition: 'opacity 0.2s ease',
+                    cursor: isDragging ? 'grabbing' : 'grab',
+                    opacity: isDragging ? 0.4 : 1,
+                    transition: 'opacity 0.15s ease',
                     userSelect: 'none',
+                    WebkitUserDrag: 'element',
                 }}
                 draggable="true"
-                onDragStart={(e) => {
-                    e.stopPropagation();
-                    if (onDragStart) {
-                        onDragStart(e, 'canister', canisterId, groupId);
-                    }
-                }}
-                onDragEnd={(e) => {
-                    e.stopPropagation();
-                    if (onDragEnd) {
-                        onDragEnd(e);
-                    }
-                }}
+                onDragStart={onDragStartHandler}
+                onDragEnd={onDragEndHandler}
             >
                 <div style={styles.canisterInfo}>
                     <div style={{ ...styles.canisterIcon, position: 'relative' }}>
@@ -3308,20 +3321,15 @@ export default function CanistersPage() {
                                                         key={canisterId} 
                                                         style={{
                                                             ...styles.canisterCard,
-                                                            cursor: 'grab',
-                                                            opacity: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 0.5 : 1,
-                                                            transition: 'opacity 0.2s ease',
+                                                            cursor: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 'grabbing' : 'grab',
+                                                            opacity: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 0.4 : 1,
+                                                            transition: 'opacity 0.15s ease',
                                                             userSelect: 'none',
+                                                            WebkitUserDrag: 'element',
                                                         }}
                                                         draggable="true"
-                                                        onDragStart={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDragStart(e, 'canister', canisterId, 'wallet');
-                                                        }}
-                                                        onDragEnd={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDragEnd(e);
-                                                        }}
+                                                        onDragStart={(e) => handleDragStart(e, 'canister', canisterId, 'wallet')}
+                                                        onDragEnd={handleDragEnd}
                                                     >
                                                         <div style={styles.canisterInfo}>
                                                             {/* Health status lamp */}
@@ -3746,20 +3754,15 @@ export default function CanistersPage() {
                                                     key={canisterId} 
                                                     style={{
                                                         ...styles.managerCard,
-                                                        cursor: 'grab',
-                                                        opacity: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 0.5 : 1,
-                                                        transition: 'opacity 0.2s ease',
+                                                        cursor: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 'grabbing' : 'grab',
+                                                        opacity: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 0.4 : 1,
+                                                        transition: 'opacity 0.15s ease',
                                                         userSelect: 'none',
+                                                        WebkitUserDrag: 'element',
                                                     }}
                                                     draggable="true"
-                                                    onDragStart={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDragStart(e, 'canister', canisterId, 'neuron_managers');
-                                                    }}
-                                                    onDragEnd={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDragEnd(e);
-                                                    }}
+                                                    onDragStart={(e) => handleDragStart(e, 'canister', canisterId, 'neuron_managers')}
+                                                    onDragEnd={handleDragEnd}
                                                 >
                                                     <div style={styles.managerInfo}>
                                                         {/* Health status lamp */}
