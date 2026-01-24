@@ -55,6 +55,9 @@ export default function SneedexAdmin() {
     const [premiumAuctionCutBps, setPremiumAuctionCutBps] = useState(0);
     const [sneedPremiumCanisterId, setSneedPremiumCanisterId] = useState(null);
     
+    // Min increment settings
+    const [minIncrementSettings, setMinIncrementSettings] = useState(null);
+    
     // Form states
     const [newFeeRate, setNewFeeRate] = useState('');
     const [newFeeRecipientPrincipal, setNewFeeRecipientPrincipal] = useState('');
@@ -74,6 +77,10 @@ export default function SneedexAdmin() {
     const [newPremiumOfferCreationFee, setNewPremiumOfferCreationFee] = useState('');
     const [newPremiumAuctionCutBps, setNewPremiumAuctionCutBps] = useState('');
     const [newSneedPremiumCanisterId, setNewSneedPremiumCanisterId] = useState('');
+    const [newMinIncrementRangeMin, setNewMinIncrementRangeMin] = useState('');
+    const [newMinIncrementRangeMax, setNewMinIncrementRangeMax] = useState('');
+    const [newMinIncrementTarget, setNewMinIncrementTarget] = useState('');
+    const [newMinIncrementFallback, setNewMinIncrementFallback] = useState('');
     
     // Loading states
     const [savingFeeRate, setSavingFeeRate] = useState(false);
@@ -92,6 +99,7 @@ export default function SneedexAdmin() {
     const [triggeringExpirationCheck, setTriggeringExpirationCheck] = useState(false);
     const [savingOfferCreationFee, setSavingOfferCreationFee] = useState(false);
     const [savingPremiumSettings, setSavingPremiumSettings] = useState(false);
+    const [savingMinIncrementSettings, setSavingMinIncrementSettings] = useState(false);
     
     // Payment logs state
     const [paymentStats, setPaymentStats] = useState(null);
@@ -145,7 +153,7 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             if (!actor) return;
             
-            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, timerRunningResult, workerRunningResult, intervalResult, offerFeeResult, premiumOfferFeeResult, premiumAuctionCutResult, premiumCanisterIdResult] = await Promise.all([
+            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, timerRunningResult, workerRunningResult, intervalResult, offerFeeResult, premiumOfferFeeResult, premiumAuctionCutResult, premiumCanisterIdResult, minIncrementResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getMarketplaceFeeRate(),
                 actor.getFeeRecipient(),
@@ -161,6 +169,7 @@ export default function SneedexAdmin() {
                 actor.getPremiumOfferCreationFee(),
                 actor.getPremiumAuctionCutBps(),
                 actor.getSneedPremiumCanisterId(),
+                actor.getMinIncrementSettings(),
             ]);
             
             setConfig(configResult);
@@ -186,6 +195,9 @@ export default function SneedexAdmin() {
             setPremiumAuctionCutBps(Number(premiumAuctionCutResult));
             setSneedPremiumCanisterId(premiumCanisterIdResult && premiumCanisterIdResult.length > 0 ? premiumCanisterIdResult[0] : null);
             
+            // Min increment settings
+            setMinIncrementSettings(minIncrementResult);
+            
             // Pre-fill form with current values
             setNewMinDuration(String(Number(configResult.min_offer_duration_ns) / 1_000_000_000 / 60)); // Convert ns to minutes
             setNewMaxAssets(String(Number(configResult.max_assets_per_offer)));
@@ -193,6 +205,12 @@ export default function SneedexAdmin() {
             setNewPremiumOfferCreationFee(String(Number(premiumOfferFeeResult) / 100_000_000));
             setNewPremiumAuctionCutBps(String(premiumAuctionCutResult));
             setNewSneedPremiumCanisterId(premiumCanisterIdResult && premiumCanisterIdResult.length > 0 ? premiumCanisterIdResult[0].toText() : '');
+            
+            // Pre-fill min increment form (cents to dollars for display)
+            setNewMinIncrementRangeMin(String(Number(minIncrementResult.usd_range_min) / 100));
+            setNewMinIncrementRangeMax(String(Number(minIncrementResult.usd_range_max) / 100));
+            setNewMinIncrementTarget(String(Number(minIncrementResult.usd_target) / 100));
+            setNewMinIncrementFallback(String(Number(minIncrementResult.fallback_tokens)));
             
         } catch (err) {
             console.error('Failed to fetch Sneedex config:', err);
@@ -473,6 +491,65 @@ export default function SneedexAdmin() {
             showInfo('Error', 'Failed to update premium settings: ' + e.message, 'error');
         }
         setSavingPremiumSettings(false);
+    };
+    
+    // Min Increment Settings handler
+    const handleSaveMinIncrementSettings = async () => {
+        const rangeMin = parseFloat(newMinIncrementRangeMin);
+        const rangeMax = parseFloat(newMinIncrementRangeMax);
+        const target = parseFloat(newMinIncrementTarget);
+        const fallback = parseInt(newMinIncrementFallback);
+        
+        if (isNaN(rangeMin) || rangeMin < 0) {
+            showInfo('Invalid Range Min', 'Range min must be a non-negative number', 'error');
+            return;
+        }
+        if (isNaN(rangeMax) || rangeMax < 0) {
+            showInfo('Invalid Range Max', 'Range max must be a non-negative number', 'error');
+            return;
+        }
+        if (isNaN(target) || target < 0) {
+            showInfo('Invalid Target', 'Target must be a non-negative number', 'error');
+            return;
+        }
+        if (rangeMin > target || target > rangeMax) {
+            showInfo('Invalid Range', 'Target must be between range min and range max', 'error');
+            return;
+        }
+        if (isNaN(fallback) || fallback < 0) {
+            showInfo('Invalid Fallback', 'Fallback must be a non-negative integer', 'error');
+            return;
+        }
+        
+        // Convert dollars to cents
+        const rangeMinCents = BigInt(Math.round(rangeMin * 100));
+        const rangeMaxCents = BigInt(Math.round(rangeMax * 100));
+        const targetCents = BigInt(Math.round(target * 100));
+        
+        setSavingMinIncrementSettings(true);
+        try {
+            const actor = getSneedexActor();
+            const result = await actor.setMinIncrementSettings(
+                rangeMinCents,
+                rangeMaxCents,
+                targetCents,
+                BigInt(fallback)
+            );
+            if ('ok' in result) {
+                showInfo('Success', 'Min increment settings updated successfully', 'success');
+                setMinIncrementSettings({
+                    usd_range_min: rangeMinCents,
+                    usd_range_max: rangeMaxCents,
+                    usd_target: targetCents,
+                    fallback_tokens: BigInt(fallback),
+                });
+            } else {
+                showInfo('Error', 'Failed to update min increment settings: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to update min increment settings: ' + e.message, 'error');
+        }
+        setSavingMinIncrementSettings(false);
     };
     
     // Ledger-specific fee recipient handlers
@@ -1604,6 +1681,112 @@ export default function SneedexAdmin() {
                             Save Premium Settings
                         </button>
                     </div>
+                </section>
+                
+                {/* Min Increment Settings */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaCog style={{ color: theme.colors.accent }} />
+                        Min Bid Increment Defaults
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
+                        Configure the default min bid increment suggestion when creating offers. 
+                        The target USD value determines the suggested increment, while the range defines warning thresholds.
+                    </p>
+                    
+                    {minIncrementSettings && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={styles.statCard}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Range Min (warn below)</span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: 'bold' }}>
+                                    ${(Number(minIncrementSettings.usd_range_min) / 100).toFixed(2)}
+                                </span>
+                            </div>
+                            <div style={styles.statCard}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Target (suggested)</span>
+                                <span style={{ color: theme.colors.accent, fontWeight: 'bold' }}>
+                                    ${(Number(minIncrementSettings.usd_target) / 100).toFixed(2)}
+                                </span>
+                            </div>
+                            <div style={styles.statCard}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Range Max (warn above)</span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: 'bold' }}>
+                                    ${(Number(minIncrementSettings.usd_range_max) / 100).toFixed(2)}
+                                </span>
+                            </div>
+                            <div style={styles.statCard}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Fallback (no USD price)</span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: 'bold' }}>
+                                    {Number(minIncrementSettings.fallback_tokens).toLocaleString()} units
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Range Min (USD)</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="e.g., 1.00"
+                                value={newMinIncrementRangeMin}
+                                onChange={(e) => setNewMinIncrementRangeMin(e.target.value)}
+                                style={styles.input}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Target (USD)</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="e.g., 5.00"
+                                value={newMinIncrementTarget}
+                                onChange={(e) => setNewMinIncrementTarget(e.target.value)}
+                                style={styles.input}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Range Max (USD)</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="e.g., 10.00"
+                                value={newMinIncrementRangeMax}
+                                onChange={(e) => setNewMinIncrementRangeMax(e.target.value)}
+                                style={styles.input}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Fallback (token base units)</label>
+                            <input
+                                type="number"
+                                step="1"
+                                min="0"
+                                placeholder="e.g., 100000000 (1 ICP)"
+                                value={newMinIncrementFallback}
+                                onChange={(e) => setNewMinIncrementFallback(e.target.value)}
+                                style={styles.input}
+                            />
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleSaveMinIncrementSettings}
+                        disabled={savingMinIncrementSettings}
+                        style={{
+                            ...styles.buttonSuccess,
+                            marginTop: '1rem',
+                            width: 'fit-content',
+                            opacity: savingMinIncrementSettings ? 0.5 : 1,
+                            cursor: savingMinIncrementSettings ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {savingMinIncrementSettings ? <FaSpinner className="spin" /> : <FaSave />}
+                        Save Increment Settings
+                    </button>
                 </section>
                 
                 {/* Per-Ledger Fee Recipient Overrides */}

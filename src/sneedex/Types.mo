@@ -563,12 +563,21 @@ module {
         min_offer_duration_ns : Nat;
         // Maximum number of assets per offer
         max_assets_per_offer : Nat;
+        // Min bid increment settings (in cents USD, i.e. 100 = $1.00)
+        min_increment_usd_range_min : Nat; // Warning threshold for low increments (in cents)
+        min_increment_usd_range_max : Nat; // Warning threshold for high increments (in cents)
+        min_increment_usd_target : Nat;    // Default target for suggested increment (in cents)
+        min_increment_fallback_tokens : Nat; // Fallback in token base units when no USD price (e.g. 100000000 = 1 ICP)
     };
     
     public let DEFAULT_CONFIG : Config = {
         admins = [];
         min_offer_duration_ns = 3600_000_000_000; // 1 hour minimum
         max_assets_per_offer = 10;
+        min_increment_usd_range_min = 100;  // $1.00
+        min_increment_usd_range_max = 1000; // $10.00
+        min_increment_usd_target = 500;     // $5.00
+        min_increment_fallback_tokens = 100000000; // 1 token (assuming 8 decimals)
     };
     
     // ============================================

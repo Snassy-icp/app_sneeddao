@@ -151,6 +151,14 @@ function SneedexCreate() {
     // Marketplace fee rate
     const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(null);
     
+    // Min increment settings from sneedex canister
+    const [minIncrementSettings, setMinIncrementSettings] = useState({
+        usd_range_min: 100,  // $1.00 default
+        usd_range_max: 1000, // $10.00 default
+        usd_target: 500,     // $5.00 default
+        fallback_tokens: 100000000, // 1 token default
+    });
+    
     // Premium status (cached in localStorage)
     const { isPremium: isPremiumUser, loading: premiumLoading } = usePremiumStatus(identity);
     
@@ -215,24 +223,26 @@ function SneedexCreate() {
         fetchPrice();
     }, [priceTokenLedger, selectedPriceToken]);
     
-    // Set default min bid increment, targeting ~$5 USD (or 1 token if no price)
+    // Set default min bid increment, targeting the configured USD target (or fallback tokens if no price)
     useEffect(() => {
-        let suggested = '1'; // Default fallback
+        const decimals = Number(selectedPriceToken?.decimals) || 8;
+        // Fallback: use configured token amount
+        const fallbackTokens = minIncrementSettings.fallback_tokens / Math.pow(10, decimals);
+        let suggested = fallbackTokens.toString();
         
         if (selectedPriceToken && paymentTokenPrice && paymentTokenPrice > 0) {
-            // Calculate token amount that equals $5
-            const targetUsd = 5;
+            // Calculate token amount that equals the target USD (cents / 100)
+            const targetUsd = minIncrementSettings.usd_target / 100;
             const defaultIncrement = targetUsd / paymentTokenPrice;
             
             // Format nicely (avoid excessive decimals)
-            const decimals = Number(selectedPriceToken.decimals) || 8;
             const maxDecimals = Math.min(decimals, 4);
             suggested = parseFloat(defaultIncrement.toFixed(maxDecimals)).toString();
         }
         
         setSuggestedMinBidIncrement(suggested);
         setMinBidIncrement(suggested);
-    }, [selectedPriceToken, paymentTokenPrice]);
+    }, [selectedPriceToken, paymentTokenPrice, minIncrementSettings]);
     
     // Fetch ICP price on mount
     useEffect(() => {
@@ -256,10 +266,11 @@ function SneedexCreate() {
             const actor = createSneedexActor(identity);
             const userPrincipal = identity.getPrincipal();
             
-            // First get fee config and subaccount (queries)
-            const [feeConfig, subaccount] = await Promise.all([
+            // First get fee config, subaccount, and min increment settings (queries)
+            const [feeConfig, subaccount, incrementSettings] = await Promise.all([
                 actor.getFeeConfig(), // Single query for all 4 fee values
                 actor.getOfferCreationPaymentSubaccount(userPrincipal),
+                actor.getMinIncrementSettings(),
             ]);
             
             setRegularOfferCreationFee(feeConfig.regularCreationFeeE8s);
@@ -267,6 +278,12 @@ function SneedexCreate() {
             setMarketplaceFeeRate(Number(feeConfig.regularAuctionCutBps));
             setPremiumAuctionCut(Number(feeConfig.premiumAuctionCutBps));
             setPaymentSubaccount(subaccount);
+            setMinIncrementSettings({
+                usd_range_min: Number(incrementSettings.usd_range_min),
+                usd_range_max: Number(incrementSettings.usd_range_max),
+                usd_target: Number(incrementSettings.usd_target),
+                fallback_tokens: Number(incrementSettings.fallback_tokens),
+            });
             
             // Then get balances from ICP ledger directly (queries, don't block fee display)
             const icpLedger = createLedgerActor(ICP_LEDGER_ID, {
@@ -2421,7 +2438,9 @@ function SneedexCreate() {
                             </div>
                             {minBidIncrement && parseFloat(minBidIncrement) > 0 && paymentTokenPrice && (() => {
                                 const usdValue = parseFloat(minBidIncrement) * paymentTokenPrice;
-                                const isOutsideRange = usdValue < 1 || usdValue > 10;
+                                const rangeMin = minIncrementSettings.usd_range_min / 100; // cents to dollars
+                                const rangeMax = minIncrementSettings.usd_range_max / 100; // cents to dollars
+                                const isOutsideRange = usdValue < rangeMin || usdValue > rangeMax;
                                 return (
                                     <>
                                         <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
@@ -2436,9 +2455,9 @@ function SneedexCreate() {
                                                 alignItems: 'center',
                                                 gap: '4px',
                                             }}>
-                                                ⚠️ {usdValue < 1 
-                                                    ? 'Very small increment - may lead to many small bids' 
-                                                    : 'Large increment - may discourage bidders'}
+                                                ⚠️ {usdValue < rangeMin 
+                                                    ? `Small increment (< $${rangeMin.toFixed(2)}) - may lead to many small bids` 
+                                                    : `Large increment (> $${rangeMax.toFixed(2)}) - may discourage bidders`}
                                             </div>
                                         )}
                                     </>

@@ -3010,6 +3010,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             admins = Utils.addPrincipal(newAdmin, config.admins);
             min_offer_duration_ns = config.min_offer_duration_ns;
             max_assets_per_offer = config.max_assets_per_offer;
+            min_increment_usd_range_min = config.min_increment_usd_range_min;
+            min_increment_usd_range_max = config.min_increment_usd_range_max;
+            min_increment_usd_target = config.min_increment_usd_target;
+            min_increment_fallback_tokens = config.min_increment_fallback_tokens;
         };
         
         #ok();
@@ -3025,6 +3029,56 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             admins = Utils.removePrincipal(admin, config.admins);
             min_offer_duration_ns = config.min_offer_duration_ns;
             max_assets_per_offer = config.max_assets_per_offer;
+            min_increment_usd_range_min = config.min_increment_usd_range_min;
+            min_increment_usd_range_max = config.min_increment_usd_range_max;
+            min_increment_usd_target = config.min_increment_usd_target;
+            min_increment_fallback_tokens = config.min_increment_fallback_tokens;
+        };
+        
+        #ok();
+    };
+    
+    /// Get min increment settings
+    public query func getMinIncrementSettings() : async {
+        usd_range_min : Nat;
+        usd_range_max : Nat;
+        usd_target : Nat;
+        fallback_tokens : Nat;
+    } {
+        {
+            usd_range_min = config.min_increment_usd_range_min;
+            usd_range_max = config.min_increment_usd_range_max;
+            usd_target = config.min_increment_usd_target;
+            fallback_tokens = config.min_increment_fallback_tokens;
+        };
+    };
+    
+    /// Set min increment settings (admin only)
+    /// USD values are in cents (100 = $1.00)
+    /// fallback_tokens is in token base units (e.g., 100000000 = 1 token with 8 decimals)
+    public shared ({ caller }) func setMinIncrementSettings(
+        usd_range_min : Nat,
+        usd_range_max : Nat,
+        usd_target : Nat,
+        fallback_tokens : Nat
+    ) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        
+        // Validate: range_min <= target <= range_max
+        if (usd_range_min > usd_target or usd_target > usd_range_max) {
+            return #err(#InvalidPrice("Target must be between range min and max"));
+        };
+        
+        config := {
+            admins = config.admins;
+            min_offer_duration_ns = config.min_offer_duration_ns;
+            max_assets_per_offer = config.max_assets_per_offer;
+            min_increment_usd_range_min = usd_range_min;
+            min_increment_usd_range_max = usd_range_max;
+            min_increment_usd_target = usd_target;
+            min_increment_fallback_tokens = fallback_tokens;
         };
         
         #ok();
