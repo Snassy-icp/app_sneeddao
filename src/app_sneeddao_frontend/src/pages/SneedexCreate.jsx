@@ -2396,6 +2396,11 @@ function SneedexCreate() {
                                     {priceTokenSymbol}
                                 </span>
                             </div>
+                            {minBidIncrement && parseFloat(minBidIncrement) > 0 && paymentTokenPrice && (
+                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
+                                    ≈ ${(parseFloat(minBidIncrement) * paymentTokenPrice).toFixed(2)} USD
+                                </div>
+                            )}
                         </div>
                         
                         <div style={{ 
@@ -3897,6 +3902,11 @@ function SneedexCreate() {
                                 <div style={styles.reviewLabel}>Min Bid Increment</div>
                                 <div style={styles.reviewValue}>
                                     {minBidIncrement} {priceTokenSymbol}
+                                    {paymentTokenPrice && parseFloat(minBidIncrement) > 0 && (
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
+                                            (≈ ${(parseFloat(minBidIncrement) * paymentTokenPrice).toFixed(2)})
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         )}
