@@ -4552,24 +4552,24 @@ function SneedexOffer() {
                             )}
                             <div style={styles.priceRow}>
                                 <span style={styles.priceLabel}>Current Highest Bid</span>
-                                <span style={{ ...styles.priceValue, color: theme.colors.success }}>
+                                <div style={{ ...styles.priceValue, color: theme.colors.success, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                     {highestBid ? (
                                         <>
-                                            {formatAmount(highestBid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
+                                            <span>{formatAmount(highestBid.amount, tokenInfo.decimals)} {tokenInfo.symbol}</span>
                                             {(() => {
                                                 const paymentLedger = offer.price_token_ledger.toString();
                                                 const paymentPrice = tokenPrices[paymentLedger];
                                                 const highestBidUsd = highestBid?.amount && paymentPrice 
                                                     ? calculateUsdValue(highestBid.amount, tokenInfo.decimals, paymentPrice) : null;
                                                 return highestBidUsd > 0 ? (
-                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
-                                                        ({formatUsd(highestBidUsd)})
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                                        {formatUsd(highestBidUsd)}
                                                     </span>
                                                 ) : null;
                                             })()}
                                         </>
                                     ) : 'No bids'}
-                                </span>
+                                </div>
                             </div>
                             <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
                                 <span style={styles.priceLabel}>Time Remaining</span>
