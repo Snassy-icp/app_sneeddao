@@ -157,6 +157,60 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         err: AdminError,
     });
     
+    // Payment/Claim Log Types
+    const ClaimType = IDL.Variant({
+        IcpPayment: IDL.Null,
+        VotingPower: IDL.Null,
+        PromoCode: IDL.Null,
+    });
+    
+    const ClaimLogEntry = IDL.Record({
+        id: IDL.Nat,
+        timestamp: IDL.Int,
+        claimant: IDL.Principal,
+        claimType: ClaimType,
+        durationGrantedNs: IDL.Nat,
+        tierName: IDL.Text,
+        previousExpiration: IDL.Int,
+        newExpiration: IDL.Int,
+        icpAmountE8s: IDL.Opt(IDL.Nat),
+        votingPowerE8s: IDL.Opt(IDL.Nat),
+        promoCode: IDL.Opt(IDL.Text),
+    });
+    
+    const IcpPaymentLogEntry = IDL.Record({
+        id: IDL.Nat,
+        timestamp: IDL.Int,
+        payer: IDL.Principal,
+        amountE8s: IDL.Nat,
+        netAmountE8s: IDL.Nat,
+        icpTransactionId: IDL.Nat,
+        tierName: IDL.Text,
+        durationGrantedNs: IDL.Nat,
+    });
+    
+    const ClaimLogResult = IDL.Record({
+        claims: IDL.Vec(ClaimLogEntry),
+        total_count: IDL.Nat,
+        has_more: IDL.Bool,
+    });
+    
+    const IcpPaymentLogResult = IDL.Record({
+        payments: IDL.Vec(IcpPaymentLogEntry),
+        total_count: IDL.Nat,
+        has_more: IDL.Bool,
+    });
+    
+    const PaymentStats = IDL.Record({
+        total_icp_collected_e8s: IDL.Nat,
+        total_icp_payments: IDL.Nat,
+        total_vp_claims: IDL.Nat,
+        total_promo_claims: IDL.Nat,
+        total_claims: IDL.Nat,
+        claim_log_size: IDL.Nat,
+        payment_log_size: IDL.Nat,
+    });
+    
     return IDL.Service({
         // Query methods
         checkMembership: IDL.Func([IDL.Principal], [MembershipStatus], ['query']),
@@ -201,6 +255,13 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         deactivatePromoCode: IDL.Func([IDL.Text], [AdminResultUnit], []),
         reactivatePromoCode: IDL.Func([IDL.Text], [AdminResultUnit], []),
         deletePromoCode: IDL.Func([IDL.Text], [AdminResultUnit], []),
+        
+        // Payment & Claim Log queries (admin only)
+        getClaimLog: IDL.Func([IDL.Nat, IDL.Nat], [ClaimLogResult], ['query']),
+        getClaimLogCount: IDL.Func([], [IDL.Nat], ['query']),
+        getIcpPaymentLog: IDL.Func([IDL.Nat, IDL.Nat], [IcpPaymentLogResult], ['query']),
+        getIcpPaymentLogCount: IDL.Func([], [IDL.Nat], ['query']),
+        getPaymentStats: IDL.Func([], [PaymentStats], ['query']),
     });
 };
 
