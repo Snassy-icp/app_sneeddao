@@ -214,21 +214,12 @@ function SneedexCreate() {
         fetchPrice();
     }, [priceTokenLedger, selectedPriceToken]);
     
-    // Set default min bid increment, adjusted to be within $1-$10 USD range
+    // Set default min bid increment, targeting ~$5 USD
     useEffect(() => {
         if (selectedPriceToken && paymentTokenPrice && paymentTokenPrice > 0) {
-            // Start with 1 token as the base
-            let defaultIncrement = 1;
-            let usdValue = defaultIncrement * paymentTokenPrice;
-            
-            // Adjust to be within $1-$10 range
-            if (usdValue < 1) {
-                // Increase to match $1
-                defaultIncrement = 1 / paymentTokenPrice;
-            } else if (usdValue > 10) {
-                // Decrease to match $10
-                defaultIncrement = 10 / paymentTokenPrice;
-            }
+            // Calculate token amount that equals $5
+            const targetUsd = 5;
+            const defaultIncrement = targetUsd / paymentTokenPrice;
             
             // Format nicely (avoid excessive decimals)
             const decimals = Number(selectedPriceToken.decimals) || 8;
