@@ -243,6 +243,13 @@ function IcpNeuronManager() {
     const isController = identity && controllers.length > 0 && 
         controllers.some(c => c.toString() === identity.getPrincipal().toString());
 
+    // Reset to overview tab if not a controller and on a management tab
+    useEffect(() => {
+        if (!isController && activeTab !== 'overview') {
+            setActiveTab('overview');
+        }
+    }, [isController, activeTab]);
+
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
             ? 'https://ic0.app' 
@@ -3525,7 +3532,8 @@ function IcpNeuronManager() {
                             </div>
                         )}
 
-                        {/* Create Neuron Section */}
+                        {/* Create Neuron Section - Only for controllers */}
+                        {isController && (
                         <div style={cardStyle}>
                             <h2 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>
                                 {neuronIds.length === 0 ? 'Create Your First Neuron' : 'Create Another Neuron'}
@@ -3581,6 +3589,7 @@ function IcpNeuronManager() {
                                 </p>
                             </div>
                         </div>
+                        )}
 
                         {/* Selected Neuron - Show tabs */}
                         {selectedNeuronId && (
@@ -3646,27 +3655,32 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(activeTab === 'overview')} onClick={() => setActiveTab('overview')}>
                                         Overview
                                     </button>
-                                    <button style={tabStyle(activeTab === 'stake')} onClick={() => setActiveTab('stake')}>
-                                        Stake
-                                    </button>
-                                    <button style={tabStyle(activeTab === 'maturity')} onClick={() => setActiveTab('maturity')}>
-                                        Maturity
-                                    </button>
-                                    <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
-                                        Following
-                                    </button>
-                                    <button style={tabStyle(activeTab === 'dissolve')} onClick={() => setActiveTab('dissolve')}>
-                                        Dissolve
-                                    </button>
-                                    <button style={tabStyle(activeTab === 'disburse')} onClick={() => setActiveTab('disburse')}>
-                                        Disburse
-                                    </button>
-                                    <button style={tabStyle(activeTab === 'hotkeys')} onClick={() => setActiveTab('hotkeys')}>
-                                        Hot Keys
-                                    </button>
-                                    <button style={tabStyle(activeTab === 'advanced')} onClick={() => setActiveTab('advanced')}>
-                                        Advanced
-                                    </button>
+                                    {/* Management tabs - only for controllers */}
+                                    {isController && (
+                                        <>
+                                            <button style={tabStyle(activeTab === 'stake')} onClick={() => setActiveTab('stake')}>
+                                                Stake
+                                            </button>
+                                            <button style={tabStyle(activeTab === 'maturity')} onClick={() => setActiveTab('maturity')}>
+                                                Maturity
+                                            </button>
+                                            <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
+                                                Following
+                                            </button>
+                                            <button style={tabStyle(activeTab === 'dissolve')} onClick={() => setActiveTab('dissolve')}>
+                                                Dissolve
+                                            </button>
+                                            <button style={tabStyle(activeTab === 'disburse')} onClick={() => setActiveTab('disburse')}>
+                                                Disburse
+                                            </button>
+                                            <button style={tabStyle(activeTab === 'hotkeys')} onClick={() => setActiveTab('hotkeys')}>
+                                                Hot Keys
+                                            </button>
+                                            <button style={tabStyle(activeTab === 'advanced')} onClick={() => setActiveTab('advanced')}>
+                                                Advanced
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Tab Content */}
@@ -3792,7 +3806,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'dissolve' && (
+                                {activeTab === 'dissolve' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Dissolve Management</h3>
                                         
@@ -3888,7 +3902,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'stake' && (
+                                {activeTab === 'stake' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Stake Management</h3>
                                         
@@ -4022,7 +4036,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'maturity' && (
+                                {activeTab === 'maturity' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Maturity Management</h3>
                                         
@@ -4186,7 +4200,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'following' && (
+                                {activeTab === 'following' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Following Management</h3>
                                         <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
@@ -4525,7 +4539,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'disburse' && (
+                                {activeTab === 'disburse' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Disburse Neuron</h3>
                                         
@@ -4603,7 +4617,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'advanced' && (
+                                {activeTab === 'advanced' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Advanced Operations</h3>
                                         
@@ -4773,7 +4787,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'hotkeys' && (
+                                {activeTab === 'hotkeys' && isController && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Hot Key Management</h3>
                                         <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
