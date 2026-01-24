@@ -2,6 +2,7 @@ import Principal "mo:base/Principal";
 import Time "mo:base/Time";
 import Nat "mo:base/Nat";
 import Nat64 "mo:base/Nat64";
+import Int "mo:base/Int";
 import Array "mo:base/Array";
 import Text "mo:base/Text";
 import Timer "mo:base/Timer";
@@ -92,6 +93,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     var expirationTimerId : ?Timer.TimerId = null; // Main periodic timer
     var expirationWorkerRunning : Bool = false; // Flag to prevent multiple workers
     
+    // Payment logs
+    var creationFeePaymentLog : [T.CreationFeePaymentLogEntry] = [];
+    var nextCreationFeePaymentId : Nat = 0;
+    var cutPaymentLog : [T.CutPaymentLogEntry] = [];
+    var nextCutPaymentId : Nat = 0;
+    
+    // Payment statistics
+    var totalCreationFeesCollectedE8s : Nat = 0;
+    var totalCutsCollectedByLedger : [(Principal, Nat)] = []; // ledger -> total amount
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -139,6 +150,52 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
                 case null {};
             };
+        };
+    };
+    
+    // Helper to record a marketplace cut payment
+    func recordCutPayment(
+        offerId : T.OfferId,
+        bidId : T.BidId,
+        seller : Principal,
+        buyer : Principal,
+        ledger : Principal,
+        cutAmount : Nat,
+        transactionId : Nat,
+        bidAmount : Nat,
+        feeRateBps : Nat
+    ) {
+        let cutEntry : T.CutPaymentLogEntry = {
+            id = nextCutPaymentId;
+            timestamp = Nat64.fromNat(Int.abs(Time.now()));
+            offer_id = offerId;
+            bid_id = bidId;
+            seller = seller;
+            buyer = buyer;
+            ledger = ledger;
+            cut_amount = cutAmount;
+            transaction_id = transactionId;
+            bid_amount = bidAmount;
+            fee_rate_bps = feeRateBps;
+        };
+        cutPaymentLog := Array.append(cutPaymentLog, [cutEntry]);
+        nextCutPaymentId += 1;
+        
+        // Update per-ledger totals
+        var found = false;
+        totalCutsCollectedByLedger := Array.map<(Principal, Nat), (Principal, Nat)>(
+            totalCutsCollectedByLedger,
+            func((l, total)) {
+                if (Principal.equal(l, ledger)) {
+                    found := true;
+                    (l, total + cutAmount)
+                } else {
+                    (l, total)
+                }
+            }
+        );
+        if (not found) {
+            totalCutsCollectedByLedger := Array.append(totalCutsCollectedByLedger, [(ledger, cutAmount)]);
         };
     };
     
@@ -415,7 +472,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         );
                                         switch (feeTransferResult) {
                                             case (#err(_e)) { return }; // Fee transfer failed, abort
-                                            case (#ok(_)) {};
+                                            case (#ok(txId)) {
+                                                // Record the cut payment
+                                                recordCutPayment(
+                                                    offer.id,
+                                                    bid.id,
+                                                    offer.creator,
+                                                    bid.bidder,
+                                                    offer.price_token_ledger,
+                                                    marketplaceFee,
+                                                    txId,
+                                                    bid.amount,
+                                                    offer.fee_rate_bps
+                                                );
+                                            };
                                         };
                                     };
                                 };
@@ -1106,7 +1176,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     case (#Err(e)) {
                         return #err(#TransferFailed(debug_show(e)));
                     };
-                    case (#Ok(_)) {};
+                    case (#Ok(txId)) {
+                        // Record the creation fee payment (offer ID will be assigned after this)
+                        let paymentEntry : T.CreationFeePaymentLogEntry = {
+                            id = nextCreationFeePaymentId;
+                            timestamp = Nat64.fromNat(Int.abs(Time.now()));
+                            payer = caller;
+                            amount_e8s = requiredAmount;
+                            icp_transaction_id = txId;
+                            offer_id = nextOfferId; // This will be the offer ID
+                        };
+                        creationFeePaymentLog := Array.append(creationFeePaymentLog, [paymentEntry]);
+                        nextCreationFeePaymentId += 1;
+                        totalCreationFeesCollectedE8s += requiredAmount;
+                    };
                 };
             };
         };
@@ -2218,7 +2301,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         );
                                         switch (feeTransferResult) {
                                             case (#err(e)) { return #err(e) };
-                                            case (#ok(_)) {};
+                                            case (#ok(txId)) {
+                                                // Record the cut payment
+                                                recordCutPayment(
+                                                    offer.id,
+                                                    bid.id,
+                                                    offer.creator,
+                                                    bid.bidder,
+                                                    offer.price_token_ledger,
+                                                    marketplaceFee,
+                                                    txId,
+                                                    bid.amount,
+                                                    offer.fee_rate_bps
+                                                );
+                                            };
                                         };
                                     };
                                 };
@@ -2289,7 +2385,20 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                                 );
                                                 switch (feeTransferResult) {
                                                     case (#err(e)) { return #err(e) };
-                                                    case (#ok(_)) {};
+                                                    case (#ok(txId)) {
+                                                        // Record the cut payment
+                                                        recordCutPayment(
+                                                            offer.id,
+                                                            b.id,
+                                                            offer.creator,
+                                                            b.bidder,
+                                                            offer.price_token_ledger,
+                                                            marketplaceFee,
+                                                            txId,
+                                                            b.amount,
+                                                            offer.fee_rate_bps
+                                                        );
+                                                    };
                                                 };
                                             };
                                         };
@@ -3372,6 +3481,113 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 #ok(message);
             };
         };
+    };
+    
+    // ============================================
+    // PAYMENT LOG QUERIES (Admin only)
+    // ============================================
+    
+    /// Get paginated creation fee payment log (admin only)
+    /// Returns payments in reverse chronological order (newest first)
+    public shared query ({ caller }) func getCreationFeePaymentLog(offset : Nat, limit : Nat) : async {
+        payments : [T.CreationFeePaymentLogEntry];
+        total_count : Nat;
+        has_more : Bool;
+    } {
+        assert(isAdmin(caller));
+        
+        let total = creationFeePaymentLog.size();
+        
+        if (offset >= total) {
+            return {
+                payments = [];
+                total_count = total;
+                has_more = false;
+            };
+        };
+        
+        let effectiveLimit = if (limit > 1000) { 1000 } else { limit };
+        let startIdx = if (total > offset) { total - offset } else { 0 };
+        let endIdx = if (startIdx > effectiveLimit) { startIdx - effectiveLimit } else { 0 };
+        
+        var result : [T.CreationFeePaymentLogEntry] = [];
+        var idx = startIdx;
+        while (idx > endIdx) {
+            idx -= 1;
+            result := Array.append(result, [creationFeePaymentLog[idx]]);
+        };
+        
+        {
+            payments = result;
+            total_count = total;
+            has_more = endIdx > 0;
+        };
+    };
+    
+    /// Get paginated cut payment log (admin only)
+    /// Returns payments in reverse chronological order (newest first)
+    public shared query ({ caller }) func getCutPaymentLog(offset : Nat, limit : Nat) : async {
+        payments : [T.CutPaymentLogEntry];
+        total_count : Nat;
+        has_more : Bool;
+    } {
+        assert(isAdmin(caller));
+        
+        let total = cutPaymentLog.size();
+        
+        if (offset >= total) {
+            return {
+                payments = [];
+                total_count = total;
+                has_more = false;
+            };
+        };
+        
+        let effectiveLimit = if (limit > 1000) { 1000 } else { limit };
+        let startIdx = if (total > offset) { total - offset } else { 0 };
+        let endIdx = if (startIdx > effectiveLimit) { startIdx - effectiveLimit } else { 0 };
+        
+        var result : [T.CutPaymentLogEntry] = [];
+        var idx = startIdx;
+        while (idx > endIdx) {
+            idx -= 1;
+            result := Array.append(result, [cutPaymentLog[idx]]);
+        };
+        
+        {
+            payments = result;
+            total_count = total;
+            has_more = endIdx > 0;
+        };
+    };
+    
+    /// Get payment statistics (admin only)
+    public shared query ({ caller }) func getPaymentStats() : async {
+        total_creation_fees_collected_e8s : Nat;
+        total_creation_fee_payments : Nat;
+        total_cut_payments : Nat;
+        cuts_by_ledger : [(Principal, Nat)];
+    } {
+        assert(isAdmin(caller));
+        
+        {
+            total_creation_fees_collected_e8s = totalCreationFeesCollectedE8s;
+            total_creation_fee_payments = creationFeePaymentLog.size();
+            total_cut_payments = cutPaymentLog.size();
+            cuts_by_ledger = totalCutsCollectedByLedger;
+        };
+    };
+    
+    /// Get creation fee payment log count (admin only)
+    public shared query ({ caller }) func getCreationFeePaymentLogCount() : async Nat {
+        assert(isAdmin(caller));
+        creationFeePaymentLog.size();
+    };
+    
+    /// Get cut payment log count (admin only)
+    public shared query ({ caller }) func getCutPaymentLogCount() : async Nat {
+        assert(isAdmin(caller));
+        cutPaymentLog.size();
     };
 };
 

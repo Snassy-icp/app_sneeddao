@@ -588,5 +588,37 @@ module {
         registerManagerFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
         deregisterManagerFor : (user: Principal, canisterId: Principal) -> async { #Ok; #Err: Text };
     };
+    
+    // ============================================
+    // PAYMENT LOG TYPES
+    // ============================================
+    
+    // Timestamp type (nanoseconds)
+    public type Timestamp = Nat64;
+    
+    // Log entry for offer creation fee payments (ICP)
+    public type CreationFeePaymentLogEntry = {
+        id : Nat;                          // Sequential payment ID
+        timestamp : Timestamp;             // When the payment was made
+        payer : Principal;                 // Who paid (offer creator)
+        amount_e8s : Nat;                  // Amount paid in e8s
+        icp_transaction_id : Nat;          // ICP ledger block index
+        offer_id : OfferId;                // Associated offer ID
+    };
+    
+    // Log entry for marketplace cut payments (various tokens)
+    public type CutPaymentLogEntry = {
+        id : Nat;                          // Sequential payment ID
+        timestamp : Timestamp;             // When the cut was collected
+        offer_id : OfferId;                // Associated offer ID
+        bid_id : BidId;                    // Associated bid ID
+        seller : Principal;                // Seller who received payment minus cut
+        buyer : Principal;                 // Buyer who made the bid
+        ledger : Principal;                // Token ledger where cut was collected
+        cut_amount : Nat;                  // Amount collected as cut (in token's smallest unit)
+        transaction_id : Nat;              // Token ledger transaction ID for the cut transfer
+        bid_amount : Nat;                  // Total bid amount before cut
+        fee_rate_bps : Nat;                // Fee rate in basis points used
+    };
 };
 
