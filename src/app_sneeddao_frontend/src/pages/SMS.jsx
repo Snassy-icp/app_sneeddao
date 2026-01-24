@@ -146,7 +146,14 @@ const SMS = () => {
                 actor.get_premium_config().catch(() => null)
             ]);
             
-            setConfig(regularConfig);
+            // Normalize candid nat values (BigInt) into Numbers for safe arithmetic in the UI.
+            // (Otherwise expressions like `effectiveSubjectLimit - subject.length` can throw.)
+            setConfig({
+                ...regularConfig,
+                max_subject_length: Number(regularConfig?.max_subject_length ?? 200),
+                max_body_length: Number(regularConfig?.max_body_length ?? 5000),
+                max_recipients: Number(regularConfig?.max_recipients ?? 20)
+            });
             if (premiumCfg) {
                 setPremiumConfig({
                     sneed_premium_canister_id: premiumCfg.sneed_premium_canister_id?.[0]?.toString() || null,
