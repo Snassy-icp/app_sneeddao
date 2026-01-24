@@ -119,6 +119,19 @@ export default function SneedPremiumAdmin() {
     const [grantingMembership, setGrantingMembership] = useState(false);
     const [revokingMembership, setRevokingMembership] = useState(null);
     
+    // Payment logs state
+    const [paymentStats, setPaymentStats] = useState(null);
+    const [claimLog, setClaimLog] = useState([]);
+    const [claimLogTotal, setClaimLogTotal] = useState(0);
+    const [claimLogPage, setClaimLogPage] = useState(1);
+    const [claimLogLoading, setClaimLogLoading] = useState(false);
+    const [icpPaymentLog, setIcpPaymentLog] = useState([]);
+    const [icpPaymentLogTotal, setIcpPaymentLogTotal] = useState(0);
+    const [icpPaymentLogPage, setIcpPaymentLogPage] = useState(1);
+    const [icpPaymentLogLoading, setIcpPaymentLogLoading] = useState(false);
+    const [activeLogTab, setActiveLogTab] = useState('claims'); // 'claims' or 'payments'
+    const logPageSize = 20;
+    
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
@@ -195,6 +208,63 @@ export default function SneedPremiumAdmin() {
             fetchData();
         }
     }, [isAuthenticated, identity, adminLoading, fetchData]);
+    
+    // Fetch payment stats
+    const fetchPaymentStats = useCallback(async () => {
+        try {
+            const actor = await getActor();
+            if (!actor) return;
+            const stats = await actor.getPaymentStats();
+            setPaymentStats(stats);
+        } catch (err) {
+            console.error('Failed to fetch payment stats:', err);
+        }
+    }, [getActor]);
+    
+    // Fetch claim log
+    const fetchClaimLog = useCallback(async (page) => {
+        setClaimLogLoading(true);
+        try {
+            const actor = await getActor();
+            if (!actor) return;
+            const offset = (page - 1) * logPageSize;
+            const result = await actor.getClaimLog(BigInt(offset), BigInt(logPageSize));
+            setClaimLog(result.claims);
+            setClaimLogTotal(Number(result.total_count));
+            setClaimLogPage(page);
+        } catch (err) {
+            console.error('Failed to fetch claim log:', err);
+        } finally {
+            setClaimLogLoading(false);
+        }
+    }, [getActor]);
+    
+    // Fetch ICP payment log
+    const fetchIcpPaymentLog = useCallback(async (page) => {
+        setIcpPaymentLogLoading(true);
+        try {
+            const actor = await getActor();
+            if (!actor) return;
+            const offset = (page - 1) * logPageSize;
+            const result = await actor.getIcpPaymentLog(BigInt(offset), BigInt(logPageSize));
+            setIcpPaymentLog(result.payments);
+            setIcpPaymentLogTotal(Number(result.total_count));
+            setIcpPaymentLogPage(page);
+        } catch (err) {
+            console.error('Failed to fetch ICP payment log:', err);
+        } finally {
+            setIcpPaymentLogLoading(false);
+        }
+    }, [getActor]);
+    
+    // Load payment data when config is loaded
+    useEffect(() => {
+        if (config && identity) {
+            fetchPaymentStats();
+            fetchClaimLog(1);
+            fetchIcpPaymentLog(1);
+        }
+    }, [config, identity, fetchPaymentStats, fetchClaimLog, fetchIcpPaymentLog]);
     
     // Check if user is Premium admin
     const isPremiumAdmin = adminList.some(admin => 
@@ -1186,6 +1256,280 @@ export default function SneedPremiumAdmin() {
                             </div>
                         </div>
                     </div>
+                </section>
+                
+                {/* Payment Statistics & Logs */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaCoins style={{ color: theme.colors.warning }} />
+                        Payment Statistics & Logs
+                    </h2>
+                    
+                    {/* Stats Grid */}
+                    {paymentStats && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                            <div style={styles.infoBox}>
+                                <div style={styles.infoLabel}>Total ICP Collected</div>
+                                <div style={{ ...styles.infoValue, color: theme.colors.success, fontSize: '1.3rem' }}>
+                                    {formatIcp(Number(paymentStats.total_icp_collected_e8s))} ICP
+                                </div>
+                            </div>
+                            <div style={styles.infoBox}>
+                                <div style={styles.infoLabel}>ICP Payments</div>
+                                <div style={{ ...styles.infoValue, color: theme.colors.accent }}>
+                                    {Number(paymentStats.total_icp_payments).toLocaleString()}
+                                </div>
+                            </div>
+                            <div style={styles.infoBox}>
+                                <div style={styles.infoLabel}>VP Claims</div>
+                                <div style={{ ...styles.infoValue, color: '#8B5CF6' }}>
+                                    {Number(paymentStats.total_vp_claims).toLocaleString()}
+                                </div>
+                            </div>
+                            <div style={styles.infoBox}>
+                                <div style={styles.infoLabel}>Promo Claims</div>
+                                <div style={{ ...styles.infoValue, color: '#EC4899' }}>
+                                    {Number(paymentStats.total_promo_claims).toLocaleString()}
+                                </div>
+                            </div>
+                            <div style={styles.infoBox}>
+                                <div style={styles.infoLabel}>Total Claims</div>
+                                <div style={{ ...styles.infoValue, color: theme.colors.text }}>
+                                    {Number(paymentStats.total_claims).toLocaleString()}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Log Tabs */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                        <button
+                            onClick={() => setActiveLogTab('claims')}
+                            style={{
+                                ...styles.button,
+                                background: activeLogTab === 'claims' ? theme.colors.accent : theme.colors.cardBg,
+                                color: activeLogTab === 'claims' ? '#fff' : theme.colors.text,
+                            }}
+                        >
+                            All Claims ({claimLogTotal})
+                        </button>
+                        <button
+                            onClick={() => setActiveLogTab('payments')}
+                            style={{
+                                ...styles.button,
+                                background: activeLogTab === 'payments' ? theme.colors.success : theme.colors.cardBg,
+                                color: activeLogTab === 'payments' ? '#fff' : theme.colors.text,
+                            }}
+                        >
+                            ICP Payments ({icpPaymentLogTotal})
+                        </button>
+                    </div>
+                    
+                    {/* Claims Log Tab */}
+                    {activeLogTab === 'claims' && (
+                        <div>
+                            {claimLogLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <FaSpinner className="spin" style={{ fontSize: '2rem', color: theme.colors.accent }} />
+                                </div>
+                            ) : claimLog.length === 0 ? (
+                                <p style={{ color: theme.colors.mutedText, textAlign: 'center' }}>No claims recorded yet.</p>
+                            ) : (
+                                <>
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead>
+                                                <tr style={{ background: theme.colors.background, color: theme.colors.text }}>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>ID</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Time</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Type</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Claimant</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Tier / Code</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Duration</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'right', borderBottom: `1px solid ${theme.colors.border}` }}>Details</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {claimLog.map((entry) => {
+                                                    const claimTypeKey = Object.keys(entry.claimType)[0];
+                                                    const typeColor = claimTypeKey === 'IcpPayment' ? theme.colors.success :
+                                                                     claimTypeKey === 'VotingPower' ? '#8B5CF6' : '#EC4899';
+                                                    return (
+                                                        <tr key={entry.id.toString()} style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.mutedText }}>
+                                                                #{entry.id.toString()}
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.text }}>
+                                                                {formatTimestamp(Number(entry.timestamp))}
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem' }}>
+                                                                <span style={{
+                                                                    background: typeColor,
+                                                                    color: '#fff',
+                                                                    padding: '0.15rem 0.5rem',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 'bold',
+                                                                }}>
+                                                                    {claimTypeKey === 'IcpPayment' ? 'ICP' :
+                                                                     claimTypeKey === 'VotingPower' ? 'VP' : 'PROMO'}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.text }}>
+                                                                <PrincipalDisplay principal={entry.claimant.toString()} short />
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.text }}>
+                                                                {entry.tierName}
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.mutedText }}>
+                                                                {formatDuration(Number(entry.durationGrantedNs))}
+                                                            </td>
+                                                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: theme.colors.mutedText }}>
+                                                                {entry.icpAmountE8s && entry.icpAmountE8s.length > 0 && (
+                                                                    <span>{formatIcp(Number(entry.icpAmountE8s[0]))} ICP</span>
+                                                                )}
+                                                                {entry.votingPowerE8s && entry.votingPowerE8s.length > 0 && (
+                                                                    <span>{formatVotingPower(Number(entry.votingPowerE8s[0]))} VP</span>
+                                                                )}
+                                                                {entry.promoCode && entry.promoCode.length > 0 && (
+                                                                    <span style={{ fontFamily: 'monospace' }}>{entry.promoCode[0]}</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {/* Pagination */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+                                        <span style={{ color: theme.colors.mutedText }}>
+                                            Page {claimLogPage} of {Math.ceil(claimLogTotal / logPageSize) || 1}
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                onClick={() => fetchClaimLog(claimLogPage - 1)}
+                                                disabled={claimLogPage <= 1 || claimLogLoading}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: claimLogPage <= 1 ? 0.5 : 1,
+                                                }}
+                                            >
+                                                Previous
+                                            </button>
+                                            <button
+                                                onClick={() => fetchClaimLog(claimLogPage + 1)}
+                                                disabled={claimLogPage >= Math.ceil(claimLogTotal / logPageSize) || claimLogLoading}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: claimLogPage >= Math.ceil(claimLogTotal / logPageSize) ? 0.5 : 1,
+                                                }}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* ICP Payments Log Tab */}
+                    {activeLogTab === 'payments' && (
+                        <div>
+                            {icpPaymentLogLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <FaSpinner className="spin" style={{ fontSize: '2rem', color: theme.colors.accent }} />
+                                </div>
+                            ) : icpPaymentLog.length === 0 ? (
+                                <p style={{ color: theme.colors.mutedText, textAlign: 'center' }}>No ICP payments recorded yet.</p>
+                            ) : (
+                                <>
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead>
+                                                <tr style={{ background: theme.colors.background, color: theme.colors.text }}>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>ID</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Time</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Payer</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'right', borderBottom: `1px solid ${theme.colors.border}` }}>Amount</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'right', borderBottom: `1px solid ${theme.colors.border}` }}>Net Amount</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Tier</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: `1px solid ${theme.colors.border}` }}>Duration</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'right', borderBottom: `1px solid ${theme.colors.border}` }}>ICP Tx</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {icpPaymentLog.map((entry) => (
+                                                    <tr key={entry.id.toString()} style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                        <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.mutedText }}>
+                                                            #{entry.id.toString()}
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.text }}>
+                                                            {formatTimestamp(Number(entry.timestamp))}
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.text }}>
+                                                            <PrincipalDisplay principal={entry.payer.toString()} short />
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: theme.colors.text }}>
+                                                            {formatIcp(Number(entry.amountE8s))} ICP
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: theme.colors.success }}>
+                                                            {formatIcp(Number(entry.netAmountE8s))} ICP
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.text }}>
+                                                            {entry.tierName}
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', color: theme.colors.mutedText }}>
+                                                            {formatDuration(Number(entry.durationGrantedNs))}
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>
+                                                            <a
+                                                                href={`https://dashboard.internetcomputer.org/transaction/${entry.icpTransactionId.toString()}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ color: theme.colors.accent, textDecoration: 'none' }}
+                                                            >
+                                                                {entry.icpTransactionId.toString()}
+                                                            </a>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {/* Pagination */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+                                        <span style={{ color: theme.colors.mutedText }}>
+                                            Page {icpPaymentLogPage} of {Math.ceil(icpPaymentLogTotal / logPageSize) || 1}
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                onClick={() => fetchIcpPaymentLog(icpPaymentLogPage - 1)}
+                                                disabled={icpPaymentLogPage <= 1 || icpPaymentLogLoading}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: icpPaymentLogPage <= 1 ? 0.5 : 1,
+                                                }}
+                                            >
+                                                Previous
+                                            </button>
+                                            <button
+                                                onClick={() => fetchIcpPaymentLog(icpPaymentLogPage + 1)}
+                                                disabled={icpPaymentLogPage >= Math.ceil(icpPaymentLogTotal / logPageSize) || icpPaymentLogLoading}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: icpPaymentLogPage >= Math.ceil(icpPaymentLogTotal / logPageSize) ? 0.5 : 1,
+                                                }}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </section>
                 
                 {/* Payment Recipient */}
