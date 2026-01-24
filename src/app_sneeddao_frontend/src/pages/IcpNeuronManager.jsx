@@ -2160,7 +2160,7 @@ function IcpNeuronManager() {
                         onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                         onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                     >
-                        {showNamingSection ? 'Hide naming options ↑' : 'Set name or nickname →'}
+                        {showNamingSection ? 'Hide naming options ↑' : (isController ? 'Set name or nickname →' : 'Set nickname →')}
                     </button>
                 </div>
                 
@@ -2256,7 +2256,8 @@ function IcpNeuronManager() {
                                 )}
                             </div>
                             
-                            {/* Public Name (everyone sees it) */}
+                            {/* Public Name (everyone sees it) - only controllers can set */}
+                            {isController && (
                             <div>
                                 <label style={{ color: theme.colors.secondaryText, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
                                     Public Name <span style={{ color: theme.colors.mutedText }}>(visible to everyone)</span>
@@ -2309,6 +2310,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
                             </div>
+                            )}
                         </div>
                     </div>
                 )}
