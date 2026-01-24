@@ -265,6 +265,28 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                     Add New Lock
                 </h3>
                 
+                {/* Token Balance Display */}
+                {token && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '12px 16px',
+                        background: theme.colors.secondaryBg,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '10px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
+                        <span style={{ color: theme.colors.secondaryText, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FaWallet />
+                            Your {token.symbol} Balance:
+                        </span>
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                            {formatAmount(token.balance, token.decimals)} {token.symbol}
+                        </span>
+                    </div>
+                )}
+                
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{
                         display: 'block',

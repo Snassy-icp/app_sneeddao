@@ -89,6 +89,19 @@ export default function SneedexAdmin() {
     const [savingOfferCreationFee, setSavingOfferCreationFee] = useState(false);
     const [savingPremiumSettings, setSavingPremiumSettings] = useState(false);
     
+    // Payment logs state
+    const [paymentStats, setPaymentStats] = useState(null);
+    const [creationFeeLog, setCreationFeeLog] = useState([]);
+    const [creationFeeLogTotal, setCreationFeeLogTotal] = useState(0);
+    const [creationFeeLogPage, setCreationFeeLogPage] = useState(1);
+    const [creationFeeLogLoading, setCreationFeeLogLoading] = useState(false);
+    const [cutLog, setCutLog] = useState([]);
+    const [cutLogTotal, setCutLogTotal] = useState(0);
+    const [cutLogPage, setCutLogPage] = useState(1);
+    const [cutLogLoading, setCutLogLoading] = useState(false);
+    const [activeLogTab, setActiveLogTab] = useState('creation'); // 'creation' or 'cuts'
+    const pageSize = 20;
+    
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
@@ -186,6 +199,63 @@ export default function SneedexAdmin() {
             fetchData();
         }
     }, [isAuthenticated, identity, adminLoading, fetchData]);
+    
+    // Fetch payment stats
+    const fetchPaymentStats = useCallback(async () => {
+        try {
+            const actor = getSneedexActor();
+            if (!actor) return;
+            const statsResult = await actor.getPaymentStats();
+            setPaymentStats(statsResult);
+        } catch (err) {
+            console.error('Failed to fetch payment stats:', err);
+        }
+    }, [getSneedexActor]);
+    
+    // Fetch creation fee log
+    const fetchCreationFeeLog = useCallback(async (page) => {
+        setCreationFeeLogLoading(true);
+        try {
+            const actor = getSneedexActor();
+            if (!actor) return;
+            const offset = (page - 1) * pageSize;
+            const result = await actor.getCreationFeePaymentLog(BigInt(offset), BigInt(pageSize));
+            setCreationFeeLog(result.payments);
+            setCreationFeeLogTotal(Number(result.total_count));
+            setCreationFeeLogPage(page);
+        } catch (err) {
+            console.error('Failed to fetch creation fee log:', err);
+        } finally {
+            setCreationFeeLogLoading(false);
+        }
+    }, [getSneedexActor]);
+    
+    // Fetch cut log
+    const fetchCutLog = useCallback(async (page) => {
+        setCutLogLoading(true);
+        try {
+            const actor = getSneedexActor();
+            if (!actor) return;
+            const offset = (page - 1) * pageSize;
+            const result = await actor.getCutPaymentLog(BigInt(offset), BigInt(pageSize));
+            setCutLog(result.payments);
+            setCutLogTotal(Number(result.total_count));
+            setCutLogPage(page);
+        } catch (err) {
+            console.error('Failed to fetch cut log:', err);
+        } finally {
+            setCutLogLoading(false);
+        }
+    }, [getSneedexActor]);
+    
+    // Load payment data when config is loaded (which means admin check is done)
+    useEffect(() => {
+        if (config && identity) {
+            fetchPaymentStats();
+            fetchCreationFeeLog(1);
+            fetchCutLog(1);
+        }
+    }, [config, identity, fetchPaymentStats, fetchCreationFeeLog, fetchCutLog]);
     
     // Check if user is Sneedex admin
     const isSneedexAdmin = adminList.some(admin => 
@@ -974,6 +1044,273 @@ export default function SneedexAdmin() {
                         </div>
                     </section>
                 )}
+                
+                {/* Payment Statistics */}
+                {paymentStats && (
+                    <section style={styles.section}>
+                        <h2 style={styles.sectionTitle}>
+                            <FaWallet style={{ color: theme.colors.success }} />
+                            Payment Statistics
+                        </h2>
+                        <div style={styles.statsGrid}>
+                            <div style={styles.statCard}>
+                                <div style={{ ...styles.statValue, color: theme.colors.success }}>
+                                    {(Number(paymentStats.total_creation_fees_collected_e8s) / 100_000_000).toFixed(4)} ICP
+                                </div>
+                                <div style={styles.statLabel}>Creation Fees Collected</div>
+                            </div>
+                            <div style={styles.statCard}>
+                                <div style={styles.statValue}>{Number(paymentStats.total_creation_fee_payments)}</div>
+                                <div style={styles.statLabel}>Creation Fee Payments</div>
+                            </div>
+                            <div style={styles.statCard}>
+                                <div style={styles.statValue}>{Number(paymentStats.total_cut_payments)}</div>
+                                <div style={styles.statLabel}>Cut Payments</div>
+                            </div>
+                        </div>
+                        
+                        {/* Cuts by Ledger */}
+                        {paymentStats.cuts_by_ledger && paymentStats.cuts_by_ledger.length > 0 && (
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: theme.colors.primaryText }}>
+                                    Cuts Collected by Token
+                                </h3>
+                                <div style={styles.list}>
+                                    {paymentStats.cuts_by_ledger.map(([ledger, amount], index) => (
+                                        <div key={index} style={styles.listItem}>
+                                            <PrincipalDisplay principal={ledger.toString()} />
+                                            <span style={{ fontWeight: '600', color: theme.colors.success }}>
+                                                {formatAmount(amount, 8)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </section>
+                )}
+                
+                {/* Payment Logs */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaChartLine style={{ color: theme.colors.accent }} />
+                        Payment Logs
+                    </h2>
+                    
+                    {/* Tab Navigation */}
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                        <button
+                            onClick={() => setActiveLogTab('creation')}
+                            style={{
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                border: `1px solid ${activeLogTab === 'creation' ? theme.colors.accent : theme.colors.border}`,
+                                background: activeLogTab === 'creation' ? theme.colors.accent : 'transparent',
+                                color: activeLogTab === 'creation' ? theme.colors.primaryBg : theme.colors.primaryText,
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Creation Fees ({creationFeeLogTotal})
+                        </button>
+                        <button
+                            onClick={() => setActiveLogTab('cuts')}
+                            style={{
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                border: `1px solid ${activeLogTab === 'cuts' ? theme.colors.accent : theme.colors.border}`,
+                                background: activeLogTab === 'cuts' ? theme.colors.accent : 'transparent',
+                                color: activeLogTab === 'cuts' ? theme.colors.primaryBg : theme.colors.primaryText,
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Marketplace Cuts ({cutLogTotal})
+                        </button>
+                    </div>
+                    
+                    {/* Creation Fee Log */}
+                    {activeLogTab === 'creation' && (
+                        <div>
+                            {creationFeeLogLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <FaSpinner className="spin" size={24} />
+                                </div>
+                            ) : creationFeeLog.length === 0 ? (
+                                <p style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
+                                    No creation fee payments recorded yet.
+                                </p>
+                            ) : (
+                                <>
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>ID</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Time</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Payer</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Amount</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Offer ID</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>ICP TX</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {creationFeeLog.map((entry) => (
+                                                    <tr key={Number(entry.id)} style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                        <td style={{ padding: '12px', color: theme.colors.primaryText }}>#{Number(entry.id)}</td>
+                                                        <td style={{ padding: '12px', color: theme.colors.secondaryText }}>
+                                                            {new Date(Number(entry.timestamp) / 1_000_000).toLocaleString()}
+                                                        </td>
+                                                        <td style={{ padding: '12px' }}>
+                                                            <PrincipalDisplay principal={entry.payer.toString()} short={true} />
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.success, fontWeight: '600' }}>
+                                                            {(Number(entry.amount_e8s) / 100_000_000).toFixed(4)} ICP
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.accent }}>
+                                                            #{Number(entry.offer_id)}
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.secondaryText }}>
+                                                            {Number(entry.icp_transaction_id)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    {/* Pagination */}
+                                    {creationFeeLogTotal > pageSize && (
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+                                            <button
+                                                onClick={() => fetchCreationFeeLog(creationFeeLogPage - 1)}
+                                                disabled={creationFeeLogPage === 1}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: creationFeeLogPage === 1 ? 0.5 : 1,
+                                                    cursor: creationFeeLogPage === 1 ? 'not-allowed' : 'pointer',
+                                                }}
+                                            >
+                                                Previous
+                                            </button>
+                                            <span style={{ color: theme.colors.mutedText, alignSelf: 'center' }}>
+                                                Page {creationFeeLogPage} of {Math.ceil(creationFeeLogTotal / pageSize)}
+                                            </span>
+                                            <button
+                                                onClick={() => fetchCreationFeeLog(creationFeeLogPage + 1)}
+                                                disabled={creationFeeLogPage >= Math.ceil(creationFeeLogTotal / pageSize)}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: creationFeeLogPage >= Math.ceil(creationFeeLogTotal / pageSize) ? 0.5 : 1,
+                                                    cursor: creationFeeLogPage >= Math.ceil(creationFeeLogTotal / pageSize) ? 'not-allowed' : 'pointer',
+                                                }}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* Cut Log */}
+                    {activeLogTab === 'cuts' && (
+                        <div>
+                            {cutLogLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <FaSpinner className="spin" size={24} />
+                                </div>
+                            ) : cutLog.length === 0 ? (
+                                <p style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
+                                    No marketplace cut payments recorded yet.
+                                </p>
+                            ) : (
+                                <>
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>ID</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Time</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Offer</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Seller</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Buyer</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Ledger</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Cut</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>Rate</th>
+                                                    <th style={{ textAlign: 'left', padding: '12px', color: theme.colors.mutedText }}>TX ID</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {cutLog.map((entry) => (
+                                                    <tr key={Number(entry.id)} style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                        <td style={{ padding: '12px', color: theme.colors.primaryText }}>#{Number(entry.id)}</td>
+                                                        <td style={{ padding: '12px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                                            {new Date(Number(entry.timestamp) / 1_000_000).toLocaleString()}
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.accent }}>
+                                                            #{Number(entry.offer_id)}
+                                                        </td>
+                                                        <td style={{ padding: '12px' }}>
+                                                            <PrincipalDisplay principal={entry.seller.toString()} short={true} />
+                                                        </td>
+                                                        <td style={{ padding: '12px' }}>
+                                                            <PrincipalDisplay principal={entry.buyer.toString()} short={true} />
+                                                        </td>
+                                                        <td style={{ padding: '12px' }}>
+                                                            <PrincipalDisplay principal={entry.ledger.toString()} short={true} />
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.success, fontWeight: '600' }}>
+                                                            {formatAmount(entry.cut_amount, 8)}
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.warning }}>
+                                                            {(Number(entry.fee_rate_bps) / 100).toFixed(2)}%
+                                                        </td>
+                                                        <td style={{ padding: '12px', color: theme.colors.secondaryText }}>
+                                                            {Number(entry.transaction_id)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    {/* Pagination */}
+                                    {cutLogTotal > pageSize && (
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+                                            <button
+                                                onClick={() => fetchCutLog(cutLogPage - 1)}
+                                                disabled={cutLogPage === 1}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: cutLogPage === 1 ? 0.5 : 1,
+                                                    cursor: cutLogPage === 1 ? 'not-allowed' : 'pointer',
+                                                }}
+                                            >
+                                                Previous
+                                            </button>
+                                            <span style={{ color: theme.colors.mutedText, alignSelf: 'center' }}>
+                                                Page {cutLogPage} of {Math.ceil(cutLogTotal / pageSize)}
+                                            </span>
+                                            <button
+                                                onClick={() => fetchCutLog(cutLogPage + 1)}
+                                                disabled={cutLogPage >= Math.ceil(cutLogTotal / pageSize)}
+                                                style={{
+                                                    ...styles.button,
+                                                    opacity: cutLogPage >= Math.ceil(cutLogTotal / pageSize) ? 0.5 : 1,
+                                                    cursor: cutLogPage >= Math.ceil(cutLogTotal / pageSize) ? 'not-allowed' : 'pointer',
+                                                }}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </section>
                 
                 {/* Fee Settings */}
                 <section style={styles.section}>
