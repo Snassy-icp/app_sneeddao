@@ -466,6 +466,18 @@ function Wallet() {
     // Tracked canister status (cycles, memory, isController)
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
     const [expandedCanisterCards, setExpandedCanisterCards] = useState({}); // canisterId -> boolean
+    // Canister top-up and transfer state
+    const [topUpCanisterId, setTopUpCanisterId] = useState(null); // Which canister is showing top-up UI
+    const [canisterTopUpAmount, setCanisterTopUpAmount] = useState('');
+    const [canisterTopUpError, setCanisterTopUpError] = useState('');
+    const [canisterTopUpSuccess, setCanisterTopUpSuccess] = useState('');
+    const [canisterToppingUp, setCanisterToppingUp] = useState(false);
+    const [transferCanisterModalOpen, setTransferCanisterModalOpen] = useState(false);
+    const [transferTargetCanister, setTransferTargetCanister] = useState(null);
+    const [transferCanisterRecipient, setTransferCanisterRecipient] = useState('');
+    const [transferringCanister, setTransferringCanister] = useState(false);
+    const [transferCanisterError, setTransferCanisterError] = useState('');
+    const [transferCanisterSuccess, setTransferCanisterSuccess] = useState('');
     
     // Expanded manager cards and their neurons
     const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
@@ -1488,6 +1500,217 @@ function Wallet() {
             setTopUpError(`Top-up failed: ${err.message || 'Unknown error'}`);
         } finally {
             setToppingUp(false);
+        }
+    }
+
+    // Handle cycles top-up for tracked canisters
+    async function handleCanisterCyclesTopUp(canisterId) {
+        if (!identity || !canisterId || !canisterTopUpAmount) return;
+        
+        const icpAmount = parseFloat(canisterTopUpAmount);
+        if (isNaN(icpAmount) || icpAmount <= 0) {
+            setCanisterTopUpError('Please enter a valid ICP amount');
+            return;
+        }
+        
+        const amountE8s = BigInt(Math.floor(icpAmount * E8S_ICP));
+        const totalNeeded = amountE8s + BigInt(ICP_FEE);
+        
+        setCanisterToppingUp(true);
+        setCanisterTopUpError('');
+        setCanisterTopUpSuccess('');
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            // Fetch user's ICP balance directly from ledger
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const userIcpBalance = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            
+            if (BigInt(userIcpBalance) < totalNeeded) {
+                setCanisterTopUpError(`Insufficient ICP balance. You have ${(Number(userIcpBalance) / E8S_ICP).toFixed(4)} ICP, need ${(Number(totalNeeded) / E8S_ICP).toFixed(4)} ICP (including fee)`);
+                setCanisterToppingUp(false);
+                return;
+            }
+            
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
+            
+            // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
+            const subaccount = principalToSubAccount(canisterPrincipal);
+            
+            console.log('Transferring ICP to CMC for cycles top-up...');
+            
+            const transferResult = await ledger.icrc1_transfer({
+                to: {
+                    owner: cmcPrincipal,
+                    subaccount: [subaccount],
+                },
+                amount: amountE8s,
+                fee: [BigInt(ICP_FEE)],
+                memo: [TOP_UP_MEMO],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds: ${(Number(err.InsufficientFunds.balance) / E8S_ICP).toFixed(4)} ICP available`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            const blockIndex = transferResult.Ok;
+            console.log('Transfer successful, block index:', blockIndex.toString());
+            
+            // Step 2: Notify CMC to mint cycles
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            
+            console.log('Notifying CMC to mint cycles...');
+            const notifyResult = await cmc.notify_top_up({
+                block_index: blockIndex,
+                canister_id: canisterPrincipal,
+            });
+            
+            if ('Err' in notifyResult) {
+                const err = notifyResult.Err;
+                if ('Refunded' in err) {
+                    throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
+                } else if ('InvalidTransaction' in err) {
+                    throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
+                } else if ('Other' in err) {
+                    throw new Error(`CMC error: ${err.Other.error_message}`);
+                } else if ('Processing' in err) {
+                    throw new Error('Transaction is still being processed. Please try again in a moment.');
+                }
+                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
+            }
+            
+            const cyclesAdded = Number(notifyResult.Ok);
+            setCanisterTopUpSuccess(`✅ Added ${formatCyclesCompact(cyclesAdded)} cycles!`);
+            setCanisterTopUpAmount('');
+            setTopUpCanisterId(null);
+            
+            // Refresh data
+            fetchTrackedCanisters();
+            fetchTokens();
+            
+        } catch (err) {
+            console.error('Canister cycles top-up error:', err);
+            setCanisterTopUpError(`Top-up failed: ${err.message || 'Unknown error'}`);
+        } finally {
+            setCanisterToppingUp(false);
+        }
+    }
+
+    // Handle canister transfer (change controller)
+    async function handleCanisterTransfer() {
+        if (!identity || !transferTargetCanister || !transferCanisterRecipient.trim()) return;
+        
+        setTransferringCanister(true);
+        setTransferCanisterError('');
+        setTransferCanisterSuccess('');
+        
+        try {
+            // Validate recipient principal
+            let recipientPrincipal;
+            try {
+                recipientPrincipal = Principal.fromText(transferCanisterRecipient.trim());
+            } catch (e) {
+                throw new Error('Invalid recipient principal ID');
+            }
+            
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const canisterPrincipal = Principal.fromText(transferTargetCanister);
+            
+            // Create management canister actor
+            const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            // First get current settings
+            const currentStatus = await mgmtActor.canister_status({ canister_id: canisterPrincipal });
+            
+            // Update settings to change controllers to only the new owner
+            // Note: This is a simplified transfer - in practice you might want to add the new controller
+            // while keeping yourself as controller, then let the new owner remove you
+            const updateSettingsIdl = ({ IDL }) => {
+                return IDL.Service({
+                    'update_settings': IDL.Func(
+                        [IDL.Record({
+                            'canister_id': IDL.Principal,
+                            'settings': IDL.Record({
+                                'controllers': IDL.Opt(IDL.Vec(IDL.Principal)),
+                                'compute_allocation': IDL.Opt(IDL.Nat),
+                                'memory_allocation': IDL.Opt(IDL.Nat),
+                                'freezing_threshold': IDL.Opt(IDL.Nat),
+                            }),
+                        })],
+                        [],
+                        []
+                    ),
+                });
+            };
+            
+            const updateActor = Actor.createActor(updateSettingsIdl, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => ({
+                    ...callConfig,
+                    effectiveCanisterId: canisterPrincipal,
+                }),
+            });
+            
+            await updateActor.update_settings({
+                canister_id: canisterPrincipal,
+                settings: {
+                    controllers: [[recipientPrincipal]],
+                    compute_allocation: [],
+                    memory_allocation: [],
+                    freezing_threshold: [],
+                },
+            });
+            
+            setTransferCanisterSuccess('✅ Canister transferred successfully!');
+            
+            // Refresh and close modal after delay
+            setTimeout(() => {
+                setTransferCanisterModalOpen(false);
+                setTransferTargetCanister(null);
+                setTransferCanisterRecipient('');
+                setTransferCanisterSuccess('');
+                fetchTrackedCanisters();
+            }, 2000);
+            
+        } catch (err) {
+            console.error('Error transferring canister:', err);
+            setTransferCanisterError(`Transfer failed: ${err.message || 'Unknown error'}`);
+        } finally {
+            setTransferringCanister(false);
         }
     }
 
@@ -5933,6 +6156,60 @@ function Wallet() {
                                                         >
                                                             View Details
                                                         </Link>
+                                                        {isController && (
+                                                            <>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setTransferTargetCanister(canisterId);
+                                                                        setTransferCanisterRecipient('');
+                                                                        setTransferCanisterError('');
+                                                                        setTransferCanisterSuccess('');
+                                                                        setTransferCanisterModalOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'transparent',
+                                                                        color: theme.colors.warning || '#f59e0b',
+                                                                        border: `1px solid ${theme.colors.warning || '#f59e0b'}`,
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '6px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '13px',
+                                                                        fontWeight: '600',
+                                                                    }}
+                                                                >
+                                                                    Transfer
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (topUpCanisterId === canisterId) {
+                                                                            setTopUpCanisterId(null);
+                                                                            setCanisterTopUpAmount('');
+                                                                            setCanisterTopUpError('');
+                                                                            setCanisterTopUpSuccess('');
+                                                                        } else {
+                                                                            setTopUpCanisterId(canisterId);
+                                                                            setCanisterTopUpAmount('');
+                                                                            setCanisterTopUpError('');
+                                                                            setCanisterTopUpSuccess('');
+                                                                        }
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'transparent',
+                                                                        color: theme.colors.success || '#22c55e',
+                                                                        border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '6px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '13px',
+                                                                        fontWeight: '600',
+                                                                    }}
+                                                                >
+                                                                    ⚡ Top-Up
+                                                                </button>
+                                                            </>
+                                                        )}
                                                         {isConfirming ? (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                 <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Remove?</span>
@@ -5985,6 +6262,123 @@ function Wallet() {
                                                             </button>
                                                         )}
                                                     </div>
+                                                    
+                                                    {/* Top-Up Section */}
+                                                    {topUpCanisterId === canisterId && (
+                                                        <div style={{
+                                                            marginTop: '16px',
+                                                            padding: '16px',
+                                                            backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.05)',
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${theme.colors.success || '#22c55e'}40`,
+                                                        }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                marginBottom: '12px'
+                                                            }}>
+                                                                <span style={{ fontSize: '18px' }}>⚡</span>
+                                                                <span style={{ 
+                                                                    fontWeight: '600', 
+                                                                    color: theme.colors.primaryText,
+                                                                    fontSize: '14px'
+                                                                }}>
+                                                                    Add Cycles
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {canisterTopUpError && (
+                                                                <div style={{
+                                                                    padding: '10px',
+                                                                    backgroundColor: (theme.colors.error || '#ef4444') + '20',
+                                                                    borderRadius: '6px',
+                                                                    color: theme.colors.error || '#ef4444',
+                                                                    fontSize: '12px',
+                                                                    marginBottom: '12px',
+                                                                }}>
+                                                                    {canisterTopUpError}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {canisterTopUpSuccess && (
+                                                                <div style={{
+                                                                    padding: '10px',
+                                                                    backgroundColor: (theme.colors.success || '#22c55e') + '20',
+                                                                    borderRadius: '6px',
+                                                                    color: theme.colors.success || '#22c55e',
+                                                                    fontSize: '12px',
+                                                                    marginBottom: '12px',
+                                                                }}>
+                                                                    {canisterTopUpSuccess}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
+                                                                <div style={{ flex: '1', minWidth: '150px' }}>
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="ICP amount"
+                                                                        value={canisterTopUpAmount}
+                                                                        onChange={(e) => setCanisterTopUpAmount(e.target.value)}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        step="0.0001"
+                                                                        min="0"
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            padding: '10px 12px',
+                                                                            borderRadius: '6px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            backgroundColor: theme.colors.primaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            fontSize: '14px',
+                                                                            boxSizing: 'border-box',
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleCanisterCyclesTopUp(canisterId); }}
+                                                                    disabled={canisterToppingUp || !canisterTopUpAmount || parseFloat(canisterTopUpAmount) <= 0}
+                                                                    style={{
+                                                                        padding: '10px 20px',
+                                                                        borderRadius: '6px',
+                                                                        border: 'none',
+                                                                        backgroundColor: theme.colors.success || '#22c55e',
+                                                                        color: '#fff',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '13px',
+                                                                        cursor: (canisterToppingUp || !canisterTopUpAmount || parseFloat(canisterTopUpAmount) <= 0) ? 'not-allowed' : 'pointer',
+                                                                        opacity: (canisterToppingUp || !canisterTopUpAmount || parseFloat(canisterTopUpAmount) <= 0) ? 0.6 : 1,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                    }}
+                                                                >
+                                                                    {canisterToppingUp ? (
+                                                                        <>
+                                                                            <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }}></div>
+                                                                            Processing...
+                                                                        </>
+                                                                    ) : (
+                                                                        'Top Up'
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                            
+                                                            {icpToCyclesRate && (
+                                                                <div style={{ 
+                                                                    marginTop: '10px',
+                                                                    fontSize: '11px',
+                                                                    color: theme.colors.mutedText,
+                                                                }}>
+                                                                    ≈ {canisterTopUpAmount && parseFloat(canisterTopUpAmount) > 0 
+                                                                        ? formatCyclesCompact(parseFloat(canisterTopUpAmount) * icpToCyclesRate)
+                                                                        : '0'} cycles
+                                                                    {' '}(1 ICP ≈ {formatCyclesCompact(icpToCyclesRate)})
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -6147,6 +6541,164 @@ function Wallet() {
                                     }}
                                 >
                                     {transferring ? '⏳ Transferring...' : '⚠️ Transfer Control'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Transfer Canister Modal */}
+                {transferCanisterModalOpen && transferTargetCanister && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '20px'
+                    }}>
+                        <div style={{
+                            backgroundColor: theme.colors.secondaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '100%',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <h3 style={{ 
+                                color: theme.colors.primaryText, 
+                                marginBottom: '8px',
+                                fontSize: '18px'
+                            }}>
+                                Transfer Canister
+                            </h3>
+                            <p style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '13px',
+                                marginBottom: '20px'
+                            }}>
+                                This will transfer full control of the canister to another principal. 
+                                <strong style={{ color: theme.colors.warning || '#f59e0b' }}> You will lose all access.</strong>
+                            </p>
+                            
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                    Canister to Transfer
+                                </div>
+                                <div style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontFamily: 'monospace', 
+                                    fontSize: '13px',
+                                    backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                    padding: '10px',
+                                    borderRadius: '6px',
+                                    wordBreak: 'break-all'
+                                }}>
+                                    {transferTargetCanister}
+                                </div>
+                            </div>
+                            
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '12px', 
+                                    display: 'block', 
+                                    marginBottom: '6px' 
+                                }}>
+                                    Recipient Principal ID
+                                </label>
+                                <input
+                                    type="text"
+                                    value={transferCanisterRecipient}
+                                    onChange={(e) => setTransferCanisterRecipient(e.target.value)}
+                                    placeholder="e.g., aaaaa-aa"
+                                    disabled={transferringCanister}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        backgroundColor: theme.colors.primaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '14px',
+                                        fontFamily: 'monospace',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+                            
+                            {transferCanisterError && (
+                                <div style={{ 
+                                    backgroundColor: `${theme.colors.error}20`,
+                                    border: `1px solid ${theme.colors.error}`,
+                                    color: theme.colors.error,
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    marginBottom: '16px'
+                                }}>
+                                    {transferCanisterError}
+                                </div>
+                            )}
+                            
+                            {transferCanisterSuccess && (
+                                <div style={{ 
+                                    backgroundColor: `${theme.colors.success || '#22c55e'}20`,
+                                    border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                    color: theme.colors.success || '#22c55e',
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    marginBottom: '16px'
+                                }}>
+                                    {transferCanisterSuccess}
+                                </div>
+                            )}
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setTransferCanisterModalOpen(false);
+                                        setTransferTargetCanister(null);
+                                        setTransferCanisterRecipient('');
+                                        setTransferCanisterError('');
+                                        setTransferCanisterSuccess('');
+                                    }}
+                                    disabled={transferringCanister}
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        backgroundColor: 'transparent',
+                                        color: theme.colors.primaryText,
+                                        cursor: transferringCanister ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleCanisterTransfer}
+                                    disabled={transferringCanister || !transferCanisterRecipient.trim()}
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        backgroundColor: theme.colors.error || '#ef4444',
+                                        color: '#fff',
+                                        cursor: (transferringCanister || !transferCanisterRecipient.trim()) ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        opacity: (transferringCanister || !transferCanisterRecipient.trim()) ? 0.6 : 1
+                                    }}
+                                >
+                                    {transferringCanister ? '⏳ Transferring...' : '⚠️ Transfer Control'}
                                 </button>
                             </div>
                         </div>
