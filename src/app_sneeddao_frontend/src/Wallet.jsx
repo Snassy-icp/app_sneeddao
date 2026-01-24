@@ -5746,27 +5746,31 @@ function Wallet() {
                                                         >
                                                             Manage
                                                         </Link>
-                                                        <button
-                                                            onClick={() => {
-                                                                setTransferTargetManager(manager);
-                                                                setTransferRecipient('');
-                                                                setTransferError('');
-                                                                setTransferSuccess('');
-                                                                setTransferModalOpen(true);
-                                                            }}
-                                                            style={{
-                                                                background: 'transparent',
-                                                                color: theme.colors.accent,
-                                                                border: `1px solid ${theme.colors.accent}`,
-                                                                padding: '8px 16px',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '13px',
-                                                                fontWeight: '600',
-                                                            }}
-                                                        >
-                                                            Transfer
-                                                        </button>
+                                                        {/* Transfer - only for controllers */}
+                                                        {neuronManagerIsController[canisterId] && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setTransferTargetManager(manager);
+                                                                    setTransferRecipient('');
+                                                                    setTransferError('');
+                                                                    setTransferSuccess('');
+                                                                    setTransferModalOpen(true);
+                                                                }}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    color: theme.colors.accent,
+                                                                    border: `1px solid ${theme.colors.accent}`,
+                                                                    padding: '8px 16px',
+                                                                    borderRadius: '6px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '13px',
+                                                                    fontWeight: '600',
+                                                                }}
+                                                            >
+                                                                Transfer
+                                                            </button>
+                                                        )}
+                                                        {/* Top-Up - available for anyone */}
                                                         <button
                                                             onClick={() => {
                                                                 if (topUpManagerId === canisterId) {
@@ -6323,60 +6327,60 @@ function Wallet() {
                                                         >
                                                             View Details
                                                         </Link>
+                                                        {/* Transfer - only for controllers */}
                                                         {isController && (
-                                                            <>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setTransferTargetCanister(canisterId);
-                                                                        setTransferCanisterRecipient('');
-                                                                        setTransferCanisterError('');
-                                                                        setTransferCanisterSuccess('');
-                                                                        setTransferCanisterModalOpen(true);
-                                                                    }}
-                                                                    style={{
-                                                                        background: 'transparent',
-                                                                        color: theme.colors.warning || '#f59e0b',
-                                                                        border: `1px solid ${theme.colors.warning || '#f59e0b'}`,
-                                                                        padding: '8px 16px',
-                                                                        borderRadius: '6px',
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '13px',
-                                                                        fontWeight: '600',
-                                                                    }}
-                                                                >
-                                                                    Transfer
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (topUpCanisterId === canisterId) {
-                                                                            setTopUpCanisterId(null);
-                                                                            setCanisterTopUpAmount('');
-                                                                            setCanisterTopUpError('');
-                                                                            setCanisterTopUpSuccess('');
-                                                                        } else {
-                                                                            setTopUpCanisterId(canisterId);
-                                                                            setCanisterTopUpAmount('');
-                                                                            setCanisterTopUpError('');
-                                                                            setCanisterTopUpSuccess('');
-                                                                        }
-                                                                    }}
-                                                                    style={{
-                                                                        background: 'transparent',
-                                                                        color: theme.colors.success || '#22c55e',
-                                                                        border: `1px solid ${theme.colors.success || '#22c55e'}`,
-                                                                        padding: '8px 16px',
-                                                                        borderRadius: '6px',
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '13px',
-                                                                        fontWeight: '600',
-                                                                    }}
-                                                                >
-                                                                    ⚡ Top-Up
-                                                                </button>
-                                                            </>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setTransferTargetCanister(canisterId);
+                                                                    setTransferCanisterRecipient('');
+                                                                    setTransferCanisterError('');
+                                                                    setTransferCanisterSuccess('');
+                                                                    setTransferCanisterModalOpen(true);
+                                                                }}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    color: theme.colors.warning || '#f59e0b',
+                                                                    border: `1px solid ${theme.colors.warning || '#f59e0b'}`,
+                                                                    padding: '8px 16px',
+                                                                    borderRadius: '6px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '13px',
+                                                                    fontWeight: '600',
+                                                                }}
+                                                            >
+                                                                Transfer
+                                                            </button>
                                                         )}
+                                                        {/* Top-Up - available for anyone */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (topUpCanisterId === canisterId) {
+                                                                    setTopUpCanisterId(null);
+                                                                    setCanisterTopUpAmount('');
+                                                                    setCanisterTopUpError('');
+                                                                    setCanisterTopUpSuccess('');
+                                                                } else {
+                                                                    setTopUpCanisterId(canisterId);
+                                                                    setCanisterTopUpAmount('');
+                                                                    setCanisterTopUpError('');
+                                                                    setCanisterTopUpSuccess('');
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                background: 'transparent',
+                                                                color: theme.colors.success || '#22c55e',
+                                                                border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                                                padding: '8px 16px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '13px',
+                                                                fontWeight: '600',
+                                                            }}
+                                                        >
+                                                            ⚡ Top-Up
+                                                        </button>
                                                         {isConfirming ? (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                 <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Remove?</span>
