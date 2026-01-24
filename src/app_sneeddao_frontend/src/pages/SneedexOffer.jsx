@@ -4698,6 +4698,54 @@ function SneedexOffer() {
                                                     {bidding ? (bidProgress || 'Processing...') : 'Place Bid'}
                                                 </button>
                                             </div>
+                                            {/* Percentage increment buttons */}
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                gap: '6px', 
+                                                flexWrap: 'wrap',
+                                                marginTop: '8px',
+                                            }}>
+                                                {[1, 5, 10, 25, 50, 100].map((percent) => {
+                                                    const incrementBid = () => {
+                                                        // Use current bid amount or minimum bid as base
+                                                        const currentAmount = bidAmount && parseFloat(bidAmount) > 0 
+                                                            ? parseFloat(bidAmount) 
+                                                            : Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
+                                                        const newAmount = currentAmount * (1 + percent / 100);
+                                                        // Format to reasonable decimals
+                                                        const formatted = newAmount.toFixed(Math.min(tokenInfo.decimals, 4));
+                                                        setBidAmount(parseFloat(formatted).toString());
+                                                    };
+                                                    return (
+                                                        <button
+                                                            key={percent}
+                                                            onClick={incrementBid}
+                                                            style={{
+                                                                padding: '6px 10px',
+                                                                background: 'transparent',
+                                                                color: theme.colors.mutedText,
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: '500',
+                                                                transition: 'all 0.15s ease',
+                                                            }}
+                                                            onMouseEnter={(e) => {
+                                                                e.target.style.borderColor = theme.colors.accent;
+                                                                e.target.style.color = theme.colors.accent;
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                e.target.style.borderColor = theme.colors.border;
+                                                                e.target.style.color = theme.colors.mutedText;
+                                                            }}
+                                                            title={`Increase bid by ${percent}%`}
+                                                        >
+                                                            +{percent}%
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </>
                                     ) : (
                                         /* Buyout-only mode - show wallet balance */
