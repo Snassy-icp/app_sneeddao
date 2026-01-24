@@ -124,8 +124,8 @@ function SneedexCreate() {
     const [expirationMinutes, setExpirationMinutes] = useState('0');
     const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
     
-    // Minimum bid increment (as multiple of token fee)
-    const [minBidIncrementMultiple, setMinBidIncrementMultiple] = useState('');
+    // Minimum bid increment (in whole tokens, user-friendly)
+    const [minBidIncrement, setMinBidIncrement] = useState('');
     
     // Private offer / Approved bidders
     const [isPrivateOffer, setIsPrivateOffer] = useState(false);
@@ -216,17 +216,8 @@ function SneedexCreate() {
     
     // Set default min bid increment to 1 token when price token changes
     useEffect(() => {
-        if (selectedPriceToken && selectedPriceToken.fee && selectedPriceToken.decimals !== undefined) {
-            const fee = Number(selectedPriceToken.fee);
-            const decimals = Number(selectedPriceToken.decimals);
-            if (fee > 0) {
-                // Calculate multiple needed for 1 token: 10^decimals / fee
-                const oneTokenInBaseUnits = Math.pow(10, decimals);
-                const defaultMultiple = Math.floor(oneTokenInBaseUnits / fee);
-                if (defaultMultiple >= 1) {
-                    setMinBidIncrementMultiple(defaultMultiple.toString());
-                }
-            }
+        if (selectedPriceToken) {
+            setMinBidIncrement('1');
         }
     }, [selectedPriceToken]);
     
@@ -1531,13 +1522,23 @@ function SneedexCreate() {
             // Convert approved bidders to principals
             const approvedBidderPrincipals = approvedBidders.map(str => Principal.fromText(str));
             
+            // Convert min bid increment from token amount to fee multiple
+            let minBidIncrementFeeMultiple = [];
+            if (minBidIncrement && selectedPriceToken && Number(selectedPriceToken.fee) > 0) {
+                const incrementInBaseUnits = parseFloat(minBidIncrement) * Math.pow(10, Number(selectedPriceToken.decimals));
+                const feeMultiple = Math.ceil(incrementInBaseUnits / Number(selectedPriceToken.fee));
+                if (feeMultiple >= 1) {
+                    minBidIncrementFeeMultiple = [BigInt(feeMultiple)];
+                }
+            }
+            
             const createRequest = {
                 price_token_ledger: Principal.fromText(priceTokenLedger),
                 min_bid_price: minBidPrice ? [parseAmount(minBidPrice, priceTokenDecimals)] : [],
                 buyout_price: buyoutPrice ? [parseAmount(buyoutPrice, priceTokenDecimals)] : [],
                 expiration: hasExpiration ? [getExpirationNs()] : [],
                 approved_bidders: isPrivateOffer && approvedBidderPrincipals.length > 0 ? [approvedBidderPrincipals] : [],
-                min_bid_increment_fee_multiple: minBidIncrementMultiple ? [BigInt(parseInt(minBidIncrementMultiple))] : [],
+                min_bid_increment_fee_multiple: minBidIncrementFeeMultiple,
                 public_note: publicNote.trim() ? [publicNote.trim()] : [],
                 note_to_buyer: noteToBuyer.trim() ? [noteToBuyer.trim()] : [],
             };
@@ -2379,21 +2380,22 @@ function SneedexCreate() {
                         <div style={styles.formGroup}>
                             <label style={styles.label}>
                                 Min Bid Increment
-                                <span style={styles.labelHint}> — Optional, as multiple of token transaction fee</span>
+                                <span style={styles.labelHint}> — Minimum amount each bid must increase by</span>
                             </label>
-                            <input
-                                type="number"
-                                style={styles.input}
-                                value={minBidIncrementMultiple}
-                                onChange={(e) => setMinBidIncrementMultiple(e.target.value)}
-                                placeholder={`e.g. 10 = 10× fee${selectedPriceToken ? ` (${(10 * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} ${selectedPriceToken.symbol})` : ''}`}
-                                min="1"
-                            />
-                            {minBidIncrementMultiple && selectedPriceToken && (
-                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginTop: '4px' }}>
-                                    Min increment: {(parseInt(minBidIncrementMultiple) * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} {selectedPriceToken.symbol}
-                                </div>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="number"
+                                    style={{ ...styles.input, flex: 1 }}
+                                    value={minBidIncrement}
+                                    onChange={(e) => setMinBidIncrement(e.target.value)}
+                                    placeholder="e.g. 1, 0.5, 2.5"
+                                    min="0"
+                                    step="any"
+                                />
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: '60px' }}>
+                                    {priceTokenSymbol}
+                                </span>
+                            </div>
                         </div>
                         
                         <div style={{ 
@@ -3890,16 +3892,11 @@ function SneedexCreate() {
                             </div>
                         </div>
                         
-                        {minBidIncrementMultiple && (
+                        {minBidIncrement && (
                             <div style={styles.reviewSection}>
                                 <div style={styles.reviewLabel}>Min Bid Increment</div>
                                 <div style={styles.reviewValue}>
-                                    {minBidIncrementMultiple}× fee
-                                    {selectedPriceToken && (
-                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
-                                            ({(parseInt(minBidIncrementMultiple) * Number(selectedPriceToken.fee) / Math.pow(10, Number(selectedPriceToken.decimals))).toFixed(4)} {selectedPriceToken.symbol})
-                                        </span>
-                                    )}
+                                    {minBidIncrement} {priceTokenSymbol}
                                 </div>
                             </div>
                         )}
