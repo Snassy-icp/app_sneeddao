@@ -1,0 +1,411 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Principal } from '@dfinity/principal';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import Header from '../components/Header';
+import PrincipalInput from '../components/PrincipalInput';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { useNaming } from '../NamingContext';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname } from '../utils/BackendUtils';
+
+const validateName = (input) => {
+  if (!input.trim()) return 'Name cannot be empty';
+  if (input.length > 32) return 'Name cannot be longer than 32 characters';
+  const validPattern = /^[a-zA-Z0-9\s\-_.']+$/;
+  if (!validPattern.test(input)) {
+    return "Only letters, numbers, spaces, hyphens (-), underscores (_), dots (.), and apostrophes (') are allowed";
+  }
+  return '';
+};
+
+export default function Names() {
+  const { identity, isAuthenticated } = useAuth();
+  const { theme } = useTheme();
+  const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+
+  const myPrincipalStr = identity?.getPrincipal()?.toString?.() || '';
+
+  // My public name
+  const [myName, setMyName] = useState('');
+  const [myNameVerified, setMyNameVerified] = useState(false);
+  const [myNameLoading, setMyNameLoading] = useState(false);
+  const [myNameEditing, setMyNameEditing] = useState(false);
+  const [myNameInput, setMyNameInput] = useState('');
+  const [myNameError, setMyNameError] = useState('');
+  const [myNameSaving, setMyNameSaving] = useState(false);
+
+  // Nicknames
+  const [search, setSearch] = useState('');
+  const [addPrincipal, setAddPrincipal] = useState('');
+  const [addNickname, setAddNickname] = useState('');
+  const [addError, setAddError] = useState('');
+  const [savingNickname, setSavingNickname] = useState(false);
+  const [editingPrincipal, setEditingPrincipal] = useState(null); // string principal id
+  const [editNicknameValue, setEditNicknameValue] = useState('');
+
+  useEffect(() => {
+    const run = async () => {
+      if (!identity) return;
+      setMyNameLoading(true);
+      try {
+        const resp = await getPrincipalName(identity, identity.getPrincipal());
+        if (resp) {
+          setMyName(resp[0] || '');
+          setMyNameVerified(Boolean(resp[1]));
+        }
+      } finally {
+        setMyNameLoading(false);
+      }
+    };
+    run();
+  }, [identity]);
+
+  const nicknameEntries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const rows = Array.from((principalNicknames || new Map()).entries()).map(([principalId, nickname]) => {
+      const publicName = principalNames?.get?.(principalId) || '';
+      const displayInfo = getPrincipalDisplayInfoFromContext(principalId, principalNames, principalNicknames);
+      return { principalId, nickname, publicName, displayInfo };
+    });
+    const filtered = q
+      ? rows.filter((r) => {
+          return (
+            r.principalId.toLowerCase().includes(q) ||
+            (r.nickname || '').toLowerCase().includes(q) ||
+            (r.publicName || '').toLowerCase().includes(q) ||
+            (r.displayInfo?.name || '').toLowerCase().includes(q) ||
+            (r.displayInfo?.nickname || '').toLowerCase().includes(q)
+          );
+        })
+      : rows;
+    filtered.sort((a, b) => (a.displayInfo?.nickname || a.nickname || '').localeCompare(b.displayInfo?.nickname || b.nickname || ''));
+    return filtered;
+  }, [principalNicknames, principalNames, search]);
+
+  const startEditMyName = () => {
+    setMyNameEditing(true);
+    setMyNameInput(myName || '');
+    setMyNameError('');
+  };
+
+  const saveMyName = async () => {
+    const err = validateName(myNameInput);
+    if (err) {
+      setMyNameError(err);
+      return;
+    }
+    if (!identity) return;
+    setMyNameSaving(true);
+    try {
+      const resp = await setPrincipalName(identity, myNameInput.trim());
+      if (resp && 'ok' in resp) {
+        await fetchAllNames();
+        const refreshed = await getPrincipalName(identity, identity.getPrincipal());
+        if (refreshed) {
+          setMyName(refreshed[0] || '');
+          setMyNameVerified(Boolean(refreshed[1]));
+        }
+        setMyNameEditing(false);
+      } else {
+        setMyNameError(resp?.err || 'Failed to set name');
+      }
+    } catch (e) {
+      setMyNameError(e?.message || 'Failed to set name');
+    } finally {
+      setMyNameSaving(false);
+    }
+  };
+
+  const addOrUpdateNickname = async (principalId, nickname) => {
+    if (!identity) return;
+    let principalObj;
+    try {
+      principalObj = Principal.fromText(principalId.trim());
+    } catch {
+      throw new Error('Invalid principal ID');
+    }
+    const err = validateName(nickname);
+    if (err) throw new Error(err);
+    const resp = await setPrincipalNickname(identity, principalObj, nickname.trim());
+    if (!resp || !('ok' in resp)) throw new Error(resp?.err || 'Failed to set nickname');
+    await fetchAllNames();
+  };
+
+  const removeNickname = async (principalId) => {
+    if (!identity) return;
+    const ok = window.confirm('Remove this nickname?');
+    if (!ok) return;
+    const resp = await setPrincipalNickname(identity, Principal.fromText(principalId), '');
+    if (!resp || !('ok' in resp)) throw new Error(resp?.err || 'Failed to remove nickname');
+    await fetchAllNames();
+  };
+
+  const onAdd = async () => {
+    setAddError('');
+    setSavingNickname(true);
+    try {
+      await addOrUpdateNickname(addPrincipal, addNickname);
+      setAddPrincipal('');
+      setAddNickname('');
+    } catch (e) {
+      setAddError(e?.message || 'Failed');
+    } finally {
+      setSavingNickname(false);
+    }
+  };
+
+  const styles = {
+    card: {
+      backgroundColor: theme.colors.secondaryBg,
+      border: `1px solid ${theme.colors.border}`,
+      borderRadius: '12px',
+      padding: '20px',
+      marginBottom: '20px'
+    },
+    title: { color: theme.colors.primaryText, margin: '0 0 8px 0' },
+    muted: { color: theme.colors.mutedText },
+    input: {
+      width: '100%',
+      padding: '10px',
+      borderRadius: '8px',
+      border: `1px solid ${theme.colors.border}`,
+      backgroundColor: theme.colors.tertiaryBg,
+      color: theme.colors.primaryText,
+      boxSizing: 'border-box'
+    },
+    btn: (kind = 'accent') => ({
+      backgroundColor: kind === 'accent' ? theme.colors.accent : kind === 'danger' ? theme.colors.error : theme.colors.mutedText,
+      color: theme.colors.primaryText,
+      border: 'none',
+      borderRadius: '8px',
+      padding: '10px 14px',
+      cursor: 'pointer',
+      fontWeight: 600
+    })
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <Header showSnsDropdown={true} />
+        <main className="wallet-container">
+          <div style={styles.card}>
+            <h2 style={styles.title}>Names</h2>
+            <div style={styles.muted}>Connect your wallet to manage your public name and nicknames.</div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+      <Header showSnsDropdown={true} />
+      <main className="wallet-container">
+        <div style={{ marginBottom: '16px' }}>
+          <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>Names</h1>
+          <div style={{ color: theme.colors.mutedText, marginTop: '6px' }}>
+            Manage your <strong>public name</strong> and your private <strong>nicknames</strong> for other principals.
+            {' '}Need neuron naming? Use <Link to="/me" style={{ color: theme.colors.accent }}>Me</Link>.
+          </div>
+        </div>
+
+        {/* My public name */}
+        <div style={styles.card}>
+          <h2 style={styles.title}>My public name</h2>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Principal</div>
+              <PrincipalDisplay principal={identity.getPrincipal()} showCopyButton={true} />
+            </div>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Current name</div>
+              <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>
+                {myNameLoading ? 'Loading…' : (myName || '(none set)')}
+                {myNameVerified && (
+                  <span style={{ marginLeft: '10px', color: theme.colors.success, fontWeight: 800, fontSize: '12px' }}>
+                    VERIFIED
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {!myNameEditing ? (
+            <div style={{ marginTop: '14px' }}>
+              <button type="button" onClick={startEditMyName} style={styles.btn('accent')}>
+                Edit name
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: '14px' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <input
+                  value={myNameInput}
+                  onChange={(e) => {
+                    setMyNameInput(e.target.value);
+                    setMyNameError(validateName(e.target.value));
+                  }}
+                  placeholder="Enter public name (max 32 chars)"
+                  style={styles.input}
+                />
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="button" onClick={saveMyName} disabled={myNameSaving || Boolean(myNameError)} style={styles.btn('accent')}>
+                    {myNameSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMyNameEditing(false);
+                      setMyNameError('');
+                    }}
+                    style={styles.btn('muted')}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              {myNameError && <div style={{ color: theme.colors.error, marginTop: '8px' }}>{myNameError}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Principal nicknames */}
+        <div style={styles.card}>
+          <h2 style={styles.title}>Principal nicknames</h2>
+          <div style={{ color: theme.colors.mutedText, marginBottom: '12px' }}>
+            These nicknames are private to you.
+          </div>
+
+          {/* Add nickname */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+            <div>
+              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Principal</div>
+              <PrincipalInput value={addPrincipal} onChange={setAddPrincipal} placeholder="Enter principal ID or search by name" />
+            </div>
+            <div>
+              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Nickname</div>
+              <input value={addNickname} onChange={(e) => setAddNickname(e.target.value)} placeholder="e.g. Alice" style={styles.input} />
+            </div>
+            <button type="button" onClick={onAdd} disabled={savingNickname} style={styles.btn('accent')}>
+              {savingNickname ? 'Saving…' : 'Add'}
+            </button>
+          </div>
+          {addError && <div style={{ color: theme.colors.error, marginTop: '10px' }}>{addError}</div>}
+
+          {/* Search */}
+          <div style={{ marginTop: '16px' }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by principal, public name, or nickname…"
+              style={styles.input}
+            />
+          </div>
+
+          {/* List */}
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {nicknameEntries.length === 0 ? (
+              <div style={{ color: theme.colors.mutedText }}>No nicknames yet.</div>
+            ) : (
+              nicknameEntries.map((row) => (
+                <div
+                  key={row.principalId}
+                  style={{
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '10px',
+                    padding: '12px',
+                    backgroundColor: theme.colors.primaryBg
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 260 }}>
+                      <PrincipalDisplay
+                        principal={Principal.fromText(row.principalId)}
+                        displayInfo={getPrincipalDisplayInfoFromContext(row.principalId, principalNames, principalNicknames)}
+                        showCopyButton={true}
+                      />
+                      {row.publicName && (
+                        <div style={{ marginTop: '6px', color: theme.colors.mutedText, fontSize: '12px' }}>
+                          Public name: <span style={{ color: theme.colors.primaryText }}>{row.publicName}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {editingPrincipal === row.principalId ? (
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          value={editNicknameValue}
+                          onChange={(e) => setEditNicknameValue(e.target.value)}
+                          style={{ ...styles.input, width: '260px' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSavingNickname(true);
+                            try {
+                              await addOrUpdateNickname(row.principalId, editNicknameValue);
+                              setEditingPrincipal(null);
+                            } catch (e) {
+                              window.alert(e?.message || 'Failed to update nickname');
+                            } finally {
+                              setSavingNickname(false);
+                            }
+                          }}
+                          disabled={savingNickname}
+                          style={styles.btn('accent')}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPrincipal(null)}
+                          style={styles.btn('muted')}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{row.nickname}</div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPrincipal(row.principalId);
+                            setEditNicknameValue(row.nickname || '');
+                          }}
+                          style={styles.btn('muted')}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSavingNickname(true);
+                            try {
+                              await removeNickname(row.principalId);
+                            } catch (e) {
+                              window.alert(e?.message || 'Failed to remove nickname');
+                            } finally {
+                              setSavingNickname(false);
+                            }
+                          }}
+                          disabled={savingNickname}
+                          style={styles.btn('danger')}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+

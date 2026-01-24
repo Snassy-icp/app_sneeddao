@@ -27,6 +27,7 @@ import Dao from './pages/Dao';
 import DaoInfo from './pages/DaoInfo';
 import Me from './pages/Me';
 import MeInfo from './pages/MeInfo';
+import Names from './pages/Names';
 import Tokenomics from './pages/Tokenomics';
 import TokenomicsInfo from './pages/TokenomicsInfo';
 import Sneedlock from './pages/Sneedlock';
@@ -140,6 +141,7 @@ function App() {
                     <Route path="/dao" element={<Dao />} />
                     <Route path="/dao_info" element={<DaoInfo />} />
                     <Route path="/me" element={<Me />} />
+                    <Route path="/names" element={<Names />} />
                     <Route path="/me_info" element={<MeInfo />} />
                     <Route path="/tokenomics" element={<Tokenomics />} />
                     <Route path="/tokenomics_info" element={<TokenomicsInfo />} />

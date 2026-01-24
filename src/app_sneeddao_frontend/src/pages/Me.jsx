@@ -624,6 +624,18 @@ export default function Me() {
                             </Link>
                             {' • '}
                             <Link
+                                to="/names"
+                                style={{
+                                    color: theme.colors.accent,
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                🏷️ Names
+                            </Link>
+                            {' • '}
+                            <Link
                                 to="/rewards"
                                 style={{
                                     color: theme.colors.accent,
