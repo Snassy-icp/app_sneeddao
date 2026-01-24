@@ -152,6 +152,8 @@ function SneedexOffer() {
     // USD pricing state
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
     const [icpPrice, setIcpPrice] = useState(null); // ICP/USD price
+    const [assetUsdEstimates, setAssetUsdEstimates] = useState({}); // assetIndex -> USD value
+    const [totalUsdEstimate, setTotalUsdEstimate] = useState(null); // Total USD for all assets
     
     // Countdown timer state
     const [timeRemainingMs, setTimeRemainingMs] = useState(null); // Milliseconds remaining
@@ -949,6 +951,66 @@ function SneedexOffer() {
         
         fetchPrices();
     }, [offer, whitelistedTokens, snsData]);
+    
+    // Calculate USD estimates for assets (progressively as data loads)
+    useEffect(() => {
+        if (!offer || Object.keys(tokenPrices).length === 0) return;
+        
+        const estimates = {};
+        let total = 0;
+        let hasAnyEstimate = false;
+        
+        offer.assets.forEach((assetEntry, idx) => {
+            const details = getAssetDetails(assetEntry);
+            
+            if (details.type === 'ICRC1Token') {
+                // Token assets - straightforward price × amount
+                const ledgerId = details.ledger_id;
+                const price = tokenPrices[ledgerId];
+                if (price) {
+                    const meta = tokenMetadata[ledgerId];
+                    const decimals = meta?.decimals || 8;
+                    const usd = calculateUsdValue(details.amount, decimals, price);
+                    estimates[idx] = usd;
+                    total += usd;
+                    hasAnyEstimate = true;
+                }
+            } else if (details.type === 'SNSNeuron') {
+                // SNS Neuron - get SNS ledger and calculate from staked amount + maturity
+                const sns = snsData.find(s => 
+                    s.canisters?.governance === details.governance_id ||
+                    s.governance_canister_id?.[0]?.toString() === details.governance_id ||
+                    s.governance_canister_id?.toString() === details.governance_id
+                );
+                const snsLedger = sns?.canisters?.ledger || 
+                                  sns?.ledger_canister_id?.[0]?.toString() || 
+                                  sns?.ledger_canister_id?.toString();
+                const price = snsLedger ? tokenPrices[snsLedger] : null;
+                
+                if (price) {
+                    const nInfo = neuronInfo[idx];
+                    if (nInfo) {
+                        // Calculate total value: staked + maturity (both available for disbursement)
+                        const stakedE8s = Number(nInfo.cached_neuron_stake_e8s || 0);
+                        const maturityE8s = Number(nInfo.maturity_e8s_equivalent || 0);
+                        const totalE8s = stakedE8s + maturityE8s;
+                        const usd = calculateUsdValue(totalE8s, 8, price);
+                        estimates[idx] = usd;
+                        total += usd;
+                        hasAnyEstimate = true;
+                    } else {
+                        // Use cached staked amount from SNS data if available
+                        // (neuronInfo not loaded yet, but we might have partial data)
+                        estimates[idx] = null; // Loading
+                    }
+                }
+            }
+            // Canisters: can't easily price, skip
+        });
+        
+        setAssetUsdEstimates(estimates);
+        setTotalUsdEstimate(hasAnyEstimate ? total : null);
+    }, [offer, tokenPrices, tokenMetadata, neuronInfo, snsData]);
     
     // Get token info from whitelisted tokens
     const tokenInfo = (() => {
@@ -2149,6 +2211,19 @@ function SneedexOffer() {
                         <div style={styles.card}>
                             <h3 style={styles.cardTitle}>
                                 <FaCubes /> Assets in this Offer
+                                {totalUsdEstimate !== null && totalUsdEstimate > 0 && (
+                                    <span style={{ 
+                                        marginLeft: '12px', 
+                                        fontSize: '0.85rem', 
+                                        fontWeight: '500',
+                                        color: theme.colors.success,
+                                        background: `${theme.colors.success}15`,
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                    }}>
+                                        ~{formatUsd(totalUsdEstimate)} total
+                                    </span>
+                                )}
                             </h3>
                             
                             {/* Escrow instructions for creator - only show in PendingEscrow state */}
@@ -2303,7 +2378,17 @@ function SneedexOffer() {
                                                                 const decimals = meta?.decimals || 8;
                                                                 const symbol = meta?.symbol || 'Tokens';
                                                                 const displayAmount = Number(details.amount) / Math.pow(10, decimals);
-                                                                return `Token: ${displayAmount.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${symbol}`;
+                                                                const usdValue = assetUsdEstimates[idx];
+                                                                return (
+                                                                    <>
+                                                                        Token: {displayAmount.toLocaleString(undefined, { maximumFractionDigits: decimals })} {symbol}
+                                                                        {usdValue > 0 && (
+                                                                            <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                                                                (~{formatUsd(usdValue)})
+                                                                            </span>
+                                                                        )}
+                                                                    </>
+                                                                );
                                                             })()}
                                                         </span>
                                                     </div>
@@ -2313,6 +2398,8 @@ function SneedexOffer() {
                                                         if (nInfo?.cached_neuron_stake_e8s) {
                                                             const staked = Number(nInfo.cached_neuron_stake_e8s) / 1e8;
                                                             const symbol = snsSymbols[details.governance_id] || 'tokens';
+                                                            const maturityE8s = Number(nInfo.maturity_e8s_equivalent || 0);
+                                                            const usdValue = assetUsdEstimates[idx];
                                                             return (
                                                                 <div style={{
                                                                     fontSize: '0.9rem',
@@ -2321,6 +2408,16 @@ function SneedexOffer() {
                                                                     marginTop: '4px',
                                                                 }}>
                                                                     {formatAmount(nInfo.cached_neuron_stake_e8s, 8)} {symbol} staked
+                                                                    {maturityE8s > 0 && (
+                                                                        <span style={{ color: theme.colors.mutedText, fontWeight: '400' }}>
+                                                                            {' '}+ {formatAmount(maturityE8s, 8)} maturity
+                                                                        </span>
+                                                                    )}
+                                                                    {usdValue > 0 && (
+                                                                        <span style={{ color: theme.colors.success, marginLeft: '8px', fontSize: '0.85rem', fontWeight: '500' }}>
+                                                                            (~{formatUsd(usdValue)})
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         }
