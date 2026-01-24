@@ -119,6 +119,7 @@ function SneedexOffer() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [bidAmount, setBidAmount] = useState('');
+    const [bidInputMode, setBidInputMode] = useState('token'); // 'token' or 'usd'
     const [bidding, setBidding] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
     const [pendingBid, setPendingBid] = useState(null); // {bidId, amount, subaccount, escrowBalance}
@@ -1154,11 +1155,22 @@ function SneedexOffer() {
         }
         
         setError('');
-        const amount = parseFloat(bidAmount);
+        let amount = parseFloat(bidAmount);
         
         if (isNaN(amount) || amount <= 0) {
             setError('Please enter a valid bid amount');
             return;
+        }
+        
+        // Convert USD to token amount if in USD mode
+        if (bidInputMode === 'usd') {
+            const paymentLedger = offer.price_token_ledger.toString();
+            const paymentPrice = tokenPrices[paymentLedger];
+            if (!paymentPrice) {
+                setError('Unable to convert USD to token - price not available');
+                return;
+            }
+            amount = amount / paymentPrice;
         }
         
         const minBidE8s = getMinimumBidE8s();
@@ -4661,6 +4673,76 @@ function SneedexOffer() {
                                                     )}
                                                 </span>
                                             </div>
+                                            {/* Input mode toggle (only show if price available) */}
+                                            {(() => {
+                                                const paymentLedger = offer.price_token_ledger.toString();
+                                                const paymentPrice = tokenPrices[paymentLedger];
+                                                if (paymentPrice) {
+                                                    return (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            justifyContent: 'flex-end', 
+                                                            marginBottom: '8px',
+                                                        }}>
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                                                borderRadius: '6px',
+                                                                padding: '2px',
+                                                                gap: '2px',
+                                                            }}>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        if (bidInputMode === 'usd' && bidAmount && paymentPrice) {
+                                                                            // Convert USD to token
+                                                                            const tokenAmount = parseFloat(bidAmount) / paymentPrice;
+                                                                            setBidAmount(tokenAmount.toFixed(Math.min(tokenInfo.decimals, 4)));
+                                                                        }
+                                                                        setBidInputMode('token');
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '4px 10px',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.75rem',
+                                                                        fontWeight: '500',
+                                                                        background: bidInputMode === 'token' ? theme.colors.accent : 'transparent',
+                                                                        color: bidInputMode === 'token' ? '#fff' : theme.colors.mutedText,
+                                                                        transition: 'all 0.15s ease',
+                                                                    }}
+                                                                >
+                                                                    {tokenInfo.symbol}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        if (bidInputMode === 'token' && bidAmount && paymentPrice) {
+                                                                            // Convert token to USD
+                                                                            const usdAmount = parseFloat(bidAmount) * paymentPrice;
+                                                                            setBidAmount(usdAmount.toFixed(2));
+                                                                        }
+                                                                        setBidInputMode('usd');
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '4px 10px',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.75rem',
+                                                                        fontWeight: '500',
+                                                                        background: bidInputMode === 'usd' ? theme.colors.accent : 'transparent',
+                                                                        color: bidInputMode === 'usd' ? '#fff' : theme.colors.mutedText,
+                                                                        transition: 'all 0.15s ease',
+                                                                    }}
+                                                                >
+                                                                    USD
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                             <div style={styles.bidInputRow}>
                                                 <button
                                                     style={{
@@ -4675,21 +4757,47 @@ function SneedexOffer() {
                                                         whiteSpace: 'nowrap',
                                                         flexShrink: 0,
                                                     }}
-                                                    onClick={() => setBidAmount(formatAmount(getMinimumBidE8s(), tokenInfo.decimals))}
+                                                    onClick={() => {
+                                                        const paymentLedger = offer.price_token_ledger.toString();
+                                                        const paymentPrice = tokenPrices[paymentLedger];
+                                                        const minTokenAmount = formatAmount(getMinimumBidE8s(), tokenInfo.decimals);
+                                                        if (bidInputMode === 'usd' && paymentPrice) {
+                                                            const minUsd = parseFloat(minTokenAmount) * paymentPrice;
+                                                            setBidAmount(minUsd.toFixed(2));
+                                                        } else {
+                                                            setBidAmount(minTokenAmount);
+                                                        }
+                                                    }}
                                                     title={`Set to minimum bid: ${formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} ${tokenInfo.symbol}`}
                                                 >
                                                     Min
                                                 </button>
-                                                <input
-                                                    type="number"
-                                                    step="0.0001"
-                                                    placeholder={`Amount in ${tokenInfo.symbol}`}
-                                                    style={styles.bidInput}
-                                                    value={bidAmount}
-                                                    onChange={(e) => setBidAmount(e.target.value)}
-                                                    onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                                                    onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                                                />
+                                                <div style={{ flex: 1, position: 'relative' }}>
+                                                    <input
+                                                        type="number"
+                                                        step={bidInputMode === 'usd' ? '0.01' : '0.0001'}
+                                                        placeholder={bidInputMode === 'usd' ? 'Amount in USD' : `Amount in ${tokenInfo.symbol}`}
+                                                        style={{
+                                                            ...styles.bidInput,
+                                                            paddingRight: bidInputMode === 'usd' ? '40px' : '60px',
+                                                        }}
+                                                        value={bidAmount}
+                                                        onChange={(e) => setBidAmount(e.target.value)}
+                                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                                    />
+                                                    <span style={{
+                                                        position: 'absolute',
+                                                        right: '12px',
+                                                        top: '50%',
+                                                        transform: 'translateY(-50%)',
+                                                        color: theme.colors.mutedText,
+                                                        fontSize: '0.85rem',
+                                                        pointerEvents: 'none',
+                                                    }}>
+                                                        {bidInputMode === 'usd' ? '$' : tokenInfo.symbol}
+                                                    </span>
+                                                </div>
                                                 <button
                                                     style={styles.bidButton}
                                                     onClick={handlePlaceBid}
@@ -4707,14 +4815,30 @@ function SneedexOffer() {
                                             }}>
                                                 {[1, 5, 10, 25, 50, 100].map((percent) => {
                                                     const incrementBid = () => {
-                                                        // Use current bid amount or minimum bid as base
-                                                        const currentAmount = bidAmount && parseFloat(bidAmount) > 0 
-                                                            ? parseFloat(bidAmount) 
-                                                            : Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
-                                                        const newAmount = currentAmount * (1 + percent / 100);
-                                                        // Format to reasonable decimals
-                                                        const formatted = newAmount.toFixed(Math.min(tokenInfo.decimals, 4));
-                                                        setBidAmount(parseFloat(formatted).toString());
+                                                        const paymentLedger = offer.price_token_ledger.toString();
+                                                        const paymentPrice = tokenPrices[paymentLedger];
+                                                        
+                                                        // Get base amount in tokens
+                                                        let baseTokenAmount;
+                                                        if (bidAmount && parseFloat(bidAmount) > 0) {
+                                                            if (bidInputMode === 'usd' && paymentPrice) {
+                                                                baseTokenAmount = parseFloat(bidAmount) / paymentPrice;
+                                                            } else {
+                                                                baseTokenAmount = parseFloat(bidAmount);
+                                                            }
+                                                        } else {
+                                                            baseTokenAmount = Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
+                                                        }
+                                                        
+                                                        const newTokenAmount = baseTokenAmount * (1 + percent / 100);
+                                                        
+                                                        if (bidInputMode === 'usd' && paymentPrice) {
+                                                            const newUsd = newTokenAmount * paymentPrice;
+                                                            setBidAmount(newUsd.toFixed(2));
+                                                        } else {
+                                                            const formatted = newTokenAmount.toFixed(Math.min(tokenInfo.decimals, 4));
+                                                            setBidAmount(parseFloat(formatted).toString());
+                                                        }
                                                     };
                                                     return (
                                                         <button
@@ -4746,30 +4870,61 @@ function SneedexOffer() {
                                                     );
                                                 })}
                                             </div>
-                                            {/* USD value of entered bid */}
+                                            {/* Conversion display - show the other currency */}
                                             {bidAmount && parseFloat(bidAmount) > 0 && (() => {
                                                 const paymentLedger = offer.price_token_ledger.toString();
                                                 const paymentPrice = tokenPrices[paymentLedger];
                                                 if (paymentPrice) {
-                                                    const bidUsd = parseFloat(bidAmount) * paymentPrice;
-                                                    return (
-                                                        <div style={{ 
-                                                            fontSize: '0.85rem', 
-                                                            color: theme.colors.mutedText, 
-                                                            marginTop: '8px',
-                                                            textAlign: 'right',
-                                                        }}>
-                                                            ≈ <strong style={{ color: theme.colors.primaryText }}>${bidUsd.toFixed(2)}</strong> USD
-                                                        </div>
-                                                    );
+                                                    if (bidInputMode === 'usd') {
+                                                        // Show token equivalent
+                                                        const tokenAmount = parseFloat(bidAmount) / paymentPrice;
+                                                        return (
+                                                            <div style={{ 
+                                                                fontSize: '0.85rem', 
+                                                                color: theme.colors.mutedText, 
+                                                                marginTop: '8px',
+                                                                textAlign: 'right',
+                                                            }}>
+                                                                = <strong style={{ color: theme.colors.primaryText }}>
+                                                                    {tokenAmount.toFixed(Math.min(tokenInfo.decimals, 4))} {tokenInfo.symbol}
+                                                                </strong>
+                                                            </div>
+                                                        );
+                                                    } else {
+                                                        // Show USD equivalent
+                                                        const bidUsd = parseFloat(bidAmount) * paymentPrice;
+                                                        return (
+                                                            <div style={{ 
+                                                                fontSize: '0.85rem', 
+                                                                color: theme.colors.mutedText, 
+                                                                marginTop: '8px',
+                                                                textAlign: 'right',
+                                                            }}>
+                                                                ≈ <strong style={{ color: theme.colors.primaryText }}>${bidUsd.toFixed(2)}</strong> USD
+                                                            </div>
+                                                        );
+                                                    }
                                                 }
                                                 return null;
                                             })()}
                                             {/* Warning when bid would trigger immediate buyout */}
                                             {bidAmount && offer.buyout_price?.[0] && (() => {
-                                                const bidAmountE8s = parseFloat(bidAmount) * Math.pow(10, tokenInfo.decimals);
+                                                const paymentLedger = offer.price_token_ledger.toString();
+                                                const paymentPrice = tokenPrices[paymentLedger];
+                                                
+                                                // Calculate bid in tokens regardless of input mode
+                                                let bidTokenAmount = parseFloat(bidAmount);
+                                                if (bidInputMode === 'usd' && paymentPrice) {
+                                                    bidTokenAmount = parseFloat(bidAmount) / paymentPrice;
+                                                }
+                                                
+                                                const bidAmountE8s = bidTokenAmount * Math.pow(10, tokenInfo.decimals);
                                                 const buyoutE8s = Number(offer.buyout_price[0]);
+                                                
                                                 if (bidAmountE8s >= buyoutE8s) {
+                                                    const displayBid = bidInputMode === 'usd' 
+                                                        ? `$${bidAmount}` 
+                                                        : `${bidAmount} ${tokenInfo.symbol}`;
                                                     return (
                                                         <div style={{
                                                             marginTop: '10px',
@@ -4790,7 +4945,7 @@ function SneedexOffer() {
                                                                 ⚡ Instant Buyout
                                                             </div>
                                                             <div style={{ color: theme.colors.text }}>
-                                                                Your bid of <strong>{bidAmount} {tokenInfo.symbol}</strong> meets or exceeds the buyout price.
+                                                                Your bid of <strong>{displayBid}</strong> meets or exceeds the buyout price.
                                                                 You will pay exactly <strong>{formatAmount(buyoutE8s, tokenInfo.decimals)} {tokenInfo.symbol}</strong> and win immediately.
                                                                 {bidAmountE8s > buyoutE8s && (
                                                                     <span style={{ color: theme.colors.mutedText }}>
