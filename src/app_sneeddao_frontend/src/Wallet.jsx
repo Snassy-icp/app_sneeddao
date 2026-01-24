@@ -478,6 +478,9 @@ function Wallet() {
     const [transferringCanister, setTransferringCanister] = useState(false);
     const [transferCanisterError, setTransferCanisterError] = useState('');
     const [transferCanisterSuccess, setTransferCanisterSuccess] = useState('');
+    // Individual card refresh state
+    const [refreshingCanisterCard, setRefreshingCanisterCard] = useState(null); // canisterId being refreshed
+    const [refreshingManagerCard, setRefreshingManagerCard] = useState(null); // canisterId being refreshed
     
     // Expanded manager cards and their neurons
     const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
@@ -1315,6 +1318,122 @@ function Wallet() {
             console.error('Error fetching tracked canisters:', err);
         } finally {
             setTrackedCanistersLoading(false);
+        }
+    }
+
+    // Refresh a single tracked canister's status
+    async function handleRefreshCanisterCard(canisterId) {
+        if (!identity || !canisterId) return;
+        
+        setRefreshingCanisterCard(canisterId);
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            try {
+                const canisterIdPrincipal = Principal.fromText(canisterId);
+                const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                    agent,
+                    canisterId: MANAGEMENT_CANISTER_ID,
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: canisterIdPrincipal,
+                    }),
+                });
+                const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                setTrackedCanisterStatus(prev => ({
+                    ...prev,
+                    [canisterId]: {
+                        cycles: Number(status.cycles),
+                        memory: Number(status.memory_size),
+                        isController: true,
+                    }
+                }));
+            } catch (err) {
+                // Not a controller, can't get status
+                setTrackedCanisterStatus(prev => ({
+                    ...prev,
+                    [canisterId]: {
+                        cycles: null,
+                        memory: null,
+                        isController: false,
+                    }
+                }));
+            }
+        } catch (err) {
+            console.error('Error refreshing canister card:', err);
+        } finally {
+            setRefreshingCanisterCard(null);
+        }
+    }
+
+    // Refresh a single neuron manager's data
+    async function handleRefreshManagerCard(canisterId) {
+        if (!identity || !canisterId) return;
+        
+        setRefreshingManagerCard(canisterId);
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const canisterIdPrincipal = Principal.fromText(canisterId);
+            
+            // Fetch neuron count and cycles
+            try {
+                const managerActor = createManagerActor(canisterIdPrincipal, { agent });
+                const [count, version] = await Promise.all([
+                    managerActor.getNeuronCount(),
+                    managerActor.getVersion(),
+                ]);
+                
+                setNeuronManagerCounts(prev => ({ ...prev, [canisterId]: Number(count) }));
+                
+                // Update version in managers array
+                setNeuronManagers(prev => prev.map(m => 
+                    m.canisterId.toText() === canisterId 
+                        ? { ...m, version } 
+                        : m
+                ));
+            } catch (err) {
+                console.error(`Error fetching manager data for ${canisterId}:`, err);
+            }
+            
+            // Try to fetch cycles
+            try {
+                const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                    agent,
+                    canisterId: MANAGEMENT_CANISTER_ID,
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: canisterIdPrincipal,
+                    }),
+                });
+                const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                setNeuronManagerCycles(prev => ({ ...prev, [canisterId]: Number(status.cycles) }));
+                setNeuronManagerIsController(prev => ({ ...prev, [canisterId]: true }));
+            } catch (err) {
+                // Not a controller
+                setNeuronManagerCycles(prev => ({ ...prev, [canisterId]: null }));
+            }
+            
+            // Refresh neurons data if expanded
+            if (expandedManagerCards[canisterId]) {
+                await fetchManagerNeuronsData(canisterId);
+            }
+        } catch (err) {
+            console.error('Error refreshing manager card:', err);
+        } finally {
+            setRefreshingManagerCard(null);
         }
     }
 
@@ -5152,7 +5271,7 @@ function Wallet() {
                                                     )}
                                                 </div>
                                                 <div className="header-content-column">
-                                                    {/* Row 1: Name and USD value */}
+                                                    {/* Row 1: Name, USD value, and Refresh */}
                                                     <div className="header-row-1" style={{ minWidth: 0 }}>
                                                         <span className="token-name">
                                                             <PrincipalDisplay
@@ -5168,6 +5287,30 @@ function Wallet() {
                                                                 `$${(managerTotalIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                                             }
                                                         </span>
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                await handleRefreshManagerCard(canisterId);
+                                                            }}
+                                                            disabled={refreshingManagerCard === canisterId}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                cursor: refreshingManagerCard === canisterId ? 'default' : 'pointer',
+                                                                padding: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                color: theme.colors.mutedText,
+                                                                fontSize: '1.2rem',
+                                                                transition: 'color 0.2s ease',
+                                                                opacity: refreshingManagerCard === canisterId ? 0.6 : 1
+                                                            }}
+                                                            onMouseEnter={(e) => refreshingManagerCard !== canisterId && (e.target.style.color = theme.colors.primaryText)}
+                                                            onMouseLeave={(e) => refreshingManagerCard !== canisterId && (e.target.style.color = theme.colors.mutedText)}
+                                                            title="Refresh manager data"
+                                                        >
+                                                            {refreshingManagerCard === canisterId ? '⏳' : '🔄'}
+                                                        </button>
                                                     </div>
                                                     {/* Row 2: Total ICP amount */}
                                                     <div className="header-row-2">
@@ -6007,7 +6150,7 @@ function Wallet() {
                                                     )}
                                                 </div>
                                                 <div className="header-content-column">
-                                                    {/* Row 1: Name */}
+                                                    {/* Row 1: Name and Refresh */}
                                                     <div className="header-row-1" style={{ minWidth: 0 }}>
                                                         <span className="token-name">
                                                             <PrincipalDisplay
@@ -6018,6 +6161,30 @@ function Wallet() {
                                                                 noLink={true}
                                                             />
                                                         </span>
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                await handleRefreshCanisterCard(canisterId);
+                                                            }}
+                                                            disabled={refreshingCanisterCard === canisterId}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
+                                                                padding: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                color: theme.colors.mutedText,
+                                                                fontSize: '1.2rem',
+                                                                transition: 'color 0.2s ease',
+                                                                opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
+                                                            }}
+                                                            onMouseEnter={(e) => refreshingCanisterCard !== canisterId && (e.target.style.color = theme.colors.primaryText)}
+                                                            onMouseLeave={(e) => refreshingCanisterCard !== canisterId && (e.target.style.color = theme.colors.mutedText)}
+                                                            title="Refresh canister data"
+                                                        >
+                                                            {refreshingCanisterCard === canisterId ? '⏳' : '🔄'}
+                                                        </button>
                                                     </div>
                                                     {/* Row 2: Status indicator */}
                                                     <div className="header-row-2">
