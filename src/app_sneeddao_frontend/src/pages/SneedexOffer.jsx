@@ -967,6 +967,9 @@ function SneedexOffer() {
     }, [offer, whitelistedTokens, snsData]);
     
     // Calculate USD estimates for assets (progressively as data loads)
+    // First uses cached values from offer, then updates with live data
+    const [usdEstimatesLoading, setUsdEstimatesLoading] = useState(true);
+    
     useEffect(() => {
         if (!offer) return;
         // Need either tokenPrices or icpPrice for any estimates
@@ -975,6 +978,7 @@ function SneedexOffer() {
         const estimates = {};
         let total = 0;
         let hasAnyEstimate = false;
+        let hasLoadingAssets = false;
         
         offer.assets.forEach((assetEntry, idx) => {
             const details = getAssetDetails(assetEntry);
@@ -1006,7 +1010,7 @@ function SneedexOffer() {
                 if (price) {
                     const nInfo = neuronInfo[idx];
                     if (nInfo) {
-                        // Calculate total value: staked + maturity (both available for disbursement)
+                        // Use live data: staked + maturity (both available for disbursement)
                         const stakedE8s = Number(nInfo.cached_neuron_stake_e8s || 0);
                         const maturityE8s = Number(nInfo.maturity_e8s_equivalent || 0);
                         const totalE8s = stakedE8s + maturityE8s;
@@ -1014,9 +1018,17 @@ function SneedexOffer() {
                         estimates[idx] = usd;
                         total += usd;
                         hasAnyEstimate = true;
+                    } else if (details.cached_stake_e8s !== null) {
+                        // Use cached stake from offer (doesn't include maturity)
+                        const usd = calculateUsdValue(details.cached_stake_e8s, 8, price);
+                        estimates[idx] = { value: usd, cached: true };
+                        total += usd;
+                        hasAnyEstimate = true;
+                        hasLoadingAssets = true; // Still loading for more accurate data
                     } else {
-                        // neuronInfo not loaded yet
+                        // No cached or live data yet
                         estimates[idx] = null; // Loading
+                        hasLoadingAssets = true;
                     }
                 }
             } else if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
@@ -1024,6 +1036,7 @@ function SneedexOffer() {
                 if (icpPrice) {
                     const mInfo = neuronManagerInfo[idx];
                     if (mInfo?.neurons && mInfo.neurons.length > 0) {
+                        // Use live data with maturity
                         let totalIcpE8s = 0;
                         mInfo.neurons.forEach(n => {
                             totalIcpE8s += Number(n.cached_neuron_stake_e8s || 0);
@@ -1034,9 +1047,17 @@ function SneedexOffer() {
                         estimates[idx] = usd;
                         total += usd;
                         hasAnyEstimate = true;
+                    } else if (details.cached_total_stake_e8s !== null) {
+                        // Use cached total stake from offer (doesn't include maturity)
+                        const usd = calculateUsdValue(details.cached_total_stake_e8s, 8, icpPrice);
+                        estimates[idx] = { value: usd, cached: true };
+                        total += usd;
+                        hasAnyEstimate = true;
+                        hasLoadingAssets = true; // Still loading for more accurate data
                     } else if (assetEntry.escrowed) {
-                        // Escrowed but neuronManagerInfo not loaded yet
+                        // Escrowed but no data yet
                         estimates[idx] = null; // Loading
+                        hasLoadingAssets = true;
                     }
                 }
             }
@@ -1045,6 +1066,7 @@ function SneedexOffer() {
         
         setAssetUsdEstimates(estimates);
         setTotalUsdEstimate(hasAnyEstimate ? total : null);
+        setUsdEstimatesLoading(hasLoadingAssets);
     }, [offer, tokenPrices, icpPrice, tokenMetadata, neuronInfo, neuronManagerInfo, snsData]);
     
     // Get token info from whitelisted tokens
@@ -2246,7 +2268,7 @@ function SneedexOffer() {
                         <div style={styles.card}>
                             <h3 style={styles.cardTitle}>
                                 <FaCubes /> Assets in this Offer
-                                {totalUsdEstimate !== null && totalUsdEstimate > 0 && (
+                                {totalUsdEstimate !== null && totalUsdEstimate > 0 ? (
                                     <span style={{ 
                                         marginLeft: '12px', 
                                         fontSize: '0.85rem', 
@@ -2255,10 +2277,43 @@ function SneedexOffer() {
                                         background: `${theme.colors.success}15`,
                                         padding: '4px 10px',
                                         borderRadius: '6px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
                                     }}>
                                         ~{formatUsd(totalUsdEstimate)} total
+                                        {usdEstimatesLoading && (
+                                            <FaSync style={{ 
+                                                animation: 'spin 1s linear infinite', 
+                                                fontSize: '0.7rem',
+                                                opacity: 0.7,
+                                            }} title="Updating with live data..." />
+                                        )}
                                     </span>
-                                )}
+                                ) : (Object.keys(tokenPrices).length > 0 || icpPrice) && offer.assets.some(a => 
+                                    ('SNSNeuron' in a.asset) || 
+                                    ('ICRC1Token' in a.asset) || 
+                                    ('Canister' in a.asset && Number(a.asset.Canister.canister_kind?.[0] || 0) === CANISTER_KIND_ICP_NEURON_MANAGER)
+                                ) ? (
+                                    <span style={{ 
+                                        marginLeft: '12px', 
+                                        fontSize: '0.85rem', 
+                                        fontWeight: '500',
+                                        color: theme.colors.mutedText,
+                                        background: `${theme.colors.mutedText}15`,
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                    }}>
+                                        <FaSync style={{ 
+                                            animation: 'spin 1s linear infinite', 
+                                            fontSize: '0.7rem',
+                                        }} />
+                                        Estimating...
+                                    </span>
+                                ) : null}
                             </h3>
                             
                             {/* Escrow instructions for creator - only show in PendingEscrow state */}
@@ -2413,7 +2468,8 @@ function SneedexOffer() {
                                                                 const decimals = meta?.decimals || 8;
                                                                 const symbol = meta?.symbol || 'Tokens';
                                                                 const displayAmount = Number(details.amount) / Math.pow(10, decimals);
-                                                                const usdValue = assetUsdEstimates[idx];
+                                                                const rawUsd = assetUsdEstimates[idx];
+                                                                const usdValue = typeof rawUsd === 'object' ? rawUsd?.value : rawUsd;
                                                                 return (
                                                                     <>
                                                                         Token: {displayAmount.toLocaleString(undefined, { maximumFractionDigits: decimals })} {symbol}
@@ -2430,11 +2486,14 @@ function SneedexOffer() {
                                                     {/* SNS Neuron staked amount on separate line */}
                                                     {details.type === 'SNSNeuron' && (() => {
                                                         const nInfo = neuronInfo[idx];
+                                                        const symbol = snsSymbols[details.governance_id] || 'tokens';
+                                                        const rawUsd = assetUsdEstimates[idx];
+                                                        const usdValue = typeof rawUsd === 'object' ? rawUsd?.value : rawUsd;
+                                                        const isCachedUsd = typeof rawUsd === 'object' && rawUsd?.cached;
+                                                        
                                                         if (nInfo?.cached_neuron_stake_e8s) {
                                                             const staked = Number(nInfo.cached_neuron_stake_e8s) / 1e8;
-                                                            const symbol = snsSymbols[details.governance_id] || 'tokens';
                                                             const maturityE8s = Number(nInfo.maturity_e8s_equivalent || 0);
-                                                            const usdValue = assetUsdEstimates[idx];
                                                             return (
                                                                 <div style={{
                                                                     fontSize: '0.9rem',
@@ -2455,12 +2514,41 @@ function SneedexOffer() {
                                                                     )}
                                                                 </div>
                                                             );
+                                                        } else if (details.cached_stake_e8s !== null) {
+                                                            // Show cached stake while loading live data
+                                                            return (
+                                                                <div style={{
+                                                                    fontSize: '0.9rem',
+                                                                    fontWeight: '600',
+                                                                    color: theme.colors.accent,
+                                                                    marginTop: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                }}>
+                                                                    {formatAmount(details.cached_stake_e8s, 8)} {symbol} staked
+                                                                    {usdValue > 0 && (
+                                                                        <span style={{ color: theme.colors.success, fontSize: '0.85rem', fontWeight: '500' }}>
+                                                                            (~{formatUsd(usdValue)})
+                                                                        </span>
+                                                                    )}
+                                                                    <FaSync style={{ 
+                                                                        animation: 'spin 1s linear infinite', 
+                                                                        fontSize: '0.7rem',
+                                                                        color: theme.colors.mutedText,
+                                                                    }} title="Loading live data..." />
+                                                                </div>
+                                                            );
                                                         }
                                                         return null;
                                                     })()}
                                                     {/* ICP Neuron Manager summary line */}
                                                     {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (() => {
                                                         const mInfo = neuronManagerInfo[idx];
+                                                        const rawUsd = assetUsdEstimates[idx];
+                                                        const usdValue = typeof rawUsd === 'object' ? rawUsd?.value : rawUsd;
+                                                        const isCachedUsd = typeof rawUsd === 'object' && rawUsd?.cached;
+                                                        
                                                         if (mInfo?.neurons && mInfo.neurons.length > 0) {
                                                             let totalIcpE8s = 0n;
                                                             mInfo.neurons.forEach(n => {
@@ -2468,7 +2556,6 @@ function SneedexOffer() {
                                                                 totalIcpE8s += BigInt(n.maturity_e8s_equivalent || 0);
                                                                 totalIcpE8s += BigInt(n.staked_maturity_e8s_equivalent || 0);
                                                             });
-                                                            const usdValue = assetUsdEstimates[idx];
                                                             return (
                                                                 <div style={{
                                                                     fontSize: '0.9rem',
@@ -2482,6 +2569,31 @@ function SneedexOffer() {
                                                                             (~{formatUsd(usdValue)})
                                                                         </span>
                                                                     )}
+                                                                </div>
+                                                            );
+                                                        } else if (details.cached_total_stake_e8s !== null && assetEntry.escrowed) {
+                                                            // Show cached stake while loading live data
+                                                            return (
+                                                                <div style={{
+                                                                    fontSize: '0.9rem',
+                                                                    fontWeight: '600',
+                                                                    color: theme.colors.accent,
+                                                                    marginTop: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                }}>
+                                                                    ~{formatAmount(details.cached_total_stake_e8s, 8)} ICP staked
+                                                                    {usdValue > 0 && (
+                                                                        <span style={{ color: theme.colors.success, fontSize: '0.85rem', fontWeight: '500' }}>
+                                                                            (~{formatUsd(usdValue)})
+                                                                        </span>
+                                                                    )}
+                                                                    <FaSync style={{ 
+                                                                        animation: 'spin 1s linear infinite', 
+                                                                        fontSize: '0.7rem',
+                                                                        color: theme.colors.mutedText,
+                                                                    }} title="Loading live data..." />
                                                                 </div>
                                                             );
                                                         }
@@ -3179,7 +3291,8 @@ function SneedexOffer() {
                                                                             grandTotalStakedMaturity += Number(n.staked_maturity_e8s_equivalent || 0) / 1e8;
                                                                         });
                                                                         const grandTotal = grandTotalStake + grandTotalMaturity + grandTotalStakedMaturity;
-                                                                        const usdValue = assetUsdEstimates[idx];
+                                                                        const rawUsd = assetUsdEstimates[idx];
+                                                                        const usdValue = typeof rawUsd === 'object' ? rawUsd?.value : rawUsd;
                                                                         
                                                                         return (
                                                                             <div style={{
@@ -4305,7 +4418,7 @@ function SneedexOffer() {
                                     </>
                                 );
                             })()}
-                            {totalUsdEstimate !== null && totalUsdEstimate > 0 && (() => {
+                            {(() => {
                                 // Calculate relevant USD values for Good Deal determination
                                 const paymentLedger = offer.price_token_ledger.toString();
                                 const paymentPrice = tokenPrices[paymentLedger];
@@ -4318,6 +4431,35 @@ function SneedexOffer() {
                                 const highestBidUsd = highestBid?.amount && paymentPrice
                                     ? calculateUsdValue(highestBid.amount, tokenInfo.decimals, paymentPrice)
                                     : null;
+                                
+                                // Show loading state if we're still fetching prices
+                                if (totalUsdEstimate === null && (Object.keys(tokenPrices).length === 0 && !icpPrice)) {
+                                    return (
+                                        <div style={{
+                                            ...styles.priceRow,
+                                            background: `${theme.colors.mutedText}10`,
+                                            borderRadius: '8px',
+                                            padding: '10px 12px',
+                                            margin: '8px 0',
+                                        }}>
+                                            <span style={{ ...styles.priceLabel, color: theme.colors.mutedText, fontWeight: '600' }}>
+                                                Est. Asset Value
+                                            </span>
+                                            <span style={{ 
+                                                ...styles.priceValue, 
+                                                color: theme.colors.mutedText,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                            }}>
+                                                <FaSync style={{ animation: 'spin 1s linear infinite', fontSize: '0.8rem' }} />
+                                                Loading...
+                                            </span>
+                                        </div>
+                                    );
+                                }
+                                
+                                if (totalUsdEstimate === null || totalUsdEstimate <= 0) return null;
                                 
                                 // Determine if this is a "good deal"
                                 // Compare against buyout, current highest bid, or min bid (if no bids yet)
@@ -4348,6 +4490,13 @@ function SneedexOffer() {
                                             gap: '10px',
                                         }}>
                                             ~{formatUsd(totalUsdEstimate)}
+                                            {usdEstimatesLoading && (
+                                                <FaSync style={{ 
+                                                    animation: 'spin 1s linear infinite', 
+                                                    fontSize: '0.7rem',
+                                                    opacity: 0.7,
+                                                }} title="Updating with live data..." />
+                                            )}
                                             {isGoodDeal && (
                                                 <span style={{
                                                     background: theme.colors.success,

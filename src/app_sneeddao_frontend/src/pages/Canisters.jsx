@@ -1612,7 +1612,7 @@ export default function CanistersPage() {
                         </span>
                     )}
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
                     {/* Move to group dropdown */}
                     {allGroups.length > 0 && (
                         <select
@@ -1630,6 +1630,7 @@ export default function CanistersPage() {
                                 color: theme.colors.textSecondary,
                                 fontSize: '11px',
                                 cursor: 'pointer',
+                                maxWidth: '90px',
                             }}
                             defaultValue=""
                         >
@@ -1763,18 +1764,22 @@ export default function CanistersPage() {
         canisterCard: {
             backgroundColor: theme.colors.card,
             borderRadius: '12px',
-            padding: '16px 20px',
+            padding: '12px 16px',
             border: `1px solid ${theme.colors.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             transition: 'border-color 0.2s',
+            flexWrap: 'wrap',
+            gap: '10px',
         },
         canisterInfo: {
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            flex: 1,
+            gap: '8px',
+            flex: '1 1 auto',
+            minWidth: '200px',
+            flexWrap: 'wrap',
         },
         canisterIcon: {
             width: '40px',
@@ -1909,20 +1914,21 @@ export default function CanistersPage() {
         managerCard: {
             backgroundColor: theme.colors.card,
             borderRadius: '12px',
-            padding: '16px 20px',
+            padding: '12px 16px',
             border: `1px solid ${theme.colors.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px',
+            gap: '10px',
             flexWrap: 'wrap',
         },
         managerInfo: {
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            flex: 1,
+            gap: '8px',
+            flex: '1 1 auto',
             minWidth: '200px',
+            flexWrap: 'wrap',
         },
         managerIcon: {
             width: '40px',
