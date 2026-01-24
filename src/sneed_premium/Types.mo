@@ -283,5 +283,47 @@ module {
     
     // Default minimum claim interval (24 hours)
     public let DEFAULT_MIN_CLAIM_INTERVAL_NS : Nat = 86_400_000_000_000;
+    
+    // ============================================
+    // LOGGING TYPES
+    // ============================================
+    
+    /// Timestamp type (nanoseconds since epoch)
+    public type Timestamp = Int;
+    
+    /// Type of membership claim
+    public type ClaimType = {
+        #IcpPayment;    // Paid with ICP
+        #VotingPower;   // Claimed via staking VP
+        #PromoCode;     // Claimed via promo code
+    };
+    
+    /// Log entry for all membership claims
+    public type ClaimLogEntry = {
+        id : Nat;                           // Sequential ID
+        timestamp : Timestamp;              // When the claim was made
+        claimant : Principal;               // Who claimed
+        claimType : ClaimType;              // How they claimed
+        durationGrantedNs : Nat;            // Duration of premium granted
+        tierName : Text;                    // Name of tier or promo code used
+        previousExpiration : Timestamp;     // Expiration before claim
+        newExpiration : Timestamp;          // Expiration after claim
+        // Additional context based on claim type
+        icpAmountE8s : ?Nat;                // ICP amount if IcpPayment
+        votingPowerE8s : ?Nat;              // VP amount if VotingPower
+        promoCode : ?Text;                  // Code if PromoCode
+    };
+    
+    /// Log entry for ICP payment transfers specifically
+    public type IcpPaymentLogEntry = {
+        id : Nat;                           // Sequential ID
+        timestamp : Timestamp;              // When the payment was made
+        payer : Principal;                  // Who paid
+        amountE8s : Nat;                    // Amount paid (including fee)
+        netAmountE8s : Nat;                 // Amount transferred (minus fee)
+        icpTransactionId : Nat;             // ICP ledger block index
+        tierName : Text;                    // Tier name purchased
+        durationGrantedNs : Nat;            // Duration of premium granted
+    };
 };
 

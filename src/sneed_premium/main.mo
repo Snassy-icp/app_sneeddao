@@ -46,6 +46,18 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
     var promoCodes : [T.PromoCode] = [];
     var promoCodeClaims : [T.PromoCodeClaim] = [];
     
+    // Payment and claim logs
+    var claimLog : [T.ClaimLogEntry] = [];
+    var nextClaimLogId : Nat = 0;
+    var icpPaymentLog : [T.IcpPaymentLogEntry] = [];
+    var nextIcpPaymentLogId : Nat = 0;
+    
+    // Statistics
+    var totalIcpCollectedE8s : Nat = 0;
+    var totalIcpPayments : Nat = 0;
+    var totalVpClaims : Nat = 0;
+    var totalPromoClaims : Nat = 0;
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -144,6 +156,66 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             };
         };
         false;
+    };
+    
+    // Record a claim log entry
+    func recordClaim(
+        claimant : Principal,
+        claimType : T.ClaimType,
+        durationGrantedNs : Nat,
+        tierName : Text,
+        previousExpiration : Time.Time,
+        newExpiration : Time.Time,
+        icpAmountE8s : ?Nat,
+        votingPowerE8s : ?Nat,
+        promoCode : ?Text
+    ) {
+        let entry : T.ClaimLogEntry = {
+            id = nextClaimLogId;
+            timestamp = Time.now();
+            claimant = claimant;
+            claimType = claimType;
+            durationGrantedNs = durationGrantedNs;
+            tierName = tierName;
+            previousExpiration = previousExpiration;
+            newExpiration = newExpiration;
+            icpAmountE8s = icpAmountE8s;
+            votingPowerE8s = votingPowerE8s;
+            promoCode = promoCode;
+        };
+        claimLog := Array.append(claimLog, [entry]);
+        nextClaimLogId += 1;
+        
+        // Update stats
+        switch (claimType) {
+            case (#IcpPayment) { totalIcpPayments += 1; };
+            case (#VotingPower) { totalVpClaims += 1; };
+            case (#PromoCode) { totalPromoClaims += 1; };
+        };
+    };
+    
+    // Record an ICP payment log entry
+    func recordIcpPayment(
+        payer : Principal,
+        amountE8s : Nat,
+        netAmountE8s : Nat,
+        transactionId : Nat,
+        tierName : Text,
+        durationGrantedNs : Nat
+    ) {
+        let entry : T.IcpPaymentLogEntry = {
+            id = nextIcpPaymentLogId;
+            timestamp = Time.now();
+            payer = payer;
+            amountE8s = amountE8s;
+            netAmountE8s = netAmountE8s;
+            icpTransactionId = transactionId;
+            tierName = tierName;
+            durationGrantedNs = durationGrantedNs;
+        };
+        icpPaymentLog := Array.append(icpPaymentLog, [entry]);
+        nextIcpPaymentLogId += 1;
+        totalIcpCollectedE8s += amountE8s;
     };
     
     // ============================================
@@ -270,7 +342,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             amount = balance - fee;
         });
         
-        switch (transferResult) {
+        let transactionId = switch (transferResult) {
             case (#Err(e)) {
                 let errMsg = switch (e) {
                     case (#GenericError({ message; error_code = _ })) { message };
@@ -284,8 +356,18 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 };
                 return #err(#TransferFailed(errMsg));
             };
-            case (#Ok(_)) {};
+            case (#Ok(txId)) { txId };
         };
+        
+        // Record the ICP payment
+        recordIcpPayment(
+            caller,
+            balance,
+            balance - fee,
+            transactionId,
+            tier.name,
+            tier.durationNs
+        );
         
         // Update membership
         let currentExpiration = switch (getMembership(caller)) {
@@ -301,6 +383,20 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
         
         setMembership(newMembership);
+        
+        // Record the claim
+        recordClaim(
+            caller,
+            #IcpPayment,
+            tier.durationNs,
+            tier.name,
+            currentExpiration,
+            newExpiration,
+            ?balance,
+            null,
+            null
+        );
+        
         #ok(newMembership);
     };
     
@@ -398,6 +494,20 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
         
         setMembership(newMembership);
+        
+        // Record the claim
+        recordClaim(
+            caller,
+            #VotingPower,
+            tier.durationNs,
+            tier.name,
+            currentExpiration,
+            newExpiration,
+            null,
+            ?totalVp,
+            null
+        );
+        
         #ok(newMembership);
     };
     
@@ -456,7 +566,7 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                 
                 setMembership(newMembership);
                 
-                // Record the claim
+                // Record the promo code claim (existing system)
                 let claim : T.PromoCodeClaim = {
                     code = code;
                     claimedBy = caller;
@@ -464,6 +574,19 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
                     durationGrantedNs = promoCode.durationNs;
                 };
                 promoCodeClaims := Array.append(promoCodeClaims, [claim]);
+                
+                // Record to the unified claim log
+                recordClaim(
+                    caller,
+                    #PromoCode,
+                    promoCode.durationNs,
+                    "Promo: " # code,
+                    currentExpiration,
+                    newExpiration,
+                    null,
+                    null,
+                    ?code
+                );
                 
                 // Increment claim count
                 let updatedPromoCode : T.PromoCode = {
@@ -862,6 +985,119 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
             return #err(#NotFound);
         };
         #ok(());
+    };
+    
+    // ============================================
+    // PAYMENT & CLAIM LOG QUERIES (Admin only)
+    // ============================================
+    
+    /// Get paginated claim log (admin only)
+    /// Returns claims in reverse chronological order (newest first)
+    public shared query ({ caller }) func getClaimLog(offset : Nat, limit : Nat) : async {
+        claims : [T.ClaimLogEntry];
+        total_count : Nat;
+        has_more : Bool;
+    } {
+        assert(isAdmin(caller));
+        
+        let total = claimLog.size();
+        
+        if (offset >= total) {
+            return {
+                claims = [];
+                total_count = total;
+                has_more = false;
+            };
+        };
+        
+        let effectiveLimit = if (limit > 1000) { 1000 } else { limit };
+        let startIdx = if (total > offset) { total - offset } else { 0 };
+        let endIdx = if (startIdx > effectiveLimit) { startIdx - effectiveLimit } else { 0 };
+        
+        var result : [T.ClaimLogEntry] = [];
+        var idx = startIdx;
+        while (idx > endIdx) {
+            idx -= 1;
+            result := Array.append(result, [claimLog[idx]]);
+        };
+        
+        {
+            claims = result;
+            total_count = total;
+            has_more = endIdx > 0;
+        };
+    };
+    
+    /// Get paginated ICP payment log (admin only)
+    /// Returns payments in reverse chronological order (newest first)
+    public shared query ({ caller }) func getIcpPaymentLog(offset : Nat, limit : Nat) : async {
+        payments : [T.IcpPaymentLogEntry];
+        total_count : Nat;
+        has_more : Bool;
+    } {
+        assert(isAdmin(caller));
+        
+        let total = icpPaymentLog.size();
+        
+        if (offset >= total) {
+            return {
+                payments = [];
+                total_count = total;
+                has_more = false;
+            };
+        };
+        
+        let effectiveLimit = if (limit > 1000) { 1000 } else { limit };
+        let startIdx = if (total > offset) { total - offset } else { 0 };
+        let endIdx = if (startIdx > effectiveLimit) { startIdx - effectiveLimit } else { 0 };
+        
+        var result : [T.IcpPaymentLogEntry] = [];
+        var idx = startIdx;
+        while (idx > endIdx) {
+            idx -= 1;
+            result := Array.append(result, [icpPaymentLog[idx]]);
+        };
+        
+        {
+            payments = result;
+            total_count = total;
+            has_more = endIdx > 0;
+        };
+    };
+    
+    /// Get payment and claim statistics (admin only)
+    public shared query ({ caller }) func getPaymentStats() : async {
+        total_icp_collected_e8s : Nat;
+        total_icp_payments : Nat;
+        total_vp_claims : Nat;
+        total_promo_claims : Nat;
+        total_claims : Nat;
+        claim_log_size : Nat;
+        payment_log_size : Nat;
+    } {
+        assert(isAdmin(caller));
+        
+        {
+            total_icp_collected_e8s = totalIcpCollectedE8s;
+            total_icp_payments = totalIcpPayments;
+            total_vp_claims = totalVpClaims;
+            total_promo_claims = totalPromoClaims;
+            total_claims = totalIcpPayments + totalVpClaims + totalPromoClaims;
+            claim_log_size = claimLog.size();
+            payment_log_size = icpPaymentLog.size();
+        };
+    };
+    
+    /// Get claim log count (admin only)
+    public shared query ({ caller }) func getClaimLogCount() : async Nat {
+        assert(isAdmin(caller));
+        claimLog.size();
+    };
+    
+    /// Get ICP payment log count (admin only)
+    public shared query ({ caller }) func getIcpPaymentLogCount() : async Nat {
+        assert(isAdmin(caller));
+        icpPaymentLog.size();
     };
 };
 
