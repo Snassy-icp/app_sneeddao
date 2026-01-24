@@ -141,6 +141,10 @@ export default function CanistersPage() {
     const [removingWalletCanister, setRemovingWalletCanister] = useState(null);
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
 
+    // Drag and drop state
+    const [draggedItem, setDraggedItem] = useState(null); // { type: 'canister' | 'group', id: string, sourceGroupId?: string }
+    const [dragOverTarget, setDragOverTarget] = useState(null); // { type: 'group' | 'wallet' | 'neuron_managers' | 'ungrouped', id?: string }
+
     // Helper to compare versions
     const compareVersions = (a, b) => {
         const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
@@ -1120,6 +1124,175 @@ export default function CanistersPage() {
         }
     };
 
+    // Drag and drop handlers
+    const handleDragStart = (e, type, id, sourceGroupId = null) => {
+        setDraggedItem({ type, id, sourceGroupId });
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({ type, id, sourceGroupId }));
+        // Add some opacity to the dragged element
+        e.target.style.opacity = '0.5';
+    };
+
+    const handleDragEnd = (e) => {
+        setDraggedItem(null);
+        setDragOverTarget(null);
+        e.target.style.opacity = '1';
+    };
+
+    const handleDragOver = (e, targetType, targetId = null) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        
+        // Don't allow dropping a group onto itself or its children
+        if (draggedItem?.type === 'group' && targetType === 'group') {
+            if (draggedItem.id === targetId) return;
+            // Check if target is a child of the dragged group
+            const isChildOf = (parentId, childId, groups) => {
+                const findGroup = (gList) => {
+                    for (const g of gList) {
+                        if (g.id === parentId) {
+                            const checkChildren = (subs) => {
+                                for (const sub of subs) {
+                                    if (sub.id === childId) return true;
+                                    if (checkChildren(sub.subgroups)) return true;
+                                }
+                                return false;
+                            };
+                            return checkChildren(g.subgroups);
+                        }
+                        if (isChildOf(parentId, childId, g.subgroups)) return true;
+                    }
+                    return false;
+                };
+                return findGroup(groups);
+            };
+            if (isChildOf(draggedItem.id, targetId, canisterGroups.groups)) return;
+        }
+        
+        setDragOverTarget({ type: targetType, id: targetId });
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        // Only clear if we're leaving the actual drop zone
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+            setDragOverTarget(null);
+        }
+    };
+
+    const handleDrop = async (e, targetType, targetId = null) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverTarget(null);
+        
+        if (!draggedItem) return;
+        
+        const { type: itemType, id: itemId, sourceGroupId } = draggedItem;
+        setDraggedItem(null);
+        
+        // Handle canister drops
+        if (itemType === 'canister') {
+            // From wallet
+            if (sourceGroupId === 'wallet') {
+                if (targetType === 'group' || targetType === 'ungrouped') {
+                    await handleMoveFromWallet(itemId, targetId || 'ungrouped');
+                } else if (targetType === 'neuron_managers') {
+                    await handleMoveFromWallet(itemId, 'neuron_managers');
+                }
+                // If dropping on wallet again, do nothing
+            }
+            // From neuron managers
+            else if (sourceGroupId === 'neuron_managers') {
+                if (targetType === 'wallet') {
+                    await handleMoveFromNeuronManagers(Principal.fromText(itemId), 'wallet');
+                } else if (targetType === 'group' || targetType === 'ungrouped') {
+                    await handleMoveFromNeuronManagers(Principal.fromText(itemId), targetId || 'ungrouped');
+                }
+                // If dropping on neuron_managers again, do nothing
+            }
+            // From groups/ungrouped
+            else if (sourceGroupId) {
+                if (targetType === 'wallet') {
+                    await handleMoveFromGroups(itemId, sourceGroupId, 'wallet');
+                } else if (targetType === 'neuron_managers') {
+                    await handleMoveFromGroups(itemId, sourceGroupId, 'neuron_managers');
+                } else if (targetType === 'group') {
+                    if (sourceGroupId !== targetId) {
+                        await handleMoveCanister(itemId, sourceGroupId, targetId);
+                    }
+                } else if (targetType === 'ungrouped') {
+                    if (sourceGroupId !== 'ungrouped') {
+                        await handleMoveCanister(itemId, sourceGroupId, 'ungrouped');
+                    }
+                }
+            }
+        }
+        // Handle group drops (reordering groups)
+        else if (itemType === 'group' && targetType === 'group') {
+            if (itemId !== targetId) {
+                await handleMoveGroup(itemId, targetId);
+            }
+        }
+    };
+
+    // Move a group to become a subgroup of another group (or to root level if targetId is null)
+    const handleMoveGroup = async (sourceGroupId, targetGroupId) => {
+        try {
+            // Find and remove the source group from its current location
+            let sourceGroup = null;
+            
+            const removeGroup = (groups) => {
+                for (let i = 0; i < groups.length; i++) {
+                    if (groups[i].id === sourceGroupId) {
+                        sourceGroup = groups[i];
+                        return [...groups.slice(0, i), ...groups.slice(i + 1)];
+                    }
+                    const newSubgroups = removeGroup(groups[i].subgroups);
+                    if (sourceGroup) {
+                        return [
+                            ...groups.slice(0, i),
+                            { ...groups[i], subgroups: newSubgroups },
+                            ...groups.slice(i + 1)
+                        ];
+                    }
+                }
+                return groups;
+            };
+            
+            let newGroups = { ...canisterGroups };
+            newGroups.groups = removeGroup(newGroups.groups);
+            
+            if (!sourceGroup) {
+                console.error('Source group not found');
+                return;
+            }
+            
+            // Add the group as a subgroup of the target
+            const addAsSubgroup = (groups) => {
+                return groups.map(g => {
+                    if (g.id === targetGroupId) {
+                        return { ...g, subgroups: [...g.subgroups, sourceGroup] };
+                    }
+                    return { ...g, subgroups: addAsSubgroup(g.subgroups) };
+                });
+            };
+            
+            if (targetGroupId) {
+                newGroups.groups = addAsSubgroup(newGroups.groups);
+            } else {
+                // Add to root level
+                newGroups.groups = [...newGroups.groups, sourceGroup];
+            }
+            
+            await saveCanisterGroups(newGroups);
+            setSuccessMessage('Group moved');
+        } catch (err) {
+            console.error('Error moving group:', err);
+            setError('Failed to move group');
+        }
+    };
+
     // Recursive component for rendering a group
     const GroupComponent = ({ 
         group, depth, styles, theme, expandedGroups, setExpandedGroups,
@@ -1133,7 +1306,9 @@ export default function CanistersPage() {
         handleCreateSubgroup, addingCanisterToGroupId, setAddingCanisterToGroupId,
         newCanisterForGroup, setNewCanisterForGroup, handleAddCanisterToGroup,
         // Health status props
-        getGroupHealthStatus, getStatusLampColor
+        getGroupHealthStatus, getStatusLampColor,
+        // Drag and drop props
+        onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, draggedItem, dragOverTarget
     }) => {
         const isExpanded = expandedGroups[group.id] ?? true;
         const isEditing = editingGroup === group.id;
@@ -1145,12 +1320,19 @@ export default function CanistersPage() {
         // Calculate health status for this group
         const healthStatus = getGroupHealthStatus(group, canisterStatus, cycleSettings);
         const lampColor = getStatusLampColor(healthStatus);
+        const isDropTarget = dragOverTarget?.type === 'group' && dragOverTarget?.id === group.id;
+        const isBeingDragged = draggedItem?.type === 'group' && draggedItem?.id === group.id;
 
         return (
-            <div style={{ 
-                marginBottom: '8px',
-                marginLeft: depth > 0 ? '20px' : '0',
-            }}>
+            <div 
+                style={{ 
+                    marginBottom: '8px',
+                    marginLeft: depth > 0 ? '20px' : '0',
+                }}
+                onDragOver={(e) => onDragOver && onDragOver(e, 'group', group.id)}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDrop && onDrop(e, 'group', group.id)}
+            >
                 {/* Group Header */}
                 <div 
                     style={{
@@ -1158,10 +1340,23 @@ export default function CanistersPage() {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '10px 14px',
-                        backgroundColor: theme.colors.card,
+                        backgroundColor: isDropTarget ? `${theme.colors.primary}20` : theme.colors.card,
                         borderRadius: '8px',
-                        border: `1px solid ${theme.colors.border}`,
-                        cursor: 'pointer',
+                        border: isDropTarget 
+                            ? `2px dashed ${theme.colors.primary}` 
+                            : `1px solid ${theme.colors.border}`,
+                        cursor: 'grab',
+                        opacity: isBeingDragged ? 0.5 : 1,
+                        transition: 'all 0.2s ease',
+                    }}
+                    draggable
+                    onDragStart={(e) => {
+                        e.stopPropagation();
+                        onDragStart && onDragStart(e, 'group', group.id, null);
+                    }}
+                    onDragEnd={(e) => {
+                        e.stopPropagation();
+                        onDragEnd && onDragEnd(e);
                     }}
                     onClick={() => setExpandedGroups(prev => ({ ...prev, [group.id]: !isExpanded }))}
                 >
@@ -1423,6 +1618,13 @@ export default function CanistersPage() {
                                 handleAddCanisterToGroup={handleAddCanisterToGroup}
                                 getGroupHealthStatus={getGroupHealthStatus}
                                 getStatusLampColor={getStatusLampColor}
+                                onDragStart={onDragStart}
+                                onDragEnd={onDragEnd}
+                                onDragOver={onDragOver}
+                                onDragLeave={onDragLeave}
+                                onDrop={onDrop}
+                                draggedItem={draggedItem}
+                                dragOverTarget={dragOverTarget}
                             />
                         ))}
                         
@@ -1447,6 +1649,9 @@ export default function CanistersPage() {
                                         canisterGroups={canisterGroups}
                                         handleMoveCanister={handleMoveCanister}
                                         handleMoveFromGroups={handleMoveFromGroups}
+                                        onDragStart={onDragStart}
+                                        onDragEnd={onDragEnd}
+                                        isDragging={draggedItem?.type === 'canister' && draggedItem?.id === canisterId}
                                     />
                                 ))}
                             </div>
@@ -1707,7 +1912,9 @@ export default function CanistersPage() {
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
         confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
-        canisterGroups, handleMoveCanister, handleMoveFromGroups
+        canisterGroups, handleMoveCanister, handleMoveFromGroups,
+        // Drag and drop props
+        onDragStart, onDragEnd, isDragging
     }) => {
         const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
         const status = canisterStatus[canisterId];
@@ -1737,7 +1944,17 @@ export default function CanistersPage() {
         ];
 
         return (
-            <div style={styles.canisterCard}>
+            <div 
+                style={{
+                    ...styles.canisterCard,
+                    cursor: 'grab',
+                    opacity: isDragging ? 0.5 : 1,
+                    transition: 'opacity 0.2s ease',
+                }}
+                draggable
+                onDragStart={(e) => onDragStart && onDragStart(e, 'canister', canisterId, groupId)}
+                onDragEnd={onDragEnd}
+            >
                 <div style={styles.canisterInfo}>
                     <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                         <FaCube size={18} />
@@ -2693,20 +2910,46 @@ export default function CanistersPage() {
                                                 handleAddCanisterToGroup={handleAddCanisterToGroup}
                                                 getGroupHealthStatus={getGroupHealthStatus}
                                                 getStatusLampColor={getStatusLampColor}
+                                                onDragStart={handleDragStart}
+                                                onDragEnd={handleDragEnd}
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={handleDrop}
+                                                draggedItem={draggedItem}
+                                                dragOverTarget={dragOverTarget}
                                             />
                                         ))}
                                         
                                         {/* Render Ungrouped Canisters */}
-                                        {canisterGroups.ungrouped.length > 0 && (
-                                            <div style={{ marginTop: canisterGroups.groups.length > 0 ? '16px' : '0' }}>
-                                                <div style={{ 
-                                                    fontSize: '12px', 
-                                                    color: theme.colors.textSecondary, 
-                                                    marginBottom: '8px',
-                                                    fontWeight: 500,
-                                                }}>
-                                                    Ungrouped ({canisterGroups.ungrouped.length})
-                                                </div>
+                                        {/* Ungrouped Section - Drop Zone */}
+                                        <div 
+                                            style={{ 
+                                                marginTop: canisterGroups.groups.length > 0 ? '16px' : '0',
+                                                padding: draggedItem ? '8px' : '0',
+                                                backgroundColor: dragOverTarget?.type === 'ungrouped' ? `${theme.colors.primary}15` : 'transparent',
+                                                border: dragOverTarget?.type === 'ungrouped' ? `2px dashed ${theme.colors.primary}` : '2px dashed transparent',
+                                                borderRadius: '8px',
+                                                transition: 'all 0.2s ease',
+                                                minHeight: draggedItem && canisterGroups.ungrouped.length === 0 ? '60px' : 'auto',
+                                            }}
+                                            onDragOver={(e) => handleDragOver(e, 'ungrouped')}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={(e) => handleDrop(e, 'ungrouped')}
+                                        >
+                                            <div style={{ 
+                                                fontSize: '12px', 
+                                                color: theme.colors.textSecondary, 
+                                                marginBottom: '8px',
+                                                fontWeight: 500,
+                                            }}>
+                                                Ungrouped ({canisterGroups.ungrouped.length})
+                                                {dragOverTarget?.type === 'ungrouped' && (
+                                                    <span style={{ marginLeft: '8px', color: theme.colors.primary }}>
+                                                        Drop here
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {canisterGroups.ungrouped.length > 0 && (
                                                 <div style={styles.canisterList}>
                                                     {canisterGroups.ungrouped.map((canisterId) => (
                                                         <CanisterCard
@@ -2726,17 +2969,33 @@ export default function CanistersPage() {
                                                             canisterGroups={canisterGroups}
                                                             handleMoveCanister={handleMoveCanister}
                                                             handleMoveFromGroups={handleMoveFromGroups}
+                                                            onDragStart={handleDragStart}
+                                                            onDragEnd={handleDragEnd}
+                                                            isDragging={draggedItem?.type === 'canister' && draggedItem?.id === canisterId}
                                                         />
                                                     ))}
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </>
                         )}
 
-                        {/* Wallet Section (Tracked Canisters) */}
+                        {/* Wallet Section (Tracked Canisters) - Drop Zone */}
+                        <div
+                            onDragOver={(e) => handleDragOver(e, 'wallet')}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, 'wallet')}
+                            style={{
+                                backgroundColor: dragOverTarget?.type === 'wallet' ? `${theme.colors.primary}10` : 'transparent',
+                                border: dragOverTarget?.type === 'wallet' ? `2px dashed ${theme.colors.primary}` : '2px dashed transparent',
+                                borderRadius: '12px',
+                                transition: 'all 0.2s ease',
+                                padding: dragOverTarget?.type === 'wallet' ? '8px' : '0',
+                                margin: dragOverTarget?.type === 'wallet' ? '-8px' : '0',
+                            }}
+                        >
                         <div 
                             style={styles.sectionHeader}
                             onClick={() => setWalletExpanded(!walletExpanded)}
@@ -2747,6 +3006,11 @@ export default function CanistersPage() {
                                 Wallet
                                 {trackedCanisters.length > 0 && (
                                     <span style={styles.sectionCount}>{trackedCanisters.length}</span>
+                                )}
+                                {dragOverTarget?.type === 'wallet' && (
+                                    <span style={{ marginLeft: '8px', color: theme.colors.primary, fontSize: '12px' }}>
+                                        Drop here to add to wallet
+                                    </span>
                                 )}
                             </div>
                             <Link 
@@ -2962,7 +3226,18 @@ export default function CanistersPage() {
                                                 ];
 
                                                 return (
-                                                    <div key={canisterId} style={styles.canisterCard}>
+                                                    <div 
+                                                        key={canisterId} 
+                                                        style={{
+                                                            ...styles.canisterCard,
+                                                            cursor: 'grab',
+                                                            opacity: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 0.5 : 1,
+                                                            transition: 'opacity 0.2s ease',
+                                                        }}
+                                                        draggable
+                                                        onDragStart={(e) => handleDragStart(e, 'canister', canisterId, 'wallet')}
+                                                        onDragEnd={handleDragEnd}
+                                                    >
                                                         <div style={styles.canisterInfo}>
                                                             {/* Health status lamp */}
                                                             <span
@@ -3130,8 +3405,22 @@ export default function CanistersPage() {
                                 )}
                             </>
                         )}
+                        </div>
 
-                        {/* ICP Neuron Managers Section */}
+                        {/* ICP Neuron Managers Section - Drop Zone */}
+                        <div
+                            onDragOver={(e) => handleDragOver(e, 'neuron_managers')}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, 'neuron_managers')}
+                            style={{
+                                backgroundColor: dragOverTarget?.type === 'neuron_managers' ? `${theme.colors.primary}10` : 'transparent',
+                                border: dragOverTarget?.type === 'neuron_managers' ? `2px dashed ${theme.colors.primary}` : '2px dashed transparent',
+                                borderRadius: '12px',
+                                transition: 'all 0.2s ease',
+                                padding: dragOverTarget?.type === 'neuron_managers' ? '8px' : '0',
+                                margin: dragOverTarget?.type === 'neuron_managers' ? '-8px' : '0',
+                            }}
+                        >
                         <div 
                             style={styles.sectionHeader}
                             onClick={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
@@ -3142,6 +3431,11 @@ export default function CanistersPage() {
                                 ICP Neuron Managers
                                 {neuronManagers.length > 0 && (
                                     <span style={styles.sectionCount}>{neuronManagers.length}</span>
+                                )}
+                                {dragOverTarget?.type === 'neuron_managers' && (
+                                    <span style={{ marginLeft: '8px', color: theme.colors.primary, fontSize: '12px' }}>
+                                        Drop here to add as manager
+                                    </span>
                                 )}
                             </div>
                             <Link 
@@ -3364,7 +3658,15 @@ export default function CanistersPage() {
                                             return (
                                                 <div 
                                                     key={canisterId} 
-                                                    style={styles.managerCard}
+                                                    style={{
+                                                        ...styles.managerCard,
+                                                        cursor: 'grab',
+                                                        opacity: draggedItem?.type === 'canister' && draggedItem?.id === canisterId ? 0.5 : 1,
+                                                        transition: 'opacity 0.2s ease',
+                                                    }}
+                                                    draggable
+                                                    onDragStart={(e) => handleDragStart(e, 'canister', canisterId, 'neuron_managers')}
+                                                    onDragEnd={handleDragEnd}
                                                 >
                                                     <div style={styles.managerInfo}>
                                                         {/* Health status lamp */}
@@ -3581,6 +3883,7 @@ export default function CanistersPage() {
                                 )}
                             </>
                         )}
+                        </div>
                     </>
                 )}
             </div>
