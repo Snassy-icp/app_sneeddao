@@ -48,6 +48,7 @@ import IcpNeuronManagerFactoryAdmin from './pages/admin/IcpNeuronManagerFactory'
 import SneedexAdmin from './pages/admin/Sneedex';
 import SneedPremiumAdmin from './pages/admin/SneedPremium';
 import CanisterGroupsAdmin from './pages/admin/CanisterGroups';
+import NetworkAdmin from './pages/admin/Network';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -208,6 +209,7 @@ function App() {
                     <Route path="/admin/sneedex" element={<SneedexAdmin />} />
                     <Route path="/admin/premium" element={<SneedPremiumAdmin />} />
                     <Route path="/admin/canisters" element={<CanisterGroupsAdmin />} />
+                    <Route path="/admin/network" element={<NetworkAdmin />} />
                   </Routes>
                   </Layout>
                 </NamingProvider>
