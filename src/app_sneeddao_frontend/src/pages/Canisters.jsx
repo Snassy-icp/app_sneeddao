@@ -2627,6 +2627,75 @@ export default function CanistersPage() {
                     </Link>
                 </div>
 
+                {/* Cycle Status Legend */}
+                <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '16px',
+                    padding: '12px 16px',
+                    backgroundColor: theme.colors.secondaryBg,
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.colors.border}`,
+                    marginBottom: '20px',
+                    fontSize: '13px',
+                }}>
+                    <span style={{ color: theme.colors.mutedText, fontWeight: '500' }}>Cycle Status:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            backgroundColor: '#22c55e',
+                            boxShadow: '0 0 4px #22c55e',
+                        }} />
+                        <span style={{ color: theme.colors.secondaryText }}>Healthy</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            backgroundColor: '#f59e0b',
+                            boxShadow: '0 0 4px #f59e0b',
+                        }} />
+                        <span style={{ color: theme.colors.secondaryText }}>Low cycles</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            backgroundColor: '#ef4444',
+                            boxShadow: '0 0 4px #ef4444',
+                        }} />
+                        <span style={{ color: theme.colors.secondaryText }}>Critical - needs top-up!</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            backgroundColor: '#6b7280',
+                        }} />
+                        <span style={{ color: theme.colors.secondaryText }}>Unknown</span>
+                    </div>
+                    <Link 
+                        to="/me?tab=settings"
+                        style={{ 
+                            color: theme.colors.accent, 
+                            fontSize: '12px', 
+                            textDecoration: 'none',
+                            marginLeft: '8px',
+                        }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        Customize thresholds →
+                    </Link>
+                </div>
+
                 {!isAuthenticated ? (
                     <div style={styles.notLoggedIn}>
                         <div style={styles.emptyIcon}>🔒</div>

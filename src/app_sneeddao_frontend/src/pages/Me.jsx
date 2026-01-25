@@ -132,6 +132,22 @@ export default function Me() {
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
+    // Handle tab parameter to auto-expand settings
+    useEffect(() => {
+        const tabParam = searchParams.get('tab');
+        if (tabParam === 'settings') {
+            setSettingsExpanded(true);
+            setCanisterManagerSettingsExpanded(true);
+            // Scroll to settings section after a brief delay
+            setTimeout(() => {
+                const settingsElement = document.getElementById('settings-section');
+                if (settingsElement) {
+                    settingsElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        }
+    }, [searchParams]);
+
     // Add validation function
     const validateNameInput = (input) => {
         if (input.length > 32) {
@@ -844,13 +860,16 @@ export default function Me() {
                 </div>
 
                 {/* Settings Section */}
-                <div style={{
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
-                    border: `1px solid ${theme.colors.border}`,
-                    marginTop: '20px',
-                    overflow: 'hidden',
-                }}>
+                <div 
+                    id="settings-section"
+                    style={{
+                        backgroundColor: theme.colors.secondaryBg,
+                        borderRadius: '8px',
+                        border: `1px solid ${theme.colors.border}`,
+                        marginTop: '20px',
+                        overflow: 'hidden',
+                    }}
+                >
                     {/* Parent Settings Header */}
                     <div 
                         onClick={() => setSettingsExpanded(!settingsExpanded)}
