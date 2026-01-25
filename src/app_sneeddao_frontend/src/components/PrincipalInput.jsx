@@ -9,6 +9,9 @@ const PrincipalInput = ({
     onChange, 
     placeholder = 'Enter principal ID or search by name', 
     style = {},
+    inputStyle = {},
+    onKeyDown,
+    autoFocus = false,
     disabled = false,
     isAuthenticated = false,
     defaultTab = 'private' // 'private' | 'public' | 'all'
@@ -234,8 +237,10 @@ const PrincipalInput = ({
                 onChange={handleInputChange}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
+                onKeyDown={onKeyDown}
                 placeholder={placeholder}
                 disabled={disabled}
+                autoFocus={autoFocus}
                 style={{
                     width: '100%',
                     padding: '8px 12px',
@@ -246,7 +251,8 @@ const PrincipalInput = ({
                     fontSize: '14px',
                     outline: 'none',
                     transition: 'border-color 0.2s ease',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    ...inputStyle
                 }}
             />
             

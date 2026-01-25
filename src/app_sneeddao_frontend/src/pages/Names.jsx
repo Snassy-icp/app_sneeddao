@@ -185,8 +185,8 @@ export default function Names() {
         <Header showSnsDropdown={true} />
         <main className="wallet-container">
           <div style={styles.card}>
-            <h2 style={styles.title}>Names</h2>
-            <div style={styles.muted}>Connect your wallet to manage your public name and nicknames.</div>
+            <h2 style={styles.title}>Address Book</h2>
+            <div style={styles.muted}>Connect your wallet to manage your private address book (principals and neurons).</div>
           </div>
         </main>
       </div>
@@ -198,70 +198,10 @@ export default function Names() {
       <Header showSnsDropdown={true} />
       <main className="wallet-container">
         <div style={{ marginBottom: '16px' }}>
-          <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>Names</h1>
+          <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>Address Book</h1>
           <div style={{ color: theme.colors.mutedText, marginTop: '6px' }}>
-            Manage your <strong>public name</strong>, your private <strong>principal nicknames</strong>, and your private <strong>neuron nicknames</strong>.
+            Manage your private <strong>principal</strong> and <strong>neuron</strong> nicknames.
           </div>
-        </div>
-
-        {/* My public name */}
-        <div style={styles.card}>
-          <h2 style={styles.title}>My public name</h2>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 260 }}>
-              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Principal</div>
-              <PrincipalDisplay principal={identity.getPrincipal()} showCopyButton={true} />
-            </div>
-            <div style={{ flex: 1, minWidth: 260 }}>
-              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Current name</div>
-              <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>
-                {myNameLoading ? 'Loading…' : (myName || '(none set)')}
-                {myNameVerified && (
-                  <span style={{ marginLeft: '10px', color: theme.colors.success, fontWeight: 800, fontSize: '12px' }}>
-                    VERIFIED
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {!myNameEditing ? (
-            <div style={{ marginTop: '14px' }}>
-              <button type="button" onClick={startEditMyName} style={styles.btn('accent')}>
-                Edit name
-              </button>
-            </div>
-          ) : (
-            <div style={{ marginTop: '14px' }}>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <input
-                  value={myNameInput}
-                  onChange={(e) => {
-                    setMyNameInput(e.target.value);
-                    setMyNameError(validateName(e.target.value));
-                  }}
-                  placeholder="Enter public name (max 32 chars)"
-                  style={styles.input}
-                />
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button type="button" onClick={saveMyName} disabled={myNameSaving || Boolean(myNameError)} style={styles.btn('accent')}>
-                    {myNameSaving ? 'Saving…' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMyNameEditing(false);
-                      setMyNameError('');
-                    }}
-                    style={styles.btn('muted')}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-              {myNameError && <div style={{ color: theme.colors.error, marginTop: '8px' }}>{myNameError}</div>}
-            </div>
-          )}
         </div>
 
         {/* Principal nicknames */}

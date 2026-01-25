@@ -1159,6 +1159,36 @@ function SneedexOffers() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main style={styles.container}>
+                <div style={{
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    flexWrap: 'wrap'
+                }}>
+                    <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>
+                        🧠 ICP Neuron Manager: create a tradable neuron manager canister and list it on Sneedex.
+                    </div>
+                    <Link
+                        to="/create_icp_neuron"
+                        style={{
+                            background: theme.colors.accent,
+                            color: theme.colors.primaryBg,
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            textDecoration: 'none',
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        Create ICP Neuron Manager →
+                    </Link>
+                </div>
                 <div style={styles.header}>
                     <h1 style={styles.title}>Marketplace</h1>
                     <div style={styles.headerButtons}>

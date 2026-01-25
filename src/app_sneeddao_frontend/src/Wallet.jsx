@@ -38,6 +38,7 @@ import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCan
 import { fetchAndCacheSnsData, getAllSnses } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
+import PrincipalInput from './components/PrincipalInput';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import priceService from './services/PriceService';
@@ -5121,25 +5122,15 @@ function Wallet() {
                             alignItems: 'center',
                             flexWrap: 'wrap'
                         }}>
-                            <input
-                                type="text"
-                                placeholder="Add existing manager by canister ID"
+                            <PrincipalInput
                                 value={registerManagerId}
-                                onChange={(e) => {
-                                    setRegisterManagerId(e.target.value);
+                                onChange={(v) => {
+                                    setRegisterManagerId(v);
                                     setRegisterManagerError('');
                                 }}
-                                style={{
-                                    flex: 1,
-                                    minWidth: '200px',
-                                    padding: '8px 12px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    backgroundColor: theme.colors.primaryBg,
-                                    color: theme.colors.primaryText,
-                                    fontSize: '13px',
-                                    fontFamily: 'monospace',
-                                }}
+                                placeholder="Add existing manager by canister ID"
+                                style={{ flex: 1, minWidth: '200px', maxWidth: 'none' }}
+                                inputStyle={{ fontFamily: 'monospace', fontSize: '13px' }}
                                 disabled={registeringManager}
                             />
                             <button
@@ -6032,30 +6023,20 @@ function Wallet() {
                             alignItems: 'center',
                             flexWrap: 'wrap'
                         }}>
-                            <input
-                                type="text"
-                                placeholder="Add canister by ID"
+                            <PrincipalInput
                                 value={newTrackedCanisterId}
-                                onChange={(e) => {
-                                    setNewTrackedCanisterId(e.target.value);
+                                onChange={(v) => {
+                                    setNewTrackedCanisterId(v);
                                     setAddTrackedCanisterError('');
                                 }}
+                                placeholder="Add canister by ID"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && newTrackedCanisterId.trim()) {
                                         handleAddTrackedCanister();
                                     }
                                 }}
-                                style={{
-                                    flex: 1,
-                                    minWidth: '200px',
-                                    padding: '8px 12px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    backgroundColor: theme.colors.primaryBg,
-                                    color: theme.colors.primaryText,
-                                    fontSize: '13px',
-                                    fontFamily: 'monospace',
-                                }}
+                                style={{ flex: 1, minWidth: '200px', maxWidth: 'none' }}
+                                inputStyle={{ fontFamily: 'monospace', fontSize: '13px' }}
                                 disabled={addingTrackedCanister}
                             />
                             <button

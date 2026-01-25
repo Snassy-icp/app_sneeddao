@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
+import PrincipalInput from '../components/PrincipalInput';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
@@ -1566,26 +1567,18 @@ export default function CanistersPage() {
                                 borderRadius: '6px',
                             }}>
                                 <FaCube size={14} style={{ color: theme.colors.primary || '#3b82f6' }} />
-                                <input
-                                    type="text"
-                                    placeholder="Canister ID"
+                                <PrincipalInput
                                     value={newCanisterForGroup}
-                                    onChange={(e) => setNewCanisterForGroup(e.target.value)}
+                                    onChange={setNewCanisterForGroup}
+                                    placeholder="Canister ID"
+                                    autoFocus={true}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') handleAddCanisterToGroup(group.id);
                                         if (e.key === 'Escape') { setAddingCanisterToGroupId(null); setNewCanisterForGroup(''); }
                                     }}
-                                    style={{ 
-                                        flex: 1,
-                                        padding: '6px 10px', 
-                                        fontSize: '12px',
-                                        fontFamily: 'monospace',
-                                        backgroundColor: theme.colors.card,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '4px',
-                                        color: theme.colors.text,
-                                    }}
-                                    autoFocus
+                                    style={{ flex: 1, minWidth: 0, maxWidth: 'none' }}
+                                    inputStyle={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace' }}
+                                    disabled={addingCanister}
                                 />
                                 <button
                                     onClick={() => handleAddCanisterToGroup(group.id)}
@@ -2660,13 +2653,13 @@ export default function CanistersPage() {
                         <div style={styles.addSection}>
                             <div style={styles.addSectionTitle}>Add a canister to track</div>
                             <div style={styles.inputRow}>
-                                <input
-                                    type="text"
-                                    placeholder="Enter canister ID (e.g., ryjl3-tyaaa-aaaaa-aaaba-cai)"
+                                <PrincipalInput
                                     value={newCanisterId}
-                                    onChange={(e) => setNewCanisterId(e.target.value)}
+                                    onChange={setNewCanisterId}
+                                    placeholder="Enter canister ID (e.g., ryjl3-tyaaa-aaaaa-aaaba-cai)"
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddCanister()}
-                                    style={styles.input}
+                                    style={{ flex: 1, maxWidth: 'none' }}
+                                    inputStyle={{ fontFamily: 'monospace' }}
                                     disabled={addingCanister}
                                 />
                                 <button
@@ -3144,20 +3137,20 @@ export default function CanistersPage() {
                                 <div style={{ ...styles.addSection, marginBottom: '16px' }}>
                                     <div style={styles.addSectionTitle}>Add canister to wallet</div>
                                     <div style={styles.inputRow}>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter canister ID"
+                                        <PrincipalInput
                                             value={newWalletCanisterId}
-                                            onChange={(e) => {
-                                                setNewWalletCanisterId(e.target.value);
+                                            onChange={(v) => {
+                                                setNewWalletCanisterId(v);
                                                 setWalletCanisterError(null);
                                             }}
+                                            placeholder="Enter canister ID"
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && newWalletCanisterId.trim()) {
                                                     handleAddWalletCanister();
                                                 }
                                             }}
-                                            style={styles.input}
+                                            style={{ flex: 1, maxWidth: 'none' }}
+                                            inputStyle={{ fontFamily: 'monospace' }}
                                             disabled={addingWalletCanister}
                                         />
                                         <button
@@ -3578,16 +3571,16 @@ export default function CanistersPage() {
                                 <div style={{ ...styles.addSection, marginBottom: '16px' }}>
                                     <div style={styles.addSectionTitle}>Add existing manager</div>
                                     <div style={styles.inputRow}>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter neuron manager canister ID"
+                                        <PrincipalInput
                                             value={newManagerId}
-                                            onChange={(e) => {
-                                                setNewManagerId(e.target.value);
+                                            onChange={(v) => {
+                                                setNewManagerId(v);
                                                 setManagerError(null);
                                             }}
+                                            placeholder="Enter neuron manager canister ID"
                                             onKeyDown={(e) => e.key === 'Enter' && handleAddManager()}
-                                            style={styles.input}
+                                            style={{ flex: 1, maxWidth: 'none' }}
+                                            inputStyle={{ fontFamily: 'monospace' }}
                                             disabled={addingManager}
                                         />
                                         <button

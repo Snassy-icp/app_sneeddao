@@ -290,6 +290,37 @@ function Sneedex() {
                         Trade canisters, SNS neurons, and ICRC1 tokens through trustless escrow auctions.
                         Bundle multiple assets, set your terms, and let the market decide.
                     </p>
+                    <div style={{
+                        margin: '18px auto 0 auto',
+                        maxWidth: '820px',
+                        backgroundColor: theme.colors.secondaryBg,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '14px',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '12px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>
+                            🧠 ICP Neuron Manager canisters can be traded on Sneedex.
+                        </div>
+                        <Link
+                            to="/create_icp_neuron"
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                padding: '10px 14px',
+                                borderRadius: '10px',
+                                textDecoration: 'none',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                            }}
+                        >
+                            Create ICP Neuron Manager →
+                        </Link>
+                    </div>
                     <div style={styles.buttonRow}>
                         <Link
                             to="/sneedex_offers"
