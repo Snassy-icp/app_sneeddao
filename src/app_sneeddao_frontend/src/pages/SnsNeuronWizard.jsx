@@ -11,7 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
-import { formatAmount } from '../utils/StringUtils';
+import { formatAmount } from '../utils/SneedexUtils';
 
 export default function SnsNeuronWizard() {
     const navigate = useNavigate();
@@ -215,8 +215,11 @@ export default function SnsNeuronWizard() {
         loadSnsParams();
     }, [selectedGovernanceId, identity, isAuthenticated]);
 
+    // Track if we need to auto-fill (when SNS changes)
+    const [needsAutoFill, setNeedsAutoFill] = useState(true);
+    
     // Reset and set defaults when SNS changes
-  useEffect(() => {
+    useEffect(() => {
         setStakeAmount('');
         setDissolveDelayDays('');
         setStakingError('');
@@ -226,20 +229,27 @@ export default function SnsNeuronWizard() {
         setMinStakeE8s(null);
         setMinDissolveDelaySeconds(null);
         setMaxDissolveDelaySeconds(null);
-  }, [selectedSnsRoot]);
+        // Mark that we need to auto-fill when params load
+        setNeedsAutoFill(true);
+    }, [selectedSnsRoot]);
 
     // Auto-fill minimum stake and dissolve delay when params are loaded
     useEffect(() => {
+        if (!needsAutoFill) return;
+        if (minStakeE8s === null || minDissolveDelaySeconds === null) return;
+        if (tokenDecimals === null) return;
+        
         // Auto-fill minimum stake amount
-        if (minStakeE8s !== null && stakeAmount === '' && tokenDecimals !== null) {
-            setStakeAmount(formatAmount(minStakeE8s, tokenDecimals));
-        }
+        const minStakeFormatted = formatAmount(minStakeE8s, tokenDecimals);
+        setStakeAmount(minStakeFormatted);
+        
         // Auto-fill minimum dissolve delay
-        if (minDissolveDelaySeconds !== null && dissolveDelayDays === '') {
-            const minDays = Math.ceil(minDissolveDelaySeconds / (24 * 60 * 60));
-            setDissolveDelayDays(String(minDays));
-        }
-    }, [minStakeE8s, minDissolveDelaySeconds, tokenDecimals]);
+        const minDays = Math.ceil(minDissolveDelaySeconds / (24 * 60 * 60));
+        setDissolveDelayDays(String(minDays));
+        
+        // Mark auto-fill as done
+        setNeedsAutoFill(false);
+    }, [needsAutoFill, minStakeE8s, minDissolveDelaySeconds, tokenDecimals]);
 
     // Register token silently
     const registerTokenSilently = async () => {
