@@ -837,7 +837,11 @@ export default function SnsNeuronWizard() {
         <>
             <div style={styles.hero}>
                 <h1 style={styles.title}>
-                    <FaCoins style={{ color: theme.colors.accent }} />
+                    {selectedSnsLogo ? (
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
+                    ) : (
+                        <FaCoins style={{ color: theme.colors.accent, flexShrink: 0 }} />
+                    )}
                     Liquid SNS Staking Wizard
                 </h1>
                 <p style={styles.subtitle}>
@@ -1015,7 +1019,7 @@ export default function SnsNeuronWizard() {
             <div style={styles.hero}>
                 <h1 style={styles.title}>
                     {selectedSnsLogo && (
-                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
                     )}
                     Configure Stake
                 </h1>
@@ -1293,7 +1297,7 @@ export default function SnsNeuronWizard() {
                 <div style={styles.hero}>
                     <h1 style={styles.title}>
                         {selectedSnsLogo && (
-                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
                         )}
                         Confirm & Stake
                     </h1>
