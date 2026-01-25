@@ -433,34 +433,69 @@ export default function SnsNeuronWizard() {
 
     // Validation
     const canProceedStep1 = isSelectedSnsValid;
-    const canProceedStep2 = useMemo(() => {
+    
+    // Detailed validation with reasons
+    const step2Validation = useMemo(() => {
+        const errors = [];
+        
         // Must have stake amount
-        if (!stakeAmount) return false;
+        if (!stakeAmount) {
+            errors.push('Enter stake amount');
+            return { valid: false, errors };
+        }
         const amount = parseFloat(stakeAmount);
-        if (isNaN(amount) || amount <= 0) return false;
+        if (isNaN(amount) || amount <= 0) {
+            errors.push('Stake amount must be greater than 0');
+            return { valid: false, errors };
+        }
         
         // Calculate amount in e8s
         const amountE8s = BigInt(Math.floor(amount * (10 ** tokenDecimals)));
         
         // Must have sufficient balance
-        if (tokenBalance === null || amountE8s > tokenBalance) return false;
-        if (amountE8s <= 0n) return false;
+        if (tokenBalance === null) {
+            errors.push('Loading balance...');
+            return { valid: false, errors };
+        }
+        if (amountE8s > tokenBalance) {
+            errors.push('Insufficient balance');
+            return { valid: false, errors };
+        }
         
         // Check minimum stake requirement (if we know it)
-        if (minStakeE8s !== null && amountE8s < minStakeE8s) return false;
+        if (minStakeE8s !== null && amountE8s < minStakeE8s) {
+            errors.push(`Below minimum stake of ${formatAmount(minStakeE8s, tokenDecimals)} ${tokenSymbol}`);
+            return { valid: false, errors };
+        }
         
         // Must have dissolve delay set
-        if (!dissolveDelayDays) return false;
+        if (!dissolveDelayDays) {
+            errors.push('Enter dissolve delay');
+            return { valid: false, errors };
+        }
         const delayDays = Number(dissolveDelayDays);
-        if (isNaN(delayDays) || delayDays < 0) return false;
+        if (isNaN(delayDays) || delayDays < 0) {
+            errors.push('Dissolve delay must be a positive number');
+            return { valid: false, errors };
+        }
         
         // Check dissolve delay bounds
         const delaySeconds = delayDays * 24 * 60 * 60;
-        if (minDissolveDelaySeconds !== null && delaySeconds < minDissolveDelaySeconds) return false;
-        if (maxDissolveDelaySeconds !== null && delaySeconds > maxDissolveDelaySeconds) return false;
+        if (minDissolveDelaySeconds !== null && delaySeconds < minDissolveDelaySeconds) {
+            const minDays = Math.ceil(minDissolveDelaySeconds / (24 * 60 * 60));
+            errors.push(`Dissolve delay below minimum of ${minDays} days`);
+            return { valid: false, errors };
+        }
+        if (maxDissolveDelaySeconds !== null && delaySeconds > maxDissolveDelaySeconds) {
+            const maxDays = Math.floor(maxDissolveDelaySeconds / (24 * 60 * 60));
+            errors.push(`Dissolve delay above maximum of ${maxDays} days`);
+            return { valid: false, errors };
+        }
         
-        return true;
-    }, [stakeAmount, tokenDecimals, tokenBalance, minStakeE8s, dissolveDelayDays, minDissolveDelaySeconds, maxDissolveDelaySeconds]);
+        return { valid: true, errors: [] };
+    }, [stakeAmount, tokenDecimals, tokenBalance, minStakeE8s, dissolveDelayDays, minDissolveDelaySeconds, maxDissolveDelaySeconds, tokenSymbol]);
+    
+    const canProceedStep2 = step2Validation.valid;
 
     const handleSetMax = () => {
         if (tokenBalance === null) return;
@@ -1127,6 +1162,24 @@ export default function SnsNeuronWizard() {
                   )}
                 </div>
             </div>
+
+            {/* Validation status */}
+            {!canProceedStep2 && step2Validation.errors.length > 0 && (
+                <div style={{
+                    background: `${theme.colors.warning || '#f59e0b'}15`,
+                    border: `1px solid ${theme.colors.warning || '#f59e0b'}30`,
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    fontSize: '0.9rem',
+                    color: theme.colors.warning || '#f59e0b',
+                }}>
+                    ⚠️ {step2Validation.errors[0]}
+                </div>
+            )}
 
             <div style={styles.buttonRow}>
                 <button
