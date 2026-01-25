@@ -172,8 +172,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/liquid_staking',
             subMenu: [
                 { name: 'Overview', path: '/liquid_staking' },
-                { name: 'Create ICP Neuron Manager', path: '/create_icp_neuron' },
-                { name: 'SNS Neuron Wizard', path: '/sns_neuron_wizard' },
+                { name: 'ICP Liquid Staking', path: '/create_icp_neuron' },
+                { name: 'SNS Liquid Staking', path: '/sns_neuron_wizard' },
             ]
         },
 

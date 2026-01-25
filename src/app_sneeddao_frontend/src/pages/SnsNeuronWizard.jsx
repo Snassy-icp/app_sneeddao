@@ -337,15 +337,12 @@ export default function SnsNeuronWizard() {
                 return Array.from(new Uint8Array(buffer));
             })();
             
-            // Send amount + fee because fee gets deducted from the transfer
-            const amountToSend = amountE8s + tokenFee;
-            
             const transferResult = await ledgerActor.icrc1_transfer({
                 to: {
                     owner: Principal.fromText(selectedGovernanceId),
                     subaccount: [Array.from(subaccount32)]
                 },
-                amount: amountToSend,
+                amount: amountE8s,
                 fee: [],
                 memo: [memoBytes],
                 from_subaccount: [],
@@ -426,9 +423,7 @@ export default function SnsNeuronWizard() {
         const amount = parseFloat(stakeAmount);
         if (isNaN(amount) || amount <= 0) return false;
         const amountE8s = BigInt(Math.floor(amount * (10 ** tokenDecimals)));
-        // Need stake amount + fee for the transfer
-        const totalNeeded = amountE8s + tokenFee;
-        if (tokenBalance === null || totalNeeded > tokenBalance) return false;
+        if (tokenBalance === null || amountE8s > tokenBalance) return false;
         if (amountE8s <= 0n) return false;
         // Check minimum stake requirement
         if (minStakeE8s !== null && amountE8s < minStakeE8s) return false;
@@ -444,12 +439,10 @@ export default function SnsNeuronWizard() {
 
     const handleSetMax = () => {
         if (tokenBalance === null) return;
-        // Max stake = balance - fee (need fee for the transfer itself)
-        const maxStake = tokenBalance - tokenFee;
-        if (maxStake <= 0n) {
+        if (tokenBalance <= 0n) {
             setStakeAmount('0');
         } else {
-            setStakeAmount(formatAmount(maxStake, tokenDecimals));
+            setStakeAmount(formatAmount(tokenBalance, tokenDecimals));
         }
     };
 
@@ -731,7 +724,7 @@ export default function SnsNeuronWizard() {
                     <style>{spinnerKeyframes}</style>
                     <div style={styles.loginPrompt}>
                         <FaCoins size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
-                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem' }}>SNS Staking Wizard</h2>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem' }}>Liquid SNS Staking Wizard</h2>
                         <p style={{ fontSize: '1.1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem' }}>
                             Please log in to stake your SNS tokens
                         </p>
@@ -781,10 +774,14 @@ export default function SnsNeuronWizard() {
             <div style={styles.hero}>
                 <h1 style={styles.title}>
                     <FaCoins style={{ color: theme.colors.accent }} />
-                    SNS Staking Wizard
+                    Liquid SNS Staking Wizard
                 </h1>
                 <p style={styles.subtitle}>
-                    Stake tokens in any SNS DAO to earn rewards and participate in governance
+                    Stake tokens in any SNS DAO to earn rewards and participate in governance.
+                    <br />
+                    <span style={{ fontSize: '0.95rem' }}>
+                        Neurons created here are <strong>transferrable</strong> and <strong>tradable on Sneedex</strong>.
+                    </span>
                 </p>
             </div>
 
@@ -951,8 +948,8 @@ export default function SnsNeuronWizard() {
     // Step 2: Configure Stake
     const renderStep2 = () => (
         <>
-            <div style={styles.hero}>
-                <h1 style={styles.title}>
+            <div style={{ ...styles.hero, textAlign: 'center' }}>
+                <h1 style={{ ...styles.title, justifyContent: 'center' }}>
                     {selectedSnsLogo && (
                         <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                     )}
@@ -1036,7 +1033,6 @@ export default function SnsNeuronWizard() {
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
                         Balance: {loadingBalance ? '...' : `${formatAmount(tokenBalance || 0n, tokenDecimals)} ${tokenSymbol}`}
-                        {tokenFee > 0n && ` • Fee: ${formatAmount(tokenFee, tokenDecimals)} ${tokenSymbol}`}
                     </div>
                     {stakeAmount && minStakeE8s !== null && (
                         (() => {
@@ -1175,12 +1171,10 @@ export default function SnsNeuronWizard() {
             );
         }
 
-        const stakeAmountE8s = BigInt(Math.floor(parseFloat(stakeAmount || '0') * (10 ** tokenDecimals)));
-
         return (
             <>
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
+                <div style={{ ...styles.hero, textAlign: 'center' }}>
+                    <h1 style={{ ...styles.title, justifyContent: 'center' }}>
                         {selectedSnsLogo && (
                             <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                         )}
@@ -1198,16 +1192,8 @@ export default function SnsNeuronWizard() {
                     </div>
                     <div style={styles.summaryRow}>
                         <span style={styles.summaryLabel}>Stake Amount</span>
-                        <span style={styles.summaryValue}>{stakeAmount} {tokenSymbol}</span>
-                    </div>
-                    <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>Transaction Fee</span>
-                        <span style={styles.summaryValue}>{formatAmount(tokenFee, tokenDecimals)} {tokenSymbol}</span>
-                    </div>
-                    <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>Total to Send</span>
                         <span style={{ ...styles.summaryValue, color: theme.colors.accent }}>
-                            {formatAmount(stakeAmountE8s + tokenFee, tokenDecimals)} {tokenSymbol}
+                            {stakeAmount} {tokenSymbol}
                         </span>
                     </div>
                     <div style={{ ...styles.summaryRow, borderBottom: 'none' }}>
