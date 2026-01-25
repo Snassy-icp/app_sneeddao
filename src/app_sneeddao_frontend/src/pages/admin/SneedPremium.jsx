@@ -135,6 +135,17 @@ export default function SneedPremiumAdmin() {
     });
     const [propagating, setPropagating] = useState(false);
     
+    // Collected premium settings from all canisters
+    const [collectedSettings, setCollectedSettings] = useState({
+        loading: true,
+        error: null,
+        backend: null,      // { nicknames: {...}, canisterGroups: {...} }
+        sneedSms: null,     // { regular: {...}, premium: {...} }
+        sneedForum: null,   // { regular: {...}, premium: {...} }
+        sneedLock: null,    // { regular: {...}, premium: {...} }
+        sneedex: null       // { regular: {...}, premium: {...} }
+    });
+    
     // Payment logs state
     const [paymentStats, setPaymentStats] = useState(null);
     const [claimLog, setClaimLog] = useState([]);
@@ -527,6 +538,152 @@ export default function SneedPremiumAdmin() {
         setPropagating(false);
         showInfo('Propagation Complete', 'Premium canister ID has been propagated to all canisters. Check status above for any errors.', 'success');
     };
+    
+    // ============================================
+    // Collected Premium Settings
+    // ============================================
+    
+    const fetchCollectedSettings = useCallback(async () => {
+        if (!identity) return;
+        
+        setCollectedSettings(prev => ({ ...prev, loading: true, error: null }));
+        
+        const newSettings = {
+            loading: false,
+            error: null,
+            backend: null,
+            sneedSms: null,
+            sneedForum: null,
+            sneedLock: null,
+            sneedex: null
+        };
+        
+        try {
+            // Fetch Backend settings (nicknames + canister groups)
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const [nicknameConfig, canisterGroupsConfig] = await Promise.all([
+                backendActor.get_nickname_limits_config(),
+                backendActor.get_canister_groups_limits_config()
+            ]);
+            newSettings.backend = {
+                nicknames: {
+                    regular: {
+                        max_neuron_nicknames: Number(nicknameConfig.max_neuron_nicknames),
+                        max_principal_nicknames: Number(nicknameConfig.max_principal_nicknames)
+                    },
+                    premium: {
+                        max_neuron_nicknames: Number(nicknameConfig.premium_max_neuron_nicknames),
+                        max_principal_nicknames: Number(nicknameConfig.premium_max_principal_nicknames)
+                    }
+                },
+                canisterGroups: {
+                    regular: {
+                        max_groups: Number(canisterGroupsConfig.max_canister_groups),
+                        max_per_group: Number(canisterGroupsConfig.max_canisters_per_group),
+                        max_total: Number(canisterGroupsConfig.max_total_grouped_canisters)
+                    },
+                    premium: {
+                        max_groups: Number(canisterGroupsConfig.premium_max_canister_groups),
+                        max_per_group: Number(canisterGroupsConfig.premium_max_canisters_per_group),
+                        max_total: Number(canisterGroupsConfig.premium_max_total_grouped_canisters)
+                    }
+                }
+            };
+        } catch (err) {
+            console.error('Failed to fetch Backend settings:', err);
+        }
+        
+        try {
+            // Fetch Sneed SMS settings
+            const smsActor = createSmsActor(smsCanisterId, { agentOptions: { identity } });
+            const [smsConfig, smsPremiumConfig] = await Promise.all([
+                smsActor.get_config(),
+                smsActor.get_premium_config()
+            ]);
+            newSettings.sneedSms = {
+                regular: {
+                    max_subject_length: Number(smsConfig.max_subject_length),
+                    max_body_length: Number(smsConfig.max_body_length),
+                    rate_limit_minutes: Number(smsConfig.rate_limit_minutes),
+                    max_recipients: Number(smsConfig.max_recipients)
+                },
+                premium: {
+                    max_subject_length: Number(smsPremiumConfig.premium_max_subject_length),
+                    max_body_length: Number(smsPremiumConfig.premium_max_body_length),
+                    rate_limit_minutes: Number(smsPremiumConfig.premium_rate_limit_minutes),
+                    max_recipients: Number(smsPremiumConfig.premium_max_recipients)
+                }
+            };
+        } catch (err) {
+            console.error('Failed to fetch Sneed SMS settings:', err);
+        }
+        
+        try {
+            // Fetch Sneed Forum settings
+            const forumActor = createForumActor(forumCanisterId, { agentOptions: { identity } });
+            const [forumLimits, forumPremiumConfig] = await Promise.all([
+                forumActor.get_text_limits(),
+                forumActor.get_premium_config()
+            ]);
+            newSettings.sneedForum = {
+                regular: {
+                    post_body_max_length: Number(forumLimits.post_body_max_length),
+                    thread_body_max_length: Number(forumLimits.thread_body_max_length)
+                },
+                premium: {
+                    post_body_max_length: Number(forumPremiumConfig.premium_post_body_max_length),
+                    thread_body_max_length: Number(forumPremiumConfig.premium_thread_body_max_length)
+                }
+            };
+        } catch (err) {
+            console.error('Failed to fetch Sneed Forum settings:', err);
+        }
+        
+        try {
+            // Fetch Sneed Lock settings
+            const lockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const lockFees = await lockActor.get_lock_fees_icp();
+            newSettings.sneedLock = {
+                regular: {
+                    token_lock_fee_e8s: Number(lockFees.token_lock_fee_icp_e8s),
+                    position_lock_fee_e8s: Number(lockFees.position_lock_fee_icp_e8s)
+                },
+                premium: {
+                    token_lock_fee_e8s: Number(lockFees.premium_token_lock_fee_icp_e8s),
+                    position_lock_fee_e8s: Number(lockFees.premium_position_lock_fee_icp_e8s)
+                }
+            };
+        } catch (err) {
+            console.error('Failed to fetch Sneed Lock settings:', err);
+        }
+        
+        try {
+            // Fetch Sneedex settings
+            const sneedexActor = createSneedexActor(identity);
+            const feeConfig = await sneedexActor.getFeeConfig();
+            newSettings.sneedex = {
+                regular: {
+                    offer_creation_fee_e8s: Number(feeConfig.regularCreationFeeE8s),
+                    auction_cut_bps: Number(feeConfig.regularAuctionCutBps)
+                },
+                premium: {
+                    offer_creation_fee_e8s: Number(feeConfig.premiumCreationFeeE8s),
+                    auction_cut_bps: Number(feeConfig.premiumAuctionCutBps)
+                }
+            };
+        } catch (err) {
+            console.error('Failed to fetch Sneedex settings:', err);
+        }
+        
+        setCollectedSettings(newSettings);
+    }, [identity]);
+    
+    // Fetch collected settings when identity is available
+    useEffect(() => {
+        if (identity && config) {
+            fetchCollectedSettings();
+        }
+    }, [identity, config, fetchCollectedSettings]);
     
     // ============================================
     // Admin Management Handlers
@@ -1697,6 +1854,244 @@ export default function SneedPremiumAdmin() {
                             }}
                         >
                             Refresh Status
+                        </button>
+                    </div>
+                </section>
+                
+                {/* Premium Settings Overview - All Canisters */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaCog style={{ color: '#3498db' }} />
+                        Premium Settings Overview
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem', fontSize: '0.9rem' }}>
+                        Collected premium-related settings from all canisters. Shows regular vs premium limits.
+                    </p>
+                    
+                    {collectedSettings.loading ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                            <FaSpinner className="spin" style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }} />
+                            <div>Loading settings from all canisters...</div>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem' }}>
+                            
+                            {/* Backend - Nicknames */}
+                            {collectedSettings.backend && (
+                                <div style={{ ...styles.infoBox, padding: '1rem' }}>
+                                    <h3 style={{ color: theme.colors.text, marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUserShield style={{ color: '#e74c3c' }} />
+                                        Backend - Nicknames
+                                    </h3>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <th style={{ textAlign: 'left', padding: '8px 4px', color: theme.colors.mutedText }}>Setting</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.mutedText }}>Regular</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12' }}>Premium</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Neuron Nicknames</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.backend.nicknames.regular.max_neuron_nicknames}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.backend.nicknames.premium.max_neuron_nicknames}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Principal Nicknames</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.backend.nicknames.regular.max_principal_nicknames}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.backend.nicknames.premium.max_principal_nicknames}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            
+                            {/* Backend - Canister Groups */}
+                            {collectedSettings.backend && (
+                                <div style={{ ...styles.infoBox, padding: '1rem' }}>
+                                    <h3 style={{ color: theme.colors.text, marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUserShield style={{ color: '#e74c3c' }} />
+                                        Backend - Canister Groups
+                                    </h3>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <th style={{ textAlign: 'left', padding: '8px 4px', color: theme.colors.mutedText }}>Setting</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.mutedText }}>Regular</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12' }}>Premium</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Max Groups</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.backend.canisterGroups.regular.max_groups}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.backend.canisterGroups.premium.max_groups}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Max Per Group</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.backend.canisterGroups.regular.max_per_group}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.backend.canisterGroups.premium.max_per_group}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Max Total Canisters</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.backend.canisterGroups.regular.max_total}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.backend.canisterGroups.premium.max_total}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            
+                            {/* Sneed SMS */}
+                            {collectedSettings.sneedSms && (
+                                <div style={{ ...styles.infoBox, padding: '1rem' }}>
+                                    <h3 style={{ color: theme.colors.text, marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUserShield style={{ color: '#9b59b6' }} />
+                                        Sneed SMS
+                                    </h3>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <th style={{ textAlign: 'left', padding: '8px 4px', color: theme.colors.mutedText }}>Setting</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.mutedText }}>Regular</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12' }}>Premium</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Max Subject Length</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedSms.regular.max_subject_length.toLocaleString()}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedSms.premium.max_subject_length.toLocaleString()}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Max Body Length</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedSms.regular.max_body_length.toLocaleString()}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedSms.premium.max_body_length.toLocaleString()}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Rate Limit (minutes)</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedSms.regular.rate_limit_minutes}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedSms.premium.rate_limit_minutes}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Max Recipients</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedSms.regular.max_recipients}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedSms.premium.max_recipients}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            
+                            {/* Sneed Forum */}
+                            {collectedSettings.sneedForum && (
+                                <div style={{ ...styles.infoBox, padding: '1rem' }}>
+                                    <h3 style={{ color: theme.colors.text, marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUserShield style={{ color: '#2ecc71' }} />
+                                        Sneed Forum
+                                    </h3>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <th style={{ textAlign: 'left', padding: '8px 4px', color: theme.colors.mutedText }}>Setting</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.mutedText }}>Regular</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12' }}>Premium</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Post Body Max</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedForum.regular.post_body_max_length.toLocaleString()}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedForum.premium.post_body_max_length.toLocaleString()}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Thread Body Max</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedForum.regular.thread_body_max_length.toLocaleString()}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedForum.premium.thread_body_max_length.toLocaleString()}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            
+                            {/* Sneed Lock */}
+                            {collectedSettings.sneedLock && (
+                                <div style={{ ...styles.infoBox, padding: '1rem' }}>
+                                    <h3 style={{ color: theme.colors.text, marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUserShield style={{ color: '#3498db' }} />
+                                        Sneed Lock
+                                    </h3>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <th style={{ textAlign: 'left', padding: '8px 4px', color: theme.colors.mutedText }}>Setting</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.mutedText }}>Regular</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12' }}>Premium</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Token Lock Fee (ICP)</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{(collectedSettings.sneedLock.regular.token_lock_fee_e8s / 100000000).toFixed(4)}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{(collectedSettings.sneedLock.premium.token_lock_fee_e8s / 100000000).toFixed(4)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Position Lock Fee (ICP)</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{(collectedSettings.sneedLock.regular.position_lock_fee_e8s / 100000000).toFixed(4)}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{(collectedSettings.sneedLock.premium.position_lock_fee_e8s / 100000000).toFixed(4)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            
+                            {/* Sneedex */}
+                            {collectedSettings.sneedex && (
+                                <div style={{ ...styles.infoBox, padding: '1rem' }}>
+                                    <h3 style={{ color: theme.colors.text, marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUserShield style={{ color: '#f39c12' }} />
+                                        Sneedex
+                                    </h3>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                <th style={{ textAlign: 'left', padding: '8px 4px', color: theme.colors.mutedText }}>Setting</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.mutedText }}>Regular</th>
+                                                <th style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12' }}>Premium</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Offer Creation Fee (ICP)</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{(collectedSettings.sneedex.regular.offer_creation_fee_e8s / 100000000).toFixed(4)}</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{(collectedSettings.sneedex.premium.offer_creation_fee_e8s / 100000000).toFixed(4)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ padding: '8px 4px', color: theme.colors.secondaryText }}>Auction Cut (bps)</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: theme.colors.text }}>{collectedSettings.sneedex.regular.auction_cut_bps} ({(collectedSettings.sneedex.regular.auction_cut_bps / 100).toFixed(2)}%)</td>
+                                                <td style={{ textAlign: 'right', padding: '8px 4px', color: '#f39c12', fontWeight: 'bold' }}>{collectedSettings.sneedex.premium.auction_cut_bps} ({(collectedSettings.sneedex.premium.auction_cut_bps / 100).toFixed(2)}%)</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    <div style={{ marginTop: '1rem' }}>
+                        <button
+                            onClick={fetchCollectedSettings}
+                            disabled={collectedSettings.loading}
+                            style={{
+                                ...styles.secondaryButton,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}
+                        >
+                            {collectedSettings.loading ? <FaSpinner className="spin" /> : <FaCog />}
+                            Refresh Settings
                         </button>
                     </div>
                 </section>
