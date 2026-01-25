@@ -18,8 +18,9 @@
   "sneed_lock": {
     "ic": "pqsms-lqaaa-aaaal-ajjza-cai",
     "staging": "25fsc-7yaaa-aaaal-qjt5q-cai"
-},
+  },
   "sneed_premium": {
+    "ic": "7gump-4aaaa-aaaal-qtyka-cai",
     "staging": "sf5tm-dqaaa-aaaae-qgyla-cai"
   },
   "sneed_sms": {
@@ -31,6 +32,7 @@
     "staging": "nrtf2-wiaaa-aaaad-aankq-cai"
   },
   "sneedex": {
+    "ic": "7bvk3-ryaaa-aaaal-qtykq-cai",
     "staging": "igm46-laaaa-aaaae-qgwra-cai"
   }
 }
