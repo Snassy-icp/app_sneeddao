@@ -1,8 +1,9 @@
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
+import { canisterId as SNEED_PREMIUM_CANISTER_ID } from 'declarations/sneed_premium';
 
-// Sneed Premium canister ID (staging)
-export const SNEED_PREMIUM_CANISTER_ID = 'sf5tm-dqaaa-aaaae-qgyla-cai';
+// Re-export the canister ID from declarations (environment-aware)
+export { SNEED_PREMIUM_CANISTER_ID };
 
 // Time constants (in nanoseconds) - must match backend
 export const NS_PER_SECOND = 1_000_000_000n;
