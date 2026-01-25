@@ -174,7 +174,7 @@ export default function NetworkAdmin() {
         // Fetch from SneedLock
         try {
             const lockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity, host: getHost() } });
-            const feeConfig = await lockActor.get_icp_fee_config();
+            const feeConfig = await lockActor.get_lock_fees_icp();
             newSettings.sneed_lock = {
                 ...newSettings.sneed_lock,
                 sneed_premium_canister_id: feeConfig.sneed_premium_canister_id?.[0] || null,
