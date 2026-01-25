@@ -15,18 +15,18 @@ import { formatAmount } from '../utils/StringUtils';
 
 export default function SnsNeuronWizard() {
     const navigate = useNavigate();
-    const { theme } = useTheme();
-    const { identity, isAuthenticated, login } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+  const { theme } = useTheme();
+  const { identity, isAuthenticated, login } = useAuth();
+  const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
 
     // Step state (1-indexed for display: 1=Select SNS, 2=Configure, 3=Confirm & Stake)
     const [currentStep, setCurrentStep] = useState(1);
     
     // SNS list and loading
-    const [snsList, setSnsList] = useState([]);
+  const [snsList, setSnsList] = useState([]);
     const [snsLogos, setSnsLogos] = useState(new Map()); // governanceId -> logo URL
-    const [loadingSns, setLoadingSns] = useState(false);
-    const [snsLoadError, setSnsLoadError] = useState('');
+  const [loadingSns, setLoadingSns] = useState(false);
+  const [snsLoadError, setSnsLoadError] = useState('');
     const [loadingLogos, setLoadingLogos] = useState(new Set());
     
     // SNS dropdown state
@@ -58,12 +58,12 @@ export default function SnsNeuronWizard() {
     const [createdNeuronId, setCreatedNeuronId] = useState(null);
 
     // Computed values
-    const selectedSns = useMemo(() => {
-        if (!selectedSnsRoot) return null;
-        return getSnsById(selectedSnsRoot);
-    }, [selectedSnsRoot]);
+  const selectedSns = useMemo(() => {
+    if (!selectedSnsRoot) return null;
+    return getSnsById(selectedSnsRoot);
+  }, [selectedSnsRoot]);
 
-    const selectedLedgerId = selectedSns?.canisters?.ledger || null;
+  const selectedLedgerId = selectedSns?.canisters?.ledger || null;
     const selectedGovernanceId = selectedSns?.canisters?.governance || null;
     const isSelectedSnsValid = Boolean(selectedSnsRoot && selectedLedgerId && selectedGovernanceId);
 
@@ -79,22 +79,22 @@ export default function SnsNeuronWizard() {
     }, [snsList, searchQuery]);
 
     // Load SNS list
-    useEffect(() => {
+  useEffect(() => {
         const loadSnses = async () => {
-            setLoadingSns(true);
-            setSnsLoadError('');
-            try {
-                const data = await fetchAndCacheSnsData(identity);
-                setSnsList(data || []);
-            } catch (e) {
-                console.error('Failed to load SNS list:', e);
-                setSnsLoadError('Failed to load SNS list');
-            } finally {
-                setLoadingSns(false);
-            }
-        };
+      setLoadingSns(true);
+      setSnsLoadError('');
+      try {
+        const data = await fetchAndCacheSnsData(identity);
+        setSnsList(data || []);
+      } catch (e) {
+        console.error('Failed to load SNS list:', e);
+        setSnsLoadError('Failed to load SNS list');
+      } finally {
+        setLoadingSns(false);
+      }
+    };
         loadSnses();
-    }, [identity]);
+  }, [identity]);
 
     // Load SNS logo
     const loadSnsLogo = useCallback(async (governanceId) => {
@@ -175,7 +175,7 @@ export default function SnsNeuronWizard() {
     }, [selectedLedgerId, identity, isAuthenticated]);
 
     // Load SNS parameters (min stake, dissolve delay range) when SNS is selected
-    useEffect(() => {
+  useEffect(() => {
         const loadSnsParams = async () => {
             if (!selectedGovernanceId || !identity || !isAuthenticated) {
                 setMinStakeE8s(null);
@@ -190,7 +190,7 @@ export default function SnsNeuronWizard() {
                     agentOptions: { identity }
                 });
                 
-                const params = await governanceActor.get_nervous_system_parameters({});
+                const params = await governanceActor.get_nervous_system_parameters(null);
                 
                 if (params) {
                     // Min stake
@@ -216,7 +216,7 @@ export default function SnsNeuronWizard() {
     }, [selectedGovernanceId, identity, isAuthenticated]);
 
     // Reset and set defaults when SNS changes
-    useEffect(() => {
+  useEffect(() => {
         setStakeAmount('');
         setDissolveDelayDays('');
         setStakingError('');
@@ -226,8 +226,8 @@ export default function SnsNeuronWizard() {
         setMinStakeE8s(null);
         setMinDissolveDelaySeconds(null);
         setMaxDissolveDelaySeconds(null);
-    }, [selectedSnsRoot]);
-    
+  }, [selectedSnsRoot]);
+
     // Auto-fill minimum dissolve delay when params are loaded
     useEffect(() => {
         if (minDissolveDelaySeconds !== null && dissolveDelayDays === '') {
@@ -717,7 +717,7 @@ export default function SnsNeuronWizard() {
     `;
 
     if (!isAuthenticated) {
-        return (
+  return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <main style={styles.container}>
@@ -738,7 +738,7 @@ export default function SnsNeuronWizard() {
                         >
                             Connect Wallet
                         </button>
-                    </div>
+          </div>
                 </main>
             </div>
         );
@@ -875,7 +875,7 @@ export default function SnsNeuronWizard() {
                                                 <div style={{ flex: 1 }}>
                                                     <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
                                                         {sns.name}
-                                                    </div>
+            </div>
                                                 </div>
                                                 {isSelected && <FaCheck style={{ color: theme.colors.accent }} />}
                                             </div>
@@ -884,9 +884,9 @@ export default function SnsNeuronWizard() {
                                 )}
                             </div>
                         )}
-                    </div>
-                </div>
-                
+          </div>
+        </div>
+
                 {selectedSns && (
                     <div style={{
                         background: theme.colors.secondaryBg,
@@ -1004,10 +1004,10 @@ export default function SnsNeuronWizard() {
                                         </span>
                                     </div>
                                 )}
-                            </div>
-                        )}
-                    </div>
-                )}
+              </div>
+            )}
+          </div>
+        )}
 
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Stake Amount ({tokenSymbol}):</label>
@@ -1033,7 +1033,7 @@ export default function SnsNeuronWizard() {
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
                         Balance: {loadingBalance ? '...' : `${formatAmount(tokenBalance || 0n, tokenDecimals)} ${tokenSymbol}`}
-                    </div>
+            </div>
                     {stakeAmount && minStakeE8s !== null && (
                         (() => {
                             const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * (10 ** tokenDecimals)));
@@ -1041,7 +1041,7 @@ export default function SnsNeuronWizard() {
                                 return (
                                     <div style={{ marginTop: '6px', fontSize: '0.85rem', color: theme.colors.error }}>
                                         ⚠️ Below minimum stake of {formatAmount(minStakeE8s, tokenDecimals)} {tokenSymbol}
-                                    </div>
+              </div>
                                 );
                             }
                             return null;
@@ -1061,17 +1061,17 @@ export default function SnsNeuronWizard() {
                             min="0"
                         />
                         {minDelayDays !== null && (
-                            <button 
+                  <button
                                 onClick={handleSetMinDelay} 
                                 style={{ ...styles.maxButton, background: theme.colors.secondaryBg, color: theme.colors.primaryText, border: `1px solid ${theme.colors.border}` }}
                             >
                                 MIN
-                            </button>
+                  </button>
                         )}
                         {maxDelayDays !== null && (
                             <button onClick={handleSetMaxDelay} style={styles.maxButton}>
                                 MAX
-                            </button>
+                    </button>
                         )}
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
@@ -1099,7 +1099,7 @@ export default function SnsNeuronWizard() {
                             }
                             return null;
                         })()
-                    )}
+                  )}
                 </div>
             </div>
 
@@ -1183,7 +1183,7 @@ export default function SnsNeuronWizard() {
                     <p style={styles.subtitle}>
                         Review your staking details before confirming
                     </p>
-                </div>
+            </div>
 
                 <div style={styles.configCard}>
                     <div style={styles.summaryRow}>
@@ -1201,8 +1201,8 @@ export default function SnsNeuronWizard() {
                         <span style={styles.summaryValue}>
                             {dissolveDelayDays ? `${dissolveDelayDays} days` : 'Not set (can configure later)'}
                         </span>
-                    </div>
-                    
+            </div>
+
                     {stakingProgress && (
                         <div style={{
                             marginTop: '1.5rem',
@@ -1215,14 +1215,14 @@ export default function SnsNeuronWizard() {
                         }}>
                             <FaSpinner style={{ ...styles.spinner, color: theme.colors.accent }} />
                             <span style={{ color: theme.colors.primaryText }}>{stakingProgress}</span>
-                        </div>
-                    )}
-                    
+          </div>
+        )}
+
                     {stakingError && (
                         <div style={{ ...styles.errorBox, marginTop: '1.5rem' }}>
                             {stakingError}
-                        </div>
-                    )}
+          </div>
+        )}
                 </div>
 
                 <div style={styles.buttonRow}>
@@ -1264,7 +1264,7 @@ export default function SnsNeuronWizard() {
                 {currentStep === 1 && renderStep1()}
                 {currentStep === 2 && renderStep2()}
                 {currentStep === 3 && renderStep3()}
-            </main>
-        </div>
-    );
+      </main>
+    </div>
+  );
 }
