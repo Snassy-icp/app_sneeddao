@@ -289,6 +289,23 @@ shared (deployer) persistent actor class SneedPremium(initConfig : ?T.Config) = 
         };
     };
     
+    /// Get all currently active premium members (public)
+    /// Returns list of principals with active (non-expired) premium memberships
+    /// This is used by frontend to show premium badges across the site
+    public query func getActivePremiumMembers() : async [Principal] {
+        let now = Time.now();
+        let activeMembers = Array.filter<(Principal, T.Membership)>(
+            memberships,
+            func((_, m) : (Principal, T.Membership)) : Bool {
+                m.expiration > now
+            }
+        );
+        Array.map<(Principal, T.Membership), Principal>(
+            activeMembers,
+            func((p, _) : (Principal, T.Membership)) : Principal { p }
+        )
+    };
+    
     /// Get canister's own principal
     public query func getCanisterId() : async Principal {
         Principal.fromActor(this);

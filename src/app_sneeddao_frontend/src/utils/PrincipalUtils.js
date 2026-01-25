@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext } from 'react';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 import PrincipalContextMenu from '../components/PrincipalContextMenu';
 import MessageDialog from '../components/MessageDialog';
 import NicknameDialog from '../components/NicknameDialog';
+import { PremiumContext } from '../PremiumContext';
 
 // ============================================
 // ACCOUNT ID UTILITIES
@@ -136,6 +137,29 @@ export const formatPrincipal = (principal, displayInfo = null) => {
     };
 };
 
+// Premium crown icon component
+const PremiumCrownIcon = ({ size = 14 }) => {
+    return React.createElement('span', {
+        style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            marginRight: '3px',
+            cursor: 'help'
+        },
+        title: 'Sneed Premium Member'
+    }, React.createElement('svg', {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: '#FFD700',
+        style: {
+            filter: 'drop-shadow(0 1px 2px rgba(255, 215, 0, 0.4))'
+        }
+    }, React.createElement('path', {
+        d: 'M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5m14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z'
+    })));
+};
+
 // React component for displaying a principal with context menu
 export const PrincipalDisplay = React.memo(({ 
     principal, 
@@ -155,6 +179,10 @@ export const PrincipalDisplay = React.memo(({
     const [messageDialogOpen, setMessageDialogOpen] = useState(false);
     const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
     const [longPressTimer, setLongPressTimer] = useState(null);
+    
+    // Get premium status from context
+    const premiumContext = useContext(PremiumContext);
+    const isPremium = premiumContext?.isPremiumMember?.(principal) || false;
 
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
@@ -295,7 +323,11 @@ export const PrincipalDisplay = React.memo(({
                 },
                 React.createElement(LinkWrapper, null,
                     React.createElement('span', 
-                        { title: principalId }, 
+                        { 
+                            style: { display: 'inline-flex', alignItems: 'center' },
+                            title: principalId 
+                        },
+                        isPremium && React.createElement(PremiumCrownIcon, { size: 14 }),
                         formatted
                     )
                 ),
@@ -369,6 +401,8 @@ export const PrincipalDisplay = React.memo(({
                         },
                         title: formatted.fullId
                     },
+                    // Premium crown badge (shown first)
+                    isPremium && React.createElement(PremiumCrownIcon, { size: 14 }),
                     formatted.name && React.createElement('span',
                         {
                             style: {

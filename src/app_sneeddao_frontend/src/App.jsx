@@ -16,6 +16,7 @@ import Neuron from './Neuron';
 import Proposal from './Proposal';
 import { AuthProvider } from './AuthContext';
 import { NamingProvider, useNaming } from './NamingContext';
+import { PremiumProvider } from './PremiumContext';
 import { SnsProvider } from './contexts/SnsContext';
 import { ForumProvider } from './contexts/ForumContext';
 import { NeuronsProvider } from './contexts/NeuronsContext';
@@ -116,9 +117,10 @@ function App() {
           <NeuronsProvider>
             <ForumProvider>
               <Router>
-                <NamingProvider>
-                  <GlobalNamingSetup />
-                  <Layout>
+                <PremiumProvider>
+                  <NamingProvider>
+                    <GlobalNamingSetup />
+                    <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />
                     <Route path="/login" element={<Login />} />
@@ -211,9 +213,10 @@ function App() {
                     <Route path="/admin/premium" element={<SneedPremiumAdmin />} />
                     <Route path="/admin/canisters" element={<CanisterGroupsAdmin />} />
                     <Route path="/admin/network" element={<NetworkAdmin />} />
-                  </Routes>
-                  </Layout>
-                </NamingProvider>
+                    </Routes>
+                    </Layout>
+                  </NamingProvider>
+                </PremiumProvider>
               </Router>
             </ForumProvider>
           </NeuronsProvider>

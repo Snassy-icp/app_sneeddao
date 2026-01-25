@@ -66,6 +66,12 @@ We will go on to design the user facing frontend experience once this core is in
 - [x] Me page - Shows premium badge in user's profile section
 - [x] Principal page - Shows premium badge when viewing another user's profile
 
+### Global Premium Badge Integration (Completed ✅)
+- [x] Added `getActivePremiumMembers` public query to sneed_premium canister
+- [x] Created `PremiumContext` to load premium members on site startup
+- [x] Updated `PrincipalDisplay` component to show crown badge for premium members
+- [x] Crown badge appears everywhere principals are displayed across the site
+
 ### Pending Features (Future ⏳)
 - [ ] Integration with other services (discounts, gated features)
 - [ ] Premium-only features and content gating

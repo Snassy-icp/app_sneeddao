@@ -222,6 +222,7 @@ const sneedPremiumIdlFactory = ({ IDL }) => {
         getAllVotingPowerTiers: IDL.Func([], [IDL.Vec(VotingPowerTier)], ['query']),
         getConfig: IDL.Func([], [Config], ['query']),
         getAllMemberships: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Principal, Membership))], ['query']),
+        getActivePremiumMembers: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
         getCanisterId: IDL.Func([], [IDL.Principal], ['query']),
         isCallerAdmin: IDL.Func([], [IDL.Bool], ['query']),
         
