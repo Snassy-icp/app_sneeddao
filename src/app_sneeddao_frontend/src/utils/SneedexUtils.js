@@ -1,9 +1,9 @@
-import { createActor } from 'declarations/sneedex';
+import { createActor, canisterId as SNEEDEX_CANISTER_ID } from 'declarations/sneedex';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 
-// Sneedex canister ID (staging)
-export const SNEEDEX_CANISTER_ID = 'igm46-laaaa-aaaae-qgwra-cai';
+// Re-export the canister ID from declarations (environment-aware)
+export { SNEEDEX_CANISTER_ID };
 
 // Canister kind IDs (must match backend)
 export const CANISTER_KIND_UNKNOWN = 0;
