@@ -30,6 +30,176 @@
     padding: 20px;
 }
 
+/* Login Card */
+.login-card {
+    max-width: 440px;
+    width: 100%;
+    padding: 40px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-logo {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 20px rgba(52, 152, 219, 0.3);
+}
+
+.login-header h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+}
+
+.login-header p {
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+/* Login Form */
+.login-form {
+    margin-bottom: 24px;
+}
+
+/* Internet Identity Button */
+.login-button-ii {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border: none;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+}
+
+.login-button-ii:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+.login-button-ii:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.login-button-ii:disabled {
+    opacity: 0.7;
+}
+
+.ii-icon {
+    width: 24px;
+    height: 24px;
+}
+
+/* Spinner Animation */
+.login-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Error Message */
+.login-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(255, 82, 82, 0.1);
+    border: 1px solid rgba(255, 82, 82, 0.3);
+    border-radius: 8px;
+    margin-bottom: 24px;
+    font-size: 0.9rem;
+}
+
+.error-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 1rem;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.error-dismiss:hover {
+    opacity: 1;
+}
+
+/* Features Section */
+.login-features {
+    padding: 20px;
+    background: rgba(52, 152, 219, 0.05);
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.login-features h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    text-align: center;
+}
+
+.login-features ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 12px;
+}
+
+.login-features li {
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.login-features li strong {
+    color: inherit;
+}
+
+/* Info Section */
+.login-info {
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.login-info a {
+    text-decoration: none;
+    font-weight: 500;
+    transition: opacity 0.2s;
+}
+
+.login-info a:hover {
+    opacity: 0.8;
+}
+
+/* Legacy button styles (kept for backward compatibility) */
 .login-button {
     background-color: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -48,4 +218,29 @@
 #auth_output {
     margin-top: 20px;
     color: white;
+}
+
+/* Responsive Design */
+@media (max-width: 500px) {
+    .login-card {
+        padding: 24px;
+        margin: 0 16px;
+    }
+    
+    .login-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .login-button-ii {
+        font-size: 1rem;
+        padding: 14px 20px;
+    }
+    
+    .login-features ul {
+        gap: 10px;
+    }
+    
+    .login-features li {
+        font-size: 0.85rem;
+    }
 }
