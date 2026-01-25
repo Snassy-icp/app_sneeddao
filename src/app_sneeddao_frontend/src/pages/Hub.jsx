@@ -2,7 +2,7 @@ import React from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar } from 'react-icons/fa';
 
 function Hub() {
     const { theme } = useTheme();
@@ -300,6 +300,14 @@ function Hub() {
             cta: 'Manage Canisters',
             color: theme.colors.success,
         },
+        {
+            title: 'Transactions',
+            icon: <FaHistory />,
+            desc: 'Browse and search transaction history across tokens. Track transfers, swaps, and more.',
+            path: '/transactions',
+            cta: 'View Transactions',
+            color: '#9b59b6',
+        },
     ];
 
     const renderFeatureCard = (card) => (
@@ -436,6 +444,45 @@ function Hub() {
                 <div style={styles.featureGrid}>
                     {utilityFeatures.map(renderFeatureCard)}
                 </div>
+
+                {/* Sneed Premium */}
+                <Link 
+                    to="/premium"
+                    style={{
+                        display: 'block',
+                        background: `linear-gradient(135deg, #ffd700 0%, #ffb700 50%, #ff9500 100%)`,
+                        borderRadius: '16px',
+                        padding: '24px 28px',
+                        marginTop: '1rem',
+                        textDecoration: 'none',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        boxShadow: '0 4px 20px rgba(255, 215, 0, 0.3)',
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                        <FaStar size={32} style={{ color: '#1a1a1a' }} />
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{ color: '#1a1a1a', fontWeight: '800', fontSize: '1.4rem', marginBottom: '4px' }}>
+                                Sneed Premium ✨
+                            </div>
+                            <div style={{ color: '#333', fontSize: '1rem', lineHeight: '1.5' }}>
+                                Unlock exclusive features, priority support, and special perks. Join the premium experience!
+                            </div>
+                        </div>
+                        <div style={{
+                            background: '#1a1a1a',
+                            color: '#ffd700',
+                            padding: '12px 24px',
+                            borderRadius: '10px',
+                            fontWeight: '700',
+                            fontSize: '1rem',
+                            whiteSpace: 'nowrap',
+                        }}>
+                            Learn More →
+                        </div>
+                    </div>
+                </Link>
             </main>
         </div>
     );
