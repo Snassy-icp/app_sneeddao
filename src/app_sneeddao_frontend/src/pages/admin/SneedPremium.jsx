@@ -16,7 +16,8 @@ import {
     E8S_PER_ICP,
     NS_PER_DAY,
     NS_PER_MONTH,
-    NS_PER_YEAR
+    NS_PER_YEAR,
+    SNEED_PREMIUM_CANISTER_ID
 } from '../../utils/SneedPremiumUtils';
 import { PrincipalDisplay } from '../../utils/PrincipalUtils';
 import InfoModal from '../../components/InfoModal';
@@ -25,8 +26,11 @@ import {
     FaCrown, FaUserShield, FaSave, FaSpinner, FaPlus, FaTrash, 
     FaClock, FaCoins, FaVoteYea, FaUsers, FaEdit, FaCheckCircle, 
     FaTimesCircle, FaCog, FaWallet, FaTimes, FaTicketAlt, FaCopy,
-    FaEye, FaPause, FaPlay
+    FaEye, FaPause, FaPlay, FaBroadcastTower
 } from 'react-icons/fa';
+import { createSneedexActor } from '../../utils/SneedexUtils';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 
 export default function SneedPremiumAdmin() {
     const { isAuthenticated, identity } = useAuth();
@@ -118,6 +122,14 @@ export default function SneedPremiumAdmin() {
     const [savingMinClaimInterval, setSavingMinClaimInterval] = useState(false);
     const [grantingMembership, setGrantingMembership] = useState(false);
     const [revokingMembership, setRevokingMembership] = useState(null);
+    
+    // Propagation state - for setting premium canister ID on other canisters
+    const [propagationStatus, setPropagationStatus] = useState({
+        sneedex: { status: 'idle', current: null }, // idle, loading, success, error
+        sneedLock: { status: 'idle', current: null },
+        backend: { status: 'idle', current: null }
+    });
+    const [propagating, setPropagating] = useState(false);
     
     // Payment logs state
     const [paymentStats, setPaymentStats] = useState(null);
@@ -270,6 +282,143 @@ export default function SneedPremiumAdmin() {
     const isPremiumAdmin = adminList.some(admin => 
         admin.toString() === identity?.getPrincipal()?.toString()
     );
+    
+    // ============================================
+    // Premium Canister ID Propagation
+    // ============================================
+    
+    // Fetch current premium canister IDs from other canisters
+    const fetchPropagationStatus = useCallback(async () => {
+        if (!identity) return;
+        
+        // Check Sneedex
+        try {
+            const sneedexActor = createSneedexActor(identity);
+            const sneedexPremiumId = await sneedexActor.getSneedPremiumCanisterId();
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedex: { 
+                    status: 'idle', 
+                    current: sneedexPremiumId && sneedexPremiumId.length > 0 ? sneedexPremiumId[0].toString() : null 
+                }
+            }));
+        } catch (err) {
+            console.error('Failed to fetch Sneedex premium canister ID:', err);
+        }
+        
+        // Check Sneed Lock
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const icpFees = await sneedLockActor.get_icp_fees();
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedLock: { 
+                    status: 'idle', 
+                    current: icpFees.sneed_premium_canister_id && icpFees.sneed_premium_canister_id.length > 0 
+                        ? icpFees.sneed_premium_canister_id[0].toString() : null 
+                }
+            }));
+        } catch (err) {
+            console.error('Failed to fetch Sneed Lock premium canister ID:', err);
+        }
+        
+        // Check Backend
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const premiumConfig = await backendActor.get_premium_config();
+            setPropagationStatus(prev => ({
+                ...prev,
+                backend: { 
+                    status: 'idle', 
+                    current: premiumConfig.sneed_premium_canister_id && premiumConfig.sneed_premium_canister_id.length > 0 
+                        ? premiumConfig.sneed_premium_canister_id[0].toString() : null 
+                }
+            }));
+        } catch (err) {
+            console.error('Failed to fetch Backend premium canister ID:', err);
+        }
+    }, [identity]);
+    
+    // Fetch propagation status when identity is available
+    useEffect(() => {
+        if (identity && config) {
+            fetchPropagationStatus();
+        }
+    }, [identity, config, fetchPropagationStatus]);
+    
+    // Propagate premium canister ID to all canisters
+    const propagatePremiumCanisterId = async () => {
+        if (!identity || !canisterId) return;
+        
+        setPropagating(true);
+        const premiumCanisterPrincipal = [Principal.fromText(canisterId.toString())];
+        
+        // Propagate to Sneedex
+        setPropagationStatus(prev => ({ ...prev, sneedex: { ...prev.sneedex, status: 'loading' } }));
+        try {
+            const sneedexActor = createSneedexActor(identity);
+            const result = await sneedexActor.setSneedPremiumCanisterId(premiumCanisterPrincipal);
+            if ('Ok' in result) {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedex: { status: 'success', current: canisterId.toString() } 
+                }));
+            } else {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedex: { ...prev.sneedex, status: 'error' } 
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to set Sneedex premium canister ID:', err);
+            setPropagationStatus(prev => ({ ...prev, sneedex: { ...prev.sneedex, status: 'error' } }));
+        }
+        
+        // Propagate to Sneed Lock
+        setPropagationStatus(prev => ({ ...prev, sneedLock: { ...prev.sneedLock, status: 'loading' } }));
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const result = await sneedLockActor.admin_set_sneed_premium_canister_id(premiumCanisterPrincipal);
+            if ('Ok' in result) {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedLock: { status: 'success', current: canisterId.toString() } 
+                }));
+            } else {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedLock: { ...prev.sneedLock, status: 'error' } 
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to set Sneed Lock premium canister ID:', err);
+            setPropagationStatus(prev => ({ ...prev, sneedLock: { ...prev.sneedLock, status: 'error' } }));
+        }
+        
+        // Propagate to Backend
+        setPropagationStatus(prev => ({ ...prev, backend: { ...prev.backend, status: 'loading' } }));
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const result = await backendActor.set_nickname_premium_canister(premiumCanisterPrincipal);
+            if ('ok' in result || 'Ok' in result) {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    backend: { status: 'success', current: canisterId.toString() } 
+                }));
+            } else {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    backend: { ...prev.backend, status: 'error' } 
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to set Backend premium canister ID:', err);
+            setPropagationStatus(prev => ({ ...prev, backend: { ...prev.backend, status: 'error' } }));
+        }
+        
+        setPropagating(false);
+        showInfo('Propagation Complete', 'Premium canister ID has been propagated to all canisters. Check status above for any errors.', 'success');
+    };
     
     // ============================================
     // Admin Management Handlers
@@ -1255,6 +1404,138 @@ export default function SneedPremiumAdmin() {
                                 {activeMemberships.length}
                             </div>
                         </div>
+                    </div>
+                </section>
+                
+                {/* Propagate Premium Canister ID */}
+                <section style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                        <FaBroadcastTower style={{ color: '#9b59b6' }} />
+                        Propagate Premium Canister ID
+                    </h2>
+                    <p style={{ color: theme.colors.mutedText, marginBottom: '1rem', fontSize: '0.9rem' }}>
+                        Set the Sneed Premium canister ID on all canisters that need it for premium membership checks.
+                    </p>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                        {/* Sneedex Status */}
+                        <div style={{
+                            ...styles.infoBox,
+                            borderLeft: `4px solid ${
+                                propagationStatus.sneedex.status === 'success' ? theme.colors.success :
+                                propagationStatus.sneedex.status === 'error' ? theme.colors.error :
+                                propagationStatus.sneedex.status === 'loading' ? theme.colors.warning :
+                                theme.colors.border
+                            }`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={styles.infoLabel}>Sneedex</div>
+                                {propagationStatus.sneedex.status === 'loading' && <FaSpinner className="spin" style={{ color: theme.colors.warning }} />}
+                                {propagationStatus.sneedex.status === 'success' && <FaCheckCircle style={{ color: theme.colors.success }} />}
+                                {propagationStatus.sneedex.status === 'error' && <FaTimesCircle style={{ color: theme.colors.error }} />}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                {propagationStatus.sneedex.current 
+                                    ? propagationStatus.sneedex.current.slice(0, 15) + '...'
+                                    : <span style={{ color: theme.colors.mutedText }}>Not set</span>
+                                }
+                            </div>
+                            {propagationStatus.sneedex.current === canisterId?.toString() && (
+                                <div style={{ color: theme.colors.success, fontSize: '0.8rem', marginTop: '4px' }}>✓ Matches</div>
+                            )}
+                        </div>
+                        
+                        {/* Sneed Lock Status */}
+                        <div style={{
+                            ...styles.infoBox,
+                            borderLeft: `4px solid ${
+                                propagationStatus.sneedLock.status === 'success' ? theme.colors.success :
+                                propagationStatus.sneedLock.status === 'error' ? theme.colors.error :
+                                propagationStatus.sneedLock.status === 'loading' ? theme.colors.warning :
+                                theme.colors.border
+                            }`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={styles.infoLabel}>Sneed Lock</div>
+                                {propagationStatus.sneedLock.status === 'loading' && <FaSpinner className="spin" style={{ color: theme.colors.warning }} />}
+                                {propagationStatus.sneedLock.status === 'success' && <FaCheckCircle style={{ color: theme.colors.success }} />}
+                                {propagationStatus.sneedLock.status === 'error' && <FaTimesCircle style={{ color: theme.colors.error }} />}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                {propagationStatus.sneedLock.current 
+                                    ? propagationStatus.sneedLock.current.slice(0, 15) + '...'
+                                    : <span style={{ color: theme.colors.mutedText }}>Not set</span>
+                                }
+                            </div>
+                            {propagationStatus.sneedLock.current === canisterId?.toString() && (
+                                <div style={{ color: theme.colors.success, fontSize: '0.8rem', marginTop: '4px' }}>✓ Matches</div>
+                            )}
+                        </div>
+                        
+                        {/* Backend Status */}
+                        <div style={{
+                            ...styles.infoBox,
+                            borderLeft: `4px solid ${
+                                propagationStatus.backend.status === 'success' ? theme.colors.success :
+                                propagationStatus.backend.status === 'error' ? theme.colors.error :
+                                propagationStatus.backend.status === 'loading' ? theme.colors.warning :
+                                theme.colors.border
+                            }`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={styles.infoLabel}>Backend (SMS/Forum)</div>
+                                {propagationStatus.backend.status === 'loading' && <FaSpinner className="spin" style={{ color: theme.colors.warning }} />}
+                                {propagationStatus.backend.status === 'success' && <FaCheckCircle style={{ color: theme.colors.success }} />}
+                                {propagationStatus.backend.status === 'error' && <FaTimesCircle style={{ color: theme.colors.error }} />}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                {propagationStatus.backend.current 
+                                    ? propagationStatus.backend.current.slice(0, 15) + '...'
+                                    : <span style={{ color: theme.colors.mutedText }}>Not set</span>
+                                }
+                            </div>
+                            {propagationStatus.backend.current === canisterId?.toString() && (
+                                <div style={{ color: theme.colors.success, fontSize: '0.8rem', marginTop: '4px' }}>✓ Matches</div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={propagatePremiumCanisterId}
+                            disabled={propagating || !canisterId}
+                            style={{
+                                ...styles.primaryButton,
+                                background: propagating ? theme.colors.tertiaryBg : 'linear-gradient(135deg, #9b59b6, #8e44ad)',
+                                cursor: propagating ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}
+                        >
+                            {propagating ? (
+                                <>
+                                    <FaSpinner className="spin" />
+                                    Propagating...
+                                </>
+                            ) : (
+                                <>
+                                    <FaBroadcastTower />
+                                    Propagate to All Canisters
+                                </>
+                            )}
+                        </button>
+                        <button
+                            onClick={fetchPropagationStatus}
+                            style={{
+                                ...styles.secondaryButton,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}
+                        >
+                            Refresh Status
+                        </button>
                     </div>
                 </section>
                 
