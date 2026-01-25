@@ -270,6 +270,12 @@ function Sneedex() {
             color: theme.colors.success,
         },
         {
+            icon: '🏛️',
+            title: 'ICP Neuron Managers',
+            description: 'Trade ICP neurons via manager canisters. Full NNS voting power, liquid ownership.',
+            color: '#8B5CF6',
+        },
+        {
             icon: '🪙',
             title: 'ICRC1 Tokens',
             description: 'Bundle fungible tokens into offers. Perfect for OTC trades and bulk transactions.',
@@ -287,39 +293,57 @@ function Sneedex() {
                     <h1 style={styles.title}>Sneedex</h1>
                     <p style={styles.tagline}>The Decentralized Exchange for Everything</p>
                     <p style={styles.subtitle}>
-                        Trade canisters, SNS neurons, and ICRC1 tokens through trustless escrow auctions.
+                        Trade canisters, SNS neurons, ICP Neuron Managers, and ICRC1 tokens through trustless escrow auctions.
                         Bundle multiple assets, set your terms, and let the market decide.
                     </p>
                     <div style={{
                         margin: '18px auto 0 auto',
-                        maxWidth: '820px',
-                        backgroundColor: theme.colors.secondaryBg,
-                        border: `1px solid ${theme.colors.border}`,
+                        maxWidth: '900px',
+                        background: `linear-gradient(135deg, ${theme.colors.accent}15, #8B5CF615)`,
+                        border: `1px solid ${theme.colors.accent}40`,
                         borderRadius: '14px',
-                        padding: '14px 16px',
+                        padding: '16px 20px',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        gap: '12px',
+                        gap: '16px',
                         flexWrap: 'wrap'
                     }}>
-                        <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>
-                            🧠 ICP Neuron Manager canisters can be traded on Sneedex.
+                        <div style={{ color: theme.colors.primaryText, fontWeight: 600, flex: 1, minWidth: '200px' }}>
+                            ✨ <strong>Liquid Staking:</strong> Create tradable ICP or SNS neurons and sell them here on Sneedex!
                         </div>
-                        <Link
-                            to="/create_icp_neuron"
-                            style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
-                                padding: '10px 14px',
-                                borderRadius: '10px',
-                                textDecoration: 'none',
-                                fontWeight: 700,
-                                whiteSpace: 'nowrap'
-                            }}
-                        >
-                            Create ICP Neuron Manager →
-                        </Link>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <Link
+                                to="/create_icp_neuron"
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    padding: '10px 14px',
+                                    borderRadius: '10px',
+                                    textDecoration: 'none',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    fontSize: '0.9rem'
+                                }}
+                            >
+                                ICP Liquid Staking →
+                            </Link>
+                            <Link
+                                to="/sns_neuron_wizard"
+                                style={{
+                                    background: '#8B5CF6',
+                                    color: '#fff',
+                                    padding: '10px 14px',
+                                    borderRadius: '10px',
+                                    textDecoration: 'none',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    fontSize: '0.9rem'
+                                }}
+                            >
+                                SNS Liquid Staking →
+                            </Link>
+                        </div>
                     </div>
                     <div style={styles.buttonRow}>
                         <Link
@@ -402,7 +426,7 @@ function Sneedex() {
                         Supported Asset Types
                     </h2>
                     <p style={styles.text}>
-                        Sneedex supports three types of assets, with more coming in the future:
+                        Sneedex supports four types of assets, with more coming in the future:
                     </p>
                     <div style={styles.assetGrid}>
                         {assetTypes.map((asset, index) => (
