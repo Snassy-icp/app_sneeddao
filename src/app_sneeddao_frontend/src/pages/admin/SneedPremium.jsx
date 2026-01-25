@@ -309,7 +309,7 @@ export default function SneedPremiumAdmin() {
         // Check Sneed Lock
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const icpFees = await sneedLockActor.get_icp_fees();
+            const icpFees = await sneedLockActor.get_lock_fees_icp();
             setPropagationStatus(prev => ({
                 ...prev,
                 sneedLock: { 
@@ -320,22 +320,30 @@ export default function SneedPremiumAdmin() {
             }));
         } catch (err) {
             console.error('Failed to fetch Sneed Lock premium canister ID:', err);
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedLock: { status: 'idle', current: null }
+            }));
         }
         
         // Check Backend
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const premiumConfig = await backendActor.get_premium_config();
+            const nicknameConfig = await backendActor.get_nickname_limits_config();
             setPropagationStatus(prev => ({
                 ...prev,
                 backend: { 
                     status: 'idle', 
-                    current: premiumConfig.sneed_premium_canister_id && premiumConfig.sneed_premium_canister_id.length > 0 
-                        ? premiumConfig.sneed_premium_canister_id[0].toString() : null 
+                    current: nicknameConfig.sneed_premium_canister_id && nicknameConfig.sneed_premium_canister_id.length > 0 
+                        ? nicknameConfig.sneed_premium_canister_id[0].toString() : null 
                 }
             }));
         } catch (err) {
             console.error('Failed to fetch Backend premium canister ID:', err);
+            setPropagationStatus(prev => ({
+                ...prev,
+                backend: { status: 'idle', current: null }
+            }));
         }
     }, [identity]);
     
