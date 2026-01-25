@@ -16,12 +16,24 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmMessage, setConfirmMessage] = useState('');
+  const [logoLoaded, setLogoLoaded] = useState(false);
 
   useEffect(() => {
     if (show) {
         setErrorText('');
     }
   }, [show]);
+
+  useEffect(() => {
+    if (!show) return;
+    setLogoLoaded(false);
+    if (token?.logo) {
+      const img = new Image();
+      img.onload = () => setLogoLoaded(true);
+      img.onerror = () => setLogoLoaded(false);
+      img.src = token.logo;
+    }
+  }, [show, token?.logo]);
 
   const handleSetMax = () => {
     // Check if we'll need to split the send between frontend and backend
@@ -138,7 +150,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     console.log('=== SendTokenModal.handleSend END ===');
   };
 
-  if (!show) {
+  if (!show || !token) {
     return null;
   }
 
@@ -166,15 +178,34 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         maxHeight: '90vh',
         overflow: 'auto'
       }}>
-        <h2 style={{
-          color: theme.colors.primaryText,
-          marginTop: '0',
-          marginBottom: '24px',
-          fontSize: '1.5rem',
-          fontWeight: '600'
-        }}>
-          Send {token.symbol} Token
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {token.logo && logoLoaded ? (
+              <img
+                src={token.logo}
+                alt={`${token.symbol} logo`}
+                style={{ width: '28px', height: '28px', borderRadius: '8px', objectFit: 'contain', background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }}
+              />
+            ) : (
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }} />
+            )}
+            <h2 style={{
+              color: theme.colors.primaryText,
+              margin: 0,
+              fontSize: '1.5rem',
+              fontWeight: '600'
+            }}>
+              Send {token.symbol}
+            </h2>
+          </div>
+
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>Available balance</div>
+            <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>
+              {formatAmount(token.available ?? token.balance ?? 0n, token.decimals)} {token.symbol}
+            </div>
+          </div>
+        </div>
         
         <div style={{ marginBottom: '20px' }}>
           <label style={{
@@ -191,13 +222,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             placeholder="Enter recipient principal"
             style={{
               width: '100%',
-              padding: '12px',
-              background: theme.colors.secondaryBg,
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: '8px',
-              color: theme.colors.primaryText,
-              fontSize: '0.9rem',
-              boxSizing: 'border-box'
+              maxWidth: 'none'
             }}
           />
         </div>
