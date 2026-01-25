@@ -35,17 +35,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
-        if (path.startsWith('/msg')) return 'Me';
-        if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
+        if (path.startsWith('/msg')) return 'Sneed Me';
+        if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
         if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Liquid Staking';
-        if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) return 'Me';
-        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
+        if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) return 'Sneed Me';
+        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
-        return 'Hub';
+        return 'Sneed Hub';
     });
 
     // Silent admin check - don't redirect, just check status
@@ -78,15 +78,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
-            setActiveSection('Me');
+            setActiveSection('Sneed Me');
         } else if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
-            setActiveSection('Hub');
+            setActiveSection('Sneed Hub');
         } else if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Liquid Staking');
         } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
-            setActiveSection('Me');
+            setActiveSection('Sneed Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
-            setActiveSection('DAO');
+            setActiveSection('Sneed DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) {
             setActiveSection('Sneed Lock');
         } else if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) {
@@ -102,7 +102,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // But only if we're not on an admin page waiting for admin check
     useEffect(() => {
         if (!menuSections[activeSection] && !(isOnAdminPage && adminLoading)) {
-            setActiveSection('Hub'); // Fall back to Hub section
+            setActiveSection('Sneed Hub'); // Fall back to Sneed Hub section
         }
     }, [activeSection, isAdmin, isAuthenticated, isOnAdminPage, adminLoading]);
 
@@ -134,7 +134,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     }, [selectedSnsRoot, identity]);
 
     const menuSections = {
-        'Hub': {
+        'Sneed Hub': {
             icon: <FaNetworkWired size={18} />,
             displayName: 'Sneed Hub',
             defaultPath: '/hub',
@@ -149,7 +149,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Users', path: '/principal' }
             ]
         },
-        'Me': {
+        'Sneed Me': {
             icon: <FaUser size={18} />,
             displayName: 'Sneed Me',
             defaultPath: '/me',
@@ -165,7 +165,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Address Book', path: '/names' }
             ]
         },
-
+        'Sneedex': {
+            icon: <FaExchangeAlt size={18} />,
+            displayName: 'Sneedex',
+            defaultPath: '/sneedex_offers',
+            subMenu: [
+                { name: 'Marketplace', path: '/sneedex_offers' },
+                { name: 'Create Offer', path: '/sneedex_create' },
+                { name: 'My Sneedex', path: '/sneedex_my' },
+                { name: 'About', path: '/sneedex' }
+            ]
+        },
         'Liquid Staking': {
             icon: <FaTint size={18} />,
             displayName: 'Liquid Staking',
@@ -174,22 +184,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Overview', path: '/liquid_staking' },
                 { name: 'ICP Liquid Staking', path: '/create_icp_neuron' },
                 { name: 'SNS Liquid Staking', path: '/sns_neuron_wizard' },
-            ]
-        },
-
-        'DAO': {
-            icon: <FaBuilding size={18} />,
-            displayName: 'Sneed DAO',
-            defaultPath: '/dao',
-            subMenu: [
-                { name: 'DAO', path: '/dao' },
-                { name: 'Dashboard', path: '/dao_info' },
-                { name: 'Tokenomics', path: '/rll_info' },
-                { name: 'Rewards', path: '/rll' },
-                { name: 'Products', path: '/products' },
-                { name: 'Partners', path: '/partners' },
-                { name: 'Projects', path: '/projects' },
-                { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
         'Sneed Lock': {
@@ -202,15 +196,19 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'About', path: '/sneedlock' }
             ]
         },
-        'Sneedex': {
-            icon: <FaExchangeAlt size={18} />,
-            displayName: 'Sneedex',
-            defaultPath: '/sneedex_offers',
+        'Sneed DAO': {
+            icon: <FaBuilding size={18} />,
+            displayName: 'Sneed DAO',
+            defaultPath: '/dao',
             subMenu: [
-                { name: 'Marketplace', path: '/sneedex_offers' },
-                { name: 'Create Offer', path: '/sneedex_create' },
-                { name: 'My Sneedex', path: '/sneedex_my' },
-                { name: 'About', path: '/sneedex' }
+                { name: 'DAO', path: '/dao' },
+                { name: 'Dashboard', path: '/dao_info' },
+                { name: 'Tokenomics', path: '/rll_info' },
+                { name: 'Rewards', path: '/rll' },
+                { name: 'Products', path: '/products' },
+                { name: 'Partners', path: '/partners' },
+                { name: 'Projects', path: '/projects' },
+                { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
         'Help': {
