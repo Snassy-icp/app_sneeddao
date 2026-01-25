@@ -1,323 +1,1075 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
+import { FaCoins, FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaChevronDown, FaExternalLinkAlt } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import { useAuth } from '../AuthContext';
-import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
+import { formatAmount } from '../utils/StringUtils';
 
 export default function SnsNeuronWizard() {
-  const { theme } = useTheme();
-  const { identity, isAuthenticated, login } = useAuth();
-  const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const navigate = useNavigate();
+    const { theme } = useTheme();
+    const { identity, isAuthenticated, login } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
 
-  const [step, setStep] = useState(0);
-  const [snsList, setSnsList] = useState([]);
-  const [loadingSns, setLoadingSns] = useState(false);
-  const [snsLoadError, setSnsLoadError] = useState('');
+    // Step state (1-indexed for display: 1=Select SNS, 2=Configure, 3=Confirm & Stake)
+    const [currentStep, setCurrentStep] = useState(1);
+    
+    // SNS list and loading
+    const [snsList, setSnsList] = useState([]);
+    const [snsLogos, setSnsLogos] = useState(new Map()); // governanceId -> logo URL
+    const [loadingSns, setLoadingSns] = useState(false);
+    const [snsLoadError, setSnsLoadError] = useState('');
+    const [loadingLogos, setLoadingLogos] = useState(new Set());
+    
+    // SNS dropdown state
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    
+    // Token balance state
+    const [tokenBalance, setTokenBalance] = useState(null);
+    const [tokenDecimals, setTokenDecimals] = useState(8);
+    const [tokenSymbol, setTokenSymbol] = useState('');
+    const [tokenFee, setTokenFee] = useState(0n);
+    const [loadingBalance, setLoadingBalance] = useState(false);
+    
+    // Staking configuration
+    const [stakeAmount, setStakeAmount] = useState('');
+    const [dissolveDelayDays, setDissolveDelayDays] = useState('');
+    
+    // Staking process state
+    const [isStaking, setIsStaking] = useState(false);
+    const [stakingProgress, setStakingProgress] = useState('');
+    const [stakingError, setStakingError] = useState('');
+    const [stakingSuccess, setStakingSuccess] = useState(false);
+    const [createdNeuronId, setCreatedNeuronId] = useState(null);
 
-  const [walletLedgerIds, setWalletLedgerIds] = useState(null); // Array<Principal>
-  const [checkingWalletLedgers, setCheckingWalletLedgers] = useState(false);
-  const [registeringToken, setRegisteringToken] = useState(false);
-  const [registerError, setRegisterError] = useState('');
+    // Computed values
+    const selectedSns = useMemo(() => {
+        if (!selectedSnsRoot || selectedSnsRoot === SNEED_SNS_ROOT) return null;
+        return getSnsById(selectedSnsRoot);
+    }, [selectedSnsRoot, SNEED_SNS_ROOT]);
 
-  const [userConfirmedStaked, setUserConfirmedStaked] = useState(false);
+    const selectedLedgerId = selectedSns?.canisters?.ledger || null;
+    const selectedGovernanceId = selectedSns?.canisters?.governance || null;
+    const isSelectedSnsValid = Boolean(selectedSnsRoot && selectedSnsRoot !== SNEED_SNS_ROOT && selectedLedgerId);
 
-  const snsParam = useMemo(() => {
-    if (!selectedSnsRoot || selectedSnsRoot === SNEED_SNS_ROOT) return '';
-    return `?sns=${selectedSnsRoot}`;
-  }, [selectedSnsRoot, SNEED_SNS_ROOT]);
+    const selectedSnsLogo = useMemo(() => {
+        if (!selectedGovernanceId) return null;
+        return snsLogos.get(selectedGovernanceId);
+    }, [selectedGovernanceId, snsLogos]);
 
-  const selectedSns = useMemo(() => {
-    if (!selectedSnsRoot) return null;
-    return getSnsById(selectedSnsRoot);
-  }, [selectedSnsRoot]);
+    const filteredSnsList = useMemo(() => {
+        if (!searchQuery.trim()) return snsList;
+        const query = searchQuery.toLowerCase();
+        return snsList.filter(s => s.name.toLowerCase().includes(query));
+    }, [snsList, searchQuery]);
 
-  const selectedLedgerId = selectedSns?.canisters?.ledger || null;
+    // Load SNS list
+    useEffect(() => {
+        const loadSnses = async () => {
+            setLoadingSns(true);
+            setSnsLoadError('');
+            try {
+                const data = await fetchAndCacheSnsData(identity);
+                setSnsList(data || []);
+            } catch (e) {
+                console.error('Failed to load SNS list:', e);
+                setSnsLoadError('Failed to load SNS list');
+            } finally {
+                setLoadingSns(false);
+            }
+        };
+        loadSnses();
+    }, [identity]);
 
-  const isSelectedSnsValid = Boolean(selectedSnsRoot && selectedSnsRoot !== SNEED_SNS_ROOT && selectedLedgerId);
+    // Load SNS logo
+    const loadSnsLogo = useCallback(async (governanceId) => {
+        if (snsLogos.has(governanceId) || loadingLogos.has(governanceId)) return;
+        
+        setLoadingLogos(prev => new Set(prev).add(governanceId));
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey().catch(() => {});
+            }
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogos(prev => new Map(prev).set(governanceId, logo));
+        } catch (e) {
+            console.warn('Failed to load SNS logo:', e);
+        } finally {
+            setLoadingLogos(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(governanceId);
+                return newSet;
+            });
+        }
+    }, [identity, snsLogos, loadingLogos]);
 
-  const isTokenRegistered = useMemo(() => {
-    if (!selectedLedgerId || !walletLedgerIds) return false;
-    const want = selectedLedgerId.toString();
-    return walletLedgerIds.some((p) => p?.toString?.() === want);
-  }, [walletLedgerIds, selectedLedgerId]);
+    // Load logos for visible SNSes
+    useEffect(() => {
+        filteredSnsList.slice(0, 20).forEach(sns => {
+            if (sns.canisters?.governance) {
+                loadSnsLogo(sns.canisters.governance);
+            }
+        });
+    }, [filteredSnsList, loadSnsLogo]);
 
-  const refreshWalletLedgers = async () => {
-    if (!identity) return;
-    setCheckingWalletLedgers(true);
-    setRegisterError('');
-    try {
-      const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-      const ledgers = await backendActor.get_ledger_canister_ids();
-      setWalletLedgerIds(ledgers);
-    } catch (e) {
-      console.error('Failed to fetch wallet ledger IDs:', e);
-      setRegisterError(e?.message || 'Failed to check wallet token registration');
-    } finally {
-      setCheckingWalletLedgers(false);
-    }
-  };
+    // Load selected SNS logo
+    useEffect(() => {
+        if (selectedGovernanceId && !snsLogos.has(selectedGovernanceId)) {
+            loadSnsLogo(selectedGovernanceId);
+        }
+    }, [selectedGovernanceId, loadSnsLogo, snsLogos]);
 
-  const registerSelectedToken = async () => {
-    if (!identity || !selectedLedgerId) return;
-    setRegisteringToken(true);
-    setRegisterError('');
-    try {
-      const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-      await backendActor.register_ledger_canister_id(Principal.fromText(selectedLedgerId.toString()));
-      await refreshWalletLedgers();
-    } catch (e) {
-      console.error('Failed to register SNS token:', e);
-      setRegisterError(e?.message || 'Failed to register token');
-    } finally {
-      setRegisteringToken(false);
-    }
-  };
+    // Load token balance when SNS is selected
+    useEffect(() => {
+        const loadTokenInfo = async () => {
+            if (!selectedLedgerId || !identity || !isAuthenticated) {
+                setTokenBalance(null);
+                return;
+            }
+            
+            setLoadingBalance(true);
+            try {
+                const ledgerActor = createLedgerActor(selectedLedgerId, {
+                    agentOptions: { identity }
+                });
+                
+                const [balance, decimals, symbol, fee] = await Promise.all([
+                    ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] }),
+                    ledgerActor.icrc1_decimals(),
+                    ledgerActor.icrc1_symbol(),
+                    ledgerActor.icrc1_fee()
+                ]);
+                
+                setTokenBalance(BigInt(balance));
+                setTokenDecimals(Number(decimals));
+                setTokenSymbol(symbol);
+                setTokenFee(BigInt(fee));
+            } catch (e) {
+                console.error('Failed to load token info:', e);
+                setTokenBalance(0n);
+            } finally {
+                setLoadingBalance(false);
+            }
+        };
+        
+        loadTokenInfo();
+    }, [selectedLedgerId, identity, isAuthenticated]);
 
-  useEffect(() => {
-    const run = async () => {
-      setLoadingSns(true);
-      setSnsLoadError('');
-      try {
-        const data = await fetchAndCacheSnsData(identity);
-        setSnsList(data || []);
-      } catch (e) {
-        console.error('Failed to load SNS list:', e);
-        setSnsLoadError('Failed to load SNS list');
-      } finally {
-        setLoadingSns(false);
-      }
+    // Reset when SNS changes
+    useEffect(() => {
+        setStakeAmount('');
+        setDissolveDelayDays('');
+        setStakingError('');
+        setStakingSuccess(false);
+        setCreatedNeuronId(null);
+    }, [selectedSnsRoot]);
+
+    // Register token silently
+    const registerTokenSilently = async () => {
+        if (!identity || !selectedLedgerId) return;
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const ledgers = await backendActor.get_ledger_canister_ids();
+            const isRegistered = ledgers.some(p => p?.toString?.() === selectedLedgerId.toString());
+            if (!isRegistered) {
+                await backendActor.register_ledger_canister_id(Principal.fromText(selectedLedgerId.toString()));
+            }
+        } catch (e) {
+            console.warn('Token registration check failed:', e);
+        }
     };
-    run();
-  }, [identity]);
 
-  useEffect(() => {
-    if (!identity) return;
-    refreshWalletLedgers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identity]);
+    // Find unused nonce
+    const findUnusedNonce = async (governanceActor, principal) => {
+        for (let nonce = 0; nonce < 100; nonce++) {
+            const subaccount = await computeNeuronSubaccount(principal, nonce);
+            const result = await governanceActor.get_neuron({
+                neuron_id: [{ id: Array.from(subaccount) }]
+            });
+            
+            if (result && result.result) {
+                if (result.result.length === 0) {
+                    return { nonce, subaccount };
+                }
+                const innerResult = result.result[0];
+                if ('Error' in innerResult) {
+                    return { nonce, subaccount };
+                }
+            }
+        }
+        throw new Error('Could not find unused nonce (tried 0-99)');
+    };
 
-  useEffect(() => {
-    // If user changes SNS, reset later steps that depend on it
-    setRegisterError('');
-    setUserConfirmedStaked(false);
-  }, [selectedSnsRoot]);
+    // Compute neuron subaccount
+    const computeNeuronSubaccount = async (principal, nonce) => {
+        const nonceBytes = new Uint8Array(8);
+        new DataView(nonceBytes.buffer).setBigUint64(0, BigInt(nonce), false);
+        
+        const chunks = [
+            Uint8Array.from([0x0c]),
+            new TextEncoder().encode("neuron-stake"),
+            principal.toUint8Array(),
+            nonceBytes,
+        ];
+        
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const data = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            data.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        return new Uint8Array(digest);
+    };
 
-  const cardStyle = {
-    backgroundColor: theme.colors.secondaryBg,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: '12px',
-    padding: '18px'
-  };
+    // Execute staking
+    const executeStake = async () => {
+        if (!identity || !selectedLedgerId || !selectedGovernanceId) return;
+        
+        setIsStaking(true);
+        setStakingError('');
+        setStakingProgress('Preparing to stake...');
+        
+        try {
+            const amountFloat = parseFloat(stakeAmount);
+            const amountE8s = BigInt(Math.floor(amountFloat * (10 ** tokenDecimals)));
+            const dissolveDelaySeconds = dissolveDelayDays ? Number(dissolveDelayDays) * 24 * 60 * 60 : 0;
+            
+            // Step 1: Register token silently
+            setStakingProgress('Registering token...');
+            await registerTokenSilently();
+            
+            // Step 2: Find unused nonce
+            setStakingProgress('Finding available neuron slot...');
+            const governanceActor = createSnsGovernanceActor(selectedGovernanceId, {
+                agentOptions: { identity }
+            });
+            
+            const principal = identity.getPrincipal();
+            const { nonce, subaccount } = await findUnusedNonce(governanceActor, principal);
+            
+            // Step 3: Transfer tokens
+            setStakingProgress('Transferring tokens to neuron...');
+            const ledgerActor = createLedgerActor(selectedLedgerId, {
+                agentOptions: { identity }
+            });
+            
+            const subaccount32 = new Uint8Array(32);
+            subaccount32.set(subaccount, 0);
+            
+            const memoBytes = (() => {
+                const buffer = new ArrayBuffer(8);
+                new DataView(buffer).setBigUint64(0, BigInt(nonce), false);
+                return Array.from(new Uint8Array(buffer));
+            })();
+            
+            const transferResult = await ledgerActor.icrc1_transfer({
+                to: {
+                    owner: Principal.fromText(selectedGovernanceId),
+                    subaccount: [Array.from(subaccount32)]
+                },
+                amount: amountE8s,
+                fee: [],
+                memo: [memoBytes],
+                from_subaccount: [],
+                created_at_time: []
+            });
+            
+            if ('Err' in transferResult) {
+                const error = transferResult.Err;
+                let errorMsg = 'Transfer failed';
+                if (error.InsufficientFunds) {
+                    errorMsg = `Insufficient funds. Available: ${formatAmount(error.InsufficientFunds.balance, tokenDecimals)} ${tokenSymbol}`;
+                } else if (error.BadFee) {
+                    errorMsg = `Bad fee. Expected: ${formatAmount(error.BadFee.expected_fee, tokenDecimals)} ${tokenSymbol}`;
+                } else if (error.GenericError) {
+                    errorMsg = error.GenericError.message;
+                }
+                throw new Error(errorMsg);
+            }
+            
+            // Step 4: Wait for transfer
+            setStakingProgress('Waiting for transfer confirmation...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Step 5: Claim neuron
+            setStakingProgress('Claiming neuron stake...');
+            const claimSubaccount = new Uint8Array(32);
+            claimSubaccount.set(subaccount, 0);
+            
+            const claimResult = await governanceActor.manage_neuron({
+                subaccount: Array.from(claimSubaccount),
+                command: [{
+                    ClaimOrRefresh: {
+                        by: [{ MemoAndController: { 
+                            memo: nonce,
+                            controller: [principal]
+                        }}]
+                    }
+                }]
+            });
+            
+            if (claimResult?.command?.[0]?.Error) {
+                throw new Error(`Failed to create neuron: ${claimResult.command[0].Error.error_message}`);
+            }
+            
+            // Step 6: Set dissolve delay if specified
+            if (dissolveDelaySeconds > 0) {
+                setStakingProgress('Setting dissolve delay...');
+                await governanceActor.manage_neuron({
+                    subaccount: Array.from(claimSubaccount),
+                    command: [{
+                        Configure: { operation: [{ 
+                            IncreaseDissolveDelay: { 
+                                additional_dissolve_delay_seconds: dissolveDelaySeconds 
+                            } 
+                        }] }
+                    }]
+                });
+            }
+            
+            // Success!
+            const neuronIdHex = Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('');
+            setCreatedNeuronId(neuronIdHex);
+            setStakingSuccess(true);
+            setStakingProgress('');
+        } catch (error) {
+            console.error('Staking error:', error);
+            setStakingError(error.message || 'Failed to stake neuron');
+            setStakingProgress('');
+        } finally {
+            setIsStaking(false);
+        }
+    };
 
-  const panelStyle = {
-    backgroundColor: theme.colors.primaryBg,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: '12px',
-    padding: '14px'
-  };
+    // Validation
+    const canProceedStep1 = isSelectedSnsValid;
+    const canProceedStep2 = (() => {
+        if (!stakeAmount) return false;
+        const amount = parseFloat(stakeAmount);
+        if (isNaN(amount) || amount <= 0) return false;
+        const amountE8s = BigInt(Math.floor(amount * (10 ** tokenDecimals)));
+        if (tokenBalance === null || amountE8s > tokenBalance) return false;
+        if (amountE8s <= tokenFee) return false;
+        return true;
+    })();
 
-  const btn = (kind = 'primary') => ({
-    backgroundColor: kind === 'primary' ? theme.colors.accent : 'transparent',
-    color: kind === 'primary' ? theme.colors.primaryBg : theme.colors.primaryText,
-    border: kind === 'primary' ? 'none' : `1px solid ${theme.colors.border}`,
-    padding: '10px 14px',
-    borderRadius: '10px',
-    textDecoration: 'none',
-    fontWeight: 800,
-    cursor: 'pointer'
-  });
+    const handleSetMax = () => {
+        if (tokenBalance === null) return;
+        const maxAmount = tokenBalance - tokenFee;
+        if (maxAmount <= 0n) {
+            setStakeAmount('0');
+        } else {
+            setStakeAmount(formatAmount(maxAmount, tokenDecimals));
+        }
+    };
 
-  const canGoNext = () => {
-    if (step === 0) return isSelectedSnsValid;
-    if (step === 1) return isSelectedSnsValid && isTokenRegistered;
-    if (step === 2) return isSelectedSnsValid && userConfirmedStaked; // staking happens in Wallet
-    if (step === 3) return true;
-    return false;
-  };
+    const handleSnsSelect = (sns) => {
+        updateSelectedSns(sns.rootCanisterId);
+        setDropdownOpen(false);
+        setSearchQuery('');
+    };
 
-  return (
-    <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
-      <Header showSnsDropdown={true} />
-      <main className="wallet-container">
-        <div style={{ ...cardStyle, marginBottom: '16px' }}>
-          <h1 style={{ margin: 0, color: theme.colors.primaryText }}>SNS Liquid Staking Wizard</h1>
-          <div style={{ marginTop: '8px', color: theme.colors.mutedText, lineHeight: 1.5 }}>
-            A guided flow to end up with a <strong>staked SNS neuron</strong>. We’ll help you pick an SNS, make sure its token is registered
-            in your wallet, then guide you through staking and verification.
-          </div>
+    // Styles matching LockWizard
+    const styles = {
+        container: {
+            maxWidth: '900px',
+            margin: '0 auto',
+            padding: '2rem',
+            color: theme.colors.primaryText,
+        },
+        hero: {
+            textAlign: 'center',
+            marginBottom: '2rem',
+        },
+        title: {
+            fontSize: '2.2rem',
+            marginBottom: '0.5rem',
+            color: theme.colors.primaryText,
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+        },
+        subtitle: {
+            fontSize: '1.1rem',
+            color: theme.colors.mutedText,
+            marginBottom: '0.5rem',
+            lineHeight: '1.5',
+        },
+        stepProgress: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0',
+            marginBottom: '2rem',
+        },
+        stepCircle: (stepNum, isActive, isCompleted) => ({
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: '600',
+            fontSize: '1rem',
+            background: isCompleted 
+                ? theme.colors.success 
+                : isActive 
+                    ? theme.colors.accent 
+                    : theme.colors.tertiaryBg,
+            color: isCompleted || isActive ? theme.colors.primaryBg : theme.colors.mutedText,
+            border: `2px solid ${isCompleted ? theme.colors.success : isActive ? theme.colors.accent : theme.colors.border}`,
+            cursor: isCompleted ? 'pointer' : 'default',
+            transition: 'all 0.3s ease',
+        }),
+        stepLine: (isCompleted) => ({
+            width: '60px',
+            height: '3px',
+            background: isCompleted ? theme.colors.success : theme.colors.border,
+            transition: 'all 0.3s ease',
+        }),
+        stepLabel: (isActive) => ({
+            fontSize: '0.75rem',
+            color: isActive ? theme.colors.primaryText : theme.colors.mutedText,
+            marginTop: '6px',
+            textAlign: 'center',
+        }),
+        configCard: {
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '16px',
+            padding: '2rem',
+            marginBottom: '1.5rem',
+        },
+        dropdownContainer: {
+            position: 'relative',
+            marginBottom: '1.5rem',
+        },
+        dropdownButton: (isOpen) => ({
+            width: '100%',
+            padding: '14px 16px',
+            background: theme.colors.secondaryBg,
+            border: `2px solid ${isOpen ? theme.colors.accent : theme.colors.border}`,
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        }),
+        dropdownList: {
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: '8px',
+            background: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
+            zIndex: 100,
+            maxHeight: '320px',
+            overflowY: 'auto',
+        },
+        dropdownSearch: {
+            width: '100%',
+            padding: '12px 16px',
+            background: 'transparent',
+            border: 'none',
+            borderBottom: `1px solid ${theme.colors.border}`,
+            color: theme.colors.primaryText,
+            fontSize: '0.95rem',
+            outline: 'none',
+        },
+        dropdownItem: (isSelected) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 16px',
+            cursor: 'pointer',
+            background: isSelected ? `${theme.colors.accent}15` : 'transparent',
+            transition: 'background 0.15s ease',
+        }),
+        snsLogo: {
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            objectFit: 'cover',
+            background: theme.colors.tertiaryBg,
+        },
+        inputGroup: {
+            marginBottom: '1.5rem',
+        },
+        label: {
+            display: 'block',
+            color: theme.colors.primaryText,
+            marginBottom: '8px',
+            fontWeight: '500',
+        },
+        inputRow: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+        },
+        input: {
+            flex: 1,
+            padding: '14px',
+            background: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '10px',
+            color: theme.colors.primaryText,
+            fontSize: '1rem',
+            outline: 'none',
+        },
+        maxButton: {
+            background: theme.colors.accent,
+            color: theme.colors.primaryBg,
+            border: 'none',
+            borderRadius: '10px',
+            padding: '14px 18px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '0.9rem',
+        },
+        buttonRow: {
+            display: 'flex',
+            gap: '12px',
+            marginTop: '2rem',
+        },
+        backButton: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            flex: 1,
+            padding: '14px 24px',
+            background: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '10px',
+            color: theme.colors.primaryText,
+            fontSize: '1rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        continueButton: (isEnabled) => ({
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            flex: 2,
+            padding: '14px 24px',
+            background: isEnabled 
+                ? `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)` 
+                : theme.colors.tertiaryBg,
+            border: 'none',
+            borderRadius: '10px',
+            color: isEnabled ? theme.colors.primaryBg : theme.colors.mutedText,
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: isEnabled ? 'pointer' : 'not-allowed',
+            transition: 'all 0.2s ease',
+            boxShadow: isEnabled ? `0 4px 20px ${theme.colors.accent}40` : 'none',
+        }),
+        errorBox: {
+            color: theme.colors.error,
+            padding: '14px',
+            background: `${theme.colors.error}15`,
+            border: `1px solid ${theme.colors.error}30`,
+            borderRadius: '10px',
+            marginBottom: '1rem',
+            fontSize: '0.95rem',
+        },
+        successCard: {
+            textAlign: 'center',
+            padding: '3rem',
+            background: theme.colors.cardGradient,
+            border: `2px solid ${theme.colors.success}`,
+            borderRadius: '16px',
+        },
+        successIcon: {
+            width: '80px',
+            height: '80px',
+            borderRadius: '50%',
+            background: `${theme.colors.success}20`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1.5rem',
+        },
+        spinner: {
+            animation: 'spin 1s linear infinite',
+        },
+        loginPrompt: {
+            textAlign: 'center',
+            padding: '3rem',
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '16px',
+        },
+        summaryRow: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '12px 0',
+            borderBottom: `1px solid ${theme.colors.border}`,
+        },
+        summaryLabel: {
+            color: theme.colors.mutedText,
+            fontSize: '0.95rem',
+        },
+        summaryValue: {
+            color: theme.colors.primaryText,
+            fontWeight: '600',
+            fontSize: '1rem',
+        },
+    };
 
-          {!isAuthenticated && (
-            <div style={{ marginTop: '12px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ color: theme.colors.mutedText }}>Connect your wallet to use the wizard.</div>
-              <button type="button" onClick={login} style={btn('primary')}>Connect</button>
+    const spinnerKeyframes = `
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    `;
+
+    if (!isAuthenticated) {
+        return (
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <Header />
+                <main style={styles.container}>
+                    <style>{spinnerKeyframes}</style>
+                    <div style={styles.loginPrompt}>
+                        <FaCoins size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem' }}>SNS Staking Wizard</h2>
+                        <p style={{ fontSize: '1.1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem' }}>
+                            Please log in to stake your SNS tokens
+                        </p>
+                        <button
+                            onClick={login}
+                            style={{
+                                ...styles.continueButton(true),
+                                flex: 'none',
+                                padding: '14px 32px',
+                            }}
+                        >
+                            Connect Wallet
+                        </button>
+                    </div>
+                </main>
             </div>
-          )}
+        );
+    }
+
+    const stepLabels = ['Select SNS', 'Configure', 'Stake'];
+
+    const renderStepProgress = () => (
+        <div style={styles.stepProgress}>
+            <style>{spinnerKeyframes}</style>
+            {[1, 2, 3].map((stepNum, index) => (
+                <React.Fragment key={stepNum}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div 
+                            style={styles.stepCircle(stepNum, stepNum === currentStep, stepNum < currentStep)}
+                            onClick={() => stepNum < currentStep && !isStaking && setCurrentStep(stepNum)}
+                        >
+                            {stepNum < currentStep ? <FaCheck size={16} /> : stepNum}
+                        </div>
+                        <div style={styles.stepLabel(stepNum === currentStep)}>
+                            {stepLabels[stepNum - 1]}
+                        </div>
+                    </div>
+                    {index < 2 && <div style={styles.stepLine(stepNum < currentStep)} />}
+                </React.Fragment>
+            ))}
         </div>
+    );
 
-        <div style={{ ...panelStyle, marginBottom: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ color: theme.colors.primaryText, fontWeight: 900 }}>
-              Step {step + 1} / 4
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} style={{ ...btn('ghost'), opacity: step === 0 ? 0.5 : 1 }}>
-                Back
-              </button>
-              <button type="button" onClick={() => setStep((s) => Math.min(3, s + 1))} disabled={!canGoNext()} style={{ ...btn('primary'), opacity: canGoNext() ? 1 : 0.6 }}>
-                Next
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {step === 0 && (
-          <div style={panelStyle}>
-            <div style={{ color: theme.colors.primaryText, fontWeight: 900, marginBottom: '8px' }}>1) Select the SNS</div>
-            <div style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: 1.5, marginBottom: '12px' }}>
-              Pick which DAO/SNS you want to stake in. This sets context across the site and controls which token we’ll register.
+    // Step 1: Select SNS
+    const renderStep1 = () => (
+        <>
+            <div style={styles.hero}>
+                <h1 style={styles.title}>
+                    <FaCoins style={{ color: theme.colors.accent }} />
+                    SNS Staking Wizard
+                </h1>
+                <p style={styles.subtitle}>
+                    Stake tokens in any SNS DAO to earn rewards and participate in governance
+                </p>
             </div>
 
-            {snsLoadError && <div style={{ color: theme.colors.error, marginBottom: '10px' }}>{snsLoadError}</div>}
-
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <select
-                value={selectedSnsRoot || ''}
-                onChange={(e) => updateSelectedSns(e.target.value)}
-                disabled={!isAuthenticated || loadingSns}
-                style={{
-                  flex: 1,
-                  minWidth: '260px',
-                  padding: '10px 12px',
-                  borderRadius: '10px',
-                  border: `1px solid ${theme.colors.border}`,
-                  backgroundColor: theme.colors.tertiaryBg,
-                  color: theme.colors.primaryText
-                }}
-              >
-                <option value="">{loadingSns ? 'Loading SNSes…' : 'Select an SNS…'}</option>
-                {snsList.map((s) => (
-                  <option key={s.rootCanisterId} value={s.rootCanisterId}>{s.name}</option>
-                ))}
-              </select>
-
-              <Link to="/sns" style={btn('ghost')}>Browse Directory →</Link>
+            <div style={styles.configCard}>
+                <div style={styles.inputGroup}>
+                    <label style={styles.label}>Select an SNS to stake in:</label>
+                    
+                    {snsLoadError && (
+                        <div style={styles.errorBox}>{snsLoadError}</div>
+                    )}
+                    
+                    <div style={styles.dropdownContainer}>
+                        <div 
+                            style={styles.dropdownButton(dropdownOpen)}
+                            onClick={() => setDropdownOpen(!dropdownOpen)}
+                        >
+                            {selectedSns ? (
+                                <>
+                                    {selectedSnsLogo ? (
+                                        <img 
+                                            src={selectedSnsLogo} 
+                                            alt={selectedSns.name} 
+                                            style={styles.snsLogo}
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                        />
+                                    ) : (
+                                        <div style={{ ...styles.snsLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <FaCoins style={{ color: theme.colors.mutedText }} />
+                                        </div>
+                                    )}
+                                    <div style={{ flex: 1, textAlign: 'left' }}>
+                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {selectedSns.name}
+                                        </div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                            {selectedSns.rootCanisterId.slice(0, 10)}...
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ flex: 1, textAlign: 'left', color: theme.colors.mutedText }}>
+                                    {loadingSns ? 'Loading SNSes...' : 'Select an SNS...'}
+                                </div>
+                            )}
+                            <FaChevronDown style={{ 
+                                color: theme.colors.mutedText, 
+                                transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease'
+                            }} />
+                        </div>
+                        
+                        {dropdownOpen && (
+                            <div style={styles.dropdownList}>
+                                <input
+                                    type="text"
+                                    placeholder="Search SNSes..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    style={styles.dropdownSearch}
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                                {filteredSnsList.length === 0 ? (
+                                    <div style={{ padding: '20px', textAlign: 'center', color: theme.colors.mutedText }}>
+                                        {loadingSns ? 'Loading...' : 'No SNSes found'}
+                                    </div>
+                                ) : (
+                                    filteredSnsList.map((sns) => {
+                                        const logo = snsLogos.get(sns.canisters?.governance);
+                                        const isSelected = selectedSnsRoot === sns.rootCanisterId;
+                                        return (
+                                            <div
+                                                key={sns.rootCanisterId}
+                                                style={styles.dropdownItem(isSelected)}
+                                                onClick={() => handleSnsSelect(sns)}
+                                                onMouseEnter={(e) => e.currentTarget.style.background = `${theme.colors.accent}10`}
+                                                onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? `${theme.colors.accent}15` : 'transparent'}
+                                            >
+                                                {logo ? (
+                                                    <img 
+                                                        src={logo} 
+                                                        alt={sns.name} 
+                                                        style={styles.snsLogo}
+                                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                                    />
+                                                ) : (
+                                                    <div style={{ ...styles.snsLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <FaCoins style={{ color: theme.colors.mutedText, fontSize: '14px' }} />
+                                                    </div>
+                                                )}
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                        {sns.name}
+                                                    </div>
+                                                </div>
+                                                {isSelected && <FaCheck style={{ color: theme.colors.accent }} />}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                {selectedSns && (
+                    <div style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '10px',
+                        padding: '14px',
+                        marginTop: '1rem'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>Your Balance:</span>
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                {loadingBalance ? (
+                                    <FaSpinner style={styles.spinner} />
+                                ) : tokenBalance !== null ? (
+                                    `${formatAmount(tokenBalance, tokenDecimals)} ${tokenSymbol}`
+                                ) : (
+                                    '—'
+                                )}
+                            </span>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {!isSelectedSnsValid && selectedSnsRoot && (
-              <div style={{ marginTop: '10px', color: theme.colors.warning }}>
-                This selection doesn’t look valid yet. Please pick a real SNS (not the default) so we can find its ledger canister.
-              </div>
-            )}
-          </div>
-        )}
+            <div style={styles.buttonRow}>
+                <button
+                    style={styles.continueButton(canProceedStep1)}
+                    onClick={() => canProceedStep1 && setCurrentStep(2)}
+                    disabled={!canProceedStep1}
+                >
+                    Continue
+                    <FaArrowRight />
+                </button>
+            </div>
+        </>
+    );
 
-        {step === 1 && (
-          <div style={panelStyle}>
-            <div style={{ color: theme.colors.primaryText, fontWeight: 900, marginBottom: '8px' }}>2) Register the SNS token in your Wallet</div>
-            <div style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: 1.5, marginBottom: '12px' }}>
-              To see your staking position in Wallet (and on your /me page), we ensure the SNS’s token ledger is registered to your wallet.
+    // Step 2: Configure Stake
+    const renderStep2 = () => (
+        <>
+            <div style={styles.hero}>
+                <h1 style={styles.title}>
+                    {selectedSnsLogo && (
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                    )}
+                    Configure Stake
+                </h1>
+                <p style={styles.subtitle}>
+                    Set your stake amount and dissolve delay for {selectedSns?.name}
+                </p>
             </div>
 
-            {!isSelectedSnsValid ? (
-              <div style={{ color: theme.colors.mutedText }}>
-                Pick an SNS in Step 1 first.
-              </div>
-            ) : (
-              <>
-                <div style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
-                  Ledger canister: <span style={{ fontFamily: 'monospace', color: theme.colors.primaryText }}>{selectedLedgerId}</span>
+            <div style={styles.configCard}>
+                <div style={styles.inputGroup}>
+                    <label style={styles.label}>Stake Amount ({tokenSymbol}):</label>
+                    <div style={styles.inputRow}>
+                        <input
+                            type="number"
+                            placeholder={`Enter amount (min: ${formatAmount(tokenFee + 1n, tokenDecimals)})`}
+                            value={stakeAmount}
+                            onChange={(e) => setStakeAmount(e.target.value)}
+                            style={styles.input}
+                        />
+                        <button onClick={handleSetMax} style={styles.maxButton}>
+                            MAX
+                        </button>
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                        Available: {loadingBalance ? '...' : `${formatAmount(tokenBalance || 0n, tokenDecimals)} ${tokenSymbol}`}
+                        {tokenFee > 0n && ` • Fee: ${formatAmount(tokenFee, tokenDecimals)} ${tokenSymbol}`}
+                    </div>
                 </div>
 
-                <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={refreshWalletLedgers}
-                    disabled={checkingWalletLedgers || !isAuthenticated}
-                    style={{ ...btn('ghost'), opacity: (checkingWalletLedgers || !isAuthenticated) ? 0.6 : 1 }}
-                  >
-                    {checkingWalletLedgers ? 'Checking…' : 'Re-check Wallet'}
-                  </button>
-                  {!isTokenRegistered ? (
+                <div style={styles.inputGroup}>
+                    <label style={styles.label}>Dissolve Delay (days):</label>
+                    <input
+                        type="number"
+                        placeholder="e.g., 180 (optional, can set later)"
+                        value={dissolveDelayDays}
+                        onChange={(e) => setDissolveDelayDays(e.target.value)}
+                        style={{ ...styles.input, width: '100%' }}
+                        min="0"
+                    />
+                    <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                        Longer dissolve delays earn more voting power. Leave empty to set later.
+                    </div>
+                </div>
+            </div>
+
+            <div style={styles.buttonRow}>
+                <button
+                    style={styles.backButton}
+                    onClick={() => setCurrentStep(1)}
+                >
+                    <FaArrowLeft />
+                    Back
+                </button>
+                <button
+                    style={styles.continueButton(canProceedStep2)}
+                    onClick={() => canProceedStep2 && setCurrentStep(3)}
+                    disabled={!canProceedStep2}
+                >
+                    Continue
+                    <FaArrowRight />
+                </button>
+            </div>
+        </>
+    );
+
+    // Step 3: Confirm & Stake
+    const renderStep3 = () => {
+        if (stakingSuccess) {
+            return (
+                <div style={styles.successCard}>
+                    <div style={styles.successIcon}>
+                        <FaCheck size={40} style={{ color: theme.colors.success }} />
+                    </div>
+                    <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1.8rem' }}>
+                        Neuron Created Successfully!
+                    </h2>
+                    <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1.1rem' }}>
+                        You've staked {stakeAmount} {tokenSymbol} in {selectedSns?.name}
+                        {dissolveDelayDays && ` with a ${dissolveDelayDays}-day dissolve delay`}.
+                    </p>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button
+                            style={{
+                                ...styles.backButton,
+                                flex: 'none',
+                                padding: '14px 24px',
+                            }}
+                            onClick={() => {
+                                setCurrentStep(1);
+                                setStakeAmount('');
+                                setDissolveDelayDays('');
+                                setStakingSuccess(false);
+                                setCreatedNeuronId(null);
+                            }}
+                        >
+                            Stake Another
+                        </button>
+                        <button
+                            style={{
+                                ...styles.continueButton(true),
+                                flex: 'none',
+                                padding: '14px 24px',
+                            }}
+                            onClick={() => navigate(`/neurons?sns=${selectedSnsRoot}`)}
+                        >
+                            View My Neurons
+                            <FaExternalLinkAlt size={12} />
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        const stakeAmountE8s = BigInt(Math.floor(parseFloat(stakeAmount || '0') * (10 ** tokenDecimals)));
+
+        return (
+            <>
+                <div style={styles.hero}>
+                    <h1 style={styles.title}>
+                        {selectedSnsLogo && (
+                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
+                        )}
+                        Confirm & Stake
+                    </h1>
+                    <p style={styles.subtitle}>
+                        Review your staking details before confirming
+                    </p>
+                </div>
+
+                <div style={styles.configCard}>
+                    <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>SNS</span>
+                        <span style={styles.summaryValue}>{selectedSns?.name}</span>
+                    </div>
+                    <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>Stake Amount</span>
+                        <span style={styles.summaryValue}>{stakeAmount} {tokenSymbol}</span>
+                    </div>
+                    <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>Dissolve Delay</span>
+                        <span style={styles.summaryValue}>
+                            {dissolveDelayDays ? `${dissolveDelayDays} days` : 'Not set (can configure later)'}
+                        </span>
+                    </div>
+                    <div style={{ ...styles.summaryRow, borderBottom: 'none' }}>
+                        <span style={styles.summaryLabel}>Transaction Fee</span>
+                        <span style={styles.summaryValue}>{formatAmount(tokenFee, tokenDecimals)} {tokenSymbol}</span>
+                    </div>
+                    
+                    {stakingProgress && (
+                        <div style={{
+                            marginTop: '1.5rem',
+                            padding: '16px',
+                            background: `${theme.colors.accent}10`,
+                            borderRadius: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <FaSpinner style={{ ...styles.spinner, color: theme.colors.accent }} />
+                            <span style={{ color: theme.colors.primaryText }}>{stakingProgress}</span>
+                        </div>
+                    )}
+                    
+                    {stakingError && (
+                        <div style={{ ...styles.errorBox, marginTop: '1.5rem' }}>
+                            {stakingError}
+                        </div>
+                    )}
+                </div>
+
+                <div style={styles.buttonRow}>
                     <button
-                      type="button"
-                      onClick={registerSelectedToken}
-                      disabled={registeringToken || !isAuthenticated}
-                      style={{ ...btn('primary'), opacity: (registeringToken || !isAuthenticated) ? 0.6 : 1 }}
+                        style={styles.backButton}
+                        onClick={() => setCurrentStep(2)}
+                        disabled={isStaking}
                     >
-                      {registeringToken ? 'Registering…' : 'Register Token'}
+                        <FaArrowLeft />
+                        Back
                     </button>
-                  ) : (
-                    <div style={{ color: theme.colors.success, fontWeight: 800 }}>Registered ✓</div>
-                  )}
+                    <button
+                        style={styles.continueButton(!isStaking)}
+                        onClick={executeStake}
+                        disabled={isStaking}
+                    >
+                        {isStaking ? (
+                            <>
+                                <FaSpinner style={styles.spinner} />
+                                Staking...
+                            </>
+                        ) : (
+                            <>
+                                <FaCoins />
+                                Stake {stakeAmount} {tokenSymbol}
+                            </>
+                        )}
+                    </button>
                 </div>
+            </>
+        );
+    };
 
-                {registerError && <div style={{ marginTop: '10px', color: theme.colors.error }}>{registerError}</div>}
-              </>
-            )}
-          </div>
-        )}
-
-        {step === 2 && (
-          <div style={panelStyle}>
-            <div style={{ color: theme.colors.primaryText, fontWeight: 900, marginBottom: '8px' }}>3) Stake the neuron</div>
-            <div style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: 1.5, marginBottom: '12px' }}>
-              Staking happens in Wallet. When you’re done, come back and continue to verification.
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <Link to={`/wallet${snsParam}`} style={btn('primary')}>Open Wallet (stake) →</Link>
-              <Link to={`/neurons${snsParam}`} style={btn('ghost')}>Browse Neurons →</Link>
-              <Link to={`/me`} style={btn('ghost')}>Open /me →</Link>
-            </div>
-
-            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <input
-                id="confirm-staked"
-                type="checkbox"
-                checked={userConfirmedStaked}
-                onChange={(e) => setUserConfirmedStaked(e.target.checked)}
-              />
-              <label htmlFor="confirm-staked" style={{ color: theme.colors.primaryText }}>
-                I have staked a neuron for this SNS
-              </label>
-            </div>
-
-            <div style={{ marginTop: '10px', color: theme.colors.mutedText, fontSize: '12px' }}>
-              Tip: After staking, you should see the token in Wallet and your neurons in /me and /neurons.
-            </div>
-
-            <div style={{ marginTop: '12px', color: userConfirmedStaked ? theme.colors.success : theme.colors.warning, fontSize: '13px' }}>
-              {userConfirmedStaked ? 'Great — you can continue.' : 'Check the box once you’ve completed staking in Wallet.'}
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div style={panelStyle}>
-            <div style={{ color: theme.colors.primaryText, fontWeight: 900, marginBottom: '8px' }}>4) Verify + next actions</div>
-            <div style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: 1.5, marginBottom: '12px' }}>
-              Confirm your neuron is visible, then optionally move into governance or marketplace workflows.
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <Link to={`/me`} style={btn('primary')}>View on /me →</Link>
-              <Link to={`/neurons${snsParam}`} style={btn('ghost')}>View on /neurons →</Link>
-              <Link to={`/proposals${snsParam}`} style={btn('ghost')}>Open Proposals →</Link>
-              <Link to={`/forum${snsParam}`} style={btn('ghost')}>Open Forum →</Link>
-              <Link to="/sneedex_offers" style={btn('ghost')}>Browse Sneedex →</Link>
-            </div>
-            <div style={{ marginTop: '12px', color: theme.colors.mutedText, fontSize: '12px' }}>
-              You can also create/trade ICP Neuron Manager canisters via Liquid Staking.
-              {' '}
-              <Link to="/liquid_staking" style={{ color: theme.colors.accent, textDecoration: 'none' }}>Open Liquid Staking →</Link>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
-  );
+    return (
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <Header />
+            <main style={styles.container}>
+                {renderStepProgress()}
+                {currentStep === 1 && renderStep1()}
+                {currentStep === 2 && renderStep2()}
+                {currentStep === 3 && renderStep3()}
+            </main>
+        </div>
+    );
 }
-

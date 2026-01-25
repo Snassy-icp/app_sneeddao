@@ -870,7 +870,7 @@ function CreateIcpNeuron() {
                             ➕ Create New Neuron Manager
                         </h3>
 
-                        {/* Wallet deposit info (for CEX transfers) */}
+                        {/* Wallet deposit info */}
                         {myPrincipal && (
                             <div style={{
                                 background: `${theme.colors.secondaryBg}`,
@@ -880,15 +880,23 @@ function CreateIcpNeuron() {
                                 border: `1px solid ${theme.colors.border}`,
                             }}>
                                 <div style={{ color: theme.colors.primaryText, fontWeight: 700, marginBottom: '6px' }}>
-                                    💰 Fund your wallet (ICP deposit address)
+                                    💰 Your ICP Deposit Address
                                 </div>
                                 <div style={{ color: theme.colors.mutedText, fontSize: '12px', lineHeight: 1.5, marginBottom: '10px' }}>
-                                    If you’re sending ICP from a CEX, use your Wallet Principal + ICP Account ID below. Once the ICP arrives, you can stake/create.
+                                    Send ICP to your Principal ID (PID) below. This works from wallets, DEXes, and anywhere in the ICP ecosystem.
                                 </div>
 
                                 <div style={{ display: 'grid', gap: '10px' }}>
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '6px' }}>Wallet Principal</div>
+                                    {/* Principal ID - Primary */}
+                                    <div style={{
+                                        background: `${theme.colors.accent}10`,
+                                        borderRadius: '8px',
+                                        padding: '12px',
+                                        border: `1px solid ${theme.colors.accent}30`,
+                                    }}>
+                                        <div style={{ color: theme.colors.accent, fontSize: '12px', fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span>📍</span> Principal ID (PID) — Standard
+                                        </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                             <PrincipalDisplay
                                                 principal={myPrincipal}
@@ -907,70 +915,92 @@ function CreateIcpNeuron() {
                                                     }
                                                 }}
                                                 style={{
-                                                    padding: '8px 10px',
+                                                    padding: '8px 12px',
                                                     borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    background: theme.colors.primaryBg,
-                                                    color: theme.colors.primaryText,
+                                                    border: 'none',
+                                                    background: theme.colors.accent,
+                                                    color: '#fff',
                                                     cursor: 'pointer',
                                                     fontWeight: 700,
                                                     fontSize: '12px'
                                                 }}
                                             >
-                                                {copiedDeposit ? 'Copied' : 'Copy PID'}
+                                                {copiedDeposit ? '✓ Copied!' : 'Copy PID'}
                                             </button>
+                                        </div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
+                                            Use this for transfers from ICP wallets, DEXes (ICPSwap, Sonic, etc.), and anywhere in the ecosystem.
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '6px' }}>ICP Account ID</div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                            <div style={{
-                                                fontFamily: 'monospace',
-                                                fontSize: '12px',
-                                                padding: '8px 10px',
-                                                borderRadius: '8px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                background: theme.colors.primaryBg,
-                                                color: theme.colors.primaryText,
-                                                wordBreak: 'break-all',
-                                                flex: 1,
-                                                minWidth: '240px'
-                                            }}>
-                                                {myAccountId || '(unavailable)'}
+                                    {/* Account ID - Legacy/CEX */}
+                                    <details style={{ cursor: 'pointer' }}>
+                                        <summary style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '12px', 
+                                            padding: '8px 0',
+                                            listStyle: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}>
+                                            <span style={{ fontSize: '10px' }}>▶</span> Sending from a CEX? Show legacy Account ID
+                                        </summary>
+                                        <div style={{
+                                            background: theme.colors.primaryBg,
+                                            borderRadius: '8px',
+                                            padding: '12px',
+                                            marginTop: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                        }}>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '8px' }}>
+                                                Some centralized exchanges (Coinbase, Binance, etc.) don't support Principal IDs yet. Use this legacy Account ID instead:
                                             </div>
-                                            <button
-                                                type="button"
-                                                disabled={!myAccountId}
-                                                onClick={async () => {
-                                                    if (!myAccountId) return;
-                                                    try {
-                                                        await navigator.clipboard.writeText(myAccountId);
-                                                        setCopiedAccountId(true);
-                                                        setTimeout(() => setCopiedAccountId(false), 1200);
-                                                    } catch (e) {
-                                                        console.warn('Copy failed', e);
-                                                    }
-                                                }}
-                                                style={{
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                                <div style={{
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '11px',
                                                     padding: '8px 10px',
-                                                    borderRadius: '8px',
+                                                    borderRadius: '6px',
                                                     border: `1px solid ${theme.colors.border}`,
-                                                    background: theme.colors.primaryBg,
-                                                    color: theme.colors.primaryText,
-                                                    cursor: myAccountId ? 'pointer' : 'not-allowed',
-                                                    fontWeight: 700,
-                                                    fontSize: '12px',
-                                                    opacity: myAccountId ? 1 : 0.6
-                                                }}
-                                            >
-                                                {copiedAccountId ? 'Copied' : 'Copy Account ID'}
-                                            </button>
+                                                    background: theme.colors.secondaryBg,
+                                                    color: theme.colors.mutedText,
+                                                    wordBreak: 'break-all',
+                                                    flex: 1,
+                                                    minWidth: '200px'
+                                                }}>
+                                                    {myAccountId || '(unavailable)'}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    disabled={!myAccountId}
+                                                    onClick={async () => {
+                                                        if (!myAccountId) return;
+                                                        try {
+                                                            await navigator.clipboard.writeText(myAccountId);
+                                                            setCopiedAccountId(true);
+                                                            setTimeout(() => setCopiedAccountId(false), 1200);
+                                                        } catch (e) {
+                                                            console.warn('Copy failed', e);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        borderRadius: '6px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        background: 'transparent',
+                                                        color: theme.colors.mutedText,
+                                                        cursor: myAccountId ? 'pointer' : 'not-allowed',
+                                                        fontWeight: 600,
+                                                        fontSize: '11px',
+                                                        opacity: myAccountId ? 1 : 0.6
+                                                    }}
+                                                >
+                                                    {copiedAccountId ? '✓ Copied!' : 'Copy'}
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '6px' }}>
-                                            You can send ICP directly to this Account ID (default subaccount) to fund staking on Sneed.
-                                        </div>
-                                    </div>
+                                    </details>
                                 </div>
                             </div>
                         )}
