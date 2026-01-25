@@ -1358,7 +1358,7 @@ export default function Me() {
                                                                     textOverflow: 'ellipsis',
                                                                 }}
                                                             >
-                                                                My Neurons ({group.neurons.length})
+                                                                Owned Neurons ({group.neurons.length})
                                                             </span>
                                                         ) : (
                                                             <span
@@ -1372,7 +1372,7 @@ export default function Me() {
                                                                     minWidth: 0,
                                                                 }}
                                                             >
-                                                                <span style={{ whiteSpace: 'nowrap' }}>Neurons from</span>
+                                                                <span style={{ whiteSpace: 'nowrap' }}>Owned by</span>
                                                                 <span title={group.ownerPrincipal} style={{ minWidth: 0 }}>
                                                                     <PrincipalDisplay
                                                                         principal={Principal.fromText(group.ownerPrincipal)}
@@ -1729,20 +1729,31 @@ export default function Me() {
                                                         {/* Replace debug info with permissions */}
                                                         <div style={{ gridColumn: '1 / -1' }}>
                                                             <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Permissions</div>
-                                                            {/* Owner */}
+                                                            {/* Owners */}
                                                             {getOwnerPrincipals(neuron).length > 0 && (
-                                                                <div style={{ 
-                                                                    marginBottom: '8px',
+                                                                <div style={{
+                                                                    marginBottom: '10px',
                                                                     display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '8px'
+                                                                    flexDirection: 'column',
+                                                                    gap: '6px'
                                                                 }}>
-                                                                    <span style={{ color: theme.colors.mutedText }}>Owner:</span>
-                                                                    <PrincipalDisplay 
-                                                                        principal={getOwnerPrincipals(neuron)[0]}
-                                                                        displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0]?.toString())}
-                                                                        showCopyButton={false}
-                                                                    />
+                                                                    {getOwnerPrincipals(neuron).map((ownerStr) => (
+                                                                        <div
+                                                                            key={ownerStr}
+                                                                            style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '8px'
+                                                                            }}
+                                                                        >
+                                                                            <span title="Owner" style={{ color: theme.colors.mutedText }}>👑</span>
+                                                                            <PrincipalDisplay
+                                                                                principal={Principal.fromText(ownerStr)}
+                                                                                displayInfo={principalDisplayInfo.get(ownerStr)}
+                                                                                showCopyButton={false}
+                                                                            />
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
                                                             )}
                                                             {/* Hotkeys */}
@@ -1755,9 +1766,7 @@ export default function Me() {
                                                                         gap: '8px',
                                                                         marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
                                                                     }}>
-                                                                        <span style={{ color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                            🔑 Hotkey:
-                                                                        </span>
+                                                                        <span title="Hotkey" style={{ color: theme.colors.mutedText }}>🔑</span>
                                                                         <PrincipalDisplay 
                                                                             principal={p.principal}
                                                                             displayInfo={principalDisplayInfo.get(p.principal?.toString())}
@@ -1811,7 +1820,7 @@ export default function Me() {
                                     transform: !isTransactionsCollapsed ? 'none' : 'rotate(-90deg)'
                                 }}>▼</span>
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                    🧾 Transactions
+                                    🧾 My {(selectedSnsInfo?.name || 'DAO')} Transactions
                                 </span>
                             </div>
                         </div>

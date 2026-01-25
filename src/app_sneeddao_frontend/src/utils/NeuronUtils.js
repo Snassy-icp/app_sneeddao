@@ -30,13 +30,28 @@ export const getNeuronId = (neuron) => {
 
 // Helper function to find owner principals from neuron permissions
 export const getOwnerPrincipals = (neuron) => {
+    // Treat principals with MANAGE_PRINCIPALS (aka "ManagePermissions") as owners.
+    // SNS NeuronPermissionType enum:
+    // 2 = MANAGE_PRINCIPALS
+    const MANAGE_PRINCIPALS = 2;
+
     const owners = new Set();
-    // Look for principals with the most permissions
-    let maxPermissions = 0;
-    
-    neuron.permissions.forEach(permission => {
-        if (permission.principal) {
-            const permCount = permission.permission_type.length;
+
+    const perms = neuron?.permissions || [];
+    perms.forEach(permission => {
+        if (!permission?.principal) return;
+        const permArray = permission.permission_type || [];
+        if (permArray.includes(MANAGE_PRINCIPALS)) {
+            owners.add(permission.principal.toString());
+        }
+    });
+
+    // Fallback to previous heuristic if no explicit owners found.
+    if (owners.size === 0) {
+        let maxPermissions = 0;
+        perms.forEach(permission => {
+            if (!permission?.principal) return;
+            const permCount = (permission.permission_type || []).length;
             if (permCount > maxPermissions) {
                 maxPermissions = permCount;
                 owners.clear();
@@ -44,10 +59,10 @@ export const getOwnerPrincipals = (neuron) => {
             } else if (permCount === maxPermissions) {
                 owners.add(permission.principal.toString());
             }
-        }
-    });
-    
-    return Array.from(owners);
+        });
+    }
+
+    return Array.from(owners).sort();
 };
 
 // Helper function to format dissolve state
