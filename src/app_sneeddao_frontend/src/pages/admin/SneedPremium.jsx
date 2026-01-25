@@ -2380,8 +2380,20 @@ export default function SneedPremiumAdmin() {
                         ICP payments will be forwarded to this account.
                         <br />
                         Current recipient: {config?.paymentRecipient ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 <PrincipalDisplay principal={config.paymentRecipient.owner.toString()} />
+                                {config.paymentRecipient.subaccount && config.paymentRecipient.subaccount.length > 0 && (
+                                    <span style={{ 
+                                        fontFamily: 'monospace', 
+                                        fontSize: '0.85rem',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        color: theme.colors.secondaryText
+                                    }}>
+                                        Subaccount: {Array.from(config.paymentRecipient.subaccount[0]).map(b => b.toString(16).padStart(2, '0')).join('')}
+                                    </span>
+                                )}
                             </span>
                         ) : 'Loading...'}
                     </p>
