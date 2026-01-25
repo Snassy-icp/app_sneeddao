@@ -4,31 +4,33 @@ import { AuthClient } from '@dfinity/auth-client';
 
 const AuthContext = createContext();
 
-// Internet Identity 2.0 configuration
-const II_CONFIG = {
-  // Use the mainnet Internet Identity canister
-  identityProvider: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
-    ? 'https://identity.ic0.app'
-    : 'http://rdmx6-jaaaa-aaaaa-aaadq-cai.localhost:4943',
-  
-  // 7-day session duration (in nanoseconds)
-  maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000),
-  
-  // Window opener features for a better popup experience
-  windowOpenerFeatures: 
-    `left=${Math.floor(window.screen.width / 2 - 250)},` +
-    `top=${Math.floor(window.screen.height / 2 - 350)},` +
-    `toolbar=0,location=0,menubar=0,width=500,height=700`,
+// Check if we're on mainnet or local
+const isMainnet = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging';
+
+// Identity Provider configurations
+const IDENTITY_PROVIDERS = {
+  // Internet Identity 1.0 (Classic)
+  II1: {
+    name: 'Internet Identity 1.0',
+    url: isMainnet 
+      ? 'https://identity.ic0.app'
+      : 'http://rdmx6-jaaaa-aaaaa-aaadq-cai.localhost:4943',
+  },
+  // Internet Identity 2.0 (New - id.ai)
+  II2: {
+    name: 'Internet Identity 2.0',
+    url: 'https://id.ai',
+  },
 };
 
-// Optional: Set derivationOrigin for alternative origins (production custom domains)
-// This ensures users get the same principal regardless of which domain they use
-const getDerivationOrigin = () => {
-  // If you have a custom domain, set the canonical origin here
-  // Example: return 'https://sneeddao.com';
-  // For now, we don't use derivationOrigin (users get different principals per domain)
-  return undefined;
-};
+// Session duration: 7 days in nanoseconds
+const MAX_TIME_TO_LIVE = BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000);
+
+// Window opener features for a better popup experience
+const getWindowFeatures = () => 
+  `left=${Math.floor(window.screen.width / 2 - 250)},` +
+  `top=${Math.floor(window.screen.height / 2 - 350)},` +
+  `toolbar=0,location=0,menubar=0,width=500,height=700`;
 
 export function AuthProvider({ children }) {
   const [identity, setIdentity] = useState(null);
@@ -36,6 +38,7 @@ export function AuthProvider({ children }) {
   const [authClient, setAuthClient] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
     initAuthClient();
@@ -45,12 +48,10 @@ export function AuthProvider({ children }) {
     try {
       const client = await AuthClient.create({
         idleOptions: {
-          // Disable idle timeout - we handle session management differently
           disableIdle: true,
           disableDefaultIdleCallback: true
         },
-        // Key storage options (uses IndexedDB by default in browsers)
-        keyType: 'Ed25519', // Use Ed25519 keys for better compatibility
+        keyType: 'Ed25519',
       });
       setAuthClient(client);
 
@@ -66,8 +67,19 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Memoized login function to prevent unnecessary re-renders
-  const login = useCallback(async () => {
+  // Generic login function that shows the modal
+  const login = useCallback(() => {
+    setShowLoginModal(true);
+  }, []);
+
+  // Close the login modal
+  const closeLoginModal = useCallback(() => {
+    setShowLoginModal(false);
+    setAuthError(null);
+  }, []);
+
+  // Login with Internet Identity 1.0 (Classic - identity.ic0.app)
+  const loginWithII1 = useCallback(async () => {
     if (!authClient) {
       console.warn('Auth client not initialized yet');
       return;
@@ -83,24 +95,64 @@ export function AuthProvider({ children }) {
 
     try {
       await authClient.login({
-        identityProvider: II_CONFIG.identityProvider,
-        maxTimeToLive: II_CONFIG.maxTimeToLive,
-        windowOpenerFeatures: II_CONFIG.windowOpenerFeatures,
-        derivationOrigin: getDerivationOrigin(),
+        identityProvider: IDENTITY_PROVIDERS.II1.url,
+        maxTimeToLive: MAX_TIME_TO_LIVE,
+        windowOpenerFeatures: getWindowFeatures(),
         onSuccess: () => {
           const id = authClient.getIdentity();
           setIdentity(id);
           setIsAuthenticated(true);
           setIsLoggingIn(false);
+          setShowLoginModal(false);
         },
         onError: (error) => {
-          console.error('Internet Identity login error:', error);
+          console.error('Internet Identity 1.0 login error:', error);
           setAuthError(error?.message || 'Login failed');
           setIsLoggingIn(false);
         },
       });
     } catch (error) {
       console.error('Login error:', error);
+      setAuthError(error?.message || 'Login failed');
+      setIsLoggingIn(false);
+    }
+  }, [authClient, isLoggingIn]);
+
+  // Login with Internet Identity 2.0 (New - id.ai)
+  const loginWithII2 = useCallback(async () => {
+    if (!authClient) {
+      console.warn('Auth client not initialized yet');
+      return;
+    }
+    
+    if (isLoggingIn) {
+      console.warn('Login already in progress');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setAuthError(null);
+
+    try {
+      await authClient.login({
+        identityProvider: IDENTITY_PROVIDERS.II2.url,
+        maxTimeToLive: MAX_TIME_TO_LIVE,
+        windowOpenerFeatures: getWindowFeatures(),
+        onSuccess: () => {
+          const id = authClient.getIdentity();
+          setIdentity(id);
+          setIsAuthenticated(true);
+          setIsLoggingIn(false);
+          setShowLoginModal(false);
+        },
+        onError: (error) => {
+          console.error('Internet Identity 2.0 login error:', error);
+          setAuthError(error?.message || 'Login failed');
+          setIsLoggingIn(false);
+        },
+      });
+    } catch (error) {
+      console.error('Internet Identity 2.0 login error:', error);
       setAuthError(error?.message || 'Login failed');
       setIsLoggingIn(false);
     }
@@ -129,12 +181,16 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{ 
       identity, 
       isAuthenticated, 
-      login, 
+      login,
+      loginWithII1,
+      loginWithII2,
       logout, 
       isLoggingIn,
       authError,
       clearAuthError,
-      authClient
+      authClient,
+      showLoginModal,
+      closeLoginModal,
     }}>
       {children}
     </AuthContext.Provider>

@@ -121,6 +121,7 @@ function App() {
                   <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />
+                    <Route path="/login" element={<Login />} />
                     <Route path="/wallet" element={<Wallet />} />
                     <Route path="/doc" element={<Doc />} />
                     <Route path="/help" element={<Help />} />
