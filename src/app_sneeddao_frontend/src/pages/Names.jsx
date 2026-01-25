@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
@@ -8,7 +8,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import NeuronInput from '../components/NeuronInput';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname, setNeuronNickname } from '../utils/BackendUtils';
+import { setPrincipalNickname, setNeuronNickname } from '../utils/BackendUtils';
 import { useSns } from '../contexts/SnsContext';
 
 const validateName = (input) => {
@@ -27,17 +27,6 @@ export default function Names() {
   const { principalNames, principalNicknames, neuronNames, neuronNicknames, fetchAllNames } = useNaming();
   const { selectedSnsRoot } = useSns();
 
-  const myPrincipalStr = identity?.getPrincipal()?.toString?.() || '';
-
-  // My public name
-  const [myName, setMyName] = useState('');
-  const [myNameVerified, setMyNameVerified] = useState(false);
-  const [myNameLoading, setMyNameLoading] = useState(false);
-  const [myNameEditing, setMyNameEditing] = useState(false);
-  const [myNameInput, setMyNameInput] = useState('');
-  const [myNameError, setMyNameError] = useState('');
-  const [myNameSaving, setMyNameSaving] = useState(false);
-
   // Nicknames
   const [search, setSearch] = useState('');
   const [addPrincipal, setAddPrincipal] = useState('');
@@ -55,23 +44,6 @@ export default function Names() {
   const [savingNeuronNickname, setSavingNeuronNickname] = useState(false);
   const [editingNeuronKey, setEditingNeuronKey] = useState(null); // `${snsRoot}:${neuronHex}`
   const [editNeuronNicknameValue, setEditNeuronNicknameValue] = useState('');
-
-  useEffect(() => {
-    const run = async () => {
-      if (!identity) return;
-      setMyNameLoading(true);
-      try {
-        const resp = await getPrincipalName(identity, identity.getPrincipal());
-        if (resp) {
-          setMyName(resp[0] || '');
-          setMyNameVerified(Boolean(resp[1]));
-        }
-      } finally {
-        setMyNameLoading(false);
-      }
-    };
-    run();
-  }, [identity]);
 
   const nicknameEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -118,40 +90,6 @@ export default function Names() {
     filtered.sort((a, b) => (a.nickname || '').localeCompare(b.nickname || ''));
     return filtered;
   }, [neuronNicknames, neuronNames, neuronSearch, selectedSnsRoot]);
-
-  const startEditMyName = () => {
-    setMyNameEditing(true);
-    setMyNameInput(myName || '');
-    setMyNameError('');
-  };
-
-  const saveMyName = async () => {
-    const err = validateName(myNameInput);
-    if (err) {
-      setMyNameError(err);
-      return;
-    }
-    if (!identity) return;
-    setMyNameSaving(true);
-    try {
-      const resp = await setPrincipalName(identity, myNameInput.trim());
-      if (resp && 'ok' in resp) {
-        await fetchAllNames();
-        const refreshed = await getPrincipalName(identity, identity.getPrincipal());
-        if (refreshed) {
-          setMyName(refreshed[0] || '');
-          setMyNameVerified(Boolean(refreshed[1]));
-        }
-        setMyNameEditing(false);
-      } else {
-        setMyNameError(resp?.err || 'Failed to set name');
-      }
-    } catch (e) {
-      setMyNameError(e?.message || 'Failed to set name');
-    } finally {
-      setMyNameSaving(false);
-    }
-  };
 
   const addOrUpdateNickname = async (principalId, nickname) => {
     if (!identity) return;
