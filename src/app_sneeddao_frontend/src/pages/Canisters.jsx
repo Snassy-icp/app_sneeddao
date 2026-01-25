@@ -15,7 +15,7 @@ import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBr
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
-import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
+import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
@@ -109,7 +109,9 @@ export default function CanistersPage() {
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     const [managerError, setManagerError] = useState(null);
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
-    const [cycleSettings, setCycleSettings] = useState(() => getNeuronManagerSettings());
+    // Use different thresholds for neuron managers vs general canisters
+    const [cycleSettings] = useState(() => getCanisterManagerSettings());
+    const [neuronManagerCycleSettings] = useState(() => getNeuronManagerSettings());
     
     // Collapsible section states
     const [customExpanded, setCustomExpanded] = useState(() => {
@@ -1965,7 +1967,7 @@ export default function CanistersPage() {
         let outdated = 0;
         
         for (const manager of managers) {
-            const status = getManagerHealthStatus(manager, cycleSettings);
+            const status = getManagerHealthStatus(manager, neuronManagerCycleSettings);
             switch (status) {
                 case 'red': red++; break;
                 case 'orange': orange++; break;
@@ -2085,8 +2087,8 @@ export default function CanistersPage() {
                         <span 
                             style={{
                                 ...styles.managerVersion,
-                                backgroundColor: `${getCyclesColor(cycles, cycleSettings)}20`,
-                                color: getCyclesColor(cycles, cycleSettings),
+                                backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
+                                color: getCyclesColor(cycles, neuronManagerCycleSettings),
                                 marginLeft: '8px',
                             }}
                             title={`${cycles.toLocaleString()} cycles`}
@@ -3390,8 +3392,8 @@ export default function CanistersPage() {
                                                                 <span 
                                                                     style={{
                                                                         ...styles.managerVersion,
-                                                                        backgroundColor: `${getCyclesColor(cycles, cycleSettings)}20`,
-                                                                        color: getCyclesColor(cycles, cycleSettings),
+                                                                        backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
+                                                                        color: getCyclesColor(cycles, neuronManagerCycleSettings),
                                                                         marginLeft: '8px',
                                                                     }}
                                                                     title={`${cycles.toLocaleString()} cycles`}
@@ -3631,7 +3633,7 @@ export default function CanistersPage() {
                                     <>
                                         {/* Manager Health Summary */}
                                         {(() => {
-                                            const stats = getManagersHealthStats(neuronManagers, cycleSettings);
+                                            const stats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
                                             const overallColor = getStatusLampColor(stats.overallStatus);
                                             
                                             return (
@@ -3748,7 +3750,7 @@ export default function CanistersPage() {
                                         {neuronManagers.map((manager) => {
                                             const canisterId = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
-                                            const managerHealth = getManagerHealthStatus(manager, cycleSettings);
+                                            const managerHealth = getManagerHealthStatus(manager, neuronManagerCycleSettings);
                                             const managerLampColor = getStatusLampColor(managerHealth);
                                             
                                             // Build move destinations for neuron managers
@@ -3855,8 +3857,8 @@ export default function CanistersPage() {
                                                                     <span 
                                                                         style={{
                                                                             ...styles.managerVersion,
-                                                                            backgroundColor: `${getCyclesColor(manager.cycles, cycleSettings)}20`,
-                                                                            color: getCyclesColor(manager.cycles, cycleSettings),
+                                                                            backgroundColor: `${getCyclesColor(manager.cycles, neuronManagerCycleSettings)}20`,
+                                                                            color: getCyclesColor(manager.cycles, neuronManagerCycleSettings),
                                                                         }}
                                                                         title={`${manager.cycles.toLocaleString()} cycles`}
                                                                     >

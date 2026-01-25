@@ -47,7 +47,7 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
-import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from './utils/NeuronManagerSettings';
+import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 
@@ -416,7 +416,8 @@ function Wallet() {
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
-    const [cycleSettings, setCycleSettings] = useState(() => getNeuronManagerSettings());
+    const [neuronManagerCycleSettings] = useState(() => getNeuronManagerSettings());
+    const [canisterCycleSettings] = useState(() => getCanisterManagerSettings());
     // Cycles top-up state
     const [topUpManagerId, setTopUpManagerId] = useState(null); // Which manager is showing top-up UI
     const [topUpAmount, setTopUpAmount] = useState('');
@@ -5346,8 +5347,8 @@ function Wallet() {
                                                         {neuronManagerCycles[canisterId] !== undefined && neuronManagerCycles[canisterId] !== null && (
                                                             <span 
                                                                 style={{
-                                                                    background: `${getCyclesColor(neuronManagerCycles[canisterId], cycleSettings)}20`,
-                                                                    color: getCyclesColor(neuronManagerCycles[canisterId], cycleSettings),
+                                                                    background: `${getCyclesColor(neuronManagerCycles[canisterId], neuronManagerCycleSettings)}20`,
+                                                                    color: getCyclesColor(neuronManagerCycles[canisterId], neuronManagerCycleSettings),
                                                                     padding: '2px 8px',
                                                                     borderRadius: '12px',
                                                                     fontSize: '0.7rem',
@@ -6204,8 +6205,8 @@ function Wallet() {
                                                         {cycles !== undefined && cycles !== null && (
                                                             <span 
                                                                 style={{
-                                                                    background: `${getCyclesColor(cycles, cycleSettings)}20`,
-                                                                    color: getCyclesColor(cycles, cycleSettings),
+                                                                    background: `${getCyclesColor(cycles, canisterCycleSettings)}20`,
+                                                                    color: getCyclesColor(cycles, canisterCycleSettings),
                                                                     padding: '2px 8px',
                                                                     borderRadius: '12px',
                                                                     fontSize: '0.7rem',
@@ -6283,7 +6284,7 @@ function Wallet() {
                                                                     <div style={{ textAlign: 'center' }}>
                                                                         <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Cycles</div>
                                                                         <div style={{ 
-                                                                            color: cycles ? getCyclesColor(cycles, cycleSettings) : theme.colors.mutedText,
+                                                                            color: cycles ? getCyclesColor(cycles, canisterCycleSettings) : theme.colors.mutedText,
                                                                             fontWeight: '600',
                                                                             fontSize: '13px'
                                                                         }}>

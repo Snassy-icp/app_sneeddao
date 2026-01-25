@@ -32,7 +32,15 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import TransactionList from '../components/TransactionList';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
-import { getNeuronManagerSettings, saveNeuronManagerSettings, formatCyclesCompact, parseCyclesInput, getCyclesColor } from '../utils/NeuronManagerSettings';
+import { 
+    getNeuronManagerSettings, 
+    saveNeuronManagerSettings, 
+    getCanisterManagerSettings,
+    saveCanisterManagerSettings,
+    formatCyclesCompact, 
+    parseCyclesInput, 
+    getCyclesColor 
+} from '../utils/NeuronManagerSettings';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
 import { Principal } from '@dfinity/principal';
@@ -90,12 +98,24 @@ export default function Me() {
     const [cycleThresholdRed, setCycleThresholdRed] = useState('');
     const [cycleThresholdOrange, setCycleThresholdOrange] = useState('');
     const [settingsSaved, setSettingsSaved] = useState(false);
+
+    const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
+    const [canisterCycleThresholdRed, setCanisterCycleThresholdRed] = useState('');
+    const [canisterCycleThresholdOrange, setCanisterCycleThresholdOrange] = useState('');
+    const [canisterSettingsSaved, setCanisterSettingsSaved] = useState(false);
     
     // Load neuron manager settings on mount
     useEffect(() => {
         const settings = getNeuronManagerSettings();
         setCycleThresholdRed(formatCyclesCompact(settings.cycleThresholdRed));
         setCycleThresholdOrange(formatCyclesCompact(settings.cycleThresholdOrange));
+    }, []);
+
+    // Load canister manager settings on mount
+    useEffect(() => {
+        const settings = getCanisterManagerSettings();
+        setCanisterCycleThresholdRed(formatCyclesCompact(settings.cycleThresholdRed));
+        setCanisterCycleThresholdOrange(formatCyclesCompact(settings.cycleThresholdOrange));
     }, []);
     
     // Get naming context
@@ -1158,6 +1178,252 @@ export default function Me() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Canister Manager Settings Child Section */}
+                            <div style={{
+                                backgroundColor: theme.colors.tertiaryBg,
+                                borderRadius: '8px',
+                                border: `1px solid ${theme.colors.border}`,
+                                marginBottom: '15px',
+                                overflow: 'hidden',
+                            }}>
+                                <div 
+                                    onClick={() => setCanisterManagerSettingsExpanded(!canisterManagerSettingsExpanded)}
+                                    style={{
+                                        padding: '12px 15px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        borderBottom: canisterManagerSettingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <span style={{ 
+                                            fontSize: '14px',
+                                            color: theme.colors.mutedText,
+                                            transition: 'transform 0.2s',
+                                            transform: canisterManagerSettingsExpanded ? 'none' : 'rotate(-90deg)'
+                                        }}>▼</span>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                            🗄️ Canister Manager Settings
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                {canisterManagerSettingsExpanded && (
+                                    <div style={{ padding: '15px' }}>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
+                                            Configure cycle warning thresholds for canisters in Wallet and Canister Manager (non-neuron-manager canisters).
+                                        </p>
+                                        
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                            <div>
+                                                <label style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '12px', 
+                                                    display: 'block', 
+                                                    marginBottom: '6px' 
+                                                }}>
+                                                    🔴 Critical Threshold (Red) - cycles below this are critical
+                                                </label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <input
+                                                        type="text"
+                                                        value={canisterCycleThresholdRed}
+                                                        onChange={(e) => {
+                                                            setCanisterCycleThresholdRed(e.target.value);
+                                                            setCanisterSettingsSaved(false);
+                                                        }}
+                                                        placeholder="e.g., 1T, 500B"
+                                                        style={{
+                                                            backgroundColor: theme.colors.secondaryBg,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '4px',
+                                                            color: theme.colors.primaryText,
+                                                            padding: '8px 12px',
+                                                            width: '150px',
+                                                        }}
+                                                    />
+                                                    <span style={{ 
+                                                        color: '#ef4444', 
+                                                        fontSize: '20px',
+                                                        padding: '4px 12px',
+                                                        background: '#ef444420',
+                                                        borderRadius: '4px',
+                                                    }}>
+                                                        ⚡
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '12px', 
+                                                    display: 'block', 
+                                                    marginBottom: '6px' 
+                                                }}>
+                                                    🟠 Warning Threshold (Orange) - cycles below this show a warning
+                                                </label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <input
+                                                        type="text"
+                                                        value={canisterCycleThresholdOrange}
+                                                        onChange={(e) => {
+                                                            setCanisterCycleThresholdOrange(e.target.value);
+                                                            setCanisterSettingsSaved(false);
+                                                        }}
+                                                        placeholder="e.g., 5T, 2T"
+                                                        style={{
+                                                            backgroundColor: theme.colors.secondaryBg,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '4px',
+                                                            color: theme.colors.primaryText,
+                                                            padding: '8px 12px',
+                                                            width: '150px',
+                                                        }}
+                                                    />
+                                                    <span style={{ 
+                                                        color: '#f59e0b', 
+                                                        fontSize: '20px',
+                                                        padding: '4px 12px',
+                                                        background: '#f59e0b20',
+                                                        borderRadius: '4px',
+                                                    }}>
+                                                        ⚡
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '11px', 
+                                                padding: '10px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '4px',
+                                            }}>
+                                                💡 Use suffixes: <strong>T</strong> (trillion), <strong>B</strong> (billion), <strong>M</strong> (million). 
+                                                Example: "1T" = 1,000,000,000,000 cycles
+                                            </div>
+                                            
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={() => {
+                                                        const redValue = parseCyclesInput(canisterCycleThresholdRed);
+                                                        const orangeValue = parseCyclesInput(canisterCycleThresholdOrange);
+                                                        
+                                                        if (redValue === null || orangeValue === null) {
+                                                            alert('Invalid input. Please use format like "1T", "500B", or "1000000000000"');
+                                                            return;
+                                                        }
+                                                        
+                                                        if (redValue >= orangeValue) {
+                                                            alert('Critical threshold must be lower than warning threshold');
+                                                            return;
+                                                        }
+                                                        
+                                                        saveCanisterManagerSettings({
+                                                            cycleThresholdRed: redValue,
+                                                            cycleThresholdOrange: orangeValue,
+                                                        });
+                                                        
+                                                        // Update display to normalized format
+                                                        setCanisterCycleThresholdRed(formatCyclesCompact(redValue));
+                                                        setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
+                                                        setCanisterSettingsSaved(true);
+                                                        
+                                                        setTimeout(() => setCanisterSettingsSaved(false), 3000);
+                                                    }}
+                                                    style={{
+                                                        backgroundColor: theme.colors.accent,
+                                                        color: theme.colors.primaryText,
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '10px 20px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '500',
+                                                    }}
+                                                >
+                                                    Save Settings
+                                                </button>
+                                                
+                                                <button
+                                                    onClick={() => {
+                                                        setCanisterCycleThresholdRed('1.0T');
+                                                        setCanisterCycleThresholdOrange('5.0T');
+                                                        saveCanisterManagerSettings({
+                                                            cycleThresholdRed: 1_000_000_000_000,
+                                                            cycleThresholdOrange: 5_000_000_000_000,
+                                                        });
+                                                        setCanisterSettingsSaved(true);
+                                                        setTimeout(() => setCanisterSettingsSaved(false), 3000);
+                                                    }}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        color: theme.colors.mutedText,
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '4px',
+                                                        padding: '10px 20px',
+                                                        cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    Reset to Defaults
+                                                </button>
+                                                
+                                                {canisterSettingsSaved && (
+                                                    <span style={{ color: theme.colors.success || '#22c55e', fontSize: '13px' }}>
+                                                        ✓ Settings saved!
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Preview */}
+                                            <div style={{ 
+                                                marginTop: '10px',
+                                                padding: '15px',
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '8px',
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '10px' }}>
+                                                    Preview:
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                                                    {(() => {
+                                                        const redValue = parseCyclesInput(canisterCycleThresholdRed) || 1_000_000_000_000;
+                                                        const orangeValue = parseCyclesInput(canisterCycleThresholdOrange) || 5_000_000_000_000;
+                                                        const settings = { cycleThresholdRed: redValue, cycleThresholdOrange: orangeValue };
+                                                        
+                                                        const examples = [
+                                                            { value: redValue / 2, label: 'Critical' },
+                                                            { value: (redValue + orangeValue) / 2, label: 'Warning' },
+                                                            { value: orangeValue * 2, label: 'Healthy' },
+                                                        ];
+                                                        
+                                                        return examples.map((ex, i) => (
+                                                            <div key={i} style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '6px',
+                                                                padding: '6px 12px',
+                                                                background: `${getCyclesColor(ex.value, settings)}20`,
+                                                                borderRadius: '20px',
+                                                            }}>
+                                                                <span style={{ color: getCyclesColor(ex.value, settings), fontWeight: '500' }}>
+                                                                    ⚡ {formatCyclesCompact(ex.value)}
+                                                                </span>
+                                                                <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                                    ({ex.label})
+                                                                </span>
+                                                            </div>
+                                                        ));
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1812,15 +2078,65 @@ export default function Me() {
                                 borderBottom: !isTransactionsCollapsed ? `1px solid ${theme.colors.border}` : 'none',
                             }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                                 <span style={{ 
                                     fontSize: '16px',
                                     color: theme.colors.mutedText,
                                     transition: 'transform 0.2s',
                                     transform: !isTransactionsCollapsed ? 'none' : 'rotate(-90deg)'
                                 }}>▼</span>
-                                <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                    🧾 My {(selectedSnsInfo?.name || 'DAO')} Transactions
+                                <span style={{ position: 'relative', width: '30px', height: '20px', flex: '0 0 auto' }}>
+                                    <span
+                                        style={{
+                                            position: 'absolute',
+                                            left: 0,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            fontSize: '16px',
+                                            zIndex: 1
+                                        }}
+                                    >
+                                        🧾
+                                    </span>
+                                    {selectedSnsLogo ? (
+                                        <img
+                                            src={selectedSnsLogo}
+                                            alt="DAO logo"
+                                            style={{
+                                                position: 'absolute',
+                                                left: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                width: '18px',
+                                                height: '18px',
+                                                borderRadius: '50%',
+                                                objectFit: 'cover',
+                                                background: theme.colors.tertiaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                zIndex: 2
+                                            }}
+                                        />
+                                    ) : (
+                                        <span
+                                            style={{
+                                                position: 'absolute',
+                                                left: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                width: '18px',
+                                                height: '18px',
+                                                borderRadius: '50%',
+                                                background: theme.colors.tertiaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                zIndex: 2
+                                            }}
+                                        />
+                                    )}
+                                </span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: 0 }}>
+                                    <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        My {(selectedSnsInfo?.name || 'DAO')} Transactions
+                                    </span>
                                 </span>
                             </div>
                         </div>

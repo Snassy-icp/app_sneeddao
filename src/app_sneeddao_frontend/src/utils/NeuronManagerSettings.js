@@ -2,6 +2,7 @@
 // Default thresholds for cycle warnings (in cycles, where 1T = 1_000_000_000_000)
 
 const STORAGE_KEY = 'neuronManagerSettings';
+const CANISTER_STORAGE_KEY = 'canisterManagerSettings';
 
 const DEFAULT_SETTINGS = {
     cycleThresholdRed: 1_000_000_000_000,    // 1T - critical
@@ -40,6 +41,41 @@ export function saveNeuronManagerSettings(settings) {
         }));
     } catch (e) {
         console.warn('Error saving neuron manager settings:', e);
+    }
+}
+
+/**
+ * Get canister manager settings from localStorage
+ * @returns {Object} Settings object with cycleThresholdRed and cycleThresholdOrange
+ */
+export function getCanisterManagerSettings() {
+    try {
+        const stored = localStorage.getItem(CANISTER_STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            return {
+                cycleThresholdRed: parsed.cycleThresholdRed ?? DEFAULT_SETTINGS.cycleThresholdRed,
+                cycleThresholdOrange: parsed.cycleThresholdOrange ?? DEFAULT_SETTINGS.cycleThresholdOrange,
+            };
+        }
+    } catch (e) {
+        console.warn('Error reading canister manager settings:', e);
+    }
+    return { ...DEFAULT_SETTINGS };
+}
+
+/**
+ * Save canister manager settings to localStorage
+ * @param {Object} settings - Settings object with cycleThresholdRed and cycleThresholdOrange
+ */
+export function saveCanisterManagerSettings(settings) {
+    try {
+        localStorage.setItem(CANISTER_STORAGE_KEY, JSON.stringify({
+            cycleThresholdRed: settings.cycleThresholdRed,
+            cycleThresholdOrange: settings.cycleThresholdOrange,
+        }));
+    } catch (e) {
+        console.warn('Error saving canister manager settings:', e);
     }
 }
 
