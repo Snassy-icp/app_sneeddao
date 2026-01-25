@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
@@ -12,7 +12,7 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
 import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
@@ -74,6 +74,8 @@ function CreateIcpNeuron() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
+    const [copiedDeposit, setCopiedDeposit] = useState(false);
+    const [copiedAccountId, setCopiedAccountId] = useState(false);
     
     // Sneed membership for beta access
     const { 
@@ -171,6 +173,12 @@ function CreateIcpNeuron() {
 
     // User has access if they're a Sneed member OR if beta has ended
     const hasAccess = isSneedMember || isBetaEnded;
+
+    const myPrincipal = identity?.getPrincipal?.() || null;
+    const myAccountId = useMemo(() => {
+        if (!myPrincipal) return null;
+        return computeAccountId(myPrincipal);
+    }, [myPrincipal]);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -861,6 +869,111 @@ function CreateIcpNeuron() {
                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '20px', textAlign: 'center' }}>
                             ➕ Create New Neuron Manager
                         </h3>
+
+                        {/* Wallet deposit info (for CEX transfers) */}
+                        {myPrincipal && (
+                            <div style={{
+                                background: `${theme.colors.secondaryBg}`,
+                                borderRadius: '10px',
+                                padding: '14px',
+                                marginBottom: '16px',
+                                border: `1px solid ${theme.colors.border}`,
+                            }}>
+                                <div style={{ color: theme.colors.primaryText, fontWeight: 700, marginBottom: '6px' }}>
+                                    💰 Fund your wallet (ICP deposit address)
+                                </div>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', lineHeight: 1.5, marginBottom: '10px' }}>
+                                    If you’re sending ICP from a CEX, use your Wallet Principal + ICP Account ID below. Once the ICP arrives, you can stake/create.
+                                </div>
+
+                                <div style={{ display: 'grid', gap: '10px' }}>
+                                    <div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '6px' }}>Wallet Principal</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                            <PrincipalDisplay
+                                                principal={myPrincipal}
+                                                displayInfo={getPrincipalDisplayInfoFromContext(myPrincipal, principalNames, principalNicknames)}
+                                                showCopyButton={true}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    try {
+                                                        await navigator.clipboard.writeText(myPrincipal.toString());
+                                                        setCopiedDeposit(true);
+                                                        setTimeout(() => setCopiedDeposit(false), 1200);
+                                                    } catch (e) {
+                                                        console.warn('Copy failed', e);
+                                                    }
+                                                }}
+                                                style={{
+                                                    padding: '8px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    background: theme.colors.primaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    cursor: 'pointer',
+                                                    fontWeight: 700,
+                                                    fontSize: '12px'
+                                                }}
+                                            >
+                                                {copiedDeposit ? 'Copied' : 'Copy PID'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '6px' }}>ICP Account ID</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                            <div style={{
+                                                fontFamily: 'monospace',
+                                                fontSize: '12px',
+                                                padding: '8px 10px',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.primaryBg,
+                                                color: theme.colors.primaryText,
+                                                wordBreak: 'break-all',
+                                                flex: 1,
+                                                minWidth: '240px'
+                                            }}>
+                                                {myAccountId || '(unavailable)'}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                disabled={!myAccountId}
+                                                onClick={async () => {
+                                                    if (!myAccountId) return;
+                                                    try {
+                                                        await navigator.clipboard.writeText(myAccountId);
+                                                        setCopiedAccountId(true);
+                                                        setTimeout(() => setCopiedAccountId(false), 1200);
+                                                    } catch (e) {
+                                                        console.warn('Copy failed', e);
+                                                    }
+                                                }}
+                                                style={{
+                                                    padding: '8px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    background: theme.colors.primaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    cursor: myAccountId ? 'pointer' : 'not-allowed',
+                                                    fontWeight: 700,
+                                                    fontSize: '12px',
+                                                    opacity: myAccountId ? 1 : 0.6
+                                                }}
+                                            >
+                                                {copiedAccountId ? 'Copied' : 'Copy Account ID'}
+                                            </button>
+                                        </div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '6px' }}>
+                                            You can send ICP directly to this Account ID (default subaccount) to fund staking on Sneed.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         
                         {/* Payment Required Info */}
                         {paymentConfig.paymentRequired && (
