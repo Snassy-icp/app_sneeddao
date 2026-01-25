@@ -119,9 +119,12 @@ export const ThemeProvider = ({ children }) => {
     const root = document.documentElement;
     const colors = theme.colors;
     
+    // Convert camelCase to kebab-case for CSS custom properties
+    const toKebabCase = (str) => str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+    
     // Set CSS custom properties for all theme colors
     Object.entries(colors).forEach(([key, value]) => {
-      root.style.setProperty(`--color-${key}`, value);
+      root.style.setProperty(`--color-${toKebabCase(key)}`, value);
     });
     
     // Set body background

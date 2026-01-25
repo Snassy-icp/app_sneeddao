@@ -27,7 +27,7 @@ function safeUrlTransform(url) {
 }
 
 export default function MarkdownBody({ text, style }) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const content = useMemo(() => normalizeMarkdownInput(text), [text]);
 
   return (
@@ -35,7 +35,7 @@ export default function MarkdownBody({ text, style }) {
       <ReactMarkdown
         urlTransform={safeUrlTransform}
         components={{
-          p: (props) => <p style={{ margin: '0 0 10px 0' }} {...props} />,
+          p: (props) => <p style={{ margin: '0 0 10px 0', color: 'inherit' }} {...props} />,
           a: ({ href, children, ...props }) => (
             <a
               href={href}
@@ -50,7 +50,8 @@ export default function MarkdownBody({ text, style }) {
           code: ({ inline, children, ...props }) => (
             <code
               style={{
-                backgroundColor: 'rgba(0,0,0,0.25)',
+                backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.08)',
+                color: theme.colors.primaryText,
                 padding: inline ? '1px 4px' : '10px',
                 borderRadius: '6px',
                 display: inline ? 'inline' : 'block',
@@ -61,7 +62,7 @@ export default function MarkdownBody({ text, style }) {
               {children}
             </code>
           ),
-          li: (props) => <li style={{ marginBottom: '4px' }} {...props} />
+          li: (props) => <li style={{ marginBottom: '4px', color: 'inherit' }} {...props} />
         }}
       >
         {content}

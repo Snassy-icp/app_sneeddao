@@ -531,9 +531,9 @@ const Post = () => {
                     <div style={{
                         marginBottom: '20px',
                         padding: '15px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        backgroundColor: theme.colors.secondaryBg,
                         borderRadius: '8px',
-                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                        border: `1px solid ${theme.colors.border}`
                     }}>
                         <div style={{
                             display: 'flex',
@@ -543,7 +543,7 @@ const Post = () => {
                         }}>
                             <h3 style={{ 
                                 margin: '0', 
-                                color: '#fff',
+                                color: theme.colors.primaryText,
                                 fontSize: '1.1rem'
                             }}>
                                 All Votes for This Post
@@ -553,20 +553,20 @@ const Post = () => {
                                     onClick={() => setVotesExpanded(!votesExpanded)}
                                     style={{
                                         background: 'none',
-                                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                                        border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '4px',
-                                        color: '#3498db',
+                                        color: theme.colors.accent,
                                         padding: '4px 8px',
                                         fontSize: '0.8rem',
                                         cursor: 'pointer',
                                         transition: 'all 0.2s ease'
                                     }}
                                     onMouseEnter={(e) => {
-                                        e.target.style.borderColor = '#3498db';
-                                        e.target.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+                                        e.target.style.borderColor = theme.colors.accent;
+                                        e.target.style.backgroundColor = theme.colors.accentHover;
                                     }}
                                     onMouseLeave={(e) => {
-                                        e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                                        e.target.style.borderColor = theme.colors.border;
                                         e.target.style.backgroundColor = 'transparent';
                                     }}
                                 >
@@ -576,16 +576,16 @@ const Post = () => {
                         </div>
                         
                         {votesLoading ? (
-                            <div style={{ color: '#888' }}>Loading votes...</div>
+                            <div style={{ color: theme.colors.mutedText }}>Loading votes...</div>
                         ) : postVotes.length === 0 ? (
-                            <div style={{ color: '#888' }}>No votes yet</div>
+                            <div style={{ color: theme.colors.mutedText }}>No votes yet</div>
                         ) : (
                             <div>
                                 {/* Summary */}
                                 <div style={{ 
                                     marginBottom: '15px',
                                     fontSize: '0.9rem',
-                                    color: '#ccc'
+                                    color: theme.colors.secondaryText
                                 }}>
                                     {(() => {
                                         const upvotes = postVotes.filter(v => v.vote_type.upvote !== undefined);
@@ -593,17 +593,17 @@ const Post = () => {
                                         const totalUpVP = upvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
                                         const totalDownVP = downvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
                                         
-                                        const netScore = totalUpVP - totalDownVP;
-                                        const netColor = netScore > 0 ? '#4CAF50' : netScore < 0 ? '#f44336' : '#888';
+                                                        const netScore = totalUpVP - totalDownVP;
+                                                        const netColor = netScore > 0 ? theme.colors.success : netScore < 0 ? theme.colors.error : theme.colors.mutedText;
                                         
                                         return (
                                             <div>
                                                 <div style={{ marginBottom: '8px' }}>
-                                                    <span style={{ color: '#4CAF50' }}>
+                                                    <span style={{ color: theme.colors.success }}>
                                                         ▲ {upvotes.length} upvotes ({formatVotingPowerDisplay(totalUpVP)} VP)
                                                     </span>
-                                                    <span style={{ margin: '0 15px', color: '#666' }}>•</span>
-                                                    <span style={{ color: '#f44336' }}>
+                                                    <span style={{ margin: '0 15px', color: theme.colors.mutedText }}>•</span>
+                                                    <span style={{ color: theme.colors.error }}>
                                                         ▼ {downvotes.length} downvotes ({formatVotingPowerDisplay(totalDownVP)} VP)
                                                     </span>
                                                 </div>
@@ -647,9 +647,9 @@ const Post = () => {
                                             return (
                                                 <div key={index} style={{
                                                     padding: '12px',
-                                                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                    backgroundColor: theme.colors.tertiaryBg,
                                                     borderRadius: '8px',
-                                                    border: `1px solid ${isUpvote ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
+                                                    border: `1px solid ${isUpvote ? theme.colors.success + '33' : theme.colors.error + '33'}`,
                                                     fontSize: '0.9rem'
                                                 }}>
                                                     {/* Header row with vote type and voting power */}
@@ -665,7 +665,7 @@ const Post = () => {
                                                             gap: '8px'
                                                         }}>
                                                             <span style={{
-                                                                color: isUpvote ? '#4CAF50' : '#f44336',
+                                                                color: isUpvote ? theme.colors.success : theme.colors.error,
                                                                 fontWeight: 'bold',
                                                                 fontSize: '1.1rem'
                                                             }}>
@@ -673,7 +673,7 @@ const Post = () => {
                                                             </span>
                                                         </div>
                                                         <span style={{ 
-                                                            color: '#fff',
+                                                            color: theme.colors.primaryText,
                                                             fontWeight: 'bold',
                                                             fontSize: '1rem'
                                                         }}>
@@ -689,7 +689,7 @@ const Post = () => {
                                                         gap: '8px'
                                                     }}>
                                                         <span style={{ 
-                                                            color: '#aaa',
+                                                            color: theme.colors.mutedText,
                                                             fontSize: '0.85rem',
                                                             minWidth: '50px'
                                                         }}>
@@ -708,7 +708,7 @@ const Post = () => {
                                                         gap: '8px'
                                                     }}>
                                                         <span style={{ 
-                                                            color: '#aaa',
+                                                            color: theme.colors.mutedText,
                                                             fontSize: '0.85rem',
                                                             minWidth: '50px'
                                                         }}>
@@ -731,14 +731,14 @@ const Post = () => {
                                                         gap: '8px'
                                                     }}>
                                                         <span style={{ 
-                                                            color: '#aaa',
+                                                            color: theme.colors.mutedText,
                                                             fontSize: '0.85rem',
                                                             minWidth: '50px'
                                                         }}>
                                                             When:
                                                         </span>
                                                         <span style={{ 
-                                                            color: '#ccc',
+                                                            color: theme.colors.secondaryText,
                                                             fontSize: '0.85rem'
                                                         }}>
                                                             {new Date(Number(vote.created_at) / 1000000).toLocaleString()}
