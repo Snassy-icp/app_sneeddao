@@ -31,6 +31,8 @@ import {
 import { createSneedexActor } from '../../utils/SneedexUtils';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
+import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 
 export default function SneedPremiumAdmin() {
     const { isAuthenticated, identity } = useAuth();
@@ -127,7 +129,9 @@ export default function SneedPremiumAdmin() {
     const [propagationStatus, setPropagationStatus] = useState({
         sneedex: { status: 'idle', current: null }, // idle, loading, success, error
         sneedLock: { status: 'idle', current: null },
-        backend: { status: 'idle', current: null }
+        backend: { status: 'idle', current: null },
+        sneedSms: { status: 'idle', current: null },
+        sneedForum: { status: 'idle', current: null }
     });
     const [propagating, setPropagating] = useState(false);
     
@@ -345,6 +349,46 @@ export default function SneedPremiumAdmin() {
                 backend: { status: 'idle', current: null }
             }));
         }
+        
+        // Check Sneed SMS
+        try {
+            const smsActor = createSmsActor(smsCanisterId, { agentOptions: { identity } });
+            const smsConfig = await smsActor.get_premium_config();
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedSms: { 
+                    status: 'idle', 
+                    current: smsConfig.sneed_premium_canister_id && smsConfig.sneed_premium_canister_id.length > 0 
+                        ? smsConfig.sneed_premium_canister_id[0].toString() : null 
+                }
+            }));
+        } catch (err) {
+            console.error('Failed to fetch Sneed SMS premium canister ID:', err);
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedSms: { status: 'idle', current: null }
+            }));
+        }
+        
+        // Check Sneed Forum
+        try {
+            const forumActor = createForumActor(forumCanisterId, { agentOptions: { identity } });
+            const forumConfig = await forumActor.get_premium_config();
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedForum: { 
+                    status: 'idle', 
+                    current: forumConfig.sneed_premium_canister_id && forumConfig.sneed_premium_canister_id.length > 0 
+                        ? forumConfig.sneed_premium_canister_id[0].toString() : null 
+                }
+            }));
+        } catch (err) {
+            console.error('Failed to fetch Sneed Forum premium canister ID:', err);
+            setPropagationStatus(prev => ({
+                ...prev,
+                sneedForum: { status: 'idle', current: null }
+            }));
+        }
     }, [identity]);
     
     // Fetch propagation status when identity is available
@@ -422,6 +466,62 @@ export default function SneedPremiumAdmin() {
         } catch (err) {
             console.error('Failed to set Backend premium canister ID:', err);
             setPropagationStatus(prev => ({ ...prev, backend: { ...prev.backend, status: 'error' } }));
+        }
+        
+        // Propagate to Sneed SMS
+        setPropagationStatus(prev => ({ ...prev, sneedSms: { ...prev.sneedSms, status: 'loading' } }));
+        try {
+            const smsActor = createSmsActor(smsCanisterId, { agentOptions: { identity } });
+            // SMS uses ??Principal: [] = no change, [[]] = clear, [[principal]] = set
+            const smsOpt = [[Principal.fromText(canisterId.toString())]];
+            const result = await smsActor.update_premium_config(
+                smsOpt, // sneed_premium_canister_id
+                [],     // premium_max_subject_length (no change)
+                [],     // premium_max_body_length (no change)
+                [],     // premium_rate_limit_minutes (no change)
+                []      // premium_max_recipients (no change)
+            );
+            if ('ok' in result || 'Ok' in result) {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedSms: { status: 'success', current: canisterId.toString() } 
+                }));
+            } else {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedSms: { ...prev.sneedSms, status: 'error' } 
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to set Sneed SMS premium canister ID:', err);
+            setPropagationStatus(prev => ({ ...prev, sneedSms: { ...prev.sneedSms, status: 'error' } }));
+        }
+        
+        // Propagate to Sneed Forum
+        setPropagationStatus(prev => ({ ...prev, sneedForum: { ...prev.sneedForum, status: 'loading' } }));
+        try {
+            const forumActor = createForumActor(forumCanisterId, { agentOptions: { identity } });
+            // Forum uses ??Principal: [] = no change, [[]] = clear, [[principal]] = set
+            const forumOpt = [[Principal.fromText(canisterId.toString())]];
+            const result = await forumActor.update_premium_config({
+                sneed_premium_canister_id: forumOpt,
+                premium_post_body_max_length: [],
+                premium_thread_body_max_length: [],
+            });
+            if ('ok' in result || 'Ok' in result) {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedForum: { status: 'success', current: canisterId.toString() } 
+                }));
+            } else {
+                setPropagationStatus(prev => ({ 
+                    ...prev, 
+                    sneedForum: { ...prev.sneedForum, status: 'error' } 
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to set Sneed Forum premium canister ID:', err);
+            setPropagationStatus(prev => ({ ...prev, sneedForum: { ...prev.sneedForum, status: 'error' } }));
         }
         
         setPropagating(false);
@@ -1491,7 +1591,7 @@ export default function SneedPremiumAdmin() {
                             }`
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <div style={styles.infoLabel}>Backend (SMS/Forum)</div>
+                                <div style={styles.infoLabel}>Backend (Nicknames)</div>
                                 {propagationStatus.backend.status === 'loading' && <FaSpinner className="spin" style={{ color: theme.colors.warning }} />}
                                 {propagationStatus.backend.status === 'success' && <FaCheckCircle style={{ color: theme.colors.success }} />}
                                 {propagationStatus.backend.status === 'error' && <FaTimesCircle style={{ color: theme.colors.error }} />}
@@ -1503,6 +1603,60 @@ export default function SneedPremiumAdmin() {
                                 }
                             </div>
                             {propagationStatus.backend.current === canisterId?.toString() && (
+                                <div style={{ color: theme.colors.success, fontSize: '0.8rem', marginTop: '4px' }}>✓ Matches</div>
+                            )}
+                        </div>
+                        
+                        {/* Sneed SMS Status */}
+                        <div style={{
+                            ...styles.infoBox,
+                            borderLeft: `4px solid ${
+                                propagationStatus.sneedSms.status === 'success' ? theme.colors.success :
+                                propagationStatus.sneedSms.status === 'error' ? theme.colors.error :
+                                propagationStatus.sneedSms.status === 'loading' ? theme.colors.warning :
+                                theme.colors.border
+                            }`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={styles.infoLabel}>Sneed SMS</div>
+                                {propagationStatus.sneedSms.status === 'loading' && <FaSpinner className="spin" style={{ color: theme.colors.warning }} />}
+                                {propagationStatus.sneedSms.status === 'success' && <FaCheckCircle style={{ color: theme.colors.success }} />}
+                                {propagationStatus.sneedSms.status === 'error' && <FaTimesCircle style={{ color: theme.colors.error }} />}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                {propagationStatus.sneedSms.current 
+                                    ? propagationStatus.sneedSms.current.slice(0, 15) + '...'
+                                    : <span style={{ color: theme.colors.mutedText }}>Not set</span>
+                                }
+                            </div>
+                            {propagationStatus.sneedSms.current === canisterId?.toString() && (
+                                <div style={{ color: theme.colors.success, fontSize: '0.8rem', marginTop: '4px' }}>✓ Matches</div>
+                            )}
+                        </div>
+                        
+                        {/* Sneed Forum Status */}
+                        <div style={{
+                            ...styles.infoBox,
+                            borderLeft: `4px solid ${
+                                propagationStatus.sneedForum.status === 'success' ? theme.colors.success :
+                                propagationStatus.sneedForum.status === 'error' ? theme.colors.error :
+                                propagationStatus.sneedForum.status === 'loading' ? theme.colors.warning :
+                                theme.colors.border
+                            }`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={styles.infoLabel}>Sneed Forum</div>
+                                {propagationStatus.sneedForum.status === 'loading' && <FaSpinner className="spin" style={{ color: theme.colors.warning }} />}
+                                {propagationStatus.sneedForum.status === 'success' && <FaCheckCircle style={{ color: theme.colors.success }} />}
+                                {propagationStatus.sneedForum.status === 'error' && <FaTimesCircle style={{ color: theme.colors.error }} />}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                {propagationStatus.sneedForum.current 
+                                    ? propagationStatus.sneedForum.current.slice(0, 15) + '...'
+                                    : <span style={{ color: theme.colors.mutedText }}>Not set</span>
+                                }
+                            </div>
+                            {propagationStatus.sneedForum.current === canisterId?.toString() && (
                                 <div style={{ color: theme.colors.success, fontSize: '0.8rem', marginTop: '4px' }}>✓ Matches</div>
                             )}
                         </div>
