@@ -3,9 +3,10 @@ import { useAuth } from '../AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
-import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { HttpAgent } from '@dfinity/agent';
 import { 
     fetchUserNeuronsForSns, 
     formatE8s, 
@@ -139,6 +140,48 @@ export default function Me() {
             console.warn('Could not save hideEmptyNeurons preference:', error);
         }
     }, [hideEmptyNeurons]);
+
+    const selectedSnsInfo = React.useMemo(() => {
+        try {
+            return selectedSnsRoot ? getSnsById(selectedSnsRoot) : null;
+        } catch (e) {
+            return null;
+        }
+    }, [selectedSnsRoot]);
+
+    const [selectedSnsLogo, setSelectedSnsLogo] = useState('');
+
+    useEffect(() => {
+        const loadLogo = async () => {
+            try {
+                const governanceId = selectedSnsInfo?.canisters?.governance;
+                if (!governanceId) {
+                    setSelectedSnsLogo('');
+                    return;
+                }
+
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                    ? 'https://ic0.app'
+                    : 'http://localhost:4943';
+
+                const agent = new HttpAgent({
+                    host,
+                    ...(identity && { identity })
+                });
+
+                if (process.env.DFX_NETWORK !== 'ic') {
+                    await agent.fetchRootKey().catch(() => {});
+                }
+
+                const logo = await fetchSnsLogo(governanceId, agent);
+                setSelectedSnsLogo(logo || '');
+            } catch (e) {
+                setSelectedSnsLogo('');
+            }
+        };
+
+        loadLogo();
+    }, [selectedSnsInfo?.canisters?.governance, identity]);
 
     // Group neurons by owner
     const groupedNeurons = React.useMemo(() => {
@@ -1151,21 +1194,112 @@ export default function Me() {
                             borderBottom: neuronsExpanded ? `1px solid ${theme.colors.border}` : 'none',
                         }}
                     >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                             <span style={{
                                 fontSize: '16px',
                                 color: theme.colors.mutedText,
                                 transition: 'transform 0.2s',
                                 transform: neuronsExpanded ? 'none' : 'rotate(-90deg)'
                             }}>▼</span>
-                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                🧠 Neurons
+                            <span style={{ position: 'relative', width: '24px', height: '20px', flex: '0 0 auto' }}>
+                                {selectedSnsLogo ? (
+                                    <img
+                                        src={selectedSnsLogo}
+                                        alt="DAO logo"
+                                        style={{
+                                            position: 'absolute',
+                                            left: 0,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            width: '18px',
+                                            height: '18px',
+                                            borderRadius: '6px',
+                                            objectFit: 'contain',
+                                            background: theme.colors.tertiaryBg,
+                                            border: `1px solid ${theme.colors.border}`
+                                        }}
+                                    />
+                                ) : (
+                                    <span
+                                        style={{
+                                            position: 'absolute',
+                                            left: 0,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            width: '18px',
+                                            height: '18px',
+                                            borderRadius: '6px',
+                                            background: theme.colors.tertiaryBg,
+                                            border: `1px solid ${theme.colors.border}`
+                                        }}
+                                    />
+                                )}
+                                <span
+                                    style={{
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        fontSize: '16px'
+                                    }}
+                                >
+                                    🧠
+                                </span>
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: 0 }}>
+                                <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {(selectedSnsInfo?.name || 'DAO')} Neurons
+                                </span>
                             </span>
                         </div>
+                        <Link
+                            to="/help/neurons"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                color: theme.colors.error,
+                                textDecoration: 'none',
+                                fontSize: '1.2rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                transition: 'all 0.2s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = `${theme.colors.error}15`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = 'transparent';
+                            }}
+                            title="Learn about SNS Neurons"
+                        >
+                            ❓
+                        </Link>
                     </div>
 
                     {neuronsExpanded && (
                         <div style={{ padding: '10px 20px 20px 20px' }}>
+                            {neurons.length > 0 && (
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        cursor: 'pointer',
+                                        color: theme.colors.secondaryText,
+                                        fontSize: '0.9rem',
+                                        userSelect: 'none',
+                                    }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={hideEmptyNeurons}
+                                            onChange={(e) => setHideEmptyNeurons(e.target.checked)}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                        Hide empty neurons
+                                    </label>
+                                </div>
+                            )}
                             {loading ? (
                                 <div style={{ textAlign: 'center', padding: '30px 10px', color: theme.colors.primaryText }}>
                                     Loading...
@@ -1222,34 +1356,6 @@ export default function Me() {
                                                             {group.title} ({group.neurons.length})
                                                         </span>
 
-                                                        {isMyNeurons && (
-                                                            <Link
-                                                                to="/help/neurons"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                style={{
-                                                                    color: theme.colors.mutedText,
-                                                                    textDecoration: 'none',
-                                                                    fontSize: '1rem',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    padding: '4px 8px',
-                                                                    borderRadius: '4px',
-                                                                    transition: 'all 0.2s ease'
-                                                                }}
-                                                                onMouseEnter={(e) => {
-                                                                    e.target.style.color = theme.colors.accent;
-                                                                    e.target.style.background = `${theme.colors.accent}15`;
-                                                                }}
-                                                                onMouseLeave={(e) => {
-                                                                    e.target.style.color = theme.colors.mutedText;
-                                                                    e.target.style.background = 'transparent';
-                                                                }}
-                                                                title="Learn about SNS Neurons"
-                                                            >
-                                                                ❓
-                                                            </Link>
-                                                        )}
-
                                                         {group.tooltip && (
                                                             <span
                                                                 style={{
@@ -1277,27 +1383,6 @@ export default function Me() {
 
                                                 {isExpanded && (
                                                     <div style={{ padding: '15px' }}>
-                                                        {/* Hide empty neurons checkbox - inside My Neurons expanded section */}
-                                                        {isMyNeurons && neurons.length > 0 && (
-                                                            <label style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '8px',
-                                                                cursor: 'pointer',
-                                                                color: theme.colors.secondaryText,
-                                                                fontSize: '0.9rem',
-                                                                userSelect: 'none',
-                                                                marginBottom: '20px'
-                                                            }}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={hideEmptyNeurons}
-                                                                    onChange={(e) => setHideEmptyNeurons(e.target.checked)}
-                                                                    style={{ cursor: 'pointer' }}
-                                                                />
-                                                                Hide empty neurons
-                                                            </label>
-                                                        )}
                                                         <div style={{
                                                             display: 'grid',
                                                             gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
