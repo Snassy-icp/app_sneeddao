@@ -278,12 +278,15 @@ export default function SnsNeuronWizard() {
                 return Array.from(new Uint8Array(buffer));
             })();
             
+            // Send amount + fee because fee gets deducted from the transfer
+            const amountToSend = amountE8s + tokenFee;
+            
             const transferResult = await ledgerActor.icrc1_transfer({
                 to: {
                     owner: Principal.fromText(selectedGovernanceId),
                     subaccount: [Array.from(subaccount32)]
                 },
-                amount: amountE8s,
+                amount: amountToSend,
                 fee: [],
                 memo: [memoBytes],
                 from_subaccount: [],
@@ -364,18 +367,21 @@ export default function SnsNeuronWizard() {
         const amount = parseFloat(stakeAmount);
         if (isNaN(amount) || amount <= 0) return false;
         const amountE8s = BigInt(Math.floor(amount * (10 ** tokenDecimals)));
-        if (tokenBalance === null || amountE8s > tokenBalance) return false;
-        if (amountE8s <= tokenFee) return false;
+        // Need stake amount + fee for the transfer
+        const totalNeeded = amountE8s + tokenFee;
+        if (tokenBalance === null || totalNeeded > tokenBalance) return false;
+        if (amountE8s <= 0n) return false;
         return true;
     })();
 
     const handleSetMax = () => {
         if (tokenBalance === null) return;
-        const maxAmount = tokenBalance - tokenFee;
-        if (maxAmount <= 0n) {
+        // Max stake = balance - fee (need fee for the transfer itself)
+        const maxStake = tokenBalance - tokenFee;
+        if (maxStake <= 0n) {
             setStakeAmount('0');
         } else {
-            setStakeAmount(formatAmount(maxAmount, tokenDecimals));
+            setStakeAmount(formatAmount(maxStake, tokenDecimals));
         }
     };
 
@@ -883,8 +889,9 @@ export default function SnsNeuronWizard() {
                         </button>
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
-                        Available: {loadingBalance ? '...' : `${formatAmount(tokenBalance || 0n, tokenDecimals)} ${tokenSymbol}`}
+                        Balance: {loadingBalance ? '...' : `${formatAmount(tokenBalance || 0n, tokenDecimals)} ${tokenSymbol}`}
                         {tokenFee > 0n && ` • Fee: ${formatAmount(tokenFee, tokenDecimals)} ${tokenSymbol}`}
+                        {tokenBalance !== null && tokenFee > 0n && ` • Max stakeable: ${formatAmount(tokenBalance > tokenFee ? tokenBalance - tokenFee : 0n, tokenDecimals)} ${tokenSymbol}`}
                     </div>
                 </div>
 
@@ -998,14 +1005,20 @@ export default function SnsNeuronWizard() {
                         <span style={styles.summaryValue}>{stakeAmount} {tokenSymbol}</span>
                     </div>
                     <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>Transaction Fee</span>
+                        <span style={styles.summaryValue}>{formatAmount(tokenFee, tokenDecimals)} {tokenSymbol}</span>
+                    </div>
+                    <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>Total to Send</span>
+                        <span style={{ ...styles.summaryValue, color: theme.colors.accent }}>
+                            {formatAmount(stakeAmountE8s + tokenFee, tokenDecimals)} {tokenSymbol}
+                        </span>
+                    </div>
+                    <div style={{ ...styles.summaryRow, borderBottom: 'none' }}>
                         <span style={styles.summaryLabel}>Dissolve Delay</span>
                         <span style={styles.summaryValue}>
                             {dissolveDelayDays ? `${dissolveDelayDays} days` : 'Not set (can configure later)'}
                         </span>
-                    </div>
-                    <div style={{ ...styles.summaryRow, borderBottom: 'none' }}>
-                        <span style={styles.summaryLabel}>Transaction Fee</span>
-                        <span style={styles.summaryValue}>{formatAmount(tokenFee, tokenDecimals)} {tokenSymbol}</span>
                     </div>
                     
                     {stakingProgress && (
