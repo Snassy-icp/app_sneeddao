@@ -219,7 +219,7 @@ export default function SnsNeuronWizard() {
     const [needsAutoFill, setNeedsAutoFill] = useState(true);
     
     // Reset and set defaults when SNS changes
-    useEffect(() => {
+  useEffect(() => {
         setStakeAmount('');
         setDissolveDelayDays('');
         setStakingError('');
@@ -231,7 +231,7 @@ export default function SnsNeuronWizard() {
         setMaxDissolveDelaySeconds(null);
         // Mark that we need to auto-fill when params load
         setNeedsAutoFill(true);
-    }, [selectedSnsRoot]);
+  }, [selectedSnsRoot]);
 
     // Auto-fill minimum stake and dissolve delay when params are loaded
     useEffect(() => {
@@ -542,7 +542,7 @@ export default function SnsNeuronWizard() {
         },
         stepProgress: {
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             justifyContent: 'center',
             gap: '0',
             marginBottom: '2rem',
@@ -571,6 +571,7 @@ export default function SnsNeuronWizard() {
             height: '3px',
             background: isCompleted ? theme.colors.success : theme.colors.border,
             transition: 'all 0.3s ease',
+            marginTop: '18px', // Half of circle height (40px/2 - line height/2) to center with circles
         }),
         stepLabel: (isActive) => ({
             fontSize: '0.75rem',
@@ -588,6 +589,7 @@ export default function SnsNeuronWizard() {
         dropdownContainer: {
             position: 'relative',
             marginBottom: '1.5rem',
+            maxWidth: '100%',
         },
         dropdownButton: (isOpen) => ({
             width: '100%',
@@ -600,6 +602,7 @@ export default function SnsNeuronWizard() {
             gap: '12px',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
+            boxSizing: 'border-box',
         }),
         dropdownList: {
             position: 'absolute',
@@ -614,6 +617,7 @@ export default function SnsNeuronWizard() {
             zIndex: 100,
             maxHeight: '320px',
             overflowY: 'auto',
+            boxSizing: 'border-box',
         },
         dropdownSearch: {
             width: '100%',
@@ -1008,8 +1012,8 @@ export default function SnsNeuronWizard() {
     // Step 2: Configure Stake
     const renderStep2 = () => (
         <>
-            <div style={{ ...styles.hero, textAlign: 'center' }}>
-                <h1 style={{ ...styles.title, justifyContent: 'center' }}>
+            <div style={styles.hero}>
+                <h1 style={styles.title}>
                     {selectedSnsLogo && (
                         <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                     )}
@@ -1021,6 +1025,28 @@ export default function SnsNeuronWizard() {
             </div>
 
             <div style={styles.configCard}>
+                {/* Balance display */}
+                <div style={{
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '10px',
+                    padding: '14px',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                }}>
+                    <span style={{ color: theme.colors.mutedText, fontSize: '0.95rem' }}>Your {tokenSymbol} Balance:</span>
+                    <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                        {loadingBalance ? (
+                            <FaSpinner style={styles.spinner} size={14} />
+                        ) : tokenBalance !== null ? (
+                            `${formatAmount(tokenBalance, tokenDecimals)} ${tokenSymbol}`
+                        ) : (
+                            '—'
+                        )}
+                    </span>
+                </div>
+
                 {/* SNS Parameters Info */}
                 {(loadingParams || minStakeE8s !== null || minDissolveDelaySeconds !== null) && (
                     <div style={{
@@ -1064,10 +1090,10 @@ export default function SnsNeuronWizard() {
                                         </span>
                                     </div>
                                 )}
-              </div>
-            )}
-          </div>
-        )}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Stake Amount ({tokenSymbol}):</label>
@@ -1251,8 +1277,8 @@ export default function SnsNeuronWizard() {
 
         return (
             <>
-                <div style={{ ...styles.hero, textAlign: 'center' }}>
-                    <h1 style={{ ...styles.title, justifyContent: 'center' }}>
+                <div style={styles.hero}>
+                    <h1 style={styles.title}>
                         {selectedSnsLogo && (
                             <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
                         )}
