@@ -56,6 +56,7 @@ import Neurons from './pages/Neurons';
 import Transaction from './pages/Transaction';
 import Transactions from './pages/Transactions';
 import Hub from './pages/Hub';
+import Sns from './pages/Sns';
 import ToolsMain from './pages/ToolsMain';
 import ToolsEscrow from './pages/ToolsEscrow';
 import EscrowSwap from './pages/EscrowSwap';
@@ -116,7 +117,7 @@ function App() {
                   <GlobalNamingSetup />
                   <Layout>
                   <Routes>
-                    <Route path="/" element={<Feed />} />
+                    <Route path="/" element={<Hub />} />
                     <Route path="/wallet" element={<Wallet />} />
                     <Route path="/doc" element={<Doc />} />
                     <Route path="/help" element={<Help />} />
@@ -170,6 +171,7 @@ function App() {
                     <Route path="/transaction" element={<Transaction />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/hub" element={<Hub />} />
+                    <Route path="/sns" element={<Sns />} />
 
                     {/* Forum routes */}
                     <Route path="/forum" element={<Forum />} />

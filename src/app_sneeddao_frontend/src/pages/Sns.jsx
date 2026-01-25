@@ -1,0 +1,831 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { useSns } from '../contexts/SnsContext';
+import Header from '../components/Header';
+import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
+import { HttpAgent } from '@dfinity/agent';
+import { formatE8s } from '../utils/NeuronUtils';
+
+function Sns() {
+    const { identity } = useAuth();
+    const { theme } = useTheme();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [snsList, setSnsList] = useState([]);
+    const [expandedSns, setExpandedSns] = useState(new Set());
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [snsLogos, setSnsLogos] = useState(new Map());
+    const [loadingLogos, setLoadingLogos] = useState(new Set());
+    const [selectedSnsDetails, setSelectedSnsDetails] = useState(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [sortBy, setSortBy] = useState('age-oldest');
+
+    // Handle window resize for responsive design
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth <= 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Sync URL parameters with global state
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            updateSelectedSns(snsParam);
+        } else if (!snsParam && selectedSnsRoot !== SNEED_SNS_ROOT) {
+            setSearchParams(prev => {
+                prev.set('sns', selectedSnsRoot);
+                return prev;
+            });
+        }
+    }, [searchParams, selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, setSearchParams]);
+
+    // Load SNS data on component mount
+    useEffect(() => {
+        loadSnsData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Load detailed information when selected SNS changes
+    useEffect(() => {
+        if (selectedSnsRoot) {
+            loadSelectedSnsDetails();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedSnsRoot]);
+
+    const loadSnsData = async () => {
+        setLoading(true);
+        try {
+            const data = await fetchAndCacheSnsData(identity);
+            setSnsList(data);
+
+            // Start loading logos for all SNSes
+            data.forEach(sns => {
+                if (sns.canisters.governance) {
+                    loadSnsLogo(sns.canisters.governance);
+                }
+            });
+        } catch (err) {
+            console.error('Error loading SNS data:', err);
+            setError('Failed to load SNS data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadSnsLogo = async (governanceId) => {
+        if (snsLogos.has(governanceId) || loadingLogos.has(governanceId)) return;
+
+        setLoadingLogos(prev => new Set([...prev, governanceId]));
+
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogos(prev => new Map(prev).set(governanceId, logo));
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${governanceId}:`, error);
+        } finally {
+            setLoadingLogos(prev => {
+                const next = new Set(prev);
+                next.delete(governanceId);
+                return next;
+            });
+        }
+    };
+
+    const loadSelectedSnsDetails = async () => {
+        if (!selectedSnsRoot) return;
+
+        setLoadingDetails(true);
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) return;
+
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            // Fetch detailed governance metadata
+            const governanceActor = createSnsGovernanceActor(selectedSns.canisters.governance, { agent });
+            const metadata = await governanceActor.get_metadata({});
+
+            // Fetch token metadata
+            const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger, { agent });
+            const tokenMetadata = await ledgerActor.icrc1_metadata();
+            const totalSupply = await ledgerActor.icrc1_total_supply();
+
+            // Extract token symbol and decimals
+            const symbolEntry = tokenMetadata.find(entry => entry[0] === 'icrc1:symbol');
+            const decimalsEntry = tokenMetadata.find(entry => entry[0] === 'icrc1:decimals');
+            const symbol = symbolEntry?.[1]?.Text || 'SNS';
+            const decimals = decimalsEntry?.[1]?.Nat || 8n;
+
+            // Fetch nervous system parameters
+            let nervousSystemParameters = null;
+            try {
+                nervousSystemParameters = await governanceActor.get_nervous_system_parameters(null);
+            } catch (err) {
+                console.warn('Could not fetch nervous system parameters:', err);
+            }
+
+            setSelectedSnsDetails({
+                ...selectedSns,
+                metadata,
+                tokenSymbol: symbol,
+                tokenDecimals: Number(decimals),
+                totalSupply,
+                nervousSystemParameters
+            });
+        } catch (err) {
+            console.error('Error loading SNS details:', err);
+        } finally {
+            setLoadingDetails(false);
+        }
+    };
+
+    const handleSnsSelect = (snsRoot) => {
+        updateSelectedSns(snsRoot);
+
+        // Update URL parameters
+        setSearchParams(prev => {
+            if (snsRoot === SNEED_SNS_ROOT) {
+                prev.delete('sns');
+            } else {
+                prev.set('sns', snsRoot);
+            }
+            return prev;
+        });
+    };
+
+    const toggleSnsExpansion = (snsRoot) => {
+        setExpandedSns(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(snsRoot)) {
+                newSet.delete(snsRoot);
+            } else {
+                newSet.add(snsRoot);
+            }
+            return newSet;
+        });
+    };
+
+    const formatDuration = (nanoseconds) => {
+        const seconds = Number(nanoseconds) / 1000000000;
+        const days = Math.floor(seconds / (24 * 60 * 60));
+        const years = Math.floor(days / 365);
+
+        if (years > 0) {
+            return `${years} year${years > 1 ? 's' : ''}`;
+        } else {
+            return `${days} day${days > 1 ? 's' : ''}`;
+        }
+    };
+
+    // Sort SNSes based on selected criteria
+    const getSortedSnsList = () => {
+        const sortedList = [...snsList];
+
+        // Helper function to check if a name starts with alphanumeric character
+        const startsWithAlphanumeric = (name) => {
+            return /^[a-zA-Z0-9]/.test(name);
+        };
+
+        if (sortBy === 'name-asc') {
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+
+                // Both are same type, sort alphabetically
+                return a.name.localeCompare(b.name);
+            });
+        } else if (sortBy === 'name-desc') {
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+
+                // Both are same type, sort reverse alphabetically
+                return b.name.localeCompare(a.name);
+            });
+        } else if (sortBy === 'age-newest') {
+            // Sort by age (newest first) but put non-alphanumeric names last
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+
+                // Both are same type, sort by age (newest first - reverse order)
+                return snsList.indexOf(b) - snsList.indexOf(a);
+            });
+        } else {
+            // age-oldest - sort by age (oldest first) but put non-alphanumeric names last
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+
+                // Both are same type, sort by age (oldest first - original order)
+                return snsList.indexOf(a) - snsList.indexOf(b);
+            });
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className='page-container'>
+                <Header showSnsDropdown={true} />
+                <main style={{ padding: '2rem', textAlign: 'center' }}>
+                    <div style={{ color: theme.colors.primaryText }}>Loading SNS data...</div>
+                </main>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className='page-container'>
+                <Header showSnsDropdown={true} />
+                <main style={{ padding: '2rem', textAlign: 'center' }}>
+                    <div style={{ color: theme.colors.error }}>{error}</div>
+                </main>
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className='page-container'
+            style={{
+                background: theme.colors.primaryGradient,
+                color: theme.colors.primaryText,
+                minHeight: '100vh'
+            }}
+        >
+            <Header showSnsDropdown={true} />
+            <main style={{
+                maxWidth: '1400px',
+                margin: '0 auto',
+                padding: '2rem'
+            }}>
+                {/* Header Section - Spans full width */}
+                <div style={{
+                    backgroundColor: theme.colors.secondaryBg,
+                    borderRadius: '12px',
+                    padding: '2rem',
+                    marginBottom: '2rem',
+                    border: `1px solid ${theme.colors.border}`,
+                    textAlign: 'center'
+                }}>
+                    <h1 style={{
+                        fontSize: '2.5rem',
+                        color: theme.colors.primaryText,
+                        marginBottom: '1rem',
+                        fontWeight: 'bold'
+                    }}>
+                        SNS Directory
+                    </h1>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '1.1rem',
+                        lineHeight: '1.6',
+                        maxWidth: '800px',
+                        margin: '0 auto 1.5rem auto'
+                    }}>
+                        Browse the SNS ecosystem, pick a DAO, and jump straight into proposals, neurons, transactions, and the forum.
+                    </p>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '1rem',
+                        lineHeight: '1.6',
+                        maxWidth: '800px',
+                        margin: '0 auto 1.5rem auto'
+                    }}>
+                        Tip: use the SNS dropdown in the header to switch context anywhere on the site.
+                    </p>
+
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '1rem',
+                        flexWrap: 'wrap',
+                        marginTop: '1.5rem'
+                    }}>
+                        <Link
+                            to="/hub"
+                            style={{
+                                backgroundColor: theme.colors.accent,
+                                color: 'white',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.accent}
+                        >
+                            Back to Hub
+                        </Link>
+
+                        <Link
+                            to="/sneedex_offers"
+                            style={{
+                                backgroundColor: theme.colors.success,
+                                color: 'white',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#219a52'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.success}
+                        >
+                            Browse Sneedex
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Content Section - Two columns */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: '2rem'
+                }}>
+                    {/* SNS List */}
+                    <div style={{
+                        flex: isMobile ? 'none' : '1',
+                        minWidth: isMobile ? 'auto' : '400px'
+                    }}>
+                        {/* Sort Controls */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem',
+                            padding: '0.5rem 0'
+                        }}>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '14px' }}>
+                                {snsList.length} SNS{snsList.length !== 1 ? 'es' : ''} found
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <label style={{ color: theme.colors.mutedText, fontSize: '14px' }}>Sort by:</label>
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value)}
+                                    style={{
+                                        backgroundColor: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    <option value="age-newest">Age (Newest First)</option>
+                                    <option value="age-oldest">Age (Oldest First)</option>
+                                    <option value="name-asc">Name (A-Z)</option>
+                                    <option value="name-desc">Name (Z-A)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {getSortedSnsList().map(sns => {
+                                const isSelected = sns.rootCanisterId === selectedSnsRoot;
+                                const isExpanded = expandedSns.has(sns.rootCanisterId);
+                                const logo = snsLogos.get(sns.canisters.governance);
+                                const isLoadingLogo = loadingLogos.has(sns.canisters.governance);
+                                const startsWithAlphanumeric = /^[a-zA-Z0-9]/.test(sns.name);
+
+                                return (
+                                    <div
+                                        key={sns.rootCanisterId}
+                                        style={{
+                                            backgroundColor: isSelected ? theme.colors.secondaryBg : theme.colors.primaryBg,
+                                            border: isSelected ? `2px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
+                                            borderRadius: '8px',
+                                            overflow: 'hidden',
+                                            opacity: startsWithAlphanumeric ? 1 : 0.7
+                                        }}
+                                    >
+                                        {/* SNS Header */}
+                                        <div
+                                            onClick={() => handleSnsSelect(sns.rootCanisterId)}
+                                            style={{
+                                                padding: '1rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                borderBottom: isExpanded ? `1px solid ${theme.colors.border}` : 'none'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                {isLoadingLogo ? (
+                                                    <div style={{
+                                                        width: '32px',
+                                                        height: '32px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: theme.colors.border
+                                                    }} />
+                                                ) : logo ? (
+                                                    <img
+                                                        src={logo}
+                                                        alt={sns.name}
+                                                        style={{
+                                                            width: '32px',
+                                                            height: '32px',
+                                                            borderRadius: '50%',
+                                                            objectFit: 'cover'
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div style={{
+                                                        width: '32px',
+                                                        height: '32px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: theme.colors.border,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: theme.colors.mutedText,
+                                                        fontSize: '12px'
+                                                    }}>
+                                                        SNS
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div style={{
+                                                        color: startsWithAlphanumeric ? theme.colors.primaryText : theme.colors.mutedText,
+                                                        fontSize: '16px',
+                                                        fontWeight: 'bold'
+                                                    }}>
+                                                        {sns.name}
+                                                    </div>
+                                                    <div style={{
+                                                        color: theme.colors.mutedText,
+                                                        fontSize: '12px',
+                                                        fontFamily: 'monospace'
+                                                    }}>
+                                                        {sns.rootCanisterId.slice(0, 8)}...{sns.rootCanisterId.slice(-8)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleSnsExpansion(sns.rootCanisterId);
+                                                }}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    color: theme.colors.mutedText,
+                                                    cursor: 'pointer',
+                                                    fontSize: '16px',
+                                                    transform: isExpanded ? 'rotate(180deg)' : 'none',
+                                                    transition: 'transform 0.2s ease'
+                                                }}
+                                            >
+                                                ▼
+                                            </button>
+                                        </div>
+
+                                        {/* Expanded Details */}
+                                        {isExpanded && (
+                                            <div style={{
+                                                padding: '1rem',
+                                                backgroundColor: theme.colors.primaryBg
+                                            }}>
+                                                <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                                    gap: '1rem',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Root Canister</div>
+                                                        <div style={{
+                                                            color: theme.colors.primaryText,
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '12px'
+                                                        }}>
+                                                            {sns.rootCanisterId}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Governance</div>
+                                                        <div style={{
+                                                            color: theme.colors.primaryText,
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '12px'
+                                                        }}>
+                                                            {sns.canisters.governance}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Ledger</div>
+                                                        <div style={{
+                                                            color: theme.colors.primaryText,
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '12px'
+                                                        }}>
+                                                            {sns.canisters.ledger}
+                                                        </div>
+                                                    </div>
+                                                    {sns.canisters.swap && (
+                                                        <div>
+                                                            <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Swap</div>
+                                                            <div style={{
+                                                                color: theme.colors.primaryText,
+                                                                fontFamily: 'monospace',
+                                                                fontSize: '12px'
+                                                            }}>
+                                                                {sns.canisters.swap}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Selected SNS Details */}
+                    <div style={{
+                        flex: isMobile ? 'none' : '1',
+                        minWidth: isMobile ? 'auto' : '500px'
+                    }}>
+                        {selectedSnsRoot ? (
+                            <div style={{
+                                backgroundColor: theme.colors.secondaryBg,
+                                borderRadius: '8px',
+                                padding: '2rem',
+                                border: `1px solid ${theme.colors.border}`
+                            }}>
+                                <h2 style={{
+                                    color: theme.colors.primaryText,
+                                    marginBottom: '1.5rem',
+                                    fontSize: '1.5rem'
+                                }}>
+                                    SNS Details
+                                </h2>
+
+                                {loadingDetails ? (
+                                    <div style={{ textAlign: 'center', color: theme.colors.mutedText, padding: '2rem' }}>
+                                        Loading detailed information...
+                                    </div>
+                                ) : selectedSnsDetails ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                        {/* Basic Info */}
+                                        <div>
+                                            <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>Basic Information</h3>
+                                            <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: theme.colors.mutedText }}>Name:</span>
+                                                    <span style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.name}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: theme.colors.mutedText }}>Token Symbol:</span>
+                                                    <span style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: theme.colors.mutedText }}>Total Supply:</span>
+                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                        {formatE8s(selectedSnsDetails.totalSupply)} {selectedSnsDetails.tokenSymbol}
+                                                    </span>
+                                                </div>
+                                                {selectedSnsDetails.metadata?.description?.[0] && (
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '0.5rem' }}>Description:</div>
+                                                        <div style={{
+                                                            color: theme.colors.primaryText,
+                                                            backgroundColor: theme.colors.primaryBg,
+                                                            padding: '1rem',
+                                                            borderRadius: '4px',
+                                                            fontSize: '14px',
+                                                            lineHeight: '1.4'
+                                                        }}>
+                                                            {selectedSnsDetails.metadata.description[0]}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Governance Parameters */}
+                                        {selectedSnsDetails.nervousSystemParameters && (
+                                            <div>
+                                                <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>Governance Parameters</h3>
+                                                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                                    {selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s?.[0] && (
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.mutedText }}>Min Neuron Stake:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {formatE8s(selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s[0])} {selectedSnsDetails.tokenSymbol}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds?.[0] && (
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.mutedText }}>Max Dissolve Delay:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {formatDuration(selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds[0] * 1000000000n)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {selectedSnsDetails.nervousSystemParameters.proposal_reject_cost_e8s?.[0] && (
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span style={{ color: theme.colors.mutedText }}>Proposal Reject Cost:</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {formatE8s(selectedSnsDetails.nervousSystemParameters.proposal_reject_cost_e8s[0])} {selectedSnsDetails.tokenSymbol}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* External Links */}
+                                        <div>
+                                            <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>External Links</h3>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <a
+                                                    href={`https://nns.ic0.app/project/?project=${selectedSnsRoot}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        color: theme.colors.accent,
+                                                        textDecoration: 'none',
+                                                        padding: '0.5rem',
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        display: 'block'
+                                                    }}
+                                                >
+                                                    View on NNS dApp →
+                                                </a>
+                                                <a
+                                                    href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        color: theme.colors.accent,
+                                                        textDecoration: 'none',
+                                                        padding: '0.5rem',
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        display: 'block'
+                                                    }}
+                                                >
+                                                    View on IC Dashboard →
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        {/* Internal Pages */}
+                                        <div>
+                                            <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>Explore This SNS</h3>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <Link
+                                                    to={`/proposals?sns=${selectedSnsRoot}`}
+                                                    style={{
+                                                        color: theme.colors.success,
+                                                        textDecoration: 'none',
+                                                        padding: '0.5rem',
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        display: 'block',
+                                                        transition: 'background-color 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                    onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
+                                                >
+                                                    📋 View Proposals →
+                                                </Link>
+                                                <Link
+                                                    to={`/forum?sns=${selectedSnsRoot}`}
+                                                    style={{
+                                                        color: theme.colors.success,
+                                                        textDecoration: 'none',
+                                                        padding: '0.5rem',
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        display: 'block',
+                                                        transition: 'background-color 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                    onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
+                                                >
+                                                    💬 Visit Forum →
+                                                </Link>
+                                                <Link
+                                                    to={`/neurons?sns=${selectedSnsRoot}`}
+                                                    style={{
+                                                        color: theme.colors.success,
+                                                        textDecoration: 'none',
+                                                        padding: '0.5rem',
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        display: 'block',
+                                                        transition: 'background-color 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                    onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
+                                                >
+                                                    🧠 Browse Neurons →
+                                                </Link>
+                                                <Link
+                                                    to={`/transactions?sns=${selectedSnsRoot}`}
+                                                    style={{
+                                                        color: theme.colors.success,
+                                                        textDecoration: 'none',
+                                                        padding: '0.5rem',
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        display: 'block',
+                                                        transition: 'background-color 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                    onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
+                                                >
+                                                    💰 View Transactions →
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ textAlign: 'center', color: theme.colors.mutedText, padding: '2rem' }}>
+                                        Failed to load SNS details
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={{
+                                backgroundColor: theme.colors.secondaryBg,
+                                borderRadius: '8px',
+                                padding: '2rem',
+                                border: `1px solid ${theme.colors.border}`,
+                                textAlign: 'center'
+                            }}>
+                                <h2 style={{
+                                    color: theme.colors.primaryText,
+                                    marginBottom: '1rem',
+                                    fontSize: '1.5rem'
+                                }}>
+                                    Select an SNS
+                                </h2>
+                                <p style={{ color: theme.colors.mutedText }}>
+                                    Choose an SNS from the list to view detailed information
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div> {/* Close Content Section */}
+            </main>
+        </div>
+    );
+}
+
+export default Sns;
+

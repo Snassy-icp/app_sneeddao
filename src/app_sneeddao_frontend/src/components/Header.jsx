@@ -36,7 +36,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
-        if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
+        if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
@@ -46,31 +46,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
         return 'Hub';
     });
-
-    // Update active section when location changes
-    useEffect(() => {
-        const path = location.pathname;
-        // Check /msg paths first to avoid conflicts
-        if (path.startsWith('/msg')) {
-            setActiveSection('Me');
-        } else if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
-            setActiveSection('Hub');
-        } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
-            setActiveSection('Me');
-        } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
-            setActiveSection('DAO');
-        } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path)) {
-            setActiveSection('Sneed Lock');
-        } else if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) {
-            setActiveSection('Sneedex');
-        } else if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || path.startsWith('/tools/')) {
-            setActiveSection('Tools');
-        } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
-            setActiveSection('Admin');
-        } else {
-            setActiveSection('Hub'); // Fall back to Hub section
-        }
-    }, [location.pathname]);
 
     // Silent admin check - don't redirect, just check status
     const { isAdmin, loading: adminLoading } = useAdminCheck({ 
@@ -103,7 +78,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
             setActiveSection('Me');
-        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
+        } else if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
         } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Me');
@@ -162,6 +137,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/hub',
             subMenu: [
                 { name: 'Hub', path: '/hub' },
+                { name: 'SNS', path: '/sns' },
                 { name: 'Feed', path: '/feed' },
                 { name: 'Forum', path: '/forum' },
                 { name: 'Proposals', path: '/proposals' },
@@ -296,8 +272,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Direct path match
         if (currentPath === itemPath) return true;
         
-        // Special case: root path "/" should highlight Feed submenu item
-        if (itemPath === '/feed' && currentPath === '/') {
+        // Special case: root path "/" should highlight Hub submenu item
+        if (itemPath === '/hub' && currentPath === '/') {
             return true;
         }
         
