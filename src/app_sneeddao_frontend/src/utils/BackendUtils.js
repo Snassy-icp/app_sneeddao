@@ -46,7 +46,8 @@ export const setNeuronName = async (identity, snsRootCanisterId, neuronId, name)
 
 // Set a private nickname for a neuron (any user can do this)
 export const setNeuronNickname = async (identity, snsRootCanisterId, neuronId, nickname) => {
-    if (!identity || !snsRootCanisterId || !neuronId || !nickname) return null;
+    // nickname may be '' to remove a nickname, so only reject null/undefined
+    if (!identity || !snsRootCanisterId || !neuronId || nickname === undefined || nickname === null) return null;
     
     try {
         const actor = createBackendActor(identity);

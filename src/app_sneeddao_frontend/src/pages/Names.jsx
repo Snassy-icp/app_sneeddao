@@ -5,9 +5,11 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import PrincipalInput from '../components/PrincipalInput';
+import NeuronInput from '../components/NeuronInput';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname } from '../utils/BackendUtils';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname, setNeuronNickname } from '../utils/BackendUtils';
+import { useSns } from '../contexts/SnsContext';
 
 const validateName = (input) => {
   if (!input.trim()) return 'Name cannot be empty';
@@ -22,7 +24,8 @@ const validateName = (input) => {
 export default function Names() {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
-  const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+  const { principalNames, principalNicknames, neuronNames, neuronNicknames, fetchAllNames } = useNaming();
+  const { selectedSnsRoot } = useSns();
 
   const myPrincipalStr = identity?.getPrincipal()?.toString?.() || '';
 
@@ -43,6 +46,15 @@ export default function Names() {
   const [savingNickname, setSavingNickname] = useState(false);
   const [editingPrincipal, setEditingPrincipal] = useState(null); // string principal id
   const [editNicknameValue, setEditNicknameValue] = useState('');
+
+  // Neuron nicknames (scoped to selected SNS)
+  const [neuronSearch, setNeuronSearch] = useState('');
+  const [addNeuronId, setAddNeuronId] = useState('');
+  const [addNeuronNickname, setAddNeuronNickname] = useState('');
+  const [neuronAddError, setNeuronAddError] = useState('');
+  const [savingNeuronNickname, setSavingNeuronNickname] = useState(false);
+  const [editingNeuronKey, setEditingNeuronKey] = useState(null); // `${snsRoot}:${neuronHex}`
+  const [editNeuronNicknameValue, setEditNeuronNicknameValue] = useState('');
 
   useEffect(() => {
     const run = async () => {
@@ -82,6 +94,30 @@ export default function Names() {
     filtered.sort((a, b) => (a.displayInfo?.nickname || a.nickname || '').localeCompare(b.displayInfo?.nickname || b.nickname || ''));
     return filtered;
   }, [principalNicknames, principalNames, search]);
+
+  const neuronNicknameEntries = useMemo(() => {
+    const q = neuronSearch.trim().toLowerCase();
+    const entries = Array.from((neuronNicknames || new Map()).entries())
+      .filter(([key]) => (selectedSnsRoot ? key.startsWith(`${selectedSnsRoot}:`) : true))
+      .map(([key, nickname]) => {
+        const [snsRoot, neuronIdHex] = key.split(':');
+        const publicName = neuronNames?.get?.(key) || '';
+        return { key, snsRoot, neuronIdHex, nickname, publicName };
+      });
+
+    const filtered = q
+      ? entries.filter((r) => {
+          return (
+            (r.neuronIdHex || '').toLowerCase().includes(q) ||
+            (r.nickname || '').toLowerCase().includes(q) ||
+            (r.publicName || '').toLowerCase().includes(q)
+          );
+        })
+      : entries;
+
+    filtered.sort((a, b) => (a.nickname || '').localeCompare(b.nickname || ''));
+    return filtered;
+  }, [neuronNicknames, neuronNames, neuronSearch, selectedSnsRoot]);
 
   const startEditMyName = () => {
     setMyNameEditing(true);
@@ -138,6 +174,26 @@ export default function Names() {
     if (!ok) return;
     const resp = await setPrincipalNickname(identity, Principal.fromText(principalId), '');
     if (!resp || !('ok' in resp)) throw new Error(resp?.err || 'Failed to remove nickname');
+    await fetchAllNames();
+  };
+
+  const addOrUpdateNeuronNickname = async (snsRoot, neuronIdHex, nickname) => {
+    if (!identity) return;
+    if (!snsRoot) throw new Error('Select a DAO/SNS first (top dropdown)');
+    if (!neuronIdHex?.trim?.()) throw new Error('Neuron ID is required');
+    const err = validateName(nickname);
+    if (err) throw new Error(err);
+    const resp = await setNeuronNickname(identity, snsRoot, neuronIdHex.trim(), nickname.trim());
+    if (!resp || !('ok' in resp)) throw new Error(resp?.err || 'Failed to set neuron nickname');
+    await fetchAllNames();
+  };
+
+  const removeNeuronNickname = async (snsRoot, neuronIdHex) => {
+    if (!identity) return;
+    const ok = window.confirm('Remove this neuron nickname?');
+    if (!ok) return;
+    const resp = await setNeuronNickname(identity, snsRoot, neuronIdHex, '');
+    if (!resp || !('ok' in resp)) throw new Error(resp?.err || 'Failed to remove neuron nickname');
     await fetchAllNames();
   };
 
@@ -206,8 +262,7 @@ export default function Names() {
         <div style={{ marginBottom: '16px' }}>
           <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>Names</h1>
           <div style={{ color: theme.colors.mutedText, marginTop: '6px' }}>
-            Manage your <strong>public name</strong> and your private <strong>nicknames</strong> for other principals.
-            {' '}Need neuron naming? Use <Link to="/me" style={{ color: theme.colors.accent }}>Me</Link>.
+            Manage your <strong>public name</strong>, your private <strong>principal nicknames</strong>, and your private <strong>neuron nicknames</strong>.
           </div>
         </div>
 
@@ -392,6 +447,171 @@ export default function Names() {
                             }
                           }}
                           disabled={savingNickname}
+                          style={styles.btn('danger')}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Neuron nicknames */}
+        <div style={styles.card}>
+          <h2 style={styles.title}>Neuron nicknames</h2>
+          <div style={{ color: theme.colors.mutedText, marginBottom: '12px' }}>
+            These nicknames are private to you and are scoped to the selected DAO/SNS in the top dropdown.
+          </div>
+
+          {/* Add neuron nickname */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+            <div>
+              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Neuron</div>
+              <NeuronInput
+                value={addNeuronId}
+                onChange={setAddNeuronId}
+                placeholder="Enter neuron ID or search by nickname/name"
+                snsRoot={selectedSnsRoot}
+                defaultTab="private"
+              />
+            </div>
+            <div>
+              <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '6px' }}>Nickname</div>
+              <input
+                value={addNeuronNickname}
+                onChange={(e) => setAddNeuronNickname(e.target.value)}
+                placeholder="e.g. Team treasury neuron"
+                style={styles.input}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                setNeuronAddError('');
+                setSavingNeuronNickname(true);
+                try {
+                  await addOrUpdateNeuronNickname(selectedSnsRoot, addNeuronId, addNeuronNickname);
+                  setAddNeuronId('');
+                  setAddNeuronNickname('');
+                } catch (e) {
+                  setNeuronAddError(e?.message || 'Failed');
+                } finally {
+                  setSavingNeuronNickname(false);
+                }
+              }}
+              disabled={savingNeuronNickname}
+              style={styles.btn('accent')}
+            >
+              {savingNeuronNickname ? 'Saving…' : 'Add'}
+            </button>
+          </div>
+          {neuronAddError && <div style={{ color: theme.colors.error, marginTop: '10px' }}>{neuronAddError}</div>}
+
+          {/* Search */}
+          <div style={{ marginTop: '16px' }}>
+            <input
+              value={neuronSearch}
+              onChange={(e) => setNeuronSearch(e.target.value)}
+              placeholder="Search by neuron ID, public name, or nickname…"
+              style={styles.input}
+            />
+          </div>
+
+          {/* List */}
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {neuronNicknameEntries.length === 0 ? (
+              <div style={{ color: theme.colors.mutedText }}>No neuron nicknames yet.</div>
+            ) : (
+              neuronNicknameEntries.map((row) => (
+                <div
+                  key={row.key}
+                  style={{
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '10px',
+                    padding: '12px',
+                    backgroundColor: theme.colors.primaryBg
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 260 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <Link
+                          to={`/neuron?neuronid=${row.neuronIdHex}&sns=${row.snsRoot}`}
+                          style={{ color: theme.colors.accent, textDecoration: 'none', fontFamily: 'monospace' }}
+                          title={row.neuronIdHex}
+                        >
+                          {`${row.neuronIdHex.slice(0, 6)}...${row.neuronIdHex.slice(-6)}`}
+                        </Link>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                          SNS: {row.snsRoot.slice(0, 6)}…{row.snsRoot.slice(-6)}
+                        </span>
+                      </div>
+                      {row.publicName && (
+                        <div style={{ marginTop: '6px', color: theme.colors.mutedText, fontSize: '12px' }}>
+                          Public name: <span style={{ color: theme.colors.primaryText }}>{row.publicName}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {editingNeuronKey === row.key ? (
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          value={editNeuronNicknameValue}
+                          onChange={(e) => setEditNeuronNicknameValue(e.target.value)}
+                          style={{ ...styles.input, width: '260px' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSavingNeuronNickname(true);
+                            try {
+                              await addOrUpdateNeuronNickname(row.snsRoot, row.neuronIdHex, editNeuronNicknameValue);
+                              setEditingNeuronKey(null);
+                            } catch (e) {
+                              window.alert(e?.message || 'Failed to update neuron nickname');
+                            } finally {
+                              setSavingNeuronNickname(false);
+                            }
+                          }}
+                          disabled={savingNeuronNickname}
+                          style={styles.btn('accent')}
+                        >
+                          Save
+                        </button>
+                        <button type="button" onClick={() => setEditingNeuronKey(null)} style={styles.btn('muted')}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>{row.nickname}</div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingNeuronKey(row.key);
+                            setEditNeuronNicknameValue(row.nickname || '');
+                          }}
+                          style={styles.btn('muted')}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSavingNeuronNickname(true);
+                            try {
+                              await removeNeuronNickname(row.snsRoot, row.neuronIdHex);
+                            } catch (e) {
+                              window.alert(e?.message || 'Failed to remove neuron nickname');
+                            } finally {
+                              setSavingNeuronNickname(false);
+                            }
+                          }}
+                          disabled={savingNeuronNickname}
                           style={styles.btn('danger')}
                         >
                           Remove
