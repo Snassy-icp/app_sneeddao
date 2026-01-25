@@ -1255,24 +1255,34 @@ export default function SnsNeuronWizard() {
                                 setDissolveDelayDays('');
                                 setStakingSuccess(false);
                                 setCreatedNeuronId(null);
+                                setNeedsAutoFill(true);
                             }}
                         >
                             Stake Another
                         </button>
                         <button
                             style={{
-                                ...styles.continueButton(true),
+                                ...styles.backButton,
                                 flex: 'none',
                                 padding: '14px 24px',
                             }}
-                            onClick={() => navigate(createdNeuronId 
-                                ? `/neuron?neuronid=${createdNeuronId}&sns=${selectedSnsRoot}`
-                                : `/wallet`
-                            )}
+                            onClick={() => navigate('/wallet')}
                         >
-                            {createdNeuronId ? 'View Neuron' : 'Go to Wallet'}
-                            <FaExternalLinkAlt size={12} />
+                            Go to Wallet
                         </button>
+                        {createdNeuronId && (
+                            <button
+                                style={{
+                                    ...styles.continueButton(true),
+                                    flex: 'none',
+                                    padding: '14px 24px',
+                                }}
+                                onClick={() => navigate(`/neuron?neuronid=${createdNeuronId}&sns=${selectedSnsRoot}`)}
+                            >
+                                View Neuron
+                                <FaExternalLinkAlt size={12} />
+                            </button>
+                        )}
                     </div>
                 </div>
             );
