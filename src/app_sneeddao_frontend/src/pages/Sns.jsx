@@ -62,6 +62,11 @@ function Sns() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedSnsRoot]);
 
+    const withSnsParam = (path) => {
+        if (!selectedSnsRoot || selectedSnsRoot === SNEED_SNS_ROOT) return path;
+        return `${path}?sns=${selectedSnsRoot}`;
+    };
+
     const loadSnsData = async () => {
         setLoading(true);
         try {
@@ -348,7 +353,7 @@ function Sns() {
                         marginTop: '1.5rem'
                     }}>
                         <Link
-                            to="/hub"
+                            to={withSnsParam('/feed')}
                             style={{
                                 backgroundColor: theme.colors.accent,
                                 color: 'white',
@@ -361,11 +366,11 @@ function Sns() {
                             onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
                             onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.accent}
                         >
-                            Back to Hub
+                            Open Feed
                         </Link>
 
                         <Link
-                            to="/sneedex_offers"
+                            to={withSnsParam('/forum')}
                             style={{
                                 backgroundColor: theme.colors.success,
                                 color: 'white',
@@ -378,7 +383,24 @@ function Sns() {
                             onMouseEnter={(e) => e.target.style.backgroundColor = '#219a52'}
                             onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.success}
                         >
-                            Browse Sneedex
+                            Open Forum
+                        </Link>
+
+                        <Link
+                            to={withSnsParam('/proposals')}
+                            style={{
+                                backgroundColor: theme.colors.warning || '#f59e0b',
+                                color: 'white',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#d97706'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.warning || '#f59e0b'}
+                        >
+                            Open Proposals
                         </Link>
                     </div>
                 </div>

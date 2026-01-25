@@ -57,6 +57,8 @@ import Transaction from './pages/Transaction';
 import Transactions from './pages/Transactions';
 import Hub from './pages/Hub';
 import Sns from './pages/Sns';
+import LiquidStaking from './pages/LiquidStaking';
+import SnsNeuronWizard from './pages/SnsNeuronWizard';
 import ToolsMain from './pages/ToolsMain';
 import ToolsEscrow from './pages/ToolsEscrow';
 import EscrowSwap from './pages/EscrowSwap';
@@ -172,6 +174,8 @@ function App() {
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/hub" element={<Hub />} />
                     <Route path="/sns" element={<Sns />} />
+                    <Route path="/liquid_staking" element={<LiquidStaking />} />
+                    <Route path="/sns_neuron_wizard" element={<SnsNeuronWizard />} />
 
                     {/* Forum routes */}
                     <Route path="/forum" element={<Forum />} />

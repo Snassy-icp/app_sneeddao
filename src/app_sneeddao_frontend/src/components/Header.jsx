@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -37,7 +37,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
         if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
-        if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Me';
+        if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Liquid Staking';
+        if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
@@ -80,7 +81,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
+        } else if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
+            setActiveSection('Liquid Staking');
+        } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
             setActiveSection('Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
@@ -160,6 +163,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Wallet', path: '/wallet' },
                 { name: 'Canisters', path: '/canisters' },
                 { name: 'Address Book', path: '/names' }
+            ]
+        },
+
+        'Liquid Staking': {
+            icon: <FaTint size={18} />,
+            displayName: 'Liquid Staking',
+            defaultPath: '/liquid_staking',
+            subMenu: [
+                { name: 'Overview', path: '/liquid_staking' },
+                { name: 'Create ICP Neuron Manager', path: '/create_icp_neuron' },
+                { name: 'SNS Neuron Wizard', path: '/sns_neuron_wizard' },
             ]
         },
 
