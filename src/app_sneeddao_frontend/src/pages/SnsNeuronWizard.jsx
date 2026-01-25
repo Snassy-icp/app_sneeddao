@@ -86,10 +86,10 @@ export default function SnsNeuronWizard() {
       try {
         const data = await fetchAndCacheSnsData(identity);
         setSnsList(data || []);
-      } catch (e) {
+    } catch (e) {
         console.error('Failed to load SNS list:', e);
         setSnsLoadError('Failed to load SNS list');
-      } finally {
+    } finally {
         setLoadingSns(false);
       }
     };
@@ -111,9 +111,9 @@ export default function SnsNeuronWizard() {
             }
             const logo = await fetchSnsLogo(governanceId, agent);
             setSnsLogos(prev => new Map(prev).set(governanceId, logo));
-        } catch (e) {
+    } catch (e) {
             console.warn('Failed to load SNS logo:', e);
-        } finally {
+    } finally {
             setLoadingLogos(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(governanceId);
@@ -123,7 +123,7 @@ export default function SnsNeuronWizard() {
     }, [identity, snsLogos, loadingLogos]);
 
     // Load logos for visible SNSes
-    useEffect(() => {
+  useEffect(() => {
         filteredSnsList.slice(0, 20).forEach(sns => {
             if (sns.canisters?.governance) {
                 loadSnsLogo(sns.canisters.governance);
@@ -163,14 +163,14 @@ export default function SnsNeuronWizard() {
                 setTokenDecimals(Number(decimals));
                 setTokenSymbol(symbol);
                 setTokenFee(BigInt(fee));
-            } catch (e) {
+      } catch (e) {
                 console.error('Failed to load token info:', e);
                 setTokenBalance(0n);
-            } finally {
+      } finally {
                 setLoadingBalance(false);
-            }
-        };
-        
+      }
+    };
+
         loadTokenInfo();
     }, [selectedLedgerId, identity, isAuthenticated]);
 
@@ -660,11 +660,11 @@ export default function SnsNeuronWizard() {
             gap: '10px',
         },
         input: {
-            flex: 1,
+                  flex: 1,
             padding: '14px',
             background: theme.colors.secondaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '10px',
+                  borderRadius: '10px',
             color: theme.colors.primaryText,
             fontSize: '1rem',
             outline: 'none',
@@ -692,7 +692,7 @@ export default function SnsNeuronWizard() {
             flex: 1,
             padding: '14px 24px',
             background: theme.colors.secondaryBg,
-            border: `1px solid ${theme.colors.border}`,
+                  border: `1px solid ${theme.colors.border}`,
             borderRadius: '10px',
             color: theme.colors.primaryText,
             fontSize: '1rem',
@@ -874,8 +874,8 @@ export default function SnsNeuronWizard() {
                                     ) : (
                                         <div style={{ ...styles.snsLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                             <FaCoins style={{ color: theme.colors.mutedText }} />
-                                        </div>
-                                    )}
+              </div>
+            )}
                                     <div style={{ flex: 1, textAlign: 'left' }}>
                                         <div style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
                                             {selectedSns.name}
@@ -888,15 +888,15 @@ export default function SnsNeuronWizard() {
                             ) : (
                                 <div style={{ flex: 1, textAlign: 'left', color: theme.colors.mutedText }}>
                                     {loadingSns ? 'Loading SNSes...' : 'Select an SNS...'}
-                                </div>
-                            )}
+          </div>
+        )}
                             <FaChevronDown style={{ 
                                 color: theme.colors.mutedText, 
                                 transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                                 transition: 'transform 0.2s ease'
                             }} />
-                        </div>
-                        
+            </div>
+
                         {dropdownOpen && (
                             <div style={styles.dropdownList}>
                                 <input
@@ -911,8 +911,8 @@ export default function SnsNeuronWizard() {
                                 {filteredSnsList.length === 0 ? (
                                     <div style={{ padding: '20px', textAlign: 'center', color: theme.colors.mutedText }}>
                                         {loadingSns ? 'Loading...' : 'No SNSes found'}
-                                    </div>
-                                ) : (
+              </div>
+            ) : (
                                     filteredSnsList.map((sns) => {
                                         const logo = snsLogos.get(sns.canisters?.governance);
                                         const isSelected = selectedSnsRoot === sns.rootCanisterId;
@@ -949,7 +949,7 @@ export default function SnsNeuronWizard() {
                             </div>
                         )}
           </div>
-        </div>
+                </div>
 
                 {selectedSns && (
                     <div style={{
@@ -975,14 +975,14 @@ export default function SnsNeuronWizard() {
             </div>
 
             <div style={styles.buttonRow}>
-                <button
+                  <button
                     style={styles.continueButton(canProceedStep1)}
                     onClick={() => canProceedStep1 && setCurrentStep(2)}
                     disabled={!canProceedStep1}
                 >
                     Continue
                     <FaArrowRight />
-                </button>
+                  </button>
             </div>
         </>
     );
@@ -1080,15 +1080,15 @@ export default function SnsNeuronWizard() {
                                         <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
                                             {minDelayDays} days
                                         </span>
-                                    </div>
-                                )}
+          </div>
+        )}
                                 {maxDissolveDelaySeconds !== null && (
                                     <div>
                                         <span style={{ color: theme.colors.mutedText }}>Max dissolve: </span>
                                         <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
                                             {maxDelayDays} days
                                         </span>
-                                    </div>
+            </div>
                                 )}
                             </div>
                         )}
@@ -1133,12 +1133,12 @@ export default function SnsNeuronWizard() {
                             return null;
                         })()
                     )}
-                </div>
+            </div>
 
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Dissolve Delay (days):</label>
                     <div style={styles.inputRow}>
-                        <input
+              <input
                             type="number"
                             placeholder={minDelayDays !== null ? `Min: ${minDelayDays} days` : 'Enter days'}
                             value={dissolveDelayDays}
@@ -1204,7 +1204,7 @@ export default function SnsNeuronWizard() {
                     color: theme.colors.warning || '#f59e0b',
                 }}>
                     ⚠️ {step2Validation.errors[0]}
-                </div>
+            </div>
             )}
 
             <div style={styles.buttonRow}>
@@ -1234,7 +1234,7 @@ export default function SnsNeuronWizard() {
                 <div style={styles.successCard}>
                     <div style={styles.successIcon}>
                         <FaCheck size={40} style={{ color: theme.colors.success }} />
-                    </div>
+          </div>
                     <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1.8rem' }}>
                         Neuron Created Successfully!
                     </h2>
@@ -1265,9 +1265,12 @@ export default function SnsNeuronWizard() {
                                 flex: 'none',
                                 padding: '14px 24px',
                             }}
-                            onClick={() => navigate(`/neurons?sns=${selectedSnsRoot}`)}
+                            onClick={() => navigate(createdNeuronId 
+                                ? `/neuron?neuronid=${createdNeuronId}&sns=${selectedSnsRoot}`
+                                : `/wallet`
+                            )}
                         >
-                            View My Neurons
+                            {createdNeuronId ? 'View Neuron' : 'Go to Wallet'}
                             <FaExternalLinkAlt size={12} />
                         </button>
                     </div>
@@ -1293,13 +1296,13 @@ export default function SnsNeuronWizard() {
                     <div style={styles.summaryRow}>
                         <span style={styles.summaryLabel}>SNS</span>
                         <span style={styles.summaryValue}>{selectedSns?.name}</span>
-                    </div>
+            </div>
                     <div style={styles.summaryRow}>
                         <span style={styles.summaryLabel}>Stake Amount</span>
                         <span style={{ ...styles.summaryValue, color: theme.colors.accent }}>
                             {stakeAmount} {tokenSymbol}
                         </span>
-                    </div>
+            </div>
                     <div style={{ ...styles.summaryRow, borderBottom: 'none' }}>
                         <span style={styles.summaryLabel}>Dissolve Delay</span>
                         <span style={styles.summaryValue}>
