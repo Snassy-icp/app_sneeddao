@@ -42,7 +42,15 @@ const TransactionType = {
     APPROVE: 'approve'
 };
 
-function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCanisterId = null, principalId = null, isCollapsed, onToggleCollapse }) {
+function TransactionList({ 
+    snsRootCanisterId, 
+    ledgerCanisterId: providedLedgerCanisterId = null, 
+    principalId = null, 
+    isCollapsed = false, 
+    onToggleCollapse = () => {},
+    showHeader = true,
+    embedded = false
+}) {
     const { theme } = useTheme();
     
     const styles = {
@@ -267,6 +275,13 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
             wordBreak: 'break-all'
         }
     };
+
+    const containerStyle = embedded ? {
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        padding: 0,
+        marginTop: 0
+    } : styles.container;
 
 
     const { identity, isAuthenticated } = useAuth();
@@ -1048,10 +1063,6 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
         return sequence;
     };
 
-    if (loading) {
-        return <div style={styles.loadingSpinner}>Loading transactions...</div>;
-    }
-
     const renderTransactionCard = (tx, index) => {
         const transaction = tx.transaction || tx;
         const txType = transaction.kind;
@@ -1148,32 +1159,29 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
         );
     };
 
-    if (error) {
-        return <div style={styles.container}>Error: {error}</div>;
-    }
-
     return (
-        <div style={styles.container}>
-            {/* Header Row - Always visible */}
-            <div style={styles.header}>
-                <div 
-                    style={styles.headerTitle}
-                    onClick={onToggleCollapse}
-                >
-                    <span 
-                        style={{
-                            ...styles.collapseIcon,
-                            ...(isCollapsed ? styles.collapsedIcon : {})
-                        }}
+        <div style={containerStyle}>
+            {showHeader && (
+                <div style={styles.header}>
+                    <div 
+                        style={styles.headerTitle}
+                        onClick={onToggleCollapse}
                     >
-                        ▼
-                    </span>
-                    <h2 style={{ margin: 0 }}>Transactions</h2>
+                        <span 
+                            style={{
+                                ...styles.collapseIcon,
+                                ...(isCollapsed ? styles.collapsedIcon : {})
+                            }}
+                        >
+                            ▼
+                        </span>
+                        <h2 style={{ margin: 0 }}>Transactions</h2>
+                    </div>
                 </div>
-            </div>
+            )}
             
             {/* Filters - Only when expanded */}
-            {!isCollapsed && (
+            {!isCollapsed && !loading && !error && (
                 <div style={styles.filtersContainer}>
                     {/* First Row: Go to TX Index (if in ledger mode) */}
                     {!principalId && (
@@ -1297,8 +1305,12 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
 
             {!isCollapsed && (
                 <>
+                    {error && <div style={{ color: theme.colors.error }}>Error: {error}</div>}
+                    {loading && <div style={styles.loadingSpinner}>Loading transactions...</div>}
+
                     {/* Table view for wide screens */}
-                    <div style={styles.tableContainer} className="transaction-table-container">
+                    {!loading && !error && (
+                        <div style={styles.tableContainer} className="transaction-table-container">
                         <table style={styles.table}>
                         <thead>
                             <tr>
@@ -1459,14 +1471,18 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                             })}
                         </tbody>
                         </table>
-                    </div>
+                        </div>
+                    )}
 
                     {/* Cards view for narrow screens */}
-                    <div style={styles.cardsContainer} className="transaction-cards-container">
-                        {displayedTransactions.map((tx, index) => renderTransactionCard(tx, index))}
-                    </div>
+                    {!loading && !error && (
+                        <div style={styles.cardsContainer} className="transaction-cards-container">
+                            {displayedTransactions.map((tx, index) => renderTransactionCard(tx, index))}
+                        </div>
+                    )}
 
-                    <div style={styles.pagination}>
+                    {!loading && !error && (
+                        <div style={styles.pagination}>
                         <div style={styles.paginationControls}>
                             <button
                                 style={{
@@ -1503,7 +1519,8 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                 </option>
                             ))}
                         </select>
-                    </div>
+                        </div>
+                    )}
                 </>
             )}
         </div>

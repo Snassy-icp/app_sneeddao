@@ -1628,12 +1628,48 @@ export default function Me() {
 
                 {/* Transactions Section */}
                 {selectedSnsRoot && (
-                    <TransactionList 
-                        snsRootCanisterId={selectedSnsRoot}
-                        principalId={identity?.getPrincipal().toString()}
-                        isCollapsed={isTransactionsCollapsed}
-                        onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
-                    />
+                    <div style={{
+                        backgroundColor: theme.colors.secondaryBg,
+                        borderRadius: '8px',
+                        border: `1px solid ${theme.colors.border}`,
+                        marginTop: '20px',
+                        overflow: 'hidden',
+                    }}>
+                        <div
+                            onClick={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                            style={{
+                                padding: '15px 20px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                borderBottom: !isTransactionsCollapsed ? `1px solid ${theme.colors.border}` : 'none',
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{ 
+                                    fontSize: '16px',
+                                    color: theme.colors.mutedText,
+                                    transition: 'transform 0.2s',
+                                    transform: !isTransactionsCollapsed ? 'none' : 'rotate(-90deg)'
+                                }}>▼</span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                    🧾 Transactions
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ padding: isTransactionsCollapsed ? 0 : '10px 20px 20px 20px' }}>
+                            <TransactionList 
+                                snsRootCanisterId={selectedSnsRoot}
+                                principalId={identity?.getPrincipal().toString()}
+                                isCollapsed={isTransactionsCollapsed}
+                                onToggleCollapse={() => {}}
+                                showHeader={false}
+                                embedded={true}
+                            />
+                        </div>
+                    </div>
                 )}
             </main>
             <style>{spinKeyframes}</style>
