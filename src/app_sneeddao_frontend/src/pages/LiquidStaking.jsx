@@ -242,11 +242,25 @@ export default function LiquidStaking() {
                         Liquid Staking
                     </h1>
                     <p style={styles.heroSubtitle}>
-                        Transform your locked staking positions into <span style={styles.heroHighlight}>tradable assets</span>. 
-                        Whether you're staking ICP or SNS tokens, Sneed makes your neurons 
+                        Transform your staking positions into <span style={styles.heroHighlight}>tradable assets</span>. 
+                        When you create neurons through Sneed, they remain 
                         <span style={styles.heroHighlight}> transferable and liquid</span> — 
-                        no more waiting for dissolve delays to exit your position.
+                        sell your position anytime on Sneedex without waiting for dissolve delays.
                     </p>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: `${theme.colors.warning || '#f59e0b'}15`,
+                        border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                        borderRadius: '8px',
+                        padding: '10px 16px',
+                        fontSize: '0.9rem',
+                        color: theme.colors.warning || '#f59e0b',
+                        marginBottom: '1.5rem',
+                    }}>
+                        ⚠️ This only works for <strong>new neurons</strong> you create here — existing neurons in the NNS dapp are not transferable.
+                    </div>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
                         <Link to="/create_icp_neuron" style={styles.primaryButton}>
                             Start ICP Liquid Staking
@@ -277,6 +291,18 @@ export default function LiquidStaking() {
                             <strong> Our solution:</strong> Create a dedicated canister that owns your neurons. 
                             You control the canister, and the canister can be <strong>traded on Sneedex</strong>.
                         </p>
+                        <div style={{
+                            background: `${theme.colors.info || theme.colors.accent}10`,
+                            borderRadius: '8px',
+                            padding: '10px 12px',
+                            marginBottom: '1rem',
+                            fontSize: '0.85rem',
+                            color: theme.colors.secondaryText,
+                            lineHeight: '1.5',
+                        }}>
+                            💡 <strong>Important:</strong> You must create new neurons through your Neuron Manager canister. 
+                            Existing neurons in your NNS wallet cannot be transferred into a manager.
+                        </div>
                         <ul style={styles.featureBullets}>
                             <li style={styles.featureBullet}>
                                 <FaCheckCircle style={styles.bulletIcon} size={14} />
@@ -326,6 +352,18 @@ export default function LiquidStaking() {
                             When you create SNS neurons through Sneed (instead of the NNS dapp), 
                             they remain liquid and can be <strong>sent to other wallets</strong> or <strong>traded on Sneedex</strong>.
                         </p>
+                        <div style={{
+                            background: `${theme.colors.info || theme.colors.accent}10`,
+                            borderRadius: '8px',
+                            padding: '10px 12px',
+                            marginBottom: '1rem',
+                            fontSize: '0.85rem',
+                            color: theme.colors.secondaryText,
+                            lineHeight: '1.5',
+                        }}>
+                            💡 <strong>Important:</strong> Only neurons created through Sneed's wizard remain transferable. 
+                            Neurons created in the NNS dapp are locked to your wallet.
+                        </div>
                         <ul style={styles.featureBullets}>
                             <li style={styles.featureBullet}>
                                 <FaCheckCircle style={styles.bulletIcon} size={14} />

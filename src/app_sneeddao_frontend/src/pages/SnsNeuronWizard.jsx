@@ -228,13 +228,18 @@ export default function SnsNeuronWizard() {
         setMaxDissolveDelaySeconds(null);
   }, [selectedSnsRoot]);
 
-    // Auto-fill minimum dissolve delay when params are loaded
+    // Auto-fill minimum stake and dissolve delay when params are loaded
     useEffect(() => {
+        // Auto-fill minimum stake amount
+        if (minStakeE8s !== null && stakeAmount === '' && tokenDecimals !== null) {
+            setStakeAmount(formatAmount(minStakeE8s, tokenDecimals));
+        }
+        // Auto-fill minimum dissolve delay
         if (minDissolveDelaySeconds !== null && dissolveDelayDays === '') {
             const minDays = Math.ceil(minDissolveDelaySeconds / (24 * 60 * 60));
             setDissolveDelayDays(String(minDays));
         }
-    }, [minDissolveDelaySeconds]);
+    }, [minStakeE8s, minDissolveDelaySeconds, tokenDecimals]);
 
     // Register token silently
     const registerTokenSilently = async () => {
@@ -418,24 +423,34 @@ export default function SnsNeuronWizard() {
 
     // Validation
     const canProceedStep1 = isSelectedSnsValid;
-    const canProceedStep2 = (() => {
+    const canProceedStep2 = useMemo(() => {
+        // Must have stake amount
         if (!stakeAmount) return false;
         const amount = parseFloat(stakeAmount);
         if (isNaN(amount) || amount <= 0) return false;
+        
+        // Calculate amount in e8s
         const amountE8s = BigInt(Math.floor(amount * (10 ** tokenDecimals)));
+        
+        // Must have sufficient balance
         if (tokenBalance === null || amountE8s > tokenBalance) return false;
         if (amountE8s <= 0n) return false;
-        // Check minimum stake requirement
+        
+        // Check minimum stake requirement (if we know it)
         if (minStakeE8s !== null && amountE8s < minStakeE8s) return false;
-        // Check dissolve delay if set
-        if (dissolveDelayDays) {
-            const delayDays = Number(dissolveDelayDays);
-            const delaySeconds = delayDays * 24 * 60 * 60;
-            if (minDissolveDelaySeconds !== null && delaySeconds < minDissolveDelaySeconds) return false;
-            if (maxDissolveDelaySeconds !== null && delaySeconds > maxDissolveDelaySeconds) return false;
-        }
+        
+        // Must have dissolve delay set
+        if (!dissolveDelayDays) return false;
+        const delayDays = Number(dissolveDelayDays);
+        if (isNaN(delayDays) || delayDays < 0) return false;
+        
+        // Check dissolve delay bounds
+        const delaySeconds = delayDays * 24 * 60 * 60;
+        if (minDissolveDelaySeconds !== null && delaySeconds < minDissolveDelaySeconds) return false;
+        if (maxDissolveDelaySeconds !== null && delaySeconds > maxDissolveDelaySeconds) return false;
+        
         return true;
-    })();
+    }, [stakeAmount, tokenDecimals, tokenBalance, minStakeE8s, dissolveDelayDays, minDissolveDelaySeconds, maxDissolveDelaySeconds]);
 
     const handleSetMax = () => {
         if (tokenBalance === null) return;
