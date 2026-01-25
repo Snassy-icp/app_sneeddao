@@ -40,6 +40,12 @@ export default function SnsNeuronWizard() {
     const [tokenFee, setTokenFee] = useState(0n);
     const [loadingBalance, setLoadingBalance] = useState(false);
     
+    // SNS parameters state
+    const [minStakeE8s, setMinStakeE8s] = useState(null);
+    const [minDissolveDelaySeconds, setMinDissolveDelaySeconds] = useState(null);
+    const [maxDissolveDelaySeconds, setMaxDissolveDelaySeconds] = useState(null);
+    const [loadingParams, setLoadingParams] = useState(false);
+    
     // Staking configuration
     const [stakeAmount, setStakeAmount] = useState('');
     const [dissolveDelayDays, setDissolveDelayDays] = useState('');
@@ -53,13 +59,13 @@ export default function SnsNeuronWizard() {
 
     // Computed values
     const selectedSns = useMemo(() => {
-        if (!selectedSnsRoot || selectedSnsRoot === SNEED_SNS_ROOT) return null;
+        if (!selectedSnsRoot) return null;
         return getSnsById(selectedSnsRoot);
-    }, [selectedSnsRoot, SNEED_SNS_ROOT]);
+    }, [selectedSnsRoot]);
 
     const selectedLedgerId = selectedSns?.canisters?.ledger || null;
     const selectedGovernanceId = selectedSns?.canisters?.governance || null;
-    const isSelectedSnsValid = Boolean(selectedSnsRoot && selectedSnsRoot !== SNEED_SNS_ROOT && selectedLedgerId);
+    const isSelectedSnsValid = Boolean(selectedSnsRoot && selectedLedgerId && selectedGovernanceId);
 
     const selectedSnsLogo = useMemo(() => {
         if (!selectedGovernanceId) return null;
@@ -168,14 +174,67 @@ export default function SnsNeuronWizard() {
         loadTokenInfo();
     }, [selectedLedgerId, identity, isAuthenticated]);
 
-    // Reset when SNS changes
+    // Load SNS parameters (min stake, dissolve delay range) when SNS is selected
+    useEffect(() => {
+        const loadSnsParams = async () => {
+            if (!selectedGovernanceId || !identity || !isAuthenticated) {
+                setMinStakeE8s(null);
+                setMinDissolveDelaySeconds(null);
+                setMaxDissolveDelaySeconds(null);
+                return;
+            }
+            
+            setLoadingParams(true);
+            try {
+                const governanceActor = createSnsGovernanceActor(selectedGovernanceId, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await governanceActor.get_nervous_system_parameters({});
+                
+                if (params) {
+                    // Min stake
+                    const minStake = params.neuron_minimum_stake_e8s?.[0];
+                    setMinStakeE8s(minStake !== undefined ? BigInt(minStake) : null);
+                    
+                    // Min dissolve delay to vote
+                    const minDelay = params.neuron_minimum_dissolve_delay_to_vote_seconds?.[0];
+                    setMinDissolveDelaySeconds(minDelay !== undefined ? Number(minDelay) : null);
+                    
+                    // Max dissolve delay
+                    const maxDelay = params.max_dissolve_delay_seconds?.[0];
+                    setMaxDissolveDelaySeconds(maxDelay !== undefined ? Number(maxDelay) : null);
+                }
+            } catch (e) {
+                console.error('Failed to load SNS parameters:', e);
+            } finally {
+                setLoadingParams(false);
+            }
+        };
+        
+        loadSnsParams();
+    }, [selectedGovernanceId, identity, isAuthenticated]);
+
+    // Reset and set defaults when SNS changes
     useEffect(() => {
         setStakeAmount('');
         setDissolveDelayDays('');
         setStakingError('');
         setStakingSuccess(false);
         setCreatedNeuronId(null);
+        // Clear params so they get re-fetched
+        setMinStakeE8s(null);
+        setMinDissolveDelaySeconds(null);
+        setMaxDissolveDelaySeconds(null);
     }, [selectedSnsRoot]);
+    
+    // Auto-fill minimum dissolve delay when params are loaded
+    useEffect(() => {
+        if (minDissolveDelaySeconds !== null && dissolveDelayDays === '') {
+            const minDays = Math.ceil(minDissolveDelaySeconds / (24 * 60 * 60));
+            setDissolveDelayDays(String(minDays));
+        }
+    }, [minDissolveDelaySeconds]);
 
     // Register token silently
     const registerTokenSilently = async () => {
@@ -371,6 +430,15 @@ export default function SnsNeuronWizard() {
         const totalNeeded = amountE8s + tokenFee;
         if (tokenBalance === null || totalNeeded > tokenBalance) return false;
         if (amountE8s <= 0n) return false;
+        // Check minimum stake requirement
+        if (minStakeE8s !== null && amountE8s < minStakeE8s) return false;
+        // Check dissolve delay if set
+        if (dissolveDelayDays) {
+            const delayDays = Number(dissolveDelayDays);
+            const delaySeconds = delayDays * 24 * 60 * 60;
+            if (minDissolveDelaySeconds !== null && delaySeconds < minDissolveDelaySeconds) return false;
+            if (maxDissolveDelaySeconds !== null && delaySeconds > maxDissolveDelaySeconds) return false;
+        }
         return true;
     })();
 
@@ -858,6 +926,28 @@ export default function SnsNeuronWizard() {
         </>
     );
 
+    // Helper functions for dissolve delay
+    const minDelayDays = minDissolveDelaySeconds !== null ? Math.ceil(minDissolveDelaySeconds / (24 * 60 * 60)) : null;
+    const maxDelayDays = maxDissolveDelaySeconds !== null ? Math.floor(maxDissolveDelaySeconds / (24 * 60 * 60)) : null;
+    
+    const handleSetMinDelay = () => {
+        if (minDelayDays !== null) {
+            setDissolveDelayDays(String(minDelayDays));
+        }
+    };
+    
+    const handleSetMaxDelay = () => {
+        if (maxDelayDays !== null) {
+            setDissolveDelayDays(String(maxDelayDays));
+        }
+    };
+    
+    const handleSetMinStake = () => {
+        if (minStakeE8s !== null) {
+            setStakeAmount(formatAmount(minStakeE8s, tokenDecimals));
+        }
+    };
+
     // Step 2: Configure Stake
     const renderStep2 = () => (
         <>
@@ -874,16 +964,72 @@ export default function SnsNeuronWizard() {
             </div>
 
             <div style={styles.configCard}>
+                {/* SNS Parameters Info */}
+                {(loadingParams || minStakeE8s !== null || minDissolveDelaySeconds !== null) && (
+                    <div style={{
+                        background: `${theme.colors.accent}10`,
+                        borderRadius: '10px',
+                        padding: '14px',
+                        marginBottom: '1.5rem',
+                        border: `1px solid ${theme.colors.accent}20`,
+                    }}>
+                        <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, marginBottom: '8px', fontWeight: '500' }}>
+                            {selectedSns?.name} Requirements:
+                        </div>
+                        {loadingParams ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: theme.colors.mutedText }}>
+                                <FaSpinner style={styles.spinner} size={12} />
+                                Loading parameters...
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '0.9rem' }}>
+                                {minStakeE8s !== null && (
+                                    <div>
+                                        <span style={{ color: theme.colors.mutedText }}>Min stake: </span>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {formatAmount(minStakeE8s, tokenDecimals)} {tokenSymbol}
+                                        </span>
+                                    </div>
+                                )}
+                                {minDissolveDelaySeconds !== null && (
+                                    <div>
+                                        <span style={{ color: theme.colors.mutedText }}>Min dissolve: </span>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {minDelayDays} days
+                                        </span>
+                                    </div>
+                                )}
+                                {maxDissolveDelaySeconds !== null && (
+                                    <div>
+                                        <span style={{ color: theme.colors.mutedText }}>Max dissolve: </span>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {maxDelayDays} days
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Stake Amount ({tokenSymbol}):</label>
                     <div style={styles.inputRow}>
                         <input
                             type="number"
-                            placeholder={`Enter amount (min: ${formatAmount(tokenFee + 1n, tokenDecimals)})`}
+                            placeholder={minStakeE8s !== null ? `Min: ${formatAmount(minStakeE8s, tokenDecimals)}` : 'Enter amount'}
                             value={stakeAmount}
                             onChange={(e) => setStakeAmount(e.target.value)}
                             style={styles.input}
                         />
+                        {minStakeE8s !== null && (
+                            <button 
+                                onClick={handleSetMinStake} 
+                                style={{ ...styles.maxButton, background: theme.colors.secondaryBg, color: theme.colors.primaryText, border: `1px solid ${theme.colors.border}` }}
+                            >
+                                MIN
+                            </button>
+                        )}
                         <button onClick={handleSetMax} style={styles.maxButton}>
                             MAX
                         </button>
@@ -891,23 +1037,73 @@ export default function SnsNeuronWizard() {
                     <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
                         Balance: {loadingBalance ? '...' : `${formatAmount(tokenBalance || 0n, tokenDecimals)} ${tokenSymbol}`}
                         {tokenFee > 0n && ` • Fee: ${formatAmount(tokenFee, tokenDecimals)} ${tokenSymbol}`}
-                        {tokenBalance !== null && tokenFee > 0n && ` • Max stakeable: ${formatAmount(tokenBalance > tokenFee ? tokenBalance - tokenFee : 0n, tokenDecimals)} ${tokenSymbol}`}
                     </div>
+                    {stakeAmount && minStakeE8s !== null && (
+                        (() => {
+                            const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * (10 ** tokenDecimals)));
+                            if (amountE8s < minStakeE8s) {
+                                return (
+                                    <div style={{ marginTop: '6px', fontSize: '0.85rem', color: theme.colors.error }}>
+                                        ⚠️ Below minimum stake of {formatAmount(minStakeE8s, tokenDecimals)} {tokenSymbol}
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()
+                    )}
                 </div>
 
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Dissolve Delay (days):</label>
-                    <input
-                        type="number"
-                        placeholder="e.g., 180 (optional, can set later)"
-                        value={dissolveDelayDays}
-                        onChange={(e) => setDissolveDelayDays(e.target.value)}
-                        style={{ ...styles.input, width: '100%' }}
-                        min="0"
-                    />
-                    <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
-                        Longer dissolve delays earn more voting power. Leave empty to set later.
+                    <div style={styles.inputRow}>
+                        <input
+                            type="number"
+                            placeholder={minDelayDays !== null ? `Min: ${minDelayDays} days` : 'Enter days'}
+                            value={dissolveDelayDays}
+                            onChange={(e) => setDissolveDelayDays(e.target.value)}
+                            style={styles.input}
+                            min="0"
+                        />
+                        {minDelayDays !== null && (
+                            <button 
+                                onClick={handleSetMinDelay} 
+                                style={{ ...styles.maxButton, background: theme.colors.secondaryBg, color: theme.colors.primaryText, border: `1px solid ${theme.colors.border}` }}
+                            >
+                                MIN
+                            </button>
+                        )}
+                        {maxDelayDays !== null && (
+                            <button onClick={handleSetMaxDelay} style={styles.maxButton}>
+                                MAX
+                            </button>
+                        )}
                     </div>
+                    <div style={{ marginTop: '8px', fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                        {minDelayDays !== null && maxDelayDays !== null 
+                            ? `Range: ${minDelayDays} - ${maxDelayDays} days. Longer delays = more voting power.`
+                            : 'Longer dissolve delays earn more voting power.'
+                        }
+                    </div>
+                    {dissolveDelayDays && (
+                        (() => {
+                            const days = Number(dissolveDelayDays);
+                            if (minDelayDays !== null && days < minDelayDays) {
+                                return (
+                                    <div style={{ marginTop: '6px', fontSize: '0.85rem', color: theme.colors.error }}>
+                                        ⚠️ Below minimum of {minDelayDays} days
+                                    </div>
+                                );
+                            }
+                            if (maxDelayDays !== null && days > maxDelayDays) {
+                                return (
+                                    <div style={{ marginTop: '6px', fontSize: '0.85rem', color: theme.colors.error }}>
+                                        ⚠️ Above maximum of {maxDelayDays} days
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()
+                    )}
                 </div>
             </div>
 
