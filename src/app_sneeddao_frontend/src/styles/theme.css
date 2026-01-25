@@ -42,6 +42,13 @@ body {
   transition: all 0.3s ease;
 }
 
+/* Global image reset - prevent logos and images from misbehaving */
+img {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 /* Update existing site-header class to use theme variables */
 .site-header {
   display: flex;

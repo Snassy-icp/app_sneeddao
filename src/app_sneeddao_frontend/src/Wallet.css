@@ -208,29 +208,37 @@ body {
 }
 
 .token-logo {
-    width: auto;
+    width: 48px;
     height: 48px;
     border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 img.token-logo-card {
-    width: auto;
+    width: 48px;
     height: 48px;
     border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 .swap-token-logo1 {
-    width: auto;
+    width: 36px;
     height: 36px;
     margin-right: -8px;
     border-radius: 50%;
     z-index: 2;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 .swap-token-logo2 {
-    width: auto;
+    width: 36px;
     height: 36px;
     border-radius: 50%;
     z-index: 1;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 .balance-section {

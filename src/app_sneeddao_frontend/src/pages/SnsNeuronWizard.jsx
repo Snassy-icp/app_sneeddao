@@ -644,6 +644,7 @@ export default function SnsNeuronWizard() {
             borderRadius: '50%',
             objectFit: 'cover',
             background: theme.colors.tertiaryBg,
+            flexShrink: 0,
         },
         inputGroup: {
             marginBottom: '1.5rem',
