@@ -176,14 +176,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
-                { name: 'Names', path: '/names' },
                 { name: 'Premium', path: '/premium' },
                 { name: 'Messages', path: '/sms' },
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
                 { name: 'Rewards', path: '/rewards' },
                 { name: 'Wallet', path: '/wallet' },
-                { name: 'Canisters', path: '/canisters' }
+                { name: 'Canisters', path: '/canisters' },
+                { name: 'Address Book', path: '/names' }
             ]
         },
 

@@ -35,6 +35,7 @@ import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUti
 import { getNeuronManagerSettings, saveNeuronManagerSettings, formatCyclesCompact, parseCyclesInput, getCyclesColor } from '../utils/NeuronManagerSettings';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
+import { Principal } from '@dfinity/principal';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -222,8 +223,8 @@ export default function Me() {
                 );
 
                 groups.set(owner, {
-                    title: owner === userPrincipal ? 'My Neurons' : `Neurons from ${owner.slice(0, 6)}...${owner.slice(-6)}`,
-                    tooltip: owner === userPrincipal ? undefined : `Principal ID: ${owner}`,
+                    isMy: owner === userPrincipal,
+                    ownerPrincipal: owner,
                     neurons: filteredNeurons,
                     totalStake
                 });
@@ -668,18 +669,6 @@ export default function Me() {
                             </Link>
                             {' • '}
                             <Link
-                                to="/names"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                🏷️ Names
-                            </Link>
-                            {' • '}
-                            <Link
                                 to="/rewards"
                                 style={{
                                     color: theme.colors.accent,
@@ -713,6 +702,18 @@ export default function Me() {
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             >
                                 🗄️ My Canisters
+                            </Link>
+                            {' • '}
+                            <Link
+                                to="/names"
+                                style={{
+                                    color: theme.colors.accent,
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                📒 Address Book
                             </Link>
                         </div>
 
@@ -1201,54 +1202,57 @@ export default function Me() {
                                 transition: 'transform 0.2s',
                                 transform: neuronsExpanded ? 'none' : 'rotate(-90deg)'
                             }}>▼</span>
-                            <span style={{ position: 'relative', width: '24px', height: '20px', flex: '0 0 auto' }}>
+                            <span style={{ position: 'relative', width: '30px', height: '20px', flex: '0 0 auto' }}>
+                                <span
+                                    style={{
+                                        position: 'absolute',
+                                        left: 0,
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        fontSize: '16px',
+                                        zIndex: 1
+                                    }}
+                                >
+                                    🧠
+                                </span>
                                 {selectedSnsLogo ? (
                                     <img
                                         src={selectedSnsLogo}
                                         alt="DAO logo"
                                         style={{
                                             position: 'absolute',
-                                            left: 0,
+                                            left: '10px', // shifted right a bit
                                             top: '50%',
                                             transform: 'translateY(-50%)',
                                             width: '18px',
                                             height: '18px',
-                                            borderRadius: '6px',
-                                            objectFit: 'contain',
+                                            borderRadius: '50%',
+                                            objectFit: 'cover',
                                             background: theme.colors.tertiaryBg,
-                                            border: `1px solid ${theme.colors.border}`
+                                            border: `1px solid ${theme.colors.border}`,
+                                            zIndex: 2
                                         }}
                                     />
                                 ) : (
                                     <span
                                         style={{
                                             position: 'absolute',
-                                            left: 0,
+                                            left: '10px',
                                             top: '50%',
                                             transform: 'translateY(-50%)',
                                             width: '18px',
                                             height: '18px',
-                                            borderRadius: '6px',
+                                            borderRadius: '50%',
                                             background: theme.colors.tertiaryBg,
-                                            border: `1px solid ${theme.colors.border}`
+                                            border: `1px solid ${theme.colors.border}`,
+                                            zIndex: 2
                                         }}
                                     />
                                 )}
-                                <span
-                                    style={{
-                                        position: 'absolute',
-                                        right: 0,
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        fontSize: '16px'
-                                    }}
-                                >
-                                    🧠
-                                </span>
                             </span>
                             <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: 0 }}>
                                 <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {(selectedSnsInfo?.name || 'DAO')} Neurons
+                                    My {(selectedSnsInfo?.name || 'DAO')} Neurons
                                 </span>
                             </span>
                         </div>
@@ -1311,7 +1315,7 @@ export default function Me() {
                             ) : (
                                 <div>
                                     {Array.from(groupedNeurons.entries()).map(([groupId, group], index) => {
-                                        const isMyNeurons = group.title === 'My Neurons';
+                                        const isMyNeurons = Boolean(group.isMy);
                                         const isExpanded = expandedGroups.has(groupId);
                                         return (
                                             <div
@@ -1343,30 +1347,43 @@ export default function Me() {
                                                             transition: 'transform 0.2s',
                                                             transform: isExpanded ? 'none' : 'rotate(-90deg)'
                                                         }}>▼</span>
-                                                        <span
-                                                            style={{
-                                                                color: theme.colors.primaryText,
-                                                                fontWeight: '500',
-                                                                fontSize: '14px',
-                                                                whiteSpace: 'nowrap',
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis',
-                                                            }}
-                                                        >
-                                                            {group.title} ({group.neurons.length})
-                                                        </span>
-
-                                                        {group.tooltip && (
+                                                        {isMyNeurons ? (
                                                             <span
                                                                 style={{
+                                                                    color: theme.colors.primaryText,
+                                                                    fontWeight: '500',
                                                                     fontSize: '14px',
-                                                                    color: theme.colors.mutedText,
-                                                                    cursor: 'help'
+                                                                    whiteSpace: 'nowrap',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
                                                                 }}
-                                                                title={group.tooltip}
-                                                                onClick={(e) => e.stopPropagation()}
                                                             >
-                                                                ℹ️
+                                                                My Neurons ({group.neurons.length})
+                                                            </span>
+                                                        ) : (
+                                                            <span
+                                                                style={{
+                                                                    color: theme.colors.primaryText,
+                                                                    fontWeight: '500',
+                                                                    fontSize: '14px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    minWidth: 0,
+                                                                }}
+                                                            >
+                                                                <span style={{ whiteSpace: 'nowrap' }}>Neurons from</span>
+                                                                <span title={group.ownerPrincipal} style={{ minWidth: 0 }}>
+                                                                    <PrincipalDisplay
+                                                                        principal={Principal.fromText(group.ownerPrincipal)}
+                                                                        displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
+                                                                        showCopyButton={false}
+                                                                        short={true}
+                                                                        noLink={true}
+                                                                        isAuthenticated={true}
+                                                                    />
+                                                                </span>
+                                                                <span style={{ color: theme.colors.mutedText }}>({group.neurons.length})</span>
                                                             </span>
                                                         )}
                                                     </div>
