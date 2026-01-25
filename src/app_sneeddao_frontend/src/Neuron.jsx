@@ -1206,6 +1206,43 @@ function Neuron() {
                         ❓
                     </Link>
                 </div>
+
+                {/* Did you know - Liquid Staking plug */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.success}10)`,
+                    border: `1px solid ${theme.colors.accent}30`,
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                        <div style={{ color: theme.colors.accent, fontWeight: '700', marginBottom: '4px', fontSize: '0.95rem' }}>
+                            💡 Did you know?
+                        </div>
+                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.5' }}>
+                            Create <strong>transferable SNS neurons</strong> with our Liquid Staking wizard, or deploy an <strong>ICP Neuron Manager</strong> canister to make ICP staking positions tradable on Sneedex!
+                        </div>
+                    </div>
+                    <Link 
+                        to="/liquid_staking" 
+                        style={{
+                            background: theme.colors.accent,
+                            color: '#fff',
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        Learn More →
+                    </Link>
+                </div>
                 
                 <section style={{ backgroundColor: theme.colors.secondaryBg, borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>

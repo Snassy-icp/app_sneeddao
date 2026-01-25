@@ -890,6 +890,44 @@ function Neurons() {
                     </div>
                 </div>
 
+                {/* Did you know - Liquid Staking plug */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.success}10)`,
+                    border: `1px solid ${theme.colors.accent}30`,
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                        <div style={{ color: theme.colors.accent, fontWeight: '700', marginBottom: '4px', fontSize: '0.95rem' }}>
+                            💡 Did you know?
+                        </div>
+                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.5' }}>
+                            With <strong>Liquid Staking</strong>, you can create SNS neurons that remain <strong>transferable</strong> and <strong>tradable on Sneedex</strong>! 
+                            For ICP neurons, deploy a <strong>Neuron Manager canister</strong> to make your staking position liquid.
+                        </div>
+                    </div>
+                    <a 
+                        href="/liquid_staking" 
+                        style={{
+                            background: theme.colors.accent,
+                            color: '#fff',
+                            padding: '10px 20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        Learn More →
+                    </a>
+                </div>
+
                 <div style={{ marginBottom: '20px' }}>
                     <div style={{ 
                         display: 'flex', 

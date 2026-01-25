@@ -526,6 +526,7 @@ export default function SnsNeuronWizard() {
         },
         title: {
             fontSize: '2.2rem',
+            marginTop: 0,
             marginBottom: '0.5rem',
             color: theme.colors.primaryText,
             fontWeight: 'bold',
@@ -533,6 +534,7 @@ export default function SnsNeuronWizard() {
             alignItems: 'center',
             justifyContent: 'center',
             gap: '12px',
+            lineHeight: 1,
         },
         subtitle: {
             fontSize: '1.1rem',
@@ -839,11 +841,11 @@ export default function SnsNeuronWizard() {
             <div style={styles.hero}>
                 <h1 style={styles.title}>
                     {selectedSnsLogo ? (
-                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, margin: 0, padding: 0 }} />
                     ) : (
-                        <FaCoins style={{ color: theme.colors.accent, flexShrink: 0 }} />
+                        <FaCoins style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '36px' }} />
                     )}
-                    Liquid SNS Staking Wizard
+                    <span>Liquid SNS Staking Wizard</span>
                 </h1>
                 <p style={styles.subtitle}>
                     Stake tokens in any SNS DAO to earn rewards and participate in governance.
@@ -1020,9 +1022,9 @@ export default function SnsNeuronWizard() {
             <div style={styles.hero}>
                 <h1 style={styles.title}>
                     {selectedSnsLogo && (
-                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, margin: 0, padding: 0 }} />
                     )}
-                    Configure Stake
+                    <span>Configure Stake</span>
                 </h1>
                 <p style={styles.subtitle}>
                     Set your stake amount and dissolve delay for {selectedSns?.name}
@@ -1298,9 +1300,9 @@ export default function SnsNeuronWizard() {
                 <div style={styles.hero}>
                     <h1 style={styles.title}>
                         {selectedSnsLogo && (
-                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0 }} />
+                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, margin: 0, padding: 0 }} />
                         )}
-                        Confirm & Stake
+                        <span>Confirm & Stake</span>
                     </h1>
                     <p style={styles.subtitle}>
                         Review your staking details before confirming

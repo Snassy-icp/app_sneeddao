@@ -207,7 +207,7 @@ function Hub() {
             path: '/sneedex_offers',
             cta: 'Browse Marketplace',
             color: theme.colors.accent,
-            badge: 'Popular',
+            badge: 'New',
         },
         {
             title: 'Liquid Staking',
@@ -216,16 +216,16 @@ function Hub() {
             path: '/liquid_staking',
             cta: 'Start Staking',
             color: theme.colors.success,
-            badge: 'Core Feature',
+            badge: 'New',
         },
         {
             title: 'Sneed Lock',
             icon: <FaLock />,
-            desc: 'Create token locks, vesting schedules, and time-locked positions. Perfect for team tokens, investor vesting, or personal savings goals.',
+            desc: 'Lock tokens or ICPSwap liquidity positions with transferable "Liquid Locks" — keep your locks tradable on Sneedex. Perfect for team tokens, investor vesting, or secure savings.',
             path: '/sneedlock_info',
             cta: 'Create Lock',
             color: '#9b59b6',
-            badge: 'Secure',
+            badge: 'New',
         },
     ];
 
@@ -346,15 +346,16 @@ function Hub() {
                 {/* Hero Section */}
                 <div style={styles.heroSection}>
                     <h1 style={styles.heroTitle}>
-                        Welcome to Sneed Hub
+                        Your Home on the Internet Computer
                     </h1>
                     <p style={styles.heroSubtitle}>
-                        Your all-in-one platform for the Internet Computer ecosystem. 
-                        Trade on <span style={styles.highlight}>Sneedex</span>, 
-                        unlock <span style={styles.highlight}>liquid staking</span> for ICP and SNS neurons, 
-                        secure tokens with <span style={styles.highlight}>Sneed Lock</span>, 
-                        and engage in <span style={styles.highlight}>DAO governance</span> with 
-                        forums, feeds, and social tools — all from your <span style={styles.highlight}>wallet</span>.
+                        Trade assets on <Link to="/sneedex_offers" style={{ ...styles.highlight, textDecoration: 'none' }}>Sneedex</Link>, 
+                        unlock <Link to="/liquid_staking" style={{ ...styles.highlight, textDecoration: 'none' }}>liquid staking</Link> for ICP and SNS neurons, 
+                        secure tokens and liquidity positions with <Link to="/sneedlock_info" style={{ ...styles.highlight, textDecoration: 'none' }}>Sneed Lock</Link>, 
+                        engage in <Link to="/proposals" style={{ ...styles.highlight, textDecoration: 'none' }}>DAO governance</Link>, 
+                        discuss in <Link to="/forum" style={{ ...styles.highlight, textDecoration: 'none' }}>forums</Link>, 
+                        follow the <Link to="/feed" style={{ ...styles.highlight, textDecoration: 'none' }}>activity feed</Link>, 
+                        and manage everything from your <Link to="/wallet" style={{ ...styles.highlight, textDecoration: 'none' }}>wallet</Link>.
                     </p>
                     <div style={styles.ctaButtons}>
                         <Link to="/sneedex_offers" style={styles.primaryBtn}>
