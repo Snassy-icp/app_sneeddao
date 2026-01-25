@@ -1438,7 +1438,7 @@ export default function Forum() {
             <label>Sneed Premium Canister ID</label>
             <input
               type="text"
-              placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai (leave empty to disable)"
+              placeholder="e.g., 7gump-4aaaa-aaaal-qtyka-cai (leave empty to disable)"
               value={premiumConfig.sneed_premium_canister_id}
               onChange={(e) => setPremiumConfig({
                 ...premiumConfig,

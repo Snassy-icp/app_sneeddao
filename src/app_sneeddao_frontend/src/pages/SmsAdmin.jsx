@@ -524,7 +524,7 @@ const SmsAdmin = () => {
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai (leave empty to disable)"
+                                    placeholder="e.g., 7gump-4aaaa-aaaal-qtyka-cai (leave empty to disable)"
                                     value={formPremiumConfig.sneed_premium_canister_id}
                                     onChange={(e) => setFormPremiumConfig(prev => ({ ...prev, sneed_premium_canister_id: e.target.value }))}
                                     style={{

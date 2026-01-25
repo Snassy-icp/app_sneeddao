@@ -1659,7 +1659,7 @@ export default function SneedexAdmin() {
                             <label style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>Sneed Premium Canister ID (leave empty to disable)</label>
                             <input
                                 type="text"
-                                placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai"
+                                placeholder="e.g., 7gump-4aaaa-aaaal-qtyka-cai"
                                 value={newSneedPremiumCanisterId}
                                 onChange={(e) => setNewSneedPremiumCanisterId(e.target.value)}
                                 style={styles.input}

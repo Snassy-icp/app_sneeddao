@@ -376,7 +376,7 @@ function AdminNames() {
                             </label>
                             <input
                                 type="text"
-                                placeholder="e.g., sf5tm-dqaaa-aaaae-qgyla-cai (leave empty to disable premium limits)"
+                                placeholder="e.g., 7gump-4aaaa-aaaal-qtyka-cai (leave empty to disable premium limits)"
                                 value={formNicknameConfig.sneed_premium_canister_id}
                                 onChange={(e) => setFormNicknameConfig(prev => ({ ...prev, sneed_premium_canister_id: e.target.value }))}
                                 style={{
