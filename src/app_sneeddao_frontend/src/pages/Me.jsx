@@ -116,6 +116,14 @@ export default function Me() {
             return true;
         }
     });
+    const [showVpBar, setShowVpBar] = useState(() => {
+        try {
+            const saved = localStorage.getItem('showVpBar');
+            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+        } catch (error) {
+            return true;
+        }
+    });
 
     const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
     const [canisterCycleThresholdRed, setCanisterCycleThresholdRed] = useState('');
@@ -1047,6 +1055,48 @@ export default function Me() {
                                                 />
                                                 <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
                                                     {neuronColorCoding ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </label>
+                                        </div>
+                                        
+                                        {/* Show VP Bar in Header Setting */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            padding: '10px 0',
+                                            borderBottom: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
+                                                    Show Voting Power Bar
+                                                </div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                    Display the voting power bar in the header (hides/shows on scroll)
+                                                </div>
+                                            </div>
+                                            <label style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                cursor: 'pointer',
+                                                gap: '8px'
+                                            }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={showVpBar}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.checked;
+                                                        setShowVpBar(newValue);
+                                                        localStorage.setItem('showVpBar', JSON.stringify(newValue));
+                                                    }}
+                                                    style={{ 
+                                                        width: '18px', 
+                                                        height: '18px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                />
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
+                                                    {showVpBar ? 'Enabled' : 'Disabled'}
                                                 </span>
                                             </label>
                                         </div>

@@ -32,6 +32,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [isVpBarVisible, setIsVpBarVisible] = useState(true);
+    const [showVpBarSetting, setShowVpBarSetting] = useState(() => {
+        try {
+            const saved = localStorage.getItem('showVpBar');
+            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+        } catch (error) {
+            return true;
+        }
+    });
     const lastScrollY = useRef(0);
     const lastToggleTime = useRef(0);
     const menuRef = useRef(null);
@@ -74,6 +82,22 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Listen for storage changes (when setting is changed in /me page)
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'showVpBar') {
+                try {
+                    setShowVpBarSetting(e.newValue !== null ? JSON.parse(e.newValue) : true);
+                } catch (error) {
+                    setShowVpBarSetting(true);
+                }
+            }
+        };
+        
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
 
     // Update active section when location changes
@@ -661,7 +685,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Bottom Row: VP Display */}
-            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && (
+            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && showVpBarSetting && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
