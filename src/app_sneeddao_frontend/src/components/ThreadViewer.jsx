@@ -2365,166 +2365,6 @@ function ThreadViewer({
                 )}
             </div>
 
-            {/* Create Comment Form */}
-            {isAuthenticated && showCreatePost && (
-                <div style={{ marginBottom: '20px' }}>
-                    {!showCommentForm ? (
-                        <button
-                            onClick={() => setShowCommentForm(true)}
-                            className="add-comment-button"
-                            style={{
-                                backgroundColor: theme.colors.accent,
-                                color: theme.colors.primaryText,
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '10px 20px',
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
-                        </button>
-                    ) : (
-                        <div style={{ marginTop: '15px' }}>
-                            <input
-                                type="text"
-                                value={commentTitle}
-                                onChange={(e) => setCommentTitle(e.target.value)}
-                                placeholder="Title (optional)"
-                                style={{
-                                    width: '100%',
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    color: theme.colors.primaryText,
-                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? theme.colors.error : '#444'}`,
-                                    borderRadius: '4px',
-                                    padding: '10px',
-                                    marginBottom: '5px',
-                                    fontSize: '14px'
-                                }}
-                            />
-                            {textLimits && (
-                                <div style={{
-                                    fontSize: '12px',
-                                    color: commentTitle.length > textLimits.max_title_length ? theme.colors.error : 
-                                           (textLimits.max_title_length - commentTitle.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
-                                    marginBottom: '10px'
-                                }}>
-                                    Title: {commentTitle.length}/{textLimits.max_title_length} characters
-                                    {commentTitle.length > textLimits.max_title_length && 
-                                        <span style={{ marginLeft: '10px' }}>({commentTitle.length - textLimits.max_title_length} over limit)</span>
-                                    }
-                                </div>
-                            )}
-                            <EmojiPicker
-                                targetRef={commentBodyRef}
-                                getValue={() => commentText}
-                                setValue={setCommentText}
-                                ariaLabel="Insert emoji into comment body"
-                                rightSlot={
-                                    <MarkdownButtons
-                                        targetRef={commentBodyRef}
-                                        getValue={() => commentText}
-                                        setValue={setCommentText}
-                                    />
-                                }
-                            />
-                            <textarea
-                                value={commentText}
-                                onChange={(e) => setCommentText(e.target.value)}
-                                placeholder="Write your comment here..."
-                                ref={commentBodyRef}
-                                style={{
-                                    width: '100%',
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    color: theme.colors.primaryText,
-                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? theme.colors.error : '#444'}`,
-                                    borderRadius: '4px',
-                                    padding: '10px',
-                                    fontSize: '14px',
-                                    minHeight: '100px',
-                                    resize: 'vertical',
-                                    marginBottom: '5px'
-                                }}
-                            />
-                            {textLimits && (
-                                <div style={{
-                                    fontSize: '12px',
-                                    color: commentText.length > textLimits.max_body_length ? theme.colors.error : 
-                                           (textLimits.max_body_length - commentText.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
-                                    marginBottom: '10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                }}>
-                                    <span>Body: {commentText.length}/{textLimits.max_body_length} characters</span>
-                                    {commentText.length > textLimits.max_body_length && 
-                                        <span>({commentText.length - textLimits.max_body_length} over limit)</span>
-                                    }
-                                    {isPremium && regularLimits && textLimits.max_body_length > regularLimits.max_body_length && (
-                                        <span style={{
-                                            backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                                            color: '#ffd700',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            fontSize: '10px',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            ⭐ PREMIUM
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                            <div style={{ 
-                                display: 'flex', 
-                                gap: '10px', 
-                                marginTop: '10px',
-                                justifyContent: 'flex-end'
-                            }}>
-                                <button
-                                    onClick={() => {
-                                        setShowCommentForm(false);
-                                        setCommentText('');
-                                        setCommentTitle('');
-                                    }}
-                                    style={{
-                                        backgroundColor: '#666',
-                                        color: theme.colors.primaryText,
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
-                                        cursor: 'pointer',
-                                        fontSize: '14px'
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={submitComment}
-                                    disabled={submittingComment || !commentText.trim() || 
-                                             (textLimits && (commentTitle.length > textLimits.max_title_length || 
-                                                            commentText.length > textLimits.max_body_length))}
-                                    style={{
-                                        backgroundColor: (submittingComment || !commentText.trim() || 
-                                                         (textLimits && (commentTitle.length > textLimits.max_title_length || 
-                                                                        commentText.length > textLimits.max_body_length))) ? '#666' : theme.colors.success,
-                                        color: theme.colors.primaryText,
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
-                                        cursor: (submittingComment || !commentText.trim() || 
-                                                (textLimits && (commentTitle.length > textLimits.max_title_length || 
-                                                               commentText.length > textLimits.max_body_length))) ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px'
-                                    }}
-                                >
-                                    {submittingComment ? 'Posting...' : 'Post Comment'}
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
             {/* Settings Section - Expandable Header */}
             <div style={{
                 backgroundColor: theme.colors.secondaryBg,
@@ -2804,6 +2644,166 @@ function ThreadViewer({
                 </div>
             )}
             </div>
+
+            {/* Create Comment Form */}
+            {isAuthenticated && showCreatePost && (
+                <div style={{ marginBottom: '8px' }}>
+                    {!showCommentForm ? (
+                        <button
+                            onClick={() => setShowCommentForm(true)}
+                            className="add-comment-button"
+                            style={{
+                                backgroundColor: theme.colors.accent,
+                                color: theme.colors.primaryText,
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '10px 20px',
+                                cursor: 'pointer',
+                                fontSize: '14px'
+                            }}
+                        >
+                            {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
+                        </button>
+                    ) : (
+                        <div style={{ marginTop: '8px' }}>
+                            <input
+                                type="text"
+                                value={commentTitle}
+                                onChange={(e) => setCommentTitle(e.target.value)}
+                                placeholder="Title (optional)"
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? theme.colors.error : '#444'}`,
+                                    borderRadius: '4px',
+                                    padding: '10px',
+                                    marginBottom: '5px',
+                                    fontSize: '14px'
+                                }}
+                            />
+                            {textLimits && (
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: commentTitle.length > textLimits.max_title_length ? theme.colors.error : 
+                                           (textLimits.max_title_length - commentTitle.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
+                                    marginBottom: '10px'
+                                }}>
+                                    Title: {commentTitle.length}/{textLimits.max_title_length} characters
+                                    {commentTitle.length > textLimits.max_title_length && 
+                                        <span style={{ marginLeft: '10px' }}>({commentTitle.length - textLimits.max_title_length} over limit)</span>
+                                    }
+                                </div>
+                            )}
+                            <EmojiPicker
+                                targetRef={commentBodyRef}
+                                getValue={() => commentText}
+                                setValue={setCommentText}
+                                ariaLabel="Insert emoji into comment body"
+                                rightSlot={
+                                    <MarkdownButtons
+                                        targetRef={commentBodyRef}
+                                        getValue={() => commentText}
+                                        setValue={setCommentText}
+                                    />
+                                }
+                            />
+                            <textarea
+                                value={commentText}
+                                onChange={(e) => setCommentText(e.target.value)}
+                                placeholder="Write your comment here..."
+                                ref={commentBodyRef}
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? theme.colors.error : '#444'}`,
+                                    borderRadius: '4px',
+                                    padding: '10px',
+                                    fontSize: '14px',
+                                    minHeight: '100px',
+                                    resize: 'vertical',
+                                    marginBottom: '5px'
+                                }}
+                            />
+                            {textLimits && (
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: commentText.length > textLimits.max_body_length ? theme.colors.error : 
+                                           (textLimits.max_body_length - commentText.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
+                                    marginBottom: '10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}>
+                                    <span>Body: {commentText.length}/{textLimits.max_body_length} characters</span>
+                                    {commentText.length > textLimits.max_body_length && 
+                                        <span>({commentText.length - textLimits.max_body_length} over limit)</span>
+                                    }
+                                    {isPremium && regularLimits && textLimits.max_body_length > regularLimits.max_body_length && (
+                                        <span style={{
+                                            backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                            color: '#ffd700',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '10px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            ⭐ PREMIUM
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '10px', 
+                                marginTop: '10px',
+                                justifyContent: 'flex-end'
+                            }}>
+                                <button
+                                    onClick={() => {
+                                        setShowCommentForm(false);
+                                        setCommentText('');
+                                        setCommentTitle('');
+                                    }}
+                                    style={{
+                                        backgroundColor: '#666',
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={submitComment}
+                                    disabled={submittingComment || !commentText.trim() || 
+                                             (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                            commentText.length > textLimits.max_body_length))}
+                                    style={{
+                                        backgroundColor: (submittingComment || !commentText.trim() || 
+                                                         (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                                        commentText.length > textLimits.max_body_length))) ? '#666' : theme.colors.success,
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: (submittingComment || !commentText.trim() || 
+                                                (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                               commentText.length > textLimits.max_body_length))) ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    {submittingComment ? 'Posting...' : 'Post Comment'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Posts Display */}
             <div className="discussion-posts">
