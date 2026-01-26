@@ -64,9 +64,10 @@ export function NamingProvider({ children }) {
                 principalNamesData.forEach(([principalId, nameData]) => {
                     const [name, verified] = nameData;
                     const principalIdStr = principalId.toString();
-                    console.log('NamingContext: Adding principal name:', principalIdStr, '->', name);
+                    console.log('NamingContext: Adding principal name:', principalIdStr, '->', name, 'verified:', verified);
                     principalNamesMap.set(principalIdStr, name);
-                    // Note: We could extend verifiedMap to include principal verification if needed
+                    // Store principal verification status in verifiedMap using principal ID as key
+                    verifiedMap.set(principalIdStr, verified);
                 });
             }
             setPrincipalNames(principalNamesMap);

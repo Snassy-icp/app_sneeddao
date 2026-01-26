@@ -164,24 +164,23 @@ function AdminNames() {
     const getAllEntries = () => {
         const entries = [];
         
-        // Add principal names
+        // Add principal names (global - not per-SNS, so no snsRoot in key)
         if (principalNames) {
-            principalNames.forEach((name, key) => {
-                const [snsRoot, principalId] = key.split(':');
-                if (!selectedSnsRoot || snsRoot === selectedSnsRoot) {
-                    entries.push({
-                        type: 'principal',
-                        key,
-                        snsRoot,
-                        id: principalId,
-                        name,
-                        isVerified: verifiedNames?.get(key) || false
-                    });
-                }
+            principalNames.forEach((name, principalId) => {
+                // Principal names are global, show them regardless of selectedSnsRoot filter
+                // Use a placeholder snsRoot for display purposes
+                entries.push({
+                    type: 'principal',
+                    key: `global:${principalId}`,
+                    snsRoot: 'global',
+                    id: principalId,
+                    name,
+                    isVerified: verifiedNames?.get(principalId) || false
+                });
             });
         }
         
-        // Add neuron names
+        // Add neuron names (per-SNS, key format is snsRoot:neuronId)
         if (neuronNames) {
             neuronNames.forEach((name, key) => {
                 const [snsRoot, neuronId] = key.split(':');
@@ -283,13 +282,13 @@ function AdminNames() {
         try {
             let response;
             if (item.type === 'neuron') {
-                if (item.verified) {
+                if (item.isVerified) {
                     response = await unverifyNeuronName(identity, selectedSnsRoot, item.id);
                 } else {
                     response = await verifyNeuronName(identity, selectedSnsRoot, item.id);
                 }
             } else {
-                if (item.verified) {
+                if (item.isVerified) {
                     response = await unverifyPrincipalName(identity, item.id);
                 } else {
                     response = await verifyPrincipalName(identity, item.id);
@@ -299,10 +298,10 @@ function AdminNames() {
             if (response && 'ok' in response) {
                 // Refresh the naming context data
                 await fetchAllNames();
-                alert(`${item.verified ? 'Unverified' : 'Verified'} successfully!`);
+                alert(`${item.isVerified ? 'Unverified' : 'Verified'} successfully!`);
             } else {
                 const errorMsg = response?.err || 'Unknown error occurred';
-                alert(`Failed to ${item.verified ? 'unverify' : 'verify'}: ${errorMsg}`);
+                alert(`Failed to ${item.isVerified ? 'unverify' : 'verify'}: ${errorMsg}`);
             }
         } catch (error) {
             console.error('Error toggling verification:', error);
@@ -821,7 +820,11 @@ function AdminNames() {
                                         )}
                                     </td>
                                     <td style={{ padding: '15px', color: '#888', fontSize: '12px' }}>
-                                        {entry.snsRoot.substring(0, 8)}...
+                                        {entry.snsRoot === 'global' ? (
+                                            <span style={{ color: '#9b59b6', fontStyle: 'italic' }}>Global</span>
+                                        ) : (
+                                            `${entry.snsRoot.substring(0, 8)}...`
+                                        )}
                                     </td>
                                     <td style={{ padding: '15px' }}>
                                         <button
