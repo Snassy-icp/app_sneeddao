@@ -2229,6 +2229,7 @@ function ThreadViewer({
                     {!showCommentForm ? (
                         <button
                             onClick={() => setShowCommentForm(true)}
+                            className="add-comment-button"
                             style={{
                                 backgroundColor: theme.colors.accent,
                                 color: theme.colors.primaryText,
@@ -2236,8 +2237,7 @@ function ThreadViewer({
                                 borderRadius: '4px',
                                 padding: '10px 20px',
                                 cursor: 'pointer',
-                                fontSize: '14px',
-                                width: '100%'
+                                fontSize: '14px'
                             }}
                         >
                             {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
