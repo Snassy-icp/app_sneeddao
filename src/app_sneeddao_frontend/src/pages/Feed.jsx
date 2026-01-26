@@ -14,11 +14,15 @@ import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 const getStyles = (theme) => ({
     container: {
         maxWidth: '1200px',
         margin: '0 auto',
-        padding: '20px'
+        padding: '20px',
+        fontFamily: SYSTEM_FONT,
+        fontSize: '14px'
     },
     header: {
         marginBottom: '30px',
@@ -26,44 +30,49 @@ const getStyles = (theme) => ({
     },
     title: {
         color: theme.colors.primaryText,
-        fontSize: '2.5rem',
+        fontSize: '1.8rem',
         marginBottom: '10px',
-        fontWeight: '600'
+        fontWeight: '600',
+        fontFamily: SYSTEM_FONT
     },
     description: {
         color: theme.colors.mutedText,
-        fontSize: '1.1rem',
-        lineHeight: '1.6'
+        fontSize: '14px',
+        lineHeight: '1.5',
+        fontFamily: SYSTEM_FONT
     },
     filterSection: {
         backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
-        padding: '20px',
-        marginBottom: '30px',
-        border: `1px solid ${theme.colors.border}`
+        padding: '16px',
+        marginBottom: '20px',
+        border: `1px solid ${theme.colors.border}`,
+        fontFamily: SYSTEM_FONT
     },
     filterTitle: {
         color: theme.colors.primaryText,
-        fontSize: '1.2rem',
-        marginBottom: '15px',
-        fontWeight: '500'
+        fontSize: '14px',
+        marginBottom: '12px',
+        fontWeight: '500',
+        fontFamily: SYSTEM_FONT
     },
     filterRow: {
         display: 'flex',
         flexWrap: 'wrap',
-        gap: '15px',
-        marginBottom: '15px'
+        gap: '12px',
+        marginBottom: '12px'
     },
     filterGroup: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '5px',
+        gap: '4px',
         minWidth: '200px'
     },
     filterLabel: {
         color: theme.colors.secondaryText,
-        fontSize: '0.9rem',
-        fontWeight: '500'
+        fontSize: '12px',
+        fontWeight: '500',
+        fontFamily: SYSTEM_FONT
     },
     filterInput: {
         backgroundColor: theme.colors.primaryBg,
@@ -71,7 +80,8 @@ const getStyles = (theme) => ({
         borderRadius: '4px',
         padding: '8px 12px',
         color: theme.colors.primaryText,
-        fontSize: '0.9rem'
+        fontSize: '13px',
+        fontFamily: SYSTEM_FONT
     },
     filterSelect: {
         backgroundColor: theme.colors.primaryBg,
@@ -79,7 +89,8 @@ const getStyles = (theme) => ({
         borderRadius: '4px',
         padding: '8px 12px',
         color: theme.colors.primaryText,
-        fontSize: '0.9rem'
+        fontSize: '13px',
+        fontFamily: SYSTEM_FONT
     },
     applyButton: {
         backgroundColor: theme.colors.accent,
@@ -88,8 +99,9 @@ const getStyles = (theme) => ({
         borderRadius: '4px',
         padding: '8px 16px',
         cursor: 'pointer',
-        fontSize: '0.9rem',
+        fontSize: '13px',
         fontWeight: '500',
+        fontFamily: SYSTEM_FONT,
         transition: 'all 0.3s ease'
     },
     clearButton: {
@@ -99,23 +111,25 @@ const getStyles = (theme) => ({
         borderRadius: '4px',
         padding: '8px 16px',
         cursor: 'pointer',
-        fontSize: '0.9rem',
+        fontSize: '13px',
         fontWeight: '500',
+        fontFamily: SYSTEM_FONT,
         marginLeft: '10px',
         transition: 'all 0.3s ease'
     },
     feedContainer: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '20px'
+        gap: '16px'
     },
     feedItem: {
         backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
-        padding: '20px',
+        padding: '16px',
         border: `1px solid ${theme.colors.border}`,
         transition: 'all 0.2s ease',
-        position: 'relative'
+        position: 'relative',
+        fontFamily: SYSTEM_FONT
     },
     feedItemHover: {
         borderColor: theme.colors.borderHover,
@@ -125,24 +139,25 @@ const getStyles = (theme) => ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: '15px',
+        marginBottom: '10px',
         flexWrap: 'wrap',
-        gap: '10px'
+        gap: '8px'
     },
     feedItemHeaderLeft: {
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
+        gap: '8px',
         flexWrap: 'wrap'
     },
     feedItemType: {
         display: 'inline-block',
         backgroundColor: theme.colors.accent,
         color: 'white',
-        padding: '4px 8px',
+        padding: '3px 6px',
         borderRadius: '4px',
-        fontSize: '0.8rem',
+        fontSize: '11px',
         fontWeight: '500',
+        fontFamily: SYSTEM_FONT,
         textTransform: 'uppercase',
         cursor: 'pointer',
         textDecoration: 'none',
@@ -154,13 +169,15 @@ const getStyles = (theme) => ({
     },
     feedItemDate: {
         color: theme.colors.mutedText,
-        fontSize: '0.9rem'
+        fontSize: '12px',
+        fontFamily: SYSTEM_FONT
     },
     feedItemTitle: {
         color: theme.colors.primaryText,
-        fontSize: '1.3rem',
+        fontSize: '16px',
         fontWeight: '600',
-        marginBottom: '10px',
+        fontFamily: SYSTEM_FONT,
+        marginBottom: '8px',
         lineHeight: '1.4',
         cursor: 'pointer',
         textDecoration: 'none',
@@ -171,24 +188,26 @@ const getStyles = (theme) => ({
     },
     feedItemBody: {
         color: theme.colors.secondaryText,
-        fontSize: '1rem',
-        lineHeight: '1.6',
-        marginBottom: '15px',
-        maxHeight: '150px',
+        fontSize: '14px',
+        fontFamily: SYSTEM_FONT,
+        lineHeight: '1.5',
+        marginBottom: '12px',
+        maxHeight: '120px',
         overflow: 'hidden',
         position: 'relative'
     },
     feedItemContext: {
         display: 'flex',
         flexWrap: 'wrap',
-        gap: '10px',
-        marginTop: '15px',
-        paddingTop: '15px',
+        gap: '8px',
+        marginTop: '12px',
+        paddingTop: '12px',
         borderTop: `1px solid ${theme.colors.border}`
     },
     contextItem: {
         color: theme.colors.mutedText,
-        fontSize: '0.9rem',
+        fontSize: '12px',
+        fontFamily: SYSTEM_FONT,
         backgroundColor: theme.colors.primaryBg,
         padding: '4px 8px',
         borderRadius: '4px',
@@ -197,7 +216,8 @@ const getStyles = (theme) => ({
     contextLink: {
         color: theme.colors.accent,
         textDecoration: 'none',
-        fontSize: '0.9rem',
+        fontSize: '12px',
+        fontFamily: SYSTEM_FONT,
         backgroundColor: theme.colors.primaryBg,
         padding: '4px 8px',
         borderRadius: '4px',
@@ -206,10 +226,10 @@ const getStyles = (theme) => ({
     },
     snsLogo: {
         position: 'absolute',
-        top: '20px',
-        left: '20px',
-        width: '48px',
-        height: '48px',
+        top: '16px',
+        left: '16px',
+        width: '40px',
+        height: '40px',
         borderRadius: '50%',
         objectFit: 'cover',
         border: `2px solid ${theme.colors.border}`,
@@ -222,80 +242,90 @@ const getStyles = (theme) => ({
     },
     snsLogoPlaceholder: {
         position: 'absolute',
-        top: '20px',
-        left: '20px',
-        width: '48px',
-        height: '48px',
+        top: '16px',
+        left: '16px',
+        width: '40px',
+        height: '40px',
         borderRadius: '50%',
         backgroundColor: theme.colors.border,
         border: `2px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '0.8rem',
+        fontSize: '11px',
+        fontFamily: SYSTEM_FONT,
         color: theme.colors.mutedText,
         cursor: 'pointer',
         transition: 'all 0.2s ease'
     },
     feedItemContent: {
-        marginLeft: '68px' // Make room for the logo
+        marginLeft: '56px' // Make room for the logo
     },
     loadMoreButton: {
         backgroundColor: theme.colors.accent,
         color: 'white',
         border: 'none',
         borderRadius: '8px',
-        padding: '15px 30px',
+        padding: '12px 24px',
         cursor: 'pointer',
-        fontSize: '1rem',
+        fontSize: '13px',
         fontWeight: '500',
+        fontFamily: SYSTEM_FONT,
         alignSelf: 'center',
-        marginTop: '30px',
+        marginTop: '20px',
         transition: 'background-color 0.2s ease'
     },
     loadingSpinner: {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: '40px',
-        color: theme.colors.mutedText
+        padding: '30px',
+        color: theme.colors.mutedText,
+        fontSize: '13px',
+        fontFamily: SYSTEM_FONT
     },
     errorMessage: {
         backgroundColor: theme.colors.error,
         color: 'white',
-        padding: '15px',
+        padding: '12px',
         borderRadius: '8px',
-        marginBottom: '20px',
-        textAlign: 'center'
+        marginBottom: '16px',
+        textAlign: 'center',
+        fontSize: '13px',
+        fontFamily: SYSTEM_FONT
     },
     emptyState: {
         textAlign: 'center',
-        padding: '60px 20px',
-        color: theme.colors.mutedText
+        padding: '40px 20px',
+        color: theme.colors.mutedText,
+        fontFamily: SYSTEM_FONT
     },
     emptyStateTitle: {
-        fontSize: '1.5rem',
-        marginBottom: '10px',
-        color: theme.colors.secondaryText
+        fontSize: '16px',
+        marginBottom: '8px',
+        color: theme.colors.secondaryText,
+        fontFamily: SYSTEM_FONT
     },
     emptyStateDescription: {
-        fontSize: '1rem',
-        lineHeight: '1.6'
+        fontSize: '14px',
+        lineHeight: '1.5',
+        fontFamily: SYSTEM_FONT
     },
     newItemsNotification: {
         position: 'fixed',
         top: '80px', // Below header
         left: '50%',
         transform: 'translateX(-50%)',
-        backgroundColor: theme.colors.accent, // Twitter blue
+        backgroundColor: theme.colors.accent,
         color: 'white',
-        padding: '12px 24px',
-        borderRadius: '25px',
+        padding: '10px 20px',
+        borderRadius: '20px',
         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
         cursor: 'pointer',
         zIndex: 1000,
-        fontSize: '0.95rem',
+        fontSize: '13px',
         fontWeight: '500',
+        fontFamily: SYSTEM_FONT,
         transition: 'all 0.3s ease',
         border: '1px solid rgba(255,255,255,0.1)'
     },
@@ -326,13 +356,14 @@ const getStyles = (theme) => ({
     },
     checkboxText: {
         color: theme.colors.secondaryText,
-        fontSize: '0.9rem',
+        fontSize: '12px',
+        fontFamily: SYSTEM_FONT,
         userSelect: 'none',
         gridColumn: '3'
     },
     filterLayout: {
         display: 'flex',
-        gap: '20px',
+        gap: '16px',
         alignItems: 'flex-start',
         '@media (max-width: 768px)': {
             flexDirection: 'column'
@@ -340,19 +371,19 @@ const getStyles = (theme) => ({
     },
     filterLayoutResponsive: {
         display: 'flex',
-        gap: '20px',
+        gap: '16px',
         alignItems: 'flex-start',
         flexDirection: 'row'
     },
     filterLayoutStacked: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '20px'
+        gap: '16px'
     },
     filterLeftColumn: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '15px',
+        gap: '12px',
         flex: '1',
         minWidth: '0'
     },
@@ -364,14 +395,15 @@ const getStyles = (theme) => ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '10px'
+        marginBottom: '8px'
     },
     snsToggleButton: {
         backgroundColor: 'transparent',
         border: 'none',
         color: theme.colors.accent,
         cursor: 'pointer',
-        fontSize: '0.8rem',
+        fontSize: '11px',
+        fontFamily: SYSTEM_FONT,
         padding: '2px 4px'
     },
     clearAllButton: {
@@ -381,14 +413,15 @@ const getStyles = (theme) => ({
         borderRadius: '4px',
         padding: '4px 8px',
         cursor: 'pointer',
-        fontSize: '0.8rem',
+        fontSize: '11px',
         fontWeight: '500',
+        fontFamily: SYSTEM_FONT,
         transition: 'background-color 0.2s ease'
     },
     snsCheckboxWithLogo: {
         display: 'grid',
         gridTemplateColumns: '20px 20px 1fr',
-        gap: '8px',
+        gap: '6px',
         alignItems: 'center',
         cursor: 'pointer',
         padding: '2px 4px',
@@ -403,30 +436,32 @@ const getStyles = (theme) => ({
         borderRadius: '4px',
         padding: '6px 12px',
         cursor: 'pointer',
-        fontSize: '0.8rem',
+        fontSize: '11px',
         fontWeight: '400',
-        marginTop: '10px',
+        fontFamily: SYSTEM_FONT,
+        marginTop: '8px',
         transition: 'background-color 0.2s ease',
         width: '100%'
     },
     snsLogoSmall: {
-        width: '20px',
-        height: '20px',
+        width: '18px',
+        height: '18px',
         borderRadius: '50%',
         objectFit: 'cover',
         border: `1px solid ${theme.colors.border}`,
         gridColumn: '2'
     },
     snsLogoPlaceholderSmall: {
-        width: '20px',
-        height: '20px',
+        width: '18px',
+        height: '18px',
         borderRadius: '50%',
         backgroundColor: theme.colors.border,
         border: `1px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '0.6rem',
+        fontSize: '9px',
+        fontFamily: SYSTEM_FONT,
         color: theme.colors.mutedText,
         gridColumn: '2'
     }
@@ -1512,7 +1547,7 @@ function Feed() {
                                     principal={creatorPrincipal}
                                     displayInfo={creatorDisplayInfo}
                                     short={true}
-                                    style={{ fontSize: '0.9rem' }}
+                                    style={{ fontSize: '12px' }}
                                     isAuthenticated={isAuthenticated}
                                 />
                             )}
@@ -1552,20 +1587,20 @@ function Feed() {
                             backgroundColor: theme.colors.secondaryBg,
                             border: `1px solid ${theme.colors.border}`,
                             borderRadius: '8px',
-                            padding: '12px',
-                            margin: '12px 0',
+                            padding: '10px',
+                            margin: '10px 0',
                             borderLeft: `4px solid ${theme.colors.accent}`
                         }}>
                             <div style={{
-                                fontSize: '0.85rem',
+                                fontSize: '11px',
                                 color: theme.colors.mutedText,
-                                marginBottom: '6px'
+                                marginBottom: '4px'
                             }}>
                                 💬 Replying to:
                             </div>
                             {item.replied_to_post[0].title && item.replied_to_post[0].title.length > 0 && (
                                 <div style={{
-                                    fontSize: '0.9rem',
+                                    fontSize: '13px',
                                     color: theme.colors.primaryText,
                                     fontWeight: '500',
                                     marginBottom: '4px'
@@ -1574,7 +1609,7 @@ function Feed() {
                                 </div>
                             )}
                             <div style={{
-                                fontSize: '0.85rem',
+                                fontSize: '12px',
                                 color: theme.colors.secondaryText,
                                 lineHeight: '1.4'
                             }}>
@@ -1612,9 +1647,9 @@ function Feed() {
                                         <div style={{
                                             backgroundColor: theme.colors.secondaryBg,
                                             borderRadius: '6px',
-                                            padding: '20px',
+                                            padding: '16px',
                                             border: `1px solid ${theme.colors.border}`,
-                                            fontSize: '0.85rem',
+                                            fontSize: '12px',
                                             color: '#9b59b6'
                                         }}>
                                             📊 Poll (loading...)
@@ -1696,9 +1731,9 @@ function Feed() {
                     {/* Subtle joke quote in top right */}
                     <div style={{
                         position: 'absolute',
-                        top: '16px',
-                        right: '20px',
-                        fontSize: '0.8rem',
+                        top: '12px',
+                        right: '16px',
+                        fontSize: '11px',
                         color: theme.colors.mutedText,
                         fontStyle: 'italic',
                         opacity: '0.7'
@@ -1738,7 +1773,7 @@ function Feed() {
                                 ...getStyles(theme).title,
                                 margin: '0',
                                 color: theme.colors.primaryText,
-                                fontSize: 'clamp(2rem, 5vw, 2.5rem)'
+                                fontSize: 'clamp(1.5rem, 4vw, 1.8rem)'
                             }}>
                                 Sneed's Feed
                             </h1>
@@ -1749,8 +1784,8 @@ function Feed() {
                             ...getStyles(theme).description,
                             margin: '0',
                             maxWidth: '600px',
-                            fontSize: 'clamp(1rem, 2.5vw, 1.1rem)',
-                            lineHeight: '1.6'
+                            fontSize: '14px',
+                            lineHeight: '1.5'
                         }}>
                             Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
                         </p>
@@ -2116,8 +2151,8 @@ function Feed() {
                                                 }}
                                                 style={{
                                                     ...getStyles(theme).applyButton,
-                                                    fontSize: '1rem',
-                                                    padding: '12px 24px'
+                                                    fontSize: '13px',
+                                                    padding: '10px 20px'
                                                 }}
                                                 disabled={!prevStartId}
                                             >
@@ -2148,8 +2183,8 @@ function Feed() {
                                                 }}
                                                 style={{
                                                     ...getStyles(theme).applyButton,
-                                                    fontSize: '1rem',
-                                                    padding: '12px 24px'
+                                                    fontSize: '13px',
+                                                    padding: '10px 20px'
                                                 }}
                                                 disabled={!nextStartId}
                                             >
@@ -2163,9 +2198,9 @@ function Feed() {
                                 {!hasMore && feedItems.length > 0 && (
                                     <div style={{
                                         textAlign: 'center',
-                                        padding: '40px 20px',
+                                        padding: '30px 16px',
                                         color: theme.colors.mutedText,
-                                        fontSize: '1rem'
+                                        fontSize: '13px'
                                     }}>
                                         You've reached the end of the feed
                                     </div>
