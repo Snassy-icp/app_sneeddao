@@ -250,12 +250,12 @@ module {
             };
         };
         
-        // Remove sneedex
+        // Remove sneedex (use ALL_PERMISSIONS to ensure complete removal including UNSPECIFIED)
         try {
             let _ = await governance.manage_neuron({
                 subaccount = neuronId.id;
                 command = ?#RemoveNeuronPermissions({
-                    permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                    permissions_to_remove = ?{ permissions = T.ALL_PERMISSIONS };
                     principal_id = ?sneedex;
                 });
             });
@@ -291,12 +291,12 @@ module {
             };
         };
         
-        // Remove sneedex
+        // Remove sneedex (use ALL_PERMISSIONS to ensure complete removal including UNSPECIFIED)
         try {
             let _ = await governance.manage_neuron({
                 subaccount = neuronId.id;
                 command = ?#RemoveNeuronPermissions({
-                    permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                    permissions_to_remove = ?{ permissions = T.ALL_PERMISSIONS };
                     principal_id = ?sneedex;
                 });
             });
