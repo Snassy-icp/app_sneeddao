@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useMemo } from 'react';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 import PrincipalContextMenu from '../components/PrincipalContextMenu';
 import MessageDialog from '../components/MessageDialog';
 import NicknameDialog from '../components/NicknameDialog';
 import { PremiumContext } from '../PremiumContext';
+import { NamingContext } from '../NamingContext';
 
 // ============================================
 // ACCOUNT ID UTILITIES
@@ -179,8 +180,26 @@ export const PrincipalDisplay = React.memo(({
     // Get premium status from context
     const premiumContext = useContext(PremiumContext);
     const isPremium = premiumContext?.isPremiumMember?.(principal) || false;
+    
+    // Get naming context for automatic name lookup
+    const namingContext = useContext(NamingContext);
+    
+    // If displayInfo wasn't passed, try to look up from naming context
+    const effectiveDisplayInfo = useMemo(() => {
+        if (displayInfo) return displayInfo;
+        if (!principal || !namingContext) return null;
+        
+        const principalStr = principal.toString();
+        const name = namingContext.principalNames?.get(principalStr);
+        const nickname = namingContext.principalNicknames?.get(principalStr);
+        const isVerified = namingContext.verifiedNames?.get(principalStr) || false;
+        
+        if (!name && !nickname) return null;
+        
+        return { name, nickname, isVerified };
+    }, [displayInfo, principal, namingContext?.principalNames, namingContext?.principalNicknames, namingContext?.verifiedNames]);
 
-    const formatted = formatPrincipal(principal, displayInfo);
+    const formatted = formatPrincipal(principal, effectiveDisplayInfo);
     
     // Check if color coding is enabled (default to true if not set)
     const colorCodingEnabled = (() => {
@@ -194,7 +213,7 @@ export const PrincipalDisplay = React.memo(({
     const principalColor = colorCodingEnabled ? getPrincipalColor(principal) : '#888888';
     
     const principalId = principal?.toString();
-    const currentNickname = formatted?.nickname || displayInfo?.nickname || '';
+    const currentNickname = formatted?.nickname || effectiveDisplayInfo?.nickname || '';
 
     // Handle right click (desktop)
     const handleContextMenu = useCallback((e) => {
