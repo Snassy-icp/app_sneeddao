@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames } from './utils/BackendUtils';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
@@ -6,19 +6,75 @@ import { uint8ArrayToHex } from './utils/NeuronUtils';
 const NamingContext = createContext();
 export { NamingContext };
 
+// LocalStorage keys for caching
+const CACHE_KEYS = {
+    NEURON_NAMES: 'sneed_neuron_names_cache',
+    NEURON_NICKNAMES: 'sneed_neuron_nicknames_cache',
+    PRINCIPAL_NAMES: 'sneed_principal_names_cache',
+    PRINCIPAL_NICKNAMES: 'sneed_principal_nicknames_cache',
+    VERIFIED_NAMES: 'sneed_verified_names_cache',
+    LAST_UPDATED: 'sneed_names_cache_updated'
+};
+
+// Helper to save Map to localStorage
+const saveMapToCache = (key, map) => {
+    try {
+        const obj = Object.fromEntries(map);
+        localStorage.setItem(key, JSON.stringify(obj));
+    } catch (e) {
+        console.warn('NamingContext: Failed to save to localStorage:', e);
+    }
+};
+
+// Helper to load Map from localStorage
+const loadMapFromCache = (key) => {
+    try {
+        const data = localStorage.getItem(key);
+        if (data) {
+            const obj = JSON.parse(data);
+            return new Map(Object.entries(obj));
+        }
+    } catch (e) {
+        console.warn('NamingContext: Failed to load from localStorage:', e);
+    }
+    return new Map();
+};
+
+// Helper to merge maps (new values override old, but old values are kept if not in new)
+const mergeMaps = (oldMap, newMap) => {
+    const merged = new Map(oldMap);
+    newMap.forEach((value, key) => {
+        merged.set(key, value);
+    });
+    return merged;
+};
+
 export function NamingProvider({ children }) {
     const { identity } = useAuth();
-    const [neuronNames, setNeuronNames] = useState(new Map());
-    const [neuronNicknames, setNeuronNicknames] = useState(new Map());
-    const [principalNames, setPrincipalNames] = useState(new Map());
-    const [principalNicknames, setPrincipalNicknames] = useState(new Map());
-    const [verifiedNames, setVerifiedNames] = useState(new Map());
+    
+    // Initialize from cache immediately
+    const [neuronNames, setNeuronNames] = useState(() => loadMapFromCache(CACHE_KEYS.NEURON_NAMES));
+    const [neuronNicknames, setNeuronNicknames] = useState(() => loadMapFromCache(CACHE_KEYS.NEURON_NICKNAMES));
+    const [principalNames, setPrincipalNames] = useState(() => loadMapFromCache(CACHE_KEYS.PRINCIPAL_NAMES));
+    const [principalNicknames, setPrincipalNicknames] = useState(() => loadMapFromCache(CACHE_KEYS.PRINCIPAL_NICKNAMES));
+    const [verifiedNames, setVerifiedNames] = useState(() => loadMapFromCache(CACHE_KEYS.VERIFIED_NAMES));
     const [loading, setLoading] = useState(true);
+    
+    // Track if we've done initial load from cache
+    const hasLoadedFromCache = useRef(
+        loadMapFromCache(CACHE_KEYS.PRINCIPAL_NAMES).size > 0 || 
+        loadMapFromCache(CACHE_KEYS.NEURON_NAMES).size > 0
+    );
 
-    const fetchAllNames = async () => {
+    const fetchAllNames = async (isBackgroundRefresh = false) => {
         try {
-            setLoading(true);
-            console.log('NamingContext: Starting to fetch all names...');
+            // Only show loading spinner if we don't have cached data
+            if (!isBackgroundRefresh && !hasLoadedFromCache.current) {
+                setLoading(true);
+            }
+            
+            console.log('NamingContext: Fetching names from backend...', isBackgroundRefresh ? '(background refresh)' : '');
+            
             const [neuronNamesData, neuronNicknamesData, principalNamesData, principalNicknamesData] = await Promise.all([
                 getAllNeuronNames(identity),
                 identity ? getAllNeuronNicknames(identity) : null,
@@ -26,76 +82,115 @@ export function NamingProvider({ children }) {
                 identity ? getAllPrincipalNicknames(identity) : null
             ]);
 
-            console.log('NamingContext: Raw principal names data:', principalNamesData);
-            console.log('NamingContext: Raw principal nicknames data:', principalNicknamesData);
-
             // Process neuron names
-            const neuronNamesMap = new Map();
-            const verifiedMap = new Map();
+            const newNeuronNamesMap = new Map();
+            const newVerifiedMap = new Map();
             if (neuronNamesData) {
                 neuronNamesData.forEach(([key, nameData]) => {
                     const neuronId = uint8ArrayToHex(key.neuron_id.id);
                     const snsRoot = key.sns_root_canister_id.toString();
                     const mapKey = `${snsRoot}:${neuronId}`;
                     const [name, verified] = nameData;
-                    neuronNamesMap.set(mapKey, name);
-                    verifiedMap.set(mapKey, verified);
+                    newNeuronNamesMap.set(mapKey, name);
+                    newVerifiedMap.set(mapKey, verified);
                 });
             }
-            setNeuronNames(neuronNamesMap);
-            setVerifiedNames(verifiedMap);
 
             // Process neuron nicknames
-            const neuronNicknamesMap = new Map();
+            const newNeuronNicknamesMap = new Map();
             if (neuronNicknamesData) {
                 neuronNicknamesData.forEach(([key, nickname]) => {
                     const neuronId = uint8ArrayToHex(key.neuron_id.id);
                     const snsRoot = key.sns_root_canister_id.toString();
                     const mapKey = `${snsRoot}:${neuronId}`;
-                    neuronNicknamesMap.set(mapKey, nickname);
+                    newNeuronNicknamesMap.set(mapKey, nickname);
                 });
             }
-            setNeuronNicknames(neuronNicknamesMap);
 
             // Process principal names
-            const principalNamesMap = new Map();
+            const newPrincipalNamesMap = new Map();
             if (principalNamesData) {
-                console.log('NamingContext: Processing principal names, count:', principalNamesData.length);
                 principalNamesData.forEach(([principalId, nameData]) => {
                     const [name, verified] = nameData;
                     const principalIdStr = principalId.toString();
-                    console.log('NamingContext: Adding principal name:', principalIdStr, '->', name, 'verified:', verified);
-                    principalNamesMap.set(principalIdStr, name);
-                    // Store principal verification status in verifiedMap using principal ID as key
-                    verifiedMap.set(principalIdStr, verified);
+                    newPrincipalNamesMap.set(principalIdStr, name);
+                    newVerifiedMap.set(principalIdStr, verified);
                 });
             }
-            setPrincipalNames(principalNamesMap);
-            console.log('NamingContext: Final principal names map size:', principalNamesMap.size);
 
             // Process principal nicknames
-            const principalNicknamesMap = new Map();
+            const newPrincipalNicknamesMap = new Map();
             if (principalNicknamesData) {
-                console.log('NamingContext: Processing principal nicknames, count:', principalNicknamesData.length);
                 principalNicknamesData.forEach(([principalId, nickname]) => {
                     const principalIdStr = principalId.toString();
-                    console.log('NamingContext: Adding principal nickname:', principalIdStr, '->', nickname);
-                    principalNicknamesMap.set(principalIdStr, nickname);
+                    newPrincipalNicknamesMap.set(principalIdStr, nickname);
                 });
             }
-            setPrincipalNicknames(principalNicknamesMap);
-            console.log('NamingContext: Final principal nicknames map size:', principalNicknamesMap.size);
+
+            // Merge with existing data (names can't be deleted, only changed)
+            setNeuronNames(prev => {
+                const merged = mergeMaps(prev, newNeuronNamesMap);
+                saveMapToCache(CACHE_KEYS.NEURON_NAMES, merged);
+                return merged;
+            });
+            
+            setNeuronNicknames(prev => {
+                const merged = mergeMaps(prev, newNeuronNicknamesMap);
+                saveMapToCache(CACHE_KEYS.NEURON_NICKNAMES, merged);
+                return merged;
+            });
+            
+            setVerifiedNames(prev => {
+                const merged = mergeMaps(prev, newVerifiedMap);
+                saveMapToCache(CACHE_KEYS.VERIFIED_NAMES, merged);
+                return merged;
+            });
+            
+            setPrincipalNames(prev => {
+                const merged = mergeMaps(prev, newPrincipalNamesMap);
+                saveMapToCache(CACHE_KEYS.PRINCIPAL_NAMES, merged);
+                return merged;
+            });
+            
+            setPrincipalNicknames(prev => {
+                const merged = mergeMaps(prev, newPrincipalNicknamesMap);
+                saveMapToCache(CACHE_KEYS.PRINCIPAL_NICKNAMES, merged);
+                return merged;
+            });
+            
+            // Update last refresh timestamp
+            localStorage.setItem(CACHE_KEYS.LAST_UPDATED, Date.now().toString());
+            
+            console.log('NamingContext: Names updated. Principal names:', newPrincipalNamesMap.size, 'Neuron names:', newNeuronNamesMap.size);
 
         } catch (err) {
-            console.error('Error fetching names:', err);
+            console.error('NamingContext: Error fetching names:', err);
+            // On error, we still have cached data, so just log the error
         } finally {
             setLoading(false);
         }
     };
 
-    // Initial fetch
+    // Initial load: immediately use cached data, then refresh in background
     useEffect(() => {
-        fetchAllNames();
+        // If we have cached data, mark loading as false immediately
+        if (hasLoadedFromCache.current) {
+            setLoading(false);
+            console.log('NamingContext: Loaded from cache, starting background refresh...');
+            // Do background refresh
+            fetchAllNames(true);
+        } else {
+            // No cache, do a full fetch with loading indicator
+            fetchAllNames(false);
+        }
+    }, []);
+    
+    // When identity changes, do a background refresh to get user-specific nicknames
+    useEffect(() => {
+        if (identity) {
+            console.log('NamingContext: Identity changed, refreshing nicknames...');
+            fetchAllNames(true);
+        }
     }, [identity]);
 
     const getNeuronDisplayName = (neuronId, snsRoot) => {

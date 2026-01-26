@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { getNeuronColor, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useTheme } from '../contexts/ThemeContext';
 import NeuronContextMenu from './NeuronContextMenu';
 import NeuronNicknameDialog from './NeuronNicknameDialog';
+import { NamingContext } from '../NamingContext';
 
 // Enhanced neuron display component with context menu support
 export const NeuronDisplay = React.memo(({ 
@@ -22,6 +23,9 @@ export const NeuronDisplay = React.memo(({
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
     const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
     const [longPressTimer, setLongPressTimer] = useState(null);
+    
+    // Get naming context for automatic name lookup
+    const namingContext = useContext(NamingContext);
 
     if (!neuronId || !snsRoot) return null;
 
@@ -34,8 +38,23 @@ export const NeuronDisplay = React.memo(({
 
     if (!displayId) return null;
 
-    // Get display info
-    const { name, nickname, isVerified } = displayInfo || {};
+    // If displayInfo wasn't passed, try to look up from naming context
+    const effectiveDisplayInfo = useMemo(() => {
+        if (displayInfo) return displayInfo;
+        if (!namingContext) return null;
+        
+        const mapKey = `${snsRoot}:${displayId}`;
+        const name = namingContext.neuronNames?.get(mapKey);
+        const nickname = namingContext.neuronNicknames?.get(mapKey);
+        const isVerified = namingContext.verifiedNames?.get(mapKey) || false;
+        
+        if (!name && !nickname) return null;
+        
+        return { name, nickname, isVerified };
+    }, [displayInfo, snsRoot, displayId, namingContext?.neuronNames, namingContext?.neuronNicknames, namingContext?.verifiedNames]);
+
+    // Get display info from effective source
+    const { name, nickname, isVerified } = effectiveDisplayInfo || {};
 
     // Create truncated ID display (first 6 and last 6 chars)
     const truncatedId = displayId.length > 16 
