@@ -3792,6 +3792,72 @@ function SneedexCreate() {
                                                 allowCustom={true}
                                             />
                                             
+                                            {/* Show selected token info */}
+                                            {newAssetTokenLedger && newAssetTokenSymbol && (
+                                                <div style={{
+                                                    marginTop: '12px',
+                                                    padding: '12px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '12px',
+                                                }}>
+                                                    {newAssetTokenLogo ? (
+                                                        <img 
+                                                            src={newAssetTokenLogo} 
+                                                            alt={newAssetTokenSymbol}
+                                                            style={{
+                                                                width: '40px',
+                                                                height: '40px',
+                                                                borderRadius: '50%',
+                                                                objectFit: 'cover'
+                                                            }}
+                                                            onError={(e) => e.target.style.display = 'none'}
+                                                        />
+                                                    ) : (
+                                                        <div style={{
+                                                            width: '40px',
+                                                            height: '40px',
+                                                            borderRadius: '50%',
+                                                            background: theme.colors.tertiaryBg,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontWeight: '700',
+                                                            fontSize: '1rem',
+                                                            color: theme.colors.accent
+                                                        }}>
+                                                            {newAssetTokenSymbol.slice(0, 2).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ 
+                                                            fontWeight: '700', 
+                                                            fontSize: '1.1rem',
+                                                            color: theme.colors.primaryText 
+                                                        }}>
+                                                            {newAssetTokenSymbol}
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: '0.8rem', 
+                                                            color: theme.colors.mutedText,
+                                                            fontFamily: 'monospace'
+                                                        }}>
+                                                            {newAssetTokenLedger.slice(0, 15)}...
+                                                        </div>
+                                                    </div>
+                                                    <div style={{
+                                                        fontSize: '0.75rem',
+                                                        color: theme.colors.mutedText,
+                                                        textAlign: 'right',
+                                                    }}>
+                                                        <div>Decimals: {newAssetTokenDecimals}</div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
                                             {/* Show wallet balance */}
                                             {newAssetTokenLedger && (
                                                 <div style={{
