@@ -771,6 +771,19 @@ function SneedexOffer() {
         }
     }, [identity, tokenLogos]);
     
+    // Fetch metadata for payment (bid) token
+    useEffect(() => {
+        if (offer && identity) {
+            const paymentLedger = offer.price_token_ledger.toString();
+            // Skip if already in whitelist, already fetched, or is ICP
+            const isWhitelisted = whitelistedTokens.some(t => t.ledger_id.toString() === paymentLedger);
+            const isIcp = paymentLedger === 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+            if (!isWhitelisted && !isIcp && !tokenMetadata[paymentLedger]) {
+                fetchTokenMetadata('payment', paymentLedger);
+            }
+        }
+    }, [offer, identity, whitelistedTokens, tokenMetadata, fetchTokenMetadata]);
+    
     // Fetch escrow subaccount and token metadata for ICRC1 token assets
     useEffect(() => {
         if (offer && identity) {
@@ -1070,13 +1083,19 @@ function SneedexOffer() {
         setUsdEstimatesLoading(hasLoadingAssets);
     }, [offer, tokenPrices, icpPrice, tokenMetadata, neuronInfo, neuronManagerInfo, snsData]);
     
-    // Get token info from whitelisted tokens
+    // Get token info from whitelisted tokens or dynamically fetched metadata
     const tokenInfo = (() => {
         if (!offer) return { symbol: 'TOKEN', decimals: 8, fee: null };
         const ledgerId = offer.price_token_ledger.toString();
+        // First check whitelisted tokens
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, fee: token.fee ? BigInt(token.fee) : null };
+        }
+        // Then check dynamically fetched metadata
+        const cachedMeta = tokenMetadata[ledgerId];
+        if (cachedMeta) {
+            return { symbol: cachedMeta.symbol, decimals: cachedMeta.decimals, name: cachedMeta.name, fee: cachedMeta.fee ? BigInt(cachedMeta.fee) : null };
         }
         // Fallback for known tokens if not in whitelist
         if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, fee: BigInt(10000) };

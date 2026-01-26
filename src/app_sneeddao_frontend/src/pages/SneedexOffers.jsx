@@ -430,6 +430,11 @@ function SneedexOffers() {
         if (offers.length === 0) return;
         
         offers.forEach(offer => {
+            // Fetch metadata for payment (bid) token
+            const paymentLedger = offer.price_token_ledger.toString();
+            fetchTokenMetadata(paymentLedger);
+            
+            // Fetch metadata for asset tokens
             offer.assets.forEach(assetEntry => {
                 const details = getAssetDetails(assetEntry);
                 if (details.type === 'SNSNeuron') {
