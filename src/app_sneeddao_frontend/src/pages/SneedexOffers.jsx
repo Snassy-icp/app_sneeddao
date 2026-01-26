@@ -117,7 +117,7 @@ function SneedexOffers() {
         // First check whitelisted tokens
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
-            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: token.logo?.[0] || null };
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: token.logo?.[0] || null, fee: token.fee ? BigInt(token.fee) : null };
         }
         // Then check dynamically fetched metadata cache
         const cachedMeta = tokenMetadataCache.get(ledgerId);
@@ -125,8 +125,8 @@ function SneedexOffers() {
             return cachedMeta;
         }
         // Fallback for known tokens
-        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: null };
-        return { symbol: 'TOKEN', decimals: 8, logo: null };
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: null, fee: BigInt(10000) };
+        return { symbol: 'TOKEN', decimals: 8, logo: null, fee: null };
     }, [whitelistedTokens, tokenMetadataCache]);
     
     // Helper to get SNS info by governance id
@@ -222,7 +222,7 @@ function SneedexOffers() {
         }
     }, [neuronInfo, identity]);
     
-    // Fetch token metadata from ledger (logo, symbol, name, decimals)
+    // Fetch token metadata from ledger (logo, symbol, name, decimals, fee)
     const fetchTokenMetadata = useCallback(async (ledgerId) => {
         // Skip if we already have this token in whitelist or cache
         if (tokenMetadataCache.has(ledgerId)) return;
@@ -235,7 +235,10 @@ function SneedexOffers() {
             }
             
             const ledgerActor = createLedgerActor(ledgerId, { agent });
-            const metadata = await ledgerActor.icrc1_metadata();
+            const [metadata, fee] = await Promise.all([
+                ledgerActor.icrc1_metadata(),
+                ledgerActor.icrc1_fee()
+            ]);
             
             // Extract token metadata from response
             let symbol = 'TOKEN';
@@ -255,8 +258,8 @@ function SneedexOffers() {
                 }
             }
             
-            // Cache the metadata
-            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals, logo }));
+            // Cache the metadata including fee
+            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals, logo, fee: BigInt(fee) }));
             
             // Also update tokenLogos for backward compatibility
             if (logo) {
@@ -1911,14 +1914,14 @@ function SneedexOffers() {
                                             )}
                                         </div>
                                     )}
-                                    {offer.min_bid_increment_fee_multiple?.[0] && (
+                                    {offer.min_bid_increment_fee_multiple?.[0] && tokenInfo.fee && (
                                         <div style={{ 
                                             fontSize: '0.75rem', 
                                             color: theme.colors.mutedText,
                                             marginBottom: '0.75rem',
                                             textAlign: 'center'
                                         }}>
-                                            Min increment: {Number(offer.min_bid_increment_fee_multiple[0])}× fee
+                                            Min increment: {formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenInfo.fee, tokenInfo.decimals)} {tokenInfo.symbol}
                                         </div>
                                     )}
                                     
