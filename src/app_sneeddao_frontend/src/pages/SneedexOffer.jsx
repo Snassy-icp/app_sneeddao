@@ -4411,7 +4411,27 @@ function SneedexOffer() {
                     
                     {/* Right Column - Pricing & Actions */}
                     <div style={styles.rightColumn}>
-                        <div style={styles.priceCard}>
+                        <div style={{ ...styles.priceCard, position: 'relative', overflow: 'hidden' }}>
+                            {/* SOLD overlay for completed offers */}
+                            {isCompleted && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '20px',
+                                    right: '-35px',
+                                    background: 'linear-gradient(135deg, #e74c3c, #c0392b)',
+                                    color: '#fff',
+                                    padding: '8px 50px',
+                                    fontWeight: '800',
+                                    fontSize: '1rem',
+                                    textTransform: 'uppercase',
+                                    transform: 'rotate(45deg)',
+                                    boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                                    zIndex: 10,
+                                    letterSpacing: '2px',
+                                }}>
+                                    SOLD
+                                </div>
+                            )}
                             {(() => {
                                 const paymentLedger = offer.price_token_ledger.toString();
                                 const paymentPrice = tokenPrices[paymentLedger];
@@ -4544,21 +4564,16 @@ function SneedexOffer() {
                                     </div>
                                 );
                             })()}
-                            {offer.min_bid_increment_fee_multiple?.[0] && (
+                            {offer.min_bid_increment_fee_multiple?.[0] && tokenFee && (
                                 <div style={styles.priceRow}>
                                     <span style={styles.priceLabel}>Min Bid Increment</span>
                                     <span style={styles.priceValue}>
-                                        {Number(offer.min_bid_increment_fee_multiple[0])}× fee
-                                        {tokenFee && (
-                                            <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
-                                                ({formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenFee, tokenInfo.decimals)} {tokenInfo.symbol})
-                                            </span>
-                                        )}
+                                        {formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenFee, tokenInfo.decimals)} {tokenInfo.symbol}
                                     </span>
                                 </div>
                             )}
                             <div style={styles.priceRow}>
-                                <span style={styles.priceLabel}>Current Highest Bid</span>
+                                <span style={styles.priceLabel}>{isCompleted ? 'Winning Bid' : 'Current Highest Bid'}</span>
                                 <div style={{ ...styles.priceValue, color: theme.colors.success, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                     {highestBid ? (
                                         <>
@@ -4575,7 +4590,11 @@ function SneedexOffer() {
                                                 ) : null;
                                             })()}
                                         </>
-                                    ) : 'No bids'}
+                                    ) : (
+                                        <span style={{ color: isCompleted ? theme.colors.accent : theme.colors.mutedText }}>
+                                            {isCompleted ? 'Buyout' : 'No bids yet'}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
