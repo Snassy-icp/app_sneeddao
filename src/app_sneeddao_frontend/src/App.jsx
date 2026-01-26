@@ -50,6 +50,7 @@ import SneedexAdmin from './pages/admin/Sneedex';
 import SneedPremiumAdmin from './pages/admin/SneedPremium';
 import CanisterGroupsAdmin from './pages/admin/CanisterGroups';
 import NetworkAdmin from './pages/admin/Network';
+import ProfitsAdmin from './pages/admin/Profits';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -213,6 +214,7 @@ function App() {
                     <Route path="/admin/premium" element={<SneedPremiumAdmin />} />
                     <Route path="/admin/canisters" element={<CanisterGroupsAdmin />} />
                     <Route path="/admin/network" element={<NetworkAdmin />} />
+                    <Route path="/admin/profits" element={<ProfitsAdmin />} />
                     </Routes>
                     </Layout>
                   </NamingProvider>
