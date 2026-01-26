@@ -153,15 +153,9 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             flexWrap: 'wrap',
             gap: '6px',
             alignItems: 'center',
-            marginTop: '8px'
+            marginTop: '8px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
         }}>
-            <span style={{
-                fontSize: '12px',
-                color: theme.colors.mutedText,
-                marginRight: '4px'
-            }}>
-                💰 Tips:
-            </span>
             
             {Object.entries(tipsByToken).map(([tokenKey, tokenData]) => {
                 const decimals = getTokenDecimals(tokenData.principal);

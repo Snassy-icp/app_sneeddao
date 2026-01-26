@@ -1697,7 +1697,7 @@ function ThreadViewer({
         const isUpvote = voteType === 'up';
         const hasVotes = isUpvote ? hasUpvotes : hasDownvotes;
         const activeColor = isUpvote ? theme.colors.success : theme.colors.error;
-        const defaultColor = '#6b8eb8';
+        const defaultColor = theme.colors.secondaryText;
         
         return {
             backgroundColor: 'transparent',
@@ -1707,6 +1707,7 @@ function ThreadViewer({
             padding: '4px 8px',
             cursor: (isVoting || hasNoVP) ? 'not-allowed' : 'pointer',
             fontSize: '12px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
             display: 'flex',
             alignItems: 'center',
             gap: '3px',
@@ -3011,6 +3012,7 @@ function ThreadViewer({
 
                             {/* Reply Button */}
                             <button
+                                className="post-action-btn"
                                 onClick={() => {
                                     const isReplying = replyingTo === Number(post.id);
                                     if (isReplying) {
@@ -3019,21 +3021,9 @@ function ThreadViewer({
                                         setReplyingTo(Number(post.id));
                                     }
                                 }}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: '#6b8eb8',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}
                                 title={replyingTo === Number(post.id) ? 'Cancel reply' : 'Reply to this post'}
                             >
-                                💬 {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? ' Cancel Reply' : ' Reply')}
+                                💬 {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? 'Cancel' : 'Reply')}
                             </button>
 
                             {/* Desktop: Show all buttons directly */}
@@ -3042,43 +3032,21 @@ function ThreadViewer({
                                     {/* Tip Button - Only show for posts by other users */}
                                     {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                         <button
+                                            className="post-action-btn"
                                             onClick={() => openTipModal(post)}
-                                            style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: theme.colors.warning,
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
-                                            }}
                                             title="Send a tip to the post author"
                                         >
-                                            💰 Tip
+                                            🪙 Tip
                                         </button>
                                     )}
 
                                     {/* Send Message Button - Only show for posts by other users */}
                                     {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                         <button
+                                            className="post-action-btn"
                                             onClick={() => {
                                                 const recipientPrincipal = post.created_by.toString();
                                                 navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
-                                            }}
-                                            style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: theme.colors.success,
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
                                             }}
                                             title="Send a private message to the post author"
                                         >
@@ -3089,19 +3057,8 @@ function ThreadViewer({
                                     {/* Edit Button - Show for post owner or admin */}
                                     {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                         <button
+                                            className="post-action-btn"
                                             onClick={() => startEditPost(post)}
-                                            style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: '#9b59b6',
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
-                                            }}
                                             title="Edit this post"
                                         >
                                             ✏️ Edit
@@ -3111,19 +3068,12 @@ function ThreadViewer({
                                     {/* Delete Button - Show for post owner or admin */}
                                     {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                         <button
+                                            className="post-action-btn"
                                             onClick={() => handleDeletePost(post.id)}
                                             disabled={deletingPost === Number(post.id)}
                                             style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
                                                 cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
-                                                fontSize: '12px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
+                                                opacity: deletingPost === Number(post.id) ? 0.5 : 1
                                             }}
                                             title={deletingPost === Number(post.id) ? 'Deleting post...' : 'Delete this post'}
                                         >
@@ -3135,19 +3085,8 @@ function ThreadViewer({
                                     {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
                                      !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
                                         <button
+                                            className="post-action-btn"
                                             onClick={() => setShowPollForm(prev => new Map(prev.set(Number(post.id), true)))}
-                                            style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: theme.colors.accent,
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
-                                            }}
                                             title="Add a poll to this post"
                                         >
                                             📊 Add Poll
