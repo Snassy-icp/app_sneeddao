@@ -139,25 +139,21 @@ export const formatPrincipal = (principal, displayInfo = null) => {
 
 // Premium crown icon component
 const PremiumCrownIcon = ({ size = 14 }) => {
-    return React.createElement('span', {
-        style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            marginRight: '3px',
-            cursor: 'help'
-        },
-        title: 'Sneed Premium Member'
-    }, React.createElement('svg', {
+    return React.createElement('svg', {
         width: size,
         height: size,
         viewBox: '0 0 24 24',
         fill: '#FFD700',
+        title: 'Sneed Premium Member',
         style: {
+            verticalAlign: 'middle',
+            marginRight: '2px',
+            flexShrink: 0,
             filter: 'drop-shadow(0 1px 2px rgba(255, 215, 0, 0.4))'
         }
     }, React.createElement('path', {
         d: 'M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5m14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z'
-    })));
+    }));
 };
 
 // React component for displaying a principal with context menu
@@ -325,11 +321,11 @@ export const PrincipalDisplay = React.memo(({
                 { 
                     style: { 
                         display: 'inline-flex', 
-                        alignItems: 'baseline', 
-                        gap: '8px',
+                        alignItems: 'center', 
+                        gap: '4px',
                         color: principalColor,
                         fontFamily: 'monospace',
-                        verticalAlign: 'baseline',
+                        verticalAlign: 'middle',
                         ...style
                     }
                 },
@@ -396,11 +392,10 @@ export const PrincipalDisplay = React.memo(({
             {
                 style: {
                     display: 'inline-flex',
-                    alignItems: 'baseline',
-                    gap: '8px',
+                    alignItems: 'center',
+                    gap: '4px',
                     color: principalColor,
-                    fontFamily: 'monospace',
-                    verticalAlign: 'baseline',
+                    verticalAlign: 'middle',
                     ...style
                 }
             },
@@ -419,10 +414,10 @@ export const PrincipalDisplay = React.memo(({
                     formatted.name && React.createElement('span',
                         {
                             style: {
-                                fontWeight: 'bold',
+                                fontWeight: '500',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
+                                gap: '2px',
                                 color: principalColor
                             }
                         },

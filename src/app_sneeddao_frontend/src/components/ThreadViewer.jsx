@@ -2825,10 +2825,12 @@ function ThreadViewer({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'flex-start',
-                        gap: '8px',
+                        gap: '6px',
                         flexWrap: 'wrap',
                         wordBreak: 'break-word',
-                        overflowWrap: 'anywhere'
+                        overflowWrap: 'anywhere',
+                        fontSize: '12px',
+                        lineHeight: '1.4'
                     }}>
                         {/* Collapse button - flows inline with other elements */}
                         {!isFlat && (
@@ -2870,7 +2872,14 @@ function ThreadViewer({
                         >
                             #{isNarrowScreen ? '' : post.id.toString()}
                         </a>
-                        {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
+                        {post.title && <span style={{ 
+                            margin: 0, 
+                            wordBreak: 'break-word', 
+                            overflowWrap: 'anywhere',
+                            fontWeight: '600',
+                            fontSize: '13px',
+                            color: theme.colors.primaryText
+                        }}>{post.title}</span>}
                         {isUnread && (
                             <span style={{
                                 backgroundColor: theme.colors.error,
@@ -2884,15 +2893,16 @@ function ThreadViewer({
                                 UNREAD
                             </span>
                         )}
-                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><PrincipalDisplay 
+                        <PrincipalDisplay 
                             principal={post.created_by} 
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                             showCopyButton={false}
                             short={true}
                             isAuthenticated={isAuthenticated}
-                        /></span>
+                            style={{ fontSize: '12px' }}
+                        />
                         <span 
-                            style={{ color: theme.colors.mutedText, cursor: 'help' }}
+                            style={{ color: theme.colors.mutedText, cursor: 'help', fontSize: '12px' }}
                             title={getFullDate(post.created_at)}
                         >
                             {formatRelativeTime(post.created_at)}

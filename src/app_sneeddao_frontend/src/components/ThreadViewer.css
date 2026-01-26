@@ -189,19 +189,18 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 0.4rem;
+    gap: 6px;
     margin-bottom: 0.25rem;
     padding-bottom: 0;
     border-bottom: none;
     flex-wrap: wrap;
     font-size: 12px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    line-height: 1.3;
+    line-height: 1.4;
 }
 
-.thread-post-header h4 {
-    font-size: 14px;
-    font-weight: 500;
+.thread-post-header > * {
+    vertical-align: middle;
 }
 
 .post-id {
