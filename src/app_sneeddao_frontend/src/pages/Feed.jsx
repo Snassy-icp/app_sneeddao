@@ -13,6 +13,7 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
+import MarkdownBody from '../components/MarkdownBody';
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
@@ -1574,10 +1575,12 @@ function Feed() {
                     
                     {item.body && item.body.length > 0 && (
                         <div style={getStyles(theme).feedItemBody}>
-                            {(() => {
-                                const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
-                                return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
-                            })()}
+                            <MarkdownBody 
+                                text={(() => {
+                                    const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
+                                    return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
+                                })()}
+                            />
                         </div>
                     )}
 
@@ -1613,10 +1616,12 @@ function Feed() {
                                 color: theme.colors.secondaryText,
                                 lineHeight: '1.4'
                             }}>
-                                {(() => {
-                                    const replyBody = item.replied_to_post[0].body;
-                                    return replyBody.length > 150 ? `${replyBody.substring(0, 150)}...` : replyBody;
-                                })()}
+                                <MarkdownBody 
+                                    text={(() => {
+                                        const replyBody = item.replied_to_post[0].body;
+                                        return replyBody.length > 150 ? `${replyBody.substring(0, 150)}...` : replyBody;
+                                    })()}
+                                />
                             </div>
                         </div>
                     )}
