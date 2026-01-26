@@ -1365,6 +1365,7 @@ function SneedexOffers() {
                                     onChange={(ledgerId) => setBidTokenFilter(ledgerId)}
                                     placeholder="Any token..."
                                     style={{ width: '100%' }}
+                                    allowCustom={true}
                                 />
                                 {bidTokenFilter && (
                                     <button
@@ -1420,6 +1421,7 @@ function SneedexOffers() {
                                     onChange={(ledgerId) => setAssetTokenFilter(ledgerId)}
                                     placeholder="Any asset token..."
                                     style={{ width: '100%' }}
+                                    allowCustom={true}
                                 />
                                 {assetTokenFilter && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
