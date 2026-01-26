@@ -259,7 +259,7 @@ img.token-logo-card {
 
 .balance-item + .balance-item {
     margin-top: 10px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid var(--color-border);
     padding-top: 10px;
 }
 
@@ -576,17 +576,17 @@ img.token-logo-card {
 .loading {
     text-align: center;
     padding: 20px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--color-secondaryText);
     font-size: 1.2rem;
 }
 
 .tvl-section {
-    background: linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    background: var(--color-cardGradient);
     border-radius: 24px;
     padding: 32px;
     margin-bottom: 32px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--color-cardShadow);
+    border: 1px solid var(--color-border);
 }
 
 .tvl-header {
@@ -618,7 +618,7 @@ img.token-logo-card {
 
 .tvl-token-symbol {
     font-size: 1.2em;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--color-secondaryText);
     font-weight: 500;
 }
 
@@ -627,25 +627,25 @@ img.token-logo-card {
     grid-template-columns: repeat(3, 1fr);
     gap: 24px;
     padding-top: 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid var(--color-border);
 }
 
 .tvl-metric {
     text-align: center;
     padding: 16px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--color-tertiaryBg);
     border-radius: 16px;
     transition: transform 0.2s ease;
 }
 
 .tvl-metric:hover {
     transform: translateY(-2px);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-secondaryBg);
 }
 
 .tvl-metric-label {
     font-size: 0.9em;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--color-secondaryText);
     margin-bottom: 8px;
     font-weight: 500;
 }
@@ -658,7 +658,7 @@ img.token-logo-card {
 }
 
 .tvl-metric-value.placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--color-mutedText);
     font-size: 1.2em;
 }
 

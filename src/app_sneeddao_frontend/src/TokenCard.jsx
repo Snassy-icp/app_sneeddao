@@ -1390,7 +1390,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     marginBottom: '8px'
                                 }}>
                                     <div>
-                                        <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Wallet</div>
+                                        <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Wallet</div>
                                         <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
                                             {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
                                         </div>
@@ -1432,7 +1432,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                                 
                                 <div className="balance-breakdown-item">
-                                    <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Deposited</div>
+                                    <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Deposited</div>
                                     <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
                                         {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
                                     </div>

@@ -3779,9 +3779,17 @@ function SneedexCreate() {
                                                     if (tokenData.logo) {
                                                         setNewAssetTokenLogo(tokenData.logo);
                                                     }
+                                                    // Also capture symbol and decimals from custom entry
+                                                    if (tokenData.symbol) {
+                                                        setNewAssetTokenSymbol(tokenData.symbol);
+                                                    }
+                                                    if (tokenData.decimals !== undefined) {
+                                                        setNewAssetTokenDecimals(tokenData.decimals.toString());
+                                                    }
                                                 }}
                                                 placeholder="Select token to sell..."
                                                 disabled={loadingTokens}
+                                                allowCustom={true}
                                             />
                                             
                                             {/* Show wallet balance */}

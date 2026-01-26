@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../utils/TokenUtils';
+import { Principal } from '@dfinity/principal';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
@@ -20,6 +21,7 @@ const failedTokens = new Set(); // Track tokens that failed to load
  * - Searchable/filterable
  * - Uses cached token metadata when possible
  * - Fetches from backend's whitelisted tokens
+ * - Optional manual ledger entry for tokens not in the list
  * 
  * Props:
  * - value: Selected token principal (string)
@@ -29,6 +31,7 @@ const failedTokens = new Set(); // Track tokens that failed to load
  * - disabled: Whether the selector is disabled
  * - style: Additional styles for the container
  * - excludeTokens: Array of token principals to exclude from the list
+ * - allowCustom: Allow manual ledger ID entry (default: false)
  */
 function TokenSelector({ 
     value, 
@@ -37,7 +40,8 @@ function TokenSelector({
     placeholder = "Select a token...", 
     disabled = false,
     style = {},
-    excludeTokens = []
+    excludeTokens = [],
+    allowCustom = false
 }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
@@ -48,6 +52,93 @@ function TokenSelector({
     const [isOpen, setIsOpen] = useState(false);
     const [tokensWithLogos, setTokensWithLogos] = useState([]);
     const [loadingLogos, setLoadingLogos] = useState(true);
+    
+    // Custom ledger entry state
+    const [showCustomEntry, setShowCustomEntry] = useState(false);
+    const [customLedgerId, setCustomLedgerId] = useState('');
+    const [customLedgerError, setCustomLedgerError] = useState('');
+    const [verifyingCustomLedger, setVerifyingCustomLedger] = useState(false);
+    const [customTokenInfo, setCustomTokenInfo] = useState(null); // Verified custom token metadata
+
+    // Verify custom ledger ID by fetching its ICRC1 metadata
+    const verifyCustomLedger = useCallback(async () => {
+        if (!customLedgerId.trim()) {
+            setCustomLedgerError('Please enter a ledger ID');
+            return;
+        }
+        
+        // Validate principal format
+        try {
+            Principal.fromText(customLedgerId.trim());
+        } catch (e) {
+            setCustomLedgerError('Invalid principal format');
+            return;
+        }
+        
+        setVerifyingCustomLedger(true);
+        setCustomLedgerError('');
+        setCustomTokenInfo(null);
+        
+        try {
+            const ledgerActor = createLedgerActor(customLedgerId.trim(), {
+                agentOptions: { identity }
+            });
+            
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Extract token info from metadata
+            let symbol = 'TOKEN';
+            let name = 'Unknown Token';
+            let decimals = 8;
+            let fee = 0n;
+            let logo = '';
+            
+            for (const [key, value] of metadata) {
+                if (key === 'icrc1:symbol' && 'Text' in value) {
+                    symbol = value.Text;
+                } else if (key === 'icrc1:name' && 'Text' in value) {
+                    name = value.Text;
+                } else if (key === 'icrc1:decimals' && 'Nat' in value) {
+                    decimals = Number(value.Nat);
+                } else if (key === 'icrc1:fee' && 'Nat' in value) {
+                    fee = value.Nat;
+                } else if (key === 'icrc1:logo' && 'Text' in value) {
+                    logo = value.Text;
+                }
+            }
+            
+            const tokenInfo = {
+                ledger_id: customLedgerId.trim(),
+                symbol,
+                name,
+                decimals,
+                fee,
+                logo
+            };
+            
+            setCustomTokenInfo(tokenInfo);
+        } catch (error) {
+            console.error('Error verifying custom ledger:', error);
+            setCustomLedgerError('Failed to verify ledger. Make sure this is a valid ICRC1 token ledger.');
+        } finally {
+            setVerifyingCustomLedger(false);
+        }
+    }, [customLedgerId, identity]);
+
+    // Handle selecting custom token
+    const handleSelectCustomToken = useCallback(() => {
+        if (!customTokenInfo) return;
+        
+        onChange(customTokenInfo.ledger_id);
+        if (onSelectToken) {
+            onSelectToken(customTokenInfo);
+        }
+        setIsOpen(false);
+        setSearchTerm('');
+        setShowCustomEntry(false);
+        setCustomLedgerId('');
+        setCustomTokenInfo(null);
+    }, [customTokenInfo, onChange, onSelectToken]);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -368,7 +459,7 @@ function TokenSelector({
                                 }}></div>
                                 Loading tokens...
                             </div>
-                        ) : filteredTokens.length === 0 ? (
+                        ) : filteredTokens.length === 0 && !allowCustom ? (
                             <div style={{ 
                                 padding: '40px', 
                                 textAlign: 'center', 
@@ -376,6 +467,15 @@ function TokenSelector({
                                 fontSize: '0.9rem'
                             }}>
                                 No tokens found
+                            </div>
+                        ) : filteredTokens.length === 0 && allowCustom ? (
+                            <div style={{ 
+                                padding: '20px', 
+                                textAlign: 'center', 
+                                color: theme.colors.mutedText,
+                                fontSize: '0.9rem'
+                            }}>
+                                No tokens found. Use the manual entry below.
                             </div>
                         ) : (
                             filteredTokens.map((token) => (
@@ -456,6 +556,200 @@ function TokenSelector({
                         )}
                     </div>
 
+                    {/* Manual entry section (when allowCustom is true) */}
+                    {allowCustom && (
+                        <div style={{ 
+                            padding: '12px', 
+                            borderTop: `1px solid ${theme.colors.border}`,
+                            background: theme.colors.secondaryBg
+                        }}>
+                            {!showCustomEntry ? (
+                                <button
+                                    onClick={() => setShowCustomEntry(true)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        background: 'transparent',
+                                        color: theme.colors.accent,
+                                        border: `1px dashed ${theme.colors.accent}`,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    + Enter ledger ID manually
+                                </button>
+                            ) : (
+                                <div>
+                                    <div style={{ 
+                                        fontSize: '0.85rem', 
+                                        fontWeight: '600', 
+                                        color: theme.colors.primaryText,
+                                        marginBottom: '8px' 
+                                    }}>
+                                        Manual Ledger Entry
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                                        <input
+                                            type="text"
+                                            value={customLedgerId}
+                                            onChange={(e) => {
+                                                setCustomLedgerId(e.target.value);
+                                                setCustomLedgerError('');
+                                                setCustomTokenInfo(null);
+                                            }}
+                                            placeholder="Ledger canister ID"
+                                            style={{
+                                                flex: 1,
+                                                padding: '8px 12px',
+                                                background: theme.colors.primaryBg,
+                                                border: `1px solid ${customLedgerError ? theme.colors.error : theme.colors.border}`,
+                                                borderRadius: '6px',
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.85rem',
+                                                boxSizing: 'border-box',
+                                                outline: 'none'
+                                            }}
+                                        />
+                                        <button
+                                            onClick={verifyCustomLedger}
+                                            disabled={verifyingCustomLedger || !customLedgerId.trim()}
+                                            style={{
+                                                padding: '8px 16px',
+                                                background: theme.colors.accent,
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                cursor: verifyingCustomLedger || !customLedgerId.trim() ? 'not-allowed' : 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '500',
+                                                opacity: verifyingCustomLedger || !customLedgerId.trim() ? 0.5 : 1,
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            {verifyingCustomLedger ? 'Verifying...' : 'Verify'}
+                                        </button>
+                                    </div>
+                                    
+                                    {/* Error message */}
+                                    {customLedgerError && (
+                                        <div style={{ 
+                                            color: theme.colors.error, 
+                                            fontSize: '0.8rem',
+                                            marginBottom: '8px'
+                                        }}>
+                                            {customLedgerError}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Verified token info */}
+                                    {customTokenInfo && (
+                                        <div style={{
+                                            padding: '12px',
+                                            background: `${theme.colors.success}15`,
+                                            border: `1px solid ${theme.colors.success}40`,
+                                            borderRadius: '8px',
+                                            marginBottom: '8px'
+                                        }}>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '12px',
+                                                marginBottom: '8px'
+                                            }}>
+                                                {customTokenInfo.logo ? (
+                                                    <img 
+                                                        src={customTokenInfo.logo} 
+                                                        alt={customTokenInfo.symbol}
+                                                        style={{
+                                                            width: '32px',
+                                                            height: '32px',
+                                                            borderRadius: '50%',
+                                                            objectFit: 'cover'
+                                                        }}
+                                                        onError={(e) => e.target.style.display = 'none'}
+                                                    />
+                                                ) : (
+                                                    <div style={{
+                                                        width: '32px',
+                                                        height: '32px',
+                                                        borderRadius: '50%',
+                                                        background: theme.colors.tertiaryBg,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.8rem',
+                                                        color: theme.colors.mutedText
+                                                    }}>
+                                                        {customTokenInfo.symbol.slice(0, 2).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div style={{ 
+                                                        fontWeight: '600', 
+                                                        color: theme.colors.primaryText 
+                                                    }}>
+                                                        {customTokenInfo.symbol}
+                                                    </div>
+                                                    <div style={{ 
+                                                        fontSize: '0.8rem', 
+                                                        color: theme.colors.secondaryText 
+                                                    }}>
+                                                        {customTokenInfo.name}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style={{ 
+                                                fontSize: '0.75rem', 
+                                                color: theme.colors.mutedText 
+                                            }}>
+                                                Decimals: {customTokenInfo.decimals}
+                                            </div>
+                                            <button
+                                                onClick={handleSelectCustomToken}
+                                                style={{
+                                                    width: '100%',
+                                                    marginTop: '8px',
+                                                    padding: '8px',
+                                                    background: theme.colors.success,
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600'
+                                                }}
+                                            >
+                                                Use this token
+                                            </button>
+                                        </div>
+                                    )}
+                                    
+                                    <button
+                                        onClick={() => {
+                                            setShowCustomEntry(false);
+                                            setCustomLedgerId('');
+                                            setCustomLedgerError('');
+                                            setCustomTokenInfo(null);
+                                        }}
+                                        style={{
+                                            padding: '6px 12px',
+                                            background: 'transparent',
+                                            color: theme.colors.mutedText,
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '0.8rem'
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Close button */}
                     <div style={{ 
                         padding: '12px', 
@@ -467,6 +761,10 @@ function TokenSelector({
                             onClick={() => {
                                 setIsOpen(false);
                                 setSearchTerm('');
+                                setShowCustomEntry(false);
+                                setCustomLedgerId('');
+                                setCustomLedgerError('');
+                                setCustomTokenInfo(null);
                             }}
                             style={{
                                 padding: '8px 24px',
