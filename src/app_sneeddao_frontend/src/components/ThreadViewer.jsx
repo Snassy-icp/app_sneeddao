@@ -387,6 +387,7 @@ function ThreadViewer({
     // Responsive state for narrow screens
     const [isNarrowScreen, setIsNarrowScreen] = useState(false);
     const [showCommentForm, setShowCommentForm] = useState(false);
+    const [openOverflowMenu, setOpenOverflowMenu] = useState(null); // Track which post's overflow menu is open
     
     // Poll state
     const [threadPolls, setThreadPolls] = useState([]); // Polls for the thread
@@ -1564,6 +1565,21 @@ function ThreadViewer({
         // Cleanup
         return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    // Effect to close overflow menu when clicking outside
+    useEffect(() => {
+        if (openOverflowMenu === null) return;
+        
+        const handleClickOutside = (e) => {
+            // Close menu if clicking outside the menu area
+            if (!e.target.closest('[data-overflow-menu]')) {
+                setOpenOverflowMenu(null);
+            }
+        };
+        
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [openOverflowMenu]);
 
     // Effect to fetch thread votes when neurons become available
     useEffect(() => {
@@ -2902,15 +2918,15 @@ function ThreadViewer({
                             gap: '8px',
                             marginTop: '10px',
                             paddingTop: '10px',
-                            borderTop: '1px solid #333',
-                            flexWrap: 'wrap'
+                            borderTop: `1px solid ${theme.colors.border}`,
+                            flexWrap: 'wrap',
+                            alignItems: 'center'
                         }}>
                             {/* Voting Section - Layout like Discussion.jsx */}
                             <div style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
-                                gap: '8px',
-                                marginTop: '5px' 
+                                gap: '4px'
                             }}>
                                 {/* Upvote Button - Shows voting power */}
                                 <button
@@ -2942,9 +2958,9 @@ function ThreadViewer({
                                            (Number(post.upvote_score) - Number(post.downvote_score)) < 0 ? '#b85c5c' : theme.colors.mutedText,
                                     fontSize: '14px',
                                     fontWeight: 'bold',
-                                    minWidth: '60px',
+                                    minWidth: '30px',
                                     textAlign: 'center',
-                                    padding: '0 4px'
+                                    padding: '0 2px'
                                 }}>
                                     {votingStates.get(post.id.toString()) === 'voting' ? (
                                         <div style={{ 
@@ -3016,119 +3032,293 @@ function ThreadViewer({
                                 💬 {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? ' Cancel Reply' : ' Reply')}
                             </button>
 
-                            {/* Tip Button - Only show for posts by other users */}
-                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
-                                <button
-                                    onClick={() => openTipModal(post)}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: theme.colors.warning,
-                                        borderRadius: '4px',
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                    title="Send a tip to the post author"
-                                >
-                                    💰{isNarrowScreen ? '' : ' Tip'}
-                                </button>
+                            {/* Desktop: Show all buttons directly */}
+                            {!isNarrowScreen && (
+                                <>
+                                    {/* Tip Button - Only show for posts by other users */}
+                                    {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                        <button
+                                            onClick={() => openTipModal(post)}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: theme.colors.warning,
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                            title="Send a tip to the post author"
+                                        >
+                                            💰 Tip
+                                        </button>
+                                    )}
+
+                                    {/* Send Message Button - Only show for posts by other users */}
+                                    {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                        <button
+                                            onClick={() => {
+                                                const recipientPrincipal = post.created_by.toString();
+                                                navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                                            }}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: theme.colors.success,
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                            title="Send a private message to the post author"
+                                        >
+                                            📨 Message
+                                        </button>
+                                    )}
+
+                                    {/* Edit Button - Show for post owner or admin */}
+                                    {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                        <button
+                                            onClick={() => startEditPost(post)}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: '#9b59b6',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                            title="Edit this post"
+                                        >
+                                            ✏️ Edit
+                                        </button>
+                                    )}
+
+                                    {/* Delete Button - Show for post owner or admin */}
+                                    {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                        <button
+                                            onClick={() => handleDeletePost(post.id)}
+                                            disabled={deletingPost === Number(post.id)}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                            title={deletingPost === Number(post.id) ? 'Deleting post...' : 'Delete this post'}
+                                        >
+                                            🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                        </button>
+                                    )}
+
+                                    {/* Add Poll Button - Show for post owner if no poll exists */}
+                                    {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
+                                     !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
+                                        <button
+                                            onClick={() => setShowPollForm(prev => new Map(prev.set(Number(post.id), true)))}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: theme.colors.accent,
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                            title="Add a poll to this post"
+                                        >
+                                            📊 Add Poll
+                                        </button>
+                                    )}
+                                </>
                             )}
 
-                            {/* Send Message Button - Only show for posts by other users */}
-                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
-                                <button
-                                    onClick={() => {
-                                        const recipientPrincipal = post.created_by.toString();
-                                        navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
-                                    }}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: theme.colors.success,
-                                        borderRadius: '4px',
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                    title="Send a private message to the post author"
-                                >
-                                    📨{isNarrowScreen ? '' : ' Message'}
-                                </button>
-                            )}
+                            {/* Mobile: Show overflow menu for extra buttons */}
+                            {isNarrowScreen && (
+                                <div style={{ position: 'relative' }} data-overflow-menu>
+                                    <button
+                                        onClick={() => setOpenOverflowMenu(openOverflowMenu === Number(post.id) ? null : Number(post.id))}
+                                        style={{
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            color: theme.colors.secondaryText,
+                                            borderRadius: '4px',
+                                            padding: '4px 8px',
+                                            cursor: 'pointer',
+                                            fontSize: '16px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            fontWeight: 'bold',
+                                            letterSpacing: '2px'
+                                        }}
+                                        title="More actions"
+                                    >
+                                        •••
+                                    </button>
+                                    
+                                    {/* Overflow Menu Dropdown */}
+                                    {openOverflowMenu === Number(post.id) && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '100%',
+                                            right: 0,
+                                            backgroundColor: theme.colors.secondaryBg,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '8px',
+                                            padding: '4px 0',
+                                            minWidth: '140px',
+                                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                            zIndex: 100
+                                        }}>
+                                            {/* Tip Option */}
+                                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                                <button
+                                                    onClick={() => {
+                                                        openTipModal(post);
+                                                        setOpenOverflowMenu(null);
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '10px 14px',
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: theme.colors.warning,
+                                                        cursor: 'pointer',
+                                                        fontSize: '14px',
+                                                        textAlign: 'left'
+                                                    }}
+                                                >
+                                                    💰 Tip
+                                                </button>
+                                            )}
 
-                            {/* Edit Button - Show for post owner or admin */}
-                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
-                                <button
-                                    onClick={() => startEditPost(post)}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: '#9b59b6',
-                                        borderRadius: '4px',
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                    title="Edit this post"
-                                >
-                                    ✏️{isNarrowScreen ? '' : ' Edit'}
-                                </button>
-                            )}
+                                            {/* Message Option */}
+                                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                                <button
+                                                    onClick={() => {
+                                                        const recipientPrincipal = post.created_by.toString();
+                                                        navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                                                        setOpenOverflowMenu(null);
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '10px 14px',
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: theme.colors.success,
+                                                        cursor: 'pointer',
+                                                        fontSize: '14px',
+                                                        textAlign: 'left'
+                                                    }}
+                                                >
+                                                    📨 Message
+                                                </button>
+                                            )}
 
-                            {/* Delete Button - Show for post owner or admin */}
-                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
-                                <button
-                                    onClick={() => handleDeletePost(post.id)}
-                                    disabled={deletingPost === Number(post.id)}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
-                                        borderRadius: '4px',
-                                        padding: '4px 8px',
-                                        cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                    title={deletingPost === Number(post.id) ? 'Deleting post...' : 'Delete this post'}
-                                >
-                                    🗑️{isNarrowScreen ? '' : ` ${deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}`}
-                                </button>
-                            )}
+                                            {/* Edit Option */}
+                                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                                <button
+                                                    onClick={() => {
+                                                        startEditPost(post);
+                                                        setOpenOverflowMenu(null);
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '10px 14px',
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: '#9b59b6',
+                                                        cursor: 'pointer',
+                                                        fontSize: '14px',
+                                                        textAlign: 'left'
+                                                    }}
+                                                >
+                                                    ✏️ Edit
+                                                </button>
+                                            )}
 
-                            {/* Add Poll Button - Show for post owner if no poll exists */}
-                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
-                             !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
-                                <button
-                                    onClick={() => setShowPollForm(prev => new Map(prev.set(Number(post.id), true)))}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: theme.colors.accent,
-                                        borderRadius: '4px',
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                    title="Add a poll to this post"
-                                >
-                                    📊{isNarrowScreen ? '' : ' Add Poll'}
-                                </button>
+                                            {/* Delete Option */}
+                                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                                <button
+                                                    onClick={() => {
+                                                        handleDeletePost(post.id);
+                                                        setOpenOverflowMenu(null);
+                                                    }}
+                                                    disabled={deletingPost === Number(post.id)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '10px 14px',
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
+                                                        cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
+                                                        fontSize: '14px',
+                                                        textAlign: 'left'
+                                                    }}
+                                                >
+                                                    🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                                </button>
+                                            )}
+
+                                            {/* Add Poll Option */}
+                                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
+                                             !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
+                                                <button
+                                                    onClick={() => {
+                                                        setShowPollForm(prev => new Map(prev.set(Number(post.id), true)));
+                                                        setOpenOverflowMenu(null);
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '10px 14px',
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: theme.colors.accent,
+                                                        cursor: 'pointer',
+                                                        fontSize: '14px',
+                                                        textAlign: 'left'
+                                                    }}
+                                                >
+                                                    📊 Add Poll
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
