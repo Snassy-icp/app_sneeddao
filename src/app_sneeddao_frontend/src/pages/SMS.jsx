@@ -18,6 +18,8 @@ import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 const SMS = () => {
     const { theme } = useTheme();
     const navigate = useNavigate();
@@ -508,9 +510,9 @@ const SMS = () => {
     }
 
     return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh', fontFamily: SYSTEM_FONT, fontSize: '14px' }}>
             <Header />
-            <main className="wallet-container">
+            <main className="wallet-container" style={{ fontFamily: SYSTEM_FONT }}>
                 {error && (
                     <div style={{ 
                         backgroundColor: `${theme.colors.error}20`, 
@@ -553,9 +555,10 @@ const SMS = () => {
                                     color: selectedTab === tab.key ? theme.colors.primaryText : theme.colors.mutedText,
                                     border: 'none',
                                     borderRadius: '4px 4px 0 0',
-                                    padding: '12px 20px',
+                                    padding: '10px 16px',
                                     cursor: 'pointer',
-                                    fontSize: '16px',
+                                    fontSize: '14px',
+                                    fontFamily: SYSTEM_FONT,
                                     borderBottom: selectedTab === tab.key ? `2px solid ${theme.colors.accent}` : '2px solid transparent'
                                 }}
                             >
@@ -571,16 +574,17 @@ const SMS = () => {
                             backgroundColor: theme.colors.accent,
                             color: theme.colors.primaryText,
                             border: 'none',
-                            borderRadius: '8px',
-                            padding: '12px 24px',
+                            borderRadius: '6px',
+                            padding: '10px 20px',
                             cursor: 'pointer',
-                            fontSize: '16px',
+                            fontSize: '14px',
                             fontWeight: '500',
+                            fontFamily: SYSTEM_FONT,
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            marginBottom: '2px', // Align with tab bottom border
-                            flexShrink: 0 // Prevent button from shrinking
+                            marginBottom: '2px',
+                            flexShrink: 0
                         }}
                     >
                         ✉️ Compose Message
@@ -659,19 +663,21 @@ const SMS = () => {
                                     <div style={{ flex: 1 }}>
                                         <div style={{ 
                                             color: theme.colors.primaryText, 
-                                            fontSize: '18px', 
+                                            fontSize: '15px', 
                                             fontWeight: '500',
+                                            fontFamily: SYSTEM_FONT,
                                             marginBottom: '5px'
                                         }}>
                                             {message.subject}
                                         </div>
                                         <div style={{ 
                                             color: theme.colors.mutedText, 
-                                            fontSize: '14px',
-                                            marginBottom: '5px',
+                                            fontSize: '12px',
+                                            fontFamily: SYSTEM_FONT,
+                                            marginBottom: '4px',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px'
+                                            gap: '6px'
                                         }}>
                                             <span>From:</span>
                                             <PrincipalDisplay 
@@ -679,15 +685,16 @@ const SMS = () => {
                                                 displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                                 showCopyButton={false}
                                                 short={true}
-                                                style={{ color: theme.colors.mutedText, fontSize: '14px' }}
+                                                style={{ color: theme.colors.mutedText, fontSize: '12px' }}
                                             />
                                         </div>
                                         <div style={{ 
                                             color: theme.colors.mutedText, 
-                                            fontSize: '14px',
+                                            fontSize: '12px',
+                                            fontFamily: SYSTEM_FONT,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px',
+                                            gap: '6px',
                                             flexWrap: 'wrap'
                                         }}>
                                             <span>To:</span>
@@ -698,7 +705,7 @@ const SMS = () => {
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                         showCopyButton={false}
                                                         short={true}
-                                                        style={{ color: theme.colors.mutedText, fontSize: '14px' }}
+                                                        style={{ color: theme.colors.mutedText, fontSize: '12px' }}
                                                     />
                                                     {index < message.recipients.length - 1 && <span>,</span>}
                                                 </React.Fragment>
@@ -707,7 +714,8 @@ const SMS = () => {
                                     </div>
                                     <div style={{ 
                                         color: theme.colors.mutedText, 
-                                        fontSize: '12px',
+                                        fontSize: '11px',
+                                        fontFamily: SYSTEM_FONT,
                                         textAlign: 'right'
                                     }}>
                                         {formatDate(message.created_at)}
@@ -715,12 +723,14 @@ const SMS = () => {
                                 </div>
                                 <div style={{ 
                                     color: theme.colors.secondaryText, 
-                                    fontSize: '14px',
+                                    fontSize: '13px',
+                                    fontFamily: SYSTEM_FONT,
                                     overflow: 'hidden',
                                     maxHeight: '40px'
                                 }}>
                                     <MarkdownBody 
                                         text={message.body.length > 150 ? message.body.substring(0, 150) + '...' : message.body}
+                                        style={{ fontSize: '13px' }}
                                     />
                                 </div>
                                 
@@ -733,7 +743,7 @@ const SMS = () => {
                                 }}>
                                     <button
                                         onClick={(e) => {
-                                            e.stopPropagation(); // Prevent triggering the message modal
+                                            e.stopPropagation();
                                             navigate(`/msg/${message.id}`);
                                         }}
                                         style={{
@@ -741,19 +751,19 @@ const SMS = () => {
                                             color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '4px',
-                                            padding: '6px 12px',
+                                            padding: '5px 10px',
                                             cursor: 'pointer',
-                                            fontSize: '12px'
+                                            fontSize: '12px',
+                                            fontFamily: SYSTEM_FONT
                                         }}
                                     >
                                         🔗 View Thread
                                     </button>
                                     
-                                    {/* Reply button - only show if message is not from current user */}
                                     {message.sender.toString() !== identity?.getPrincipal().toString() && (
                                         <button
                                             onClick={(e) => {
-                                                e.stopPropagation(); // Prevent triggering the message modal
+                                                e.stopPropagation();
                                                 replyToMessage(message);
                                             }}
                                             style={{
@@ -761,9 +771,10 @@ const SMS = () => {
                                                 color: theme.colors.primaryText,
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                padding: '6px 12px',
+                                                padding: '5px 10px',
                                                 cursor: 'pointer',
-                                                fontSize: '12px'
+                                                fontSize: '12px',
+                                                fontFamily: SYSTEM_FONT
                                             }}
                                         >
                                             ↩️ Reply
@@ -793,12 +804,14 @@ const SMS = () => {
                         <div style={{
                             backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
-                            padding: '30px',
+                            padding: '24px',
                             width: '90%',
                             maxWidth: '600px',
                             maxHeight: '80vh',
                             overflow: 'auto',
-                            border: `1px solid ${theme.colors.border}`
+                            border: `1px solid ${theme.colors.border}`,
+                            fontFamily: SYSTEM_FONT,
+                            fontSize: '14px'
                         }}>
                             <div style={{ 
                                 display: 'flex', 
@@ -806,7 +819,7 @@ const SMS = () => {
                                 alignItems: 'center',
                                 marginBottom: '20px'
                             }}>
-                                <h2 style={{ color: theme.colors.primaryText, margin: 0 }}>
+                                <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '18px', fontFamily: SYSTEM_FONT }}>
                                     {composeForm.replyTo ? 'Reply to Message' : 'Compose Message'}
                                 </h2>
                                 <button
@@ -830,7 +843,7 @@ const SMS = () => {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 <div>
-                                    <label style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <label style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '13px', fontFamily: SYSTEM_FONT, display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span>Recipients:</span>
                                         <span style={{ 
                                             fontSize: '12px', 
@@ -920,7 +933,7 @@ const SMS = () => {
                                 </div>
 
                                 <div>
-                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
+                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
                                         Subject:
                                     </label>
                                     <input
@@ -936,7 +949,8 @@ const SMS = () => {
                                             border: `1px solid ${composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : theme.colors.border}`,
                                             borderRadius: '4px',
                                             color: theme.colors.primaryText,
-                                            fontSize: '14px'
+                                            fontSize: '13px',
+                                            fontFamily: SYSTEM_FONT
                                         }}
                                     />
                                     <div style={{ 
@@ -965,7 +979,7 @@ const SMS = () => {
                                 </div>
 
                                 <div>
-                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
+                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
                                         Message:
                                     </label>
                                     <EmojiPicker
@@ -995,7 +1009,8 @@ const SMS = () => {
                                             border: `1px solid ${composeForm.body.length > effectiveBodyLimit ? theme.colors.error : theme.colors.border}`,
                                             borderRadius: '4px',
                                             color: theme.colors.primaryText,
-                                            fontSize: '14px',
+                                            fontSize: '13px',
+                                            fontFamily: SYSTEM_FONT,
                                             resize: 'vertical'
                                         }}
                                     />
@@ -1129,12 +1144,14 @@ const SMS = () => {
                             style={{
                             backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
-                            padding: '30px',
+                            padding: '24px',
                             width: '90%',
                             maxWidth: '700px',
                             maxHeight: '80vh',
                             overflow: 'auto',
-                            border: `1px solid ${theme.colors.border}`
+                            border: `1px solid ${theme.colors.border}`,
+                            fontFamily: SYSTEM_FONT,
+                            fontSize: '14px'
                         }}>
                             <div style={{ 
                                 display: 'flex', 
@@ -1143,7 +1160,7 @@ const SMS = () => {
                                 marginBottom: '20px'
                             }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, marginRight: '15px' }}>
-                                    <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '20px' }}>
+                                    <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '16px', fontFamily: SYSTEM_FONT }}>
                                         {truncateSubject(selectedMessage.subject)}
                                     </h2>
                                     <button

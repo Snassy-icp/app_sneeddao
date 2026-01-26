@@ -9,6 +9,8 @@ import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import EmojiPicker from './EmojiPicker';
 import MarkdownButtons from './MarkdownButtons';
 
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 const MessageDialog = ({ 
     isOpen, 
     onClose, 
@@ -245,7 +247,9 @@ const MessageDialog = ({
                 width: '90%',
                 maxWidth: '600px',
                 maxHeight: '90vh',
-                overflow: 'auto'
+                overflow: 'auto',
+                fontFamily: SYSTEM_FONT,
+                fontSize: '14px'
             }}>
                 <div style={{
                     display: 'flex',
@@ -253,7 +257,7 @@ const MessageDialog = ({
                     alignItems: 'center',
                     marginBottom: '20px'
                 }}>
-                    <h3 style={{ color: theme.colors.primaryText, margin: 0 }}>
+                    <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '16px', fontFamily: SYSTEM_FONT }}>
                         {replyToId ? 'Reply to Message' : 'Send Message'}
                     </h3>
                     <button
@@ -290,7 +294,7 @@ const MessageDialog = ({
                 )}
 
                 <div style={{ marginBottom: '15px' }}>
-                    <label style={{ color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                    <label style={{ color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
                         <span>Recipients *</span>
                         <span style={{ 
                             fontSize: '12px', 
@@ -362,7 +366,7 @@ const MessageDialog = ({
                 </div>
 
                 <div style={{ marginBottom: '15px' }}>
-                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px' }}>
+                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
                         Subject *
                     </label>
                     <input
@@ -378,7 +382,8 @@ const MessageDialog = ({
                             border: `1px solid ${composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : theme.colors.border}`,
                             borderRadius: '4px',
                             color: theme.colors.primaryText,
-                            fontSize: '14px',
+                            fontSize: '13px',
+                            fontFamily: SYSTEM_FONT,
                             boxSizing: 'border-box'
                         }}
                     />
@@ -408,7 +413,7 @@ const MessageDialog = ({
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
-                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px' }}>
+                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
                         Message *
                     </label>
                     <EmojiPicker
@@ -438,7 +443,8 @@ const MessageDialog = ({
                             border: `1px solid ${composeForm.body.length > effectiveBodyLimit ? theme.colors.error : theme.colors.border}`,
                             borderRadius: '4px',
                             color: theme.colors.primaryText,
-                            fontSize: '14px',
+                            fontSize: '13px',
+                            fontFamily: SYSTEM_FONT,
                             resize: 'vertical',
                             boxSizing: 'border-box'
                         }}
@@ -481,7 +487,9 @@ const MessageDialog = ({
                             border: 'none',
                             borderRadius: '6px',
                             padding: '10px 20px',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            fontFamily: SYSTEM_FONT
                         }}
                     >
                         Cancel
@@ -498,7 +506,9 @@ const MessageDialog = ({
                             cursor: isFormValid() && !submitting ? 'pointer' : 'not-allowed',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px'
+                            gap: '8px',
+                            fontSize: '13px',
+                            fontFamily: SYSTEM_FONT
                         }}
                     >
                         {submitting ? (
