@@ -84,7 +84,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Listen for storage changes (when setting is changed in /me page)
+    // Listen for storage changes (when setting is changed in another tab)
     useEffect(() => {
         const handleStorageChange = (e) => {
             if (e.key === 'showVpBar') {
@@ -96,8 +96,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             }
         };
         
+        // Listen for custom event (when setting is changed on the same page)
+        const handleVpBarChanged = (e) => {
+            setShowVpBarSetting(e.detail);
+        };
+        
         window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
+        window.addEventListener('showVpBarChanged', handleVpBarChanged);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('showVpBarChanged', handleVpBarChanged);
+        };
     }, []);
 
     // Update active section when location changes

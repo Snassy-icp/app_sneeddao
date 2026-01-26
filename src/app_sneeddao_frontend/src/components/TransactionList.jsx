@@ -42,6 +42,8 @@ const TransactionType = {
     APPROVE: 'approve'
 };
 
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 function TransactionList({ 
     snsRootCanisterId, 
     ledgerCanisterId: providedLedgerCanisterId = null, 
@@ -58,7 +60,9 @@ function TransactionList({
             backgroundColor: theme.colors.secondaryBg,
             borderRadius: '8px',
             padding: '20px',
-            marginTop: '20px'
+            marginTop: '20px',
+            fontFamily: SYSTEM_FONT,
+            fontSize: '14px'
         },
         header: {
             display: 'flex',
@@ -77,7 +81,9 @@ function TransactionList({
             borderRadius: '4px',
             padding: '8px 16px',
             color: theme.colors.primaryText,
-            cursor: 'pointer'
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontFamily: SYSTEM_FONT
         },
         filterButtonActive: {
             backgroundColor: theme.colors.accent,
@@ -89,14 +95,19 @@ function TransactionList({
         },
         th: {
             textAlign: 'left',
-            padding: '12px',
+            padding: '10px 12px',
             borderBottom: `1px solid ${theme.colors.border}`,
-            color: theme.colors.mutedText
+            color: theme.colors.mutedText,
+            fontSize: '12px',
+            fontWeight: '500',
+            fontFamily: SYSTEM_FONT
         },
         td: {
-            padding: '12px',
+            padding: '10px 12px',
             borderBottom: `1px solid ${theme.colors.border}`,
-            color: theme.colors.primaryText
+            color: theme.colors.primaryText,
+            fontSize: '13px',
+            fontFamily: SYSTEM_FONT
         },
         pagination: {
             display: 'flex',
@@ -110,7 +121,9 @@ function TransactionList({
             borderRadius: '4px',
             padding: '8px 16px',
             color: theme.colors.primaryText,
-            cursor: 'pointer'
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontFamily: SYSTEM_FONT
         },
         pageButtonDisabled: {
             opacity: 0.5,
@@ -120,7 +133,9 @@ function TransactionList({
             display: 'flex',
             justifyContent: 'center',
             padding: '20px',
-            color: theme.colors.mutedText
+            color: theme.colors.mutedText,
+            fontSize: '13px',
+            fontFamily: SYSTEM_FONT
         },
         filtersContainer: {
             display: 'flex',
@@ -151,7 +166,8 @@ function TransactionList({
         },
         filterLabel: {
             color: theme.colors.mutedText,
-            fontSize: '14px'
+            fontSize: '12px',
+            fontFamily: SYSTEM_FONT
         },
         filterInput: {
             backgroundColor: theme.colors.tertiaryBg,
@@ -159,7 +175,9 @@ function TransactionList({
             borderRadius: '4px',
             padding: '8px 12px',
             color: theme.colors.primaryText,
-            width: '200px'
+            width: '200px',
+            fontSize: '13px',
+            fontFamily: SYSTEM_FONT
         },
         filterSelect: {
             backgroundColor: theme.colors.tertiaryBg,
@@ -168,8 +186,9 @@ function TransactionList({
             padding: '8px',
             color: theme.colors.primaryText,
             cursor: 'pointer',
-            fontSize: '14px',
-            minWidth: '80px'
+            fontSize: '13px',
+            minWidth: '80px',
+            fontFamily: SYSTEM_FONT
         },
         headerTitle: {
             display: 'flex',
@@ -195,35 +214,39 @@ function TransactionList({
         transactionCard: {
             backgroundColor: theme.colors.secondaryBg,
             borderRadius: '8px',
-            padding: '15px',
-            marginBottom: '10px',
-            border: `1px solid ${theme.colors.border}`
+            padding: '12px',
+            marginBottom: '8px',
+            border: `1px solid ${theme.colors.border}`,
+            fontFamily: SYSTEM_FONT
         },
         cardHeader: {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '10px'
+            marginBottom: '8px'
         },
         cardType: {
-            padding: '4px 8px',
+            padding: '3px 6px',
             borderRadius: '4px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            textTransform: 'uppercase'
+            fontSize: '11px',
+            fontWeight: '600',
+            textTransform: 'uppercase',
+            fontFamily: SYSTEM_FONT
         },
         cardField: {
-            marginBottom: '8px'
+            marginBottom: '6px'
         },
         cardLabel: {
             color: theme.colors.mutedText,
-            fontSize: '12px',
-            marginBottom: '2px'
+            fontSize: '11px',
+            marginBottom: '2px',
+            fontFamily: SYSTEM_FONT
         },
         cardValue: {
             color: theme.colors.primaryText,
-            fontSize: '14px',
-            wordBreak: 'break-all'
+            fontSize: '13px',
+            wordBreak: 'break-all',
+            fontFamily: SYSTEM_FONT
         },
         paginationControls: {
             display: 'flex',
@@ -236,7 +259,9 @@ function TransactionList({
             borderRadius: '4px',
             padding: '8px',
             color: theme.colors.primaryText,
-            cursor: 'pointer'
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontFamily: SYSTEM_FONT
         },
         sortableHeader: {
             cursor: 'pointer',
@@ -270,9 +295,10 @@ function TransactionList({
             gap: '4px'
         },
         subaccount: {
-            fontSize: '12px',
+            fontSize: '11px',
             color: theme.colors.mutedText,
-            wordBreak: 'break-all'
+            wordBreak: 'break-all',
+            fontFamily: SYSTEM_FONT
         }
     };
 

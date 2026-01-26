@@ -1088,6 +1088,8 @@ export default function Me() {
                                                         const newValue = e.target.checked;
                                                         setShowVpBar(newValue);
                                                         localStorage.setItem('showVpBar', JSON.stringify(newValue));
+                                                        // Dispatch custom event for same-page updates
+                                                        window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: newValue }));
                                                     }}
                                                     style={{ 
                                                         width: '18px', 
