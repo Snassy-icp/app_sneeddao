@@ -213,13 +213,18 @@
 }
 
 .post-body {
-    margin: 0.25rem 0 0.5rem 0;
-    line-height: 1.5;
+    margin: 0.25rem 0 0.25rem 0;
+    line-height: 1.4;
     color: var(--color-primary-text);
+    font-size: 14px;
 }
 
 .post-body p {
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.5rem 0;
+}
+
+.post-body p:last-child {
+    margin-bottom: 0;
 }
 
 /* Loading and Error States */

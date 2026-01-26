@@ -31,11 +31,17 @@ export default function MarkdownBody({ text, style }) {
   const content = useMemo(() => normalizeMarkdownInput(text), [text]);
 
   return (
-    <div style={{ color: theme.colors.primaryText, lineHeight: '1.5', ...style }}>
+    <div style={{ 
+      color: theme.colors.primaryText, 
+      lineHeight: '1.4', 
+      fontSize: '14px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      ...style 
+    }}>
       <ReactMarkdown
         urlTransform={safeUrlTransform}
         components={{
-          p: (props) => <p style={{ margin: '0 0 10px 0', color: 'inherit' }} {...props} />,
+          p: (props) => <p style={{ margin: '0 0 8px 0', color: 'inherit' }} {...props} />,
           a: ({ href, children, ...props }) => (
             <a
               href={href}
@@ -62,7 +68,7 @@ export default function MarkdownBody({ text, style }) {
               {children}
             </code>
           ),
-          li: (props) => <li style={{ marginBottom: '4px', color: 'inherit' }} {...props} />
+          li: (props) => <li style={{ marginBottom: '2px', color: 'inherit' }} {...props} />
         }}
       >
         {content}

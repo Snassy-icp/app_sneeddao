@@ -2916,9 +2916,7 @@ function ThreadViewer({
                         <div style={{
                             display: 'flex',
                             gap: '8px',
-                            marginTop: '10px',
-                            paddingTop: '10px',
-                            borderTop: `1px solid ${theme.colors.border}`,
+                            marginTop: '8px',
                             flexWrap: 'wrap',
                             alignItems: 'center',
                             position: 'relative',
