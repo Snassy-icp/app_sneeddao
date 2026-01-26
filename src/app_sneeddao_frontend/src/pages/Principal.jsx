@@ -18,6 +18,7 @@ import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
+import MarkdownBody from '../components/MarkdownBody';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -1237,7 +1238,7 @@ export default function PrincipalPage() {
                                                                         </div>
                                                                     )}
                                                                     <div style={{ color: theme.colors.secondaryText, fontSize: '14px', lineHeight: '1.5' }}>
-                                                                        {displayBody}
+                                                                        <MarkdownBody text={displayBody} style={{ fontSize: '14px' }} />
                                                                         {shouldTruncate && (
                                                                             <button
                                                                                 onClick={() => toggleExpanded(post.id)}
@@ -1348,7 +1349,7 @@ export default function PrincipalPage() {
                                                                         </div>
                                                                     )}
                                                                     <div style={{ color: theme.colors.secondaryText, fontSize: '14px', lineHeight: '1.5' }}>
-                                                                        {displayBody}
+                                                                        <MarkdownBody text={displayBody} style={{ fontSize: '14px' }} />
                                                                         {shouldTruncate && (
                                                                             <button
                                                                                 onClick={() => toggleExpanded(`thread-${thread.id}`)}
