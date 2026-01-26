@@ -321,14 +321,15 @@ export const PrincipalDisplay = React.memo(({
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
         return React.createElement(React.Fragment, null,
-            React.createElement('div', 
+            React.createElement('span', 
                 { 
                     style: { 
                         display: 'inline-flex', 
-                        alignItems: 'center', 
+                        alignItems: 'baseline', 
                         gap: '8px',
                         color: principalColor,
                         fontFamily: 'monospace',
+                        verticalAlign: 'baseline',
                         ...style
                     }
                 },
@@ -391,14 +392,15 @@ export const PrincipalDisplay = React.memo(({
 
     // Show compact display with name and/or nickname
     return React.createElement(React.Fragment, null,
-        React.createElement('div',
+        React.createElement('span',
             {
                 style: {
                     display: 'inline-flex',
-                    alignItems: 'center',
+                    alignItems: 'baseline',
                     gap: '8px',
                     color: principalColor,
                     fontFamily: 'monospace',
+                    verticalAlign: 'baseline',
                     ...style
                 }
             },

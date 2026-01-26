@@ -31,6 +31,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const [isVpBarVisible, setIsVpBarVisible] = useState(true);
+    const lastScrollY = useRef(0);
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
@@ -132,6 +134,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
 
         fetchNervousSystemParameters();
     }, [selectedSnsRoot, identity]);
+
+    // Scroll listener for VP bar visibility
+    useEffect(() => {
+        const handleScroll = () => {
+            const currentScrollY = window.scrollY;
+            
+            // Show VP bar when scrolling up (page moves down), hide when scrolling down (page moves up)
+            if (currentScrollY < lastScrollY.current) {
+                // Scrolling up (page moving down) - show VP bar
+                setIsVpBarVisible(true);
+            } else if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
+                // Scrolling down (page moving up) and past threshold - hide VP bar
+                setIsVpBarVisible(false);
+            }
+            
+            lastScrollY.current = currentScrollY;
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
 
     const menuSections = {
         'Sneed Hub': {
@@ -611,7 +634,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     width: '100%',
                     paddingTop: '8px',
                     borderTop: '1px solid rgba(255,255,255,0.1)',
-                    marginTop: '8px'
+                    marginTop: '8px',
+                    maxHeight: isVpBarVisible ? '100px' : '0',
+                    overflow: 'hidden',
+                    opacity: isVpBarVisible ? 1 : 0,
+                    transition: 'max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease, margin 0.3s ease',
+                    ...(isVpBarVisible ? {} : { paddingTop: 0, marginTop: 0, borderTop: 'none' })
                 }}>
                     {/* VP Display */}
                     <div style={{
