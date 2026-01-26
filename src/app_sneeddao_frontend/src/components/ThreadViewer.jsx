@@ -465,6 +465,7 @@ function ThreadViewer({
     
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
+    const [isThreadHeaderExpanded, setIsThreadHeaderExpanded] = useState(false);
     const [selectedNeuronIds, setSelectedNeuronIds] = useState(new Set());
     const [sortBy, setSortBy] = useState(() => {
         try {
@@ -2092,198 +2093,274 @@ function ThreadViewer({
 
     return (
         <div className="discussion-container">
-            {/* Thread Header */}
-            <div className="thread-header">
-                <h2>{getDisplayTitle()}</h2>
-                {threadDetails && threadDetails.body && (
-                    <div className="thread-description">
-                        <MarkdownBody text={threadDetails.body} style={{ color: theme.colors.secondaryText }} />
-                    </div>
-                )}
-                
-                {/* Thread Polls */}
-                {threadPolls.length > 0 && threadPolls.map(poll => (
-                    <Poll
-                        key={poll.id}
-                        poll={poll}
-                        onPollUpdate={async () => await refreshPoll(poll.id)}
-                        textLimits={textLimits}
-                        selectedNeurons={getSelectedNeurons()}
-                        allNeurons={allNeurons}
-                        totalVotingPower={totalVotingPower}
-                    />
-                ))}
-                
-                {/* Create Poll for Thread Button */}
-                {identity && threadDetails && threadDetails.created_by && 
-                 threadDetails.created_by.toString() === identity.getPrincipal().toString() && 
-                 threadPolls.length === 0 && !showPollForm.get('thread') && (
-                    <button
-                        onClick={() => setShowPollForm(prev => new Map(prev.set('thread', true)))}
-                        style={{
-                            backgroundColor: theme.colors.accent,
-                            color: theme.colors.primaryText,
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '8px 16px',
-                            cursor: 'pointer',
+            {/* Thread Header - Expandable */}
+            <div style={{
+                backgroundColor: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`,
+                marginBottom: '6px',
+                overflow: 'hidden'
+            }}>
+                {/* Thread Title Header - Always visible, clickable */}
+                <div 
+                    onClick={() => setIsThreadHeaderExpanded(!isThreadHeaderExpanded)}
+                    style={{
+                        padding: '12px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        borderBottom: isThreadHeaderExpanded ? `1px solid ${theme.colors.border}` : 'none'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                        <span style={{ 
                             fontSize: '14px',
-                            marginTop: '10px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                        }}
-                    >
-                        📊 Add Poll to Thread
-                    </button>
-                )}
-                
-                {/* Create Poll Form for Thread */}
-                {showPollForm.get('thread') && (
-                    <Poll
-                        showCreateForm={true}
-                        onCreatePoll={handlePollCreated}
-                        onCancelCreate={() => setShowPollForm(prev => {
-                            const newMap = new Map(prev);
-                            newMap.delete('thread');
-                            return newMap;
-                        })}
-                        threadId={threadId}
-                        textLimits={textLimits}
-                        selectedNeurons={getSelectedNeurons()}
-                        allNeurons={allNeurons}
-                        totalVotingPower={totalVotingPower}
-                    />
-                )}
-                {threadDetails && threadDetails.created_by && (
-                    <div className="thread-creator" style={{
-                        marginTop: '10px',
-                        padding: '8px 0',
-                        borderTop: '1px solid #3a3a3a',
-                        fontSize: '0.9rem',
-                        color: theme.colors.secondaryText
-                    }}>
-                        <span>Created by: </span>
-                        <PrincipalDisplay 
-                            principal={threadDetails.created_by}
-                            displayInfo={principalDisplayInfo.get(threadDetails.created_by.toString())}
-                            showCopyButton={false}
-                            short={true}
-                            style={{ color: theme.colors.accent, fontWeight: '500' }}
-                            isAuthenticated={isAuthenticated}
-                        />
-                        {threadDetails.created_at && (
-                            <span 
-                                style={{ marginLeft: '12px', color: theme.colors.mutedText, cursor: 'help' }}
-                                title={new Date(Number(threadDetails.created_at / 1000000n)).toLocaleString()}
-                            >
-                                {formatRelativeTime(threadDetails.created_at)}
-                            </span>
-                        )}
-                    </div>
-                )}
-                {proposalInfo && (
-                    <div className="proposal-info" style={{
-                        marginTop: '10px',
-                        padding: '12px',
-                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                        border: '1px solid rgba(52, 152, 219, 0.3)',
-                        borderRadius: '6px',
-                        fontSize: '0.9rem'
-                    }}>
-                        <div style={{ 
-                            color: theme.colors.accent,
+                            color: theme.colors.mutedText,
+                            transition: 'transform 0.2s',
+                            transform: isThreadHeaderExpanded ? 'none' : 'rotate(-90deg)',
+                            flexShrink: 0
+                        }}>▼</span>
+                        <h2 style={{ 
+                            margin: 0, 
+                            fontSize: '16px', 
                             fontWeight: '600',
-                            marginBottom: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
+                            color: theme.colors.primaryText,
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: isThreadHeaderExpanded ? 'normal' : 'nowrap'
+                        }}>{getDisplayTitle()}</h2>
+                    </div>
+                    {threadDetails && threadDetails.created_by && !isThreadHeaderExpanded && (
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            fontSize: '12px',
+                            color: theme.colors.mutedText,
+                            flexShrink: 0
                         }}>
-                            <span>📋</span>
-                            <span>Proposal Discussion</span>
+                            <PrincipalDisplay 
+                                principal={threadDetails.created_by}
+                                displayInfo={principalDisplayInfo.get(threadDetails.created_by.toString())}
+                                showCopyButton={false}
+                                short={true}
+                                style={{ fontSize: '12px' }}
+                                isAuthenticated={isAuthenticated}
+                            />
+                            {threadDetails.created_at && (
+                                <span title={new Date(Number(threadDetails.created_at / 1000000n)).toLocaleString()}>
+                                    {formatRelativeTime(threadDetails.created_at)}
+                                </span>
+                            )}
                         </div>
-                        <div style={{ color: theme.colors.secondaryText }}>
-                            This thread is discussing{' '}
-                            {hideProposalLink ? (
-                                <span style={{
+                    )}
+                </div>
+                
+                {/* Expanded Content */}
+                {isThreadHeaderExpanded && (
+                    <div style={{ padding: '16px' }}>
+                        {threadDetails && threadDetails.body && (
+                            <div className="thread-description" style={{ marginBottom: '12px' }}>
+                                <MarkdownBody text={threadDetails.body} style={{ color: theme.colors.secondaryText }} />
+                            </div>
+                        )}
+                        
+                        {/* Thread Polls */}
+                        {threadPolls.length > 0 && threadPolls.map(poll => (
+                            <Poll
+                                key={poll.id}
+                                poll={poll}
+                                onPollUpdate={async () => await refreshPoll(poll.id)}
+                                textLimits={textLimits}
+                                selectedNeurons={getSelectedNeurons()}
+                                allNeurons={allNeurons}
+                                totalVotingPower={totalVotingPower}
+                            />
+                        ))}
+                        
+                        {/* Create Poll for Thread Button */}
+                        {identity && threadDetails && threadDetails.created_by && 
+                         threadDetails.created_by.toString() === identity.getPrincipal().toString() && 
+                         threadPolls.length === 0 && !showPollForm.get('thread') && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowPollForm(prev => new Map(prev.set('thread', true)));
+                                }}
+                                style={{
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    marginTop: '10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}
+                            >
+                                📊 Add Poll to Thread
+                            </button>
+                        )}
+                        
+                        {/* Create Poll Form for Thread */}
+                        {showPollForm.get('thread') && (
+                            <Poll
+                                showCreateForm={true}
+                                onCreatePoll={handlePollCreated}
+                                onCancelCreate={() => setShowPollForm(prev => {
+                                    const newMap = new Map(prev);
+                                    newMap.delete('thread');
+                                    return newMap;
+                                })}
+                                threadId={threadId}
+                                textLimits={textLimits}
+                                selectedNeurons={getSelectedNeurons()}
+                                allNeurons={allNeurons}
+                                totalVotingPower={totalVotingPower}
+                            />
+                        )}
+                        
+                        {threadDetails && threadDetails.created_by && (
+                            <div className="thread-creator" style={{
+                                marginTop: '12px',
+                                padding: '8px 0',
+                                borderTop: `1px solid ${theme.colors.border}`,
+                                fontSize: '12px',
+                                color: theme.colors.secondaryText
+                            }}>
+                                <span>Created by: </span>
+                                <PrincipalDisplay 
+                                    principal={threadDetails.created_by}
+                                    displayInfo={principalDisplayInfo.get(threadDetails.created_by.toString())}
+                                    showCopyButton={false}
+                                    short={true}
+                                    style={{ color: theme.colors.accent, fontWeight: '500', fontSize: '12px' }}
+                                    isAuthenticated={isAuthenticated}
+                                />
+                                {threadDetails.created_at && (
+                                    <span 
+                                        style={{ marginLeft: '12px', color: theme.colors.mutedText, cursor: 'help' }}
+                                        title={new Date(Number(threadDetails.created_at / 1000000n)).toLocaleString()}
+                                    >
+                                        {formatRelativeTime(threadDetails.created_at)}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        
+                        {proposalInfo && (
+                            <div className="proposal-info" style={{
+                                marginTop: '10px',
+                                padding: '12px',
+                                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                                border: '1px solid rgba(52, 152, 219, 0.3)',
+                                borderRadius: '6px',
+                                fontSize: '12px'
+                            }}>
+                                <div style={{ 
                                     color: theme.colors.accent,
+                                    fontWeight: '600',
+                                    marginBottom: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}>
+                                    <span>📋</span>
+                                    <span>Proposal Discussion</span>
+                                </div>
+                                <div style={{ color: theme.colors.secondaryText }}>
+                                    This thread is discussing{' '}
+                                    {hideProposalLink ? (
+                                        <span style={{
+                                            color: theme.colors.accent,
+                                            fontWeight: '500'
+                                        }}>
+                                            Proposal #{proposalInfo.proposalId}
+                                            {proposalInfo.proposalData?.proposal?.[0]?.title && 
+                                                `: ${proposalInfo.proposalData.proposal[0].title}`}
+                                        </span>
+                                    ) : (
+                                        <a 
+                                            href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${proposalInfo.snsRoot || selectedSnsRoot || ''}`}
+                                            style={{
+                                                color: theme.colors.accent,
+                                                textDecoration: 'none',
+                                                fontWeight: '500'
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                        >
+                                            Proposal #{proposalInfo.proposalId}
+                                            {proposalInfo.proposalData?.proposal?.[0]?.title && 
+                                                `: ${proposalInfo.proposalData.proposal[0].title}`}
+                                        </a>
+                                    )}
+                                    {!proposalInfo.proposalData && (
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '11px', marginLeft: '8px' }}>
+                                            (Loading proposal details...)
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {mode === 'post' && focusedPostId && (
+                            <div className="post-focus-info" style={{
+                                backgroundColor: theme.colors.tertiaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                marginTop: '10px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <p style={{
+                                    margin: 0,
+                                    color: theme.colors.mutedText,
+                                    fontSize: '12px',
                                     fontWeight: '500'
                                 }}>
-                                    Proposal #{proposalInfo.proposalId}
-                                    {proposalInfo.proposalData?.proposal?.[0]?.title && 
-                                        `: ${proposalInfo.proposalData.proposal[0].title}`}
-                                </span>
-                            ) : (
+                                    Viewing <a 
+                                        href={`/post?postid=${focusedPostId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                        style={{
+                                            color: theme.colors.accent,
+                                            textDecoration: 'none',
+                                            fontWeight: '500'
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
+                                        Post #{focusedPostId}
+                                    </a> in context
+                                </p>
                                 <a 
-                                    href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${proposalInfo.snsRoot || selectedSnsRoot || ''}`}
+                                    href={`/thread?threadid=${threadId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
                                     style={{
                                         color: theme.colors.accent,
+                                        fontSize: '12px',
                                         textDecoration: 'none',
-                                        fontWeight: '500'
+                                        fontWeight: '500',
+                                        padding: '4px 8px',
+                                        borderRadius: '3px',
+                                        backgroundColor: theme.colors.primaryBg,
+                                        transition: 'background-color 0.2s'
                                     }}
-                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
                                 >
-                                    Proposal #{proposalInfo.proposalId}
-                                    {proposalInfo.proposalData?.proposal?.[0]?.title && 
-                                        `: ${proposalInfo.proposalData.proposal[0].title}`}
+                                    View Full Thread →
                                 </a>
-                            )}
-                            {!proposalInfo.proposalData && (
-                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '8px' }}>
-                                    (Loading proposal details...)
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                )}
-                {mode === 'post' && focusedPostId && (
-                    <div className="post-focus-info" style={{
-                        backgroundColor: theme.colors.secondaryBg,
-                        border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '4px',
-                        padding: '8px 12px',
-                        marginTop: '10px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                    }}>
-                        <p style={{
-                            margin: 0,
-                            color: '#95a5a6',
-                            fontSize: '13px',
-                            fontWeight: '500'
-                        }}>
-                            Viewing <a 
-                                href={`/post?postid=${focusedPostId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none',
-                                    fontWeight: '500'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Post #{focusedPostId}
-                            </a> in context
-                        </p>
-                        <a 
-                            href={`/thread?threadid=${threadId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
-                            style={{
-                                color: theme.colors.accent,
-                                fontSize: '13px',
-                                textDecoration: 'none',
-                                fontWeight: '500',
-                                padding: '4px 8px',
-                                borderRadius: '3px',
-                                backgroundColor: theme.colors.primaryBg,
-                                transition: 'background-color 0.2s'
-                            }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
-                        >
-                            View Full Thread →
-                        </a>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
