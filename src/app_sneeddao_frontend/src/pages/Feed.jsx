@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
@@ -14,6 +14,34 @@ import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 import MarkdownBody from '../components/MarkdownBody';
+
+// Format relative time (e.g., "5m", "2h", "3d")
+const formatRelativeTime = (timestamp) => {
+    const date = new Date(Number(timestamp) / 1000000); // Convert nanoseconds to milliseconds
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+
+    if (diffSeconds < 60) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+    if (diffWeeks < 4) return `${diffWeeks}w`;
+    if (diffMonths < 12) return `${diffMonths}mo`;
+    return `${diffYears}y`;
+};
+
+// Get full date for tooltip
+const getFullDate = (timestamp) => {
+    const date = new Date(Number(timestamp) / 1000000);
+    return date.toLocaleString();
+};
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
@@ -519,6 +547,9 @@ function Feed() {
     const [loadingLogos, setLoadingLogos] = useState(new Set());
     const [allSnses, setAllSnses] = useState([]);
     const [snsInstances, setSnsInstances] = useState([]);
+    
+    // Ref to store the randomized SNS display list - only computed once per data change
+    const randomizedSnsDisplayRef = useRef({ key: '', list: [] });
 
     // Create forum actor
     const createForumActor = () => {
@@ -824,11 +855,7 @@ function Feed() {
         return allSnses.find(sns => sns.rootCanisterId === rootStr);
     };
 
-    // Format date
-    const formatDate = (timestamp) => {
-        const date = new Date(Number(timestamp) / 1000000); // Convert nanoseconds to milliseconds
-        return date.toLocaleString();
-    };
+    // Format date - now using relative time from the top-level functions
 
     // Helper function to extract variant value from Motoko variant
     const extractVariant = (variant) => {
@@ -1553,8 +1580,11 @@ function Feed() {
                                 />
                             )}
                         </div>
-                        <span style={getStyles(theme).feedItemDate}>
-                            {formatDate(item.created_at)}
+                        <span 
+                            style={{...getStyles(theme).feedItemDate, cursor: 'help'}}
+                            title={getFullDate(item.created_at)}
+                        >
+                            {formatRelativeTime(item.created_at)}
                         </span>
                     </div>
                     
@@ -1826,10 +1856,18 @@ function Feed() {
                                     maxWidth: '100%'
                                 }}>
                                     {(() => {
-                                        // If we have more than 10 SNSes, randomize which ones to show
-                                        const displaySnses = snsesToShow.length > 10 
-                                            ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 10)
-                                            : snsesToShow;
+                                        // Create a stable key from the SNS list to detect changes
+                                        const snsKey = snsesToShow.map(s => s.root_canister_id).sort().join(',');
+                                        
+                                        // Only re-randomize if the source data has changed
+                                        if (randomizedSnsDisplayRef.current.key !== snsKey) {
+                                            const displaySnses = snsesToShow.length > 10 
+                                                ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 10)
+                                                : snsesToShow;
+                                            randomizedSnsDisplayRef.current = { key: snsKey, list: displaySnses };
+                                        }
+                                        
+                                        const displaySnses = randomizedSnsDisplayRef.current.list;
                                         
                                         return displaySnses.map((sns, index) => {
                                         const snsInfo = getSnsInfo(sns.root_canister_id);
