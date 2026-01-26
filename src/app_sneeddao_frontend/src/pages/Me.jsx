@@ -98,6 +98,24 @@ export default function Me() {
     const [cycleThresholdRed, setCycleThresholdRed] = useState('');
     const [cycleThresholdOrange, setCycleThresholdOrange] = useState('');
     const [settingsSaved, setSettingsSaved] = useState(false);
+    
+    // Color coding settings
+    const [principalColorCoding, setPrincipalColorCoding] = useState(() => {
+        try {
+            const saved = localStorage.getItem('principalColorCoding');
+            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+        } catch (error) {
+            return true;
+        }
+    });
+    const [neuronColorCoding, setNeuronColorCoding] = useState(() => {
+        try {
+            const saved = localStorage.getItem('neuronColorCoding');
+            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+        } catch (error) {
+            return true;
+        }
+    });
 
     const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
     const [canisterCycleThresholdRed, setCanisterCycleThresholdRed] = useState('');
@@ -937,6 +955,7 @@ export default function Me() {
                                             alignItems: 'center', 
                                             justifyContent: 'space-between',
                                             padding: '10px 0',
+                                            borderBottom: `1px solid ${theme.colors.border}`
                                         }}>
                                             <div>
                                                 <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
@@ -947,6 +966,89 @@ export default function Me() {
                                                 </div>
                                             </div>
                                             <ThemeToggle size="medium" showLabel={true} />
+                                        </div>
+                                        
+                                        {/* Principal Color Coding Setting */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            padding: '10px 0',
+                                            borderBottom: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
+                                                    Principal Color Coding
+                                                </div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                    Display principals with unique colors based on their ID
+                                                </div>
+                                            </div>
+                                            <label style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                cursor: 'pointer',
+                                                gap: '8px'
+                                            }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={principalColorCoding}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.checked;
+                                                        setPrincipalColorCoding(newValue);
+                                                        localStorage.setItem('principalColorCoding', JSON.stringify(newValue));
+                                                    }}
+                                                    style={{ 
+                                                        width: '18px', 
+                                                        height: '18px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                />
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
+                                                    {principalColorCoding ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </label>
+                                        </div>
+                                        
+                                        {/* Neuron Color Coding Setting */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            padding: '10px 0',
+                                        }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
+                                                    Neuron Color Coding
+                                                </div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                    Display neurons with unique colors based on their ID
+                                                </div>
+                                            </div>
+                                            <label style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                cursor: 'pointer',
+                                                gap: '8px'
+                                            }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={neuronColorCoding}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.checked;
+                                                        setNeuronColorCoding(newValue);
+                                                        localStorage.setItem('neuronColorCoding', JSON.stringify(newValue));
+                                                    }}
+                                                    style={{ 
+                                                        width: '18px', 
+                                                        height: '18px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                />
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
+                                                    {neuronColorCoding ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </label>
                                         </div>
                                     </div>
                                 )}

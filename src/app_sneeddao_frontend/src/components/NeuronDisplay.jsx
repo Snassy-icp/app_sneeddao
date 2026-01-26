@@ -42,8 +42,18 @@ export const NeuronDisplay = React.memo(({
         ? `${displayId.slice(0, 6)}...${displayId.slice(-6)}`
         : displayId;
 
-    // Get consistent color for this neuron ID
-    const neuronColor = getNeuronColor(displayId);
+    // Check if color coding is enabled (default to true if not set)
+    const colorCodingEnabled = (() => {
+        try {
+            const saved = localStorage.getItem('neuronColorCoding');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch {
+            return true;
+        }
+    })();
+    
+    // Get consistent color for this neuron ID (or use default if disabled)
+    const neuronColor = colorCodingEnabled ? getNeuronColor(displayId) : '#888888';
 
     // Handle right click (desktop)
     const handleContextMenu = useCallback((e) => {

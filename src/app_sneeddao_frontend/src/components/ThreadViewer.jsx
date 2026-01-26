@@ -332,26 +332,28 @@ function ThreadViewer({
         return upvotes - downvotes;
     };
 
-    // Format vote scores like Discussion.jsx
+    // Format vote scores with compact notation for large numbers
     const formatScore = (score) => {
         // Convert from e8s (divide by 10^8)
         const scoreInTokens = score / 100000000;
+        const absScore = Math.abs(scoreInTokens);
         
-        // Format with commas and only necessary decimal places
         if (scoreInTokens === 0) {
             return '0';
-        } else if (Math.abs(scoreInTokens) >= 1) {
-            // For values >= 1, show up to 2 decimal places, removing trailing zeros
-            return scoreInTokens.toLocaleString('en-US', {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2
-            });
+        } else if (absScore >= 1000000) {
+            // Millions: 1.2M, 3.5M, etc.
+            const millions = scoreInTokens / 1000000;
+            return millions.toFixed(1).replace(/\.0$/, '') + 'M';
+        } else if (absScore >= 1000) {
+            // Thousands: 1.1K, 238K, etc.
+            const thousands = scoreInTokens / 1000;
+            return thousands.toFixed(1).replace(/\.0$/, '') + 'K';
+        } else if (absScore >= 1) {
+            // For values >= 1, show up to 1 decimal place
+            return scoreInTokens.toFixed(1).replace(/\.0$/, '');
         } else {
-            // For values < 1, show up to 8 decimal places, removing trailing zeros
-            return scoreInTokens.toLocaleString('en-US', {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 8
-            });
+            // For values < 1, show up to 2 decimal places
+            return scoreInTokens.toFixed(2).replace(/\.?0+$/, '');
         }
     };
 
@@ -2957,9 +2959,10 @@ function ThreadViewer({
                                 <span style={{ 
                                     color: (Number(post.upvote_score) - Number(post.downvote_score)) > 0 ? '#6b8e6b' : 
                                            (Number(post.upvote_score) - Number(post.downvote_score)) < 0 ? '#b85c5c' : theme.colors.mutedText,
-                                    fontSize: '14px',
-                                    fontWeight: 'bold',
-                                    minWidth: '30px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                                    minWidth: '24px',
                                     textAlign: 'center',
                                     padding: '0 2px'
                                 }}>

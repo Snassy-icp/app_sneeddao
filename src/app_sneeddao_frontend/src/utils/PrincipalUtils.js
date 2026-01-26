@@ -185,7 +185,18 @@ export const PrincipalDisplay = React.memo(({
     const isPremium = premiumContext?.isPremiumMember?.(principal) || false;
 
     const formatted = formatPrincipal(principal, displayInfo);
-    const principalColor = getPrincipalColor(principal);
+    
+    // Check if color coding is enabled (default to true if not set)
+    const colorCodingEnabled = (() => {
+        try {
+            const saved = localStorage.getItem('principalColorCoding');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch {
+            return true;
+        }
+    })();
+    const principalColor = colorCodingEnabled ? getPrincipalColor(principal) : '#888888';
+    
     const principalId = principal?.toString();
     const currentNickname = formatted?.nickname || displayInfo?.nickname || '';
 
