@@ -357,6 +357,46 @@ function ThreadViewer({
         }
     };
 
+    // Format relative time (e.g., "2h ago", "3d ago")
+    const formatRelativeTime = (timestamp) => {
+        const now = Date.now();
+        const postTime = Number(timestamp) / 1000000; // Convert from nanoseconds
+        const diffMs = now - postTime;
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHour = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHour / 24);
+        const diffWeek = Math.floor(diffDay / 7);
+        const diffMonth = Math.floor(diffDay / 30);
+        const diffYear = Math.floor(diffDay / 365);
+        
+        if (diffSec < 60) return 'just now';
+        if (diffMin < 60) return `${diffMin}m`;
+        if (diffHour < 24) return `${diffHour}h`;
+        if (diffDay < 7) return `${diffDay}d`;
+        if (diffWeek < 5) return `${diffWeek}w`;
+        if (diffMonth < 12) return `${diffMonth}mo`;
+        return `${diffYear}y`;
+    };
+
+    // Get full date string for tooltip
+    const getFullDate = (timestamp) => {
+        return new Date(Number(timestamp) / 1000000).toLocaleString();
+    };
+
+    // Reddit-style outline arrow icons
+    const UpArrow = ({ color = 'currentColor', size = 16 }) => (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 19V5M5 12l7-7 7 7"/>
+        </svg>
+    );
+    
+    const DownArrow = ({ color = 'currentColor', size = 16 }) => (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12l7 7 7-7"/>
+        </svg>
+    );
+
 
 
     // Format voting power for display like Discussion.jsx
@@ -2133,8 +2173,11 @@ function ThreadViewer({
                             isAuthenticated={isAuthenticated}
                         />
                         {threadDetails.created_at && (
-                            <span style={{ marginLeft: '12px', color: theme.colors.mutedText }}>
-                                {new Date(Number(threadDetails.created_at / 1000000n)).toLocaleDateString()}
+                            <span 
+                                style={{ marginLeft: '12px', color: theme.colors.mutedText, cursor: 'help' }}
+                                title={new Date(Number(threadDetails.created_at / 1000000n)).toLocaleString()}
+                            >
+                                {formatRelativeTime(threadDetails.created_at)}
                             </span>
                         )}
                     </div>
@@ -2816,11 +2859,11 @@ function ThreadViewer({
                             short={true}
                             isAuthenticated={isAuthenticated}
                         /></span>
-                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                            {isNarrowScreen 
-                                ? new Date(Number(post.created_at) / 1000000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                                : new Date(Number(post.created_at) / 1000000).toLocaleString()
-                            }
+                        <span 
+                            style={{ color: theme.colors.mutedText, cursor: 'help' }}
+                            title={getFullDate(post.created_at)}
+                        >
+                            {formatRelativeTime(post.created_at)}
                         </span>
                         {viewMode === 'flat' && post.reply_to_post_id && post.reply_to_post_id.length > 0 && (() => {
                             const parentPost = findPostById(discussionPosts, post.reply_to_post_id[0]);
@@ -2951,9 +2994,14 @@ function ThreadViewer({
                                     style={getVoteButtonStyles(post.id, 'up')}
                                     title={getVoteButtonTooltip(post.id, 'up')}
                                 >
-                                    ▲{isNarrowScreen ? '' : ` ${votingStates.get(post.id.toString()) === 'voting' ? '...' : 
-                                        totalVotingPower === 0 ? 'No VP' : 
-                                        `${formatVotingPowerDisplay(totalVotingPower)}`}`}
+                                    <UpArrow size={16} />
+                                    {!isNarrowScreen && (
+                                        <span style={{ marginLeft: '2px' }}>
+                                            {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
+                                                totalVotingPower === 0 ? '' : 
+                                                formatVotingPowerDisplay(totalVotingPower)}
+                                        </span>
+                                    )}
                                 </button>
 
                                 {/* Score Display - Shows total post score */}
@@ -3004,9 +3052,14 @@ function ThreadViewer({
                                     style={getVoteButtonStyles(post.id, 'down')}
                                     title={getVoteButtonTooltip(post.id, 'down')}
                                 >
-                                    ▼{isNarrowScreen ? '' : ` ${votingStates.get(post.id.toString()) === 'voting' ? '...' : 
-                                        totalVotingPower === 0 ? 'No VP' : 
-                                        `${formatVotingPowerDisplay(totalVotingPower)}`}`}
+                                    <DownArrow size={16} />
+                                    {!isNarrowScreen && (
+                                        <span style={{ marginLeft: '2px' }}>
+                                            {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
+                                                totalVotingPower === 0 ? '' : 
+                                                formatVotingPowerDisplay(totalVotingPower)}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
 
