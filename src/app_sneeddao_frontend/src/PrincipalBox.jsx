@@ -103,7 +103,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     }
 
     return (
-      <div className="principal-box-container" style={{ position: 'relative' }}>
+      <div className="principal-box-container" ref={popupRef} style={{ position: 'relative' }}>
           <button 
               className={compact ? "principal-button-compact" : "principal-button"} 
               onClick={() => setShowPopup(!showPopup)}
@@ -124,8 +124,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           </button>
           {showPopup && (
               <div 
-                  className="principal-popup" 
-                  ref={popupRef}
+                  className="principal-popup"
                   style={{
                       position: 'absolute',
                       top: '100%',

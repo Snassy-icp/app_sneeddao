@@ -43,6 +43,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const lastScrollY = useRef(0);
     const lastToggleTime = useRef(0);
     const menuRef = useRef(null);
+    const menuToggleRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
@@ -75,7 +76,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // Add click outside handler
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
+            // Don't close if clicking on the menu toggle area or the dropdown itself
+            const isClickOnToggle = menuToggleRef.current && menuToggleRef.current.contains(event.target);
+            const isClickOnMenu = menuRef.current && menuRef.current.contains(event.target);
+            
+            if (!isClickOnToggle && !isClickOnMenu) {
                 setIsMenuOpen(false);
             }
         };
@@ -418,6 +423,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         >
             {/* Top Row: Logo, Menu Title, SNS Dropdown, Login - All on same row */}
             <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '15px' }}>
+                <div ref={menuToggleRef} style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1 }}>
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                     <img
                         src={customLogo || "sneed_logo.png"}
@@ -457,7 +463,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         display: 'flex',
                         alignItems: 'center',
                         cursor: 'pointer',
-                        flex: 1,
                         gap: '10px'
                     }}
                     onClick={() => {
@@ -501,6 +506,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     >
                         {isHeaderCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
                     </button>
+                </div>
                 </div>
 
                 {/* SNS Dropdown */}

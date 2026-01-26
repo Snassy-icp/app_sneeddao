@@ -51,8 +51,20 @@ const RESPONSIVE_CSS = `
             flex-direction: column !important;
             gap: 1.5rem !important;
         }
+        .sneedex-offer-left-column {
+            display: contents !important;
+        }
+        .sneedex-offer-assets-card {
+            order: 1 !important;
+        }
         .sneedex-offer-right-column {
             order: 2 !important;
+        }
+        .sneedex-offer-bid-history-card {
+            order: 3 !important;
+        }
+        .sneedex-offer-details-card {
+            order: 4 !important;
         }
     }
 `;
@@ -2324,9 +2336,9 @@ function SneedexOffer() {
                 
                 <div style={styles.mainContent} className="sneedex-offer-main-content">
                     {/* Left Column - Assets & Details */}
-                    <div style={styles.leftColumn}>
+                    <div style={styles.leftColumn} className="sneedex-offer-left-column">
                         {/* Assets */}
-                        <div style={styles.card}>
+                        <div style={styles.card} className="sneedex-offer-assets-card">
                             <h3 style={styles.cardTitle}>
                                 <FaCubes /> Assets in this Offer
                                 {totalUsdEstimate !== null && totalUsdEstimate > 0 ? (
@@ -4342,7 +4354,7 @@ function SneedexOffer() {
                         })()}
                         
                         {/* Bids History */}
-                        <div style={styles.card}>
+                        <div style={styles.card} className="sneedex-offer-bid-history-card">
                             <h3 style={styles.cardTitle}>
                                 <FaGavel /> Bid History ({bids.length})
                             </h3>
@@ -5504,7 +5516,7 @@ function SneedexOffer() {
                         </div>
                         
                         {/* Offer Info */}
-                        <div style={styles.card}>
+                        <div style={styles.card} className="sneedex-offer-details-card">
                             <h3 style={styles.cardTitle}>Offer Details</h3>
                             <div style={{ fontSize: '0.9rem', color: theme.colors.mutedText }}>
                                 <div style={{ marginBottom: '0.5rem' }}>
