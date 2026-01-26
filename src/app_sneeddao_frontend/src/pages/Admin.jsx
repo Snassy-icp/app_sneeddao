@@ -382,6 +382,29 @@ function Admin() {
                         <h2 style={{ margin: 0 }}>💰 Profits</h2>
                         <p style={{ color: '#aaa', margin: 0 }}>View profits from all products with USD estimates</p>
                     </Link>
+
+                    <Link 
+                        to="/admin/tokens"
+                        style={{
+                            backgroundColor: '#2a2a2a',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            border: '1px solid #3a3a3a',
+                            transition: 'transform 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        <h2 style={{ margin: 0 }}>Token Whitelist</h2>
+                        <p style={{ color: '#888', margin: 0 }}>Manage whitelisted tokens for dropdowns</p>
+                    </Link>
                 </div>
             </main>
         </div>

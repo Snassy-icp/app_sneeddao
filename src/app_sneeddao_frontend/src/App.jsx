@@ -51,6 +51,7 @@ import SneedPremiumAdmin from './pages/admin/SneedPremium';
 import CanisterGroupsAdmin from './pages/admin/CanisterGroups';
 import NetworkAdmin from './pages/admin/Network';
 import ProfitsAdmin from './pages/admin/Profits';
+import TokensAdmin from './pages/admin/Tokens';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -215,6 +216,7 @@ function App() {
                     <Route path="/admin/canisters" element={<CanisterGroupsAdmin />} />
                     <Route path="/admin/network" element={<NetworkAdmin />} />
                     <Route path="/admin/profits" element={<ProfitsAdmin />} />
+                    <Route path="/admin/tokens" element={<TokensAdmin />} />
                     </Routes>
                     </Layout>
                   </NamingProvider>
