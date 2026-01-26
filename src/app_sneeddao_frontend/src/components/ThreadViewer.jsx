@@ -3187,7 +3187,7 @@ function ThreadViewer({
                                             padding: '4px 0',
                                             minWidth: '140px',
                                             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                            zIndex: 100
+                                            zIndex: 9999
                                         }}>
                                             {/* Tip Option */}
                                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (

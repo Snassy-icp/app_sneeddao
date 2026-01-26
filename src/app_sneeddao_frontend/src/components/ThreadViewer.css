@@ -174,20 +174,6 @@
     margin: 4px 0 !important;
 }
 
-.post-item.focused-post::before {
-    content: 'FOCUSED';
-    position: absolute;
-    top: -1px;
-    right: 8px;
-    background: var(--color-accent);
-    color: #ffffff;
-    padding: 2px 8px;
-    border-radius: 0 0 4px 4px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
 /* Post Content */
 .post-content {
     width: 100%;
@@ -289,13 +275,6 @@
     
     .post-item {
         padding: 6px 0 6px 6px;
-    }
-    
-    .post-item.focused-post::before {
-        position: static;
-        display: block;
-        margin-bottom: 1rem;
-        text-align: center;
     }
     
     .thread-post-header {
