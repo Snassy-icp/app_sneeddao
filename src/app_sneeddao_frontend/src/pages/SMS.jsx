@@ -717,10 +717,11 @@ const SMS = () => {
                                     color: theme.colors.secondaryText, 
                                     fontSize: '14px',
                                     overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
+                                    maxHeight: '40px'
                                 }}>
-                                    {message.body}
+                                    <MarkdownBody 
+                                        text={message.body.length > 150 ? message.body.substring(0, 150) + '...' : message.body}
+                                    />
                                 </div>
                                 
                                 {/* Action buttons */}

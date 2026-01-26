@@ -15,6 +15,7 @@ import {
 } from '../utils/BackendUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import Header from '../components/Header';
+import MarkdownBody from '../components/MarkdownBody';
 import './Posts.css';
 
 const Posts = () => {
@@ -363,7 +364,10 @@ const Posts = () => {
                     </div>
                 </div>
                 <div className="post-body">
-                    <p style={{ color: theme.colors.secondaryText }}>{post.body}</p>
+                    <MarkdownBody 
+                        text={post.body} 
+                        style={{ color: theme.colors.secondaryText }}
+                    />
                 </div>
                 {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
                     <div className="reply-context" style={{ color: theme.colors.secondaryText }}>
@@ -455,7 +459,10 @@ const Posts = () => {
                     </div>
                 </div>
                 <div className="post-body">
-                    <p style={{ color: theme.colors.secondaryText }}>{thread.body}</p>
+                    <MarkdownBody 
+                        text={thread.body} 
+                        style={{ color: theme.colors.secondaryText }}
+                    />
                 </div>
             </div>
         );
