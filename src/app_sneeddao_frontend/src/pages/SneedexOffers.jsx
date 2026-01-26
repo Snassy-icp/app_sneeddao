@@ -50,6 +50,7 @@ function SneedexOffers() {
     const [snsSymbols, setSnsSymbols] = useState(new Map()); // governance_id -> token symbol
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
     const [tokenLogos, setTokenLogos] = useState(new Map()); // ledger_id -> logo URL
+    const [tokenMetadataCache, setTokenMetadataCache] = useState(new Map()); // ledger_id -> { symbol, name, decimals, logo }
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // canister_id -> { totalStake, neuronCount }
     
     // USD pricing state
@@ -111,16 +112,22 @@ function SneedexOffers() {
         fetchTokens();
     }, [identity]);
     
-    // Helper to get token info from whitelisted tokens
+    // Helper to get token info from whitelisted tokens or cached metadata
     const getTokenInfo = useCallback((ledgerId) => {
+        // First check whitelisted tokens
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: token.logo?.[0] || null };
         }
+        // Then check dynamically fetched metadata cache
+        const cachedMeta = tokenMetadataCache.get(ledgerId);
+        if (cachedMeta) {
+            return cachedMeta;
+        }
         // Fallback for known tokens
         if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: null };
         return { symbol: 'TOKEN', decimals: 8, logo: null };
-    }, [whitelistedTokens]);
+    }, [whitelistedTokens, tokenMetadataCache]);
     
     // Helper to get SNS info by governance id
     const getSnsInfo = useCallback((governanceId) => {
@@ -215,9 +222,11 @@ function SneedexOffers() {
         }
     }, [neuronInfo, identity]);
     
-    // Fetch token logo from ledger metadata
-    const fetchTokenLogo = useCallback(async (ledgerId) => {
-        if (tokenLogos.has(ledgerId)) return;
+    // Fetch token metadata from ledger (logo, symbol, name, decimals)
+    const fetchTokenMetadata = useCallback(async (ledgerId) => {
+        // Skip if we already have this token in whitelist or cache
+        if (tokenMetadataCache.has(ledgerId)) return;
+        if (whitelistedTokens.some(t => t.ledger_id.toString() === ledgerId)) return;
         
         try {
             const agent = new HttpAgent({ host: getHost(), identity });
@@ -228,15 +237,35 @@ function SneedexOffers() {
             const ledgerActor = createLedgerActor(ledgerId, { agent });
             const metadata = await ledgerActor.icrc1_metadata();
             
-            // Find logo in metadata
-            const logoEntry = metadata.find(([key]) => key === 'icrc1:logo');
-            if (logoEntry && logoEntry[1] && 'Text' in logoEntry[1]) {
-                setTokenLogos(prev => new Map(prev).set(ledgerId, logoEntry[1].Text));
+            // Extract token metadata from response
+            let symbol = 'TOKEN';
+            let name = 'Unknown Token';
+            let decimals = 8;
+            let logo = null;
+            
+            for (const [key, value] of metadata) {
+                if ((key === 'icrc1:symbol' || key === 'symbol') && value?.Text) {
+                    symbol = value.Text;
+                } else if ((key === 'icrc1:name' || key === 'name') && value?.Text) {
+                    name = value.Text;
+                } else if ((key === 'icrc1:decimals' || key === 'decimals') && value?.Nat !== undefined) {
+                    decimals = Number(value.Nat);
+                } else if ((key === 'icrc1:logo' || key === 'logo') && value?.Text) {
+                    logo = value.Text;
+                }
+            }
+            
+            // Cache the metadata
+            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals, logo }));
+            
+            // Also update tokenLogos for backward compatibility
+            if (logo) {
+                setTokenLogos(prev => new Map(prev).set(ledgerId, logo));
             }
         } catch (e) {
-            console.warn('Failed to fetch token logo:', e);
+            console.warn('Failed to fetch token metadata:', e);
         }
-    }, [tokenLogos, identity]);
+    }, [tokenMetadataCache, whitelistedTokens, identity]);
     
     // Fetch ICP Neuron Manager info (total staked + maturity across all neurons)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
@@ -414,8 +443,8 @@ function SneedexOffers() {
                         fetchNeuronInfo(details.governance_id, details.neuron_id);
                     }
                 } else if (details.type === 'ICRC1Token') {
-                    // Fetch token logo
-                    fetchTokenLogo(details.ledger_id);
+                    // Fetch token metadata (symbol, name, decimals, logo)
+                    fetchTokenMetadata(details.ledger_id);
                 } else if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
                     // Only fetch live neuron manager info if no cached value is available
                     // (for backwards compatibility with offers activated before caching was added)
@@ -425,7 +454,7 @@ function SneedexOffers() {
                 }
             });
         });
-    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo, fetchTokenLogo, fetchNeuronManagerInfo]);
+    }, [offers, fetchSnsLogoForOffer, fetchSnsSymbol, fetchNeuronInfo, fetchTokenMetadata, fetchNeuronManagerInfo]);
     
     // Helper to get SNS ledger from governance ID
     const getSnsLedgerFromGovernance = useCallback((governanceId) => {

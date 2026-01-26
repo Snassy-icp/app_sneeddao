@@ -79,6 +79,7 @@ function SneedexMy() {
     // USD pricing state
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price per token
     const [snsData, setSnsData] = useState([]); // SNS data for looking up ledger IDs
+    const [tokenMetadataCache, setTokenMetadataCache] = useState(new Map()); // ledger_id -> { symbol, name, decimals }
     
     // Filter state
     const [offerFilter, setOfferFilter] = useState('all'); // all, active, completed, draft, cancelled, expired, reclaimed, claimed
@@ -116,16 +117,84 @@ function SneedexMy() {
         fetchTokens();
     }, [identity]);
     
-    // Helper to get token info from whitelisted tokens
+    // Helper to get token info from whitelisted tokens or cached metadata
     const getTokenInfo = useCallback((ledgerId) => {
+        // First check whitelisted tokens
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
         }
+        // Then check dynamically fetched metadata cache
+        const cachedMeta = tokenMetadataCache.get(ledgerId);
+        if (cachedMeta) {
+            return cachedMeta;
+        }
         // Fallback for known tokens
         if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
         return { symbol: 'TOKEN', decimals: 8 };
-    }, [whitelistedTokens]);
+    }, [whitelistedTokens, tokenMetadataCache]);
+    
+    // Fetch token metadata from ledger for non-whitelisted tokens
+    const fetchTokenMetadata = useCallback(async (ledgerId) => {
+        // Skip if we already have this token in whitelist or cache
+        if (tokenMetadataCache.has(ledgerId)) return;
+        if (whitelistedTokens.some(t => t.ledger_id.toString() === ledgerId)) return;
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return; // Skip ICP
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://icp0.io' : 'http://localhost:4943';
+            const agent = await import('@dfinity/agent').then(m => new m.HttpAgent({ host, identity }));
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Extract token metadata from response
+            let symbol = 'TOKEN';
+            let name = 'Unknown Token';
+            let decimals = 8;
+            
+            for (const [key, value] of metadata) {
+                if ((key === 'icrc1:symbol' || key === 'symbol') && value?.Text) {
+                    symbol = value.Text;
+                } else if ((key === 'icrc1:name' || key === 'name') && value?.Text) {
+                    name = value.Text;
+                } else if ((key === 'icrc1:decimals' || key === 'decimals') && value?.Nat !== undefined) {
+                    decimals = Number(value.Nat);
+                }
+            }
+            
+            // Cache the metadata
+            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals }));
+        } catch (e) {
+            console.warn('Failed to fetch token metadata:', e);
+        }
+    }, [tokenMetadataCache, whitelistedTokens, identity]);
+    
+    // Fetch metadata for payment tokens when offers/bids load
+    useEffect(() => {
+        const ledgerIds = new Set();
+        
+        // Collect ledger IDs from offers
+        myOffers.forEach(offer => {
+            ledgerIds.add(offer.price_token_ledger.toString());
+        });
+        
+        // Collect ledger IDs from bid offer info
+        Object.values(bidOfferInfo).forEach(info => {
+            if (info.price_token_ledger) {
+                ledgerIds.add(info.price_token_ledger);
+            }
+        });
+        
+        // Fetch metadata for any non-whitelisted tokens
+        ledgerIds.forEach(ledgerId => {
+            fetchTokenMetadata(ledgerId);
+        });
+    }, [myOffers, bidOfferInfo, fetchTokenMetadata]);
     
     // Filter and sort offers by created_at (newest first) and paginate
     const filteredOffers = useMemo(() => {
