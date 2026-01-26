@@ -33,6 +33,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [isVpBarVisible, setIsVpBarVisible] = useState(true);
     const lastScrollY = useRef(0);
+    const lastToggleTime = useRef(0);
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
@@ -138,7 +139,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // Scroll listener for VP bar visibility
     useEffect(() => {
         let ticking = false;
-        const scrollDeltaThreshold = 15; // Minimum scroll distance before toggling
+        const scrollDeltaThreshold = 20; // Minimum scroll distance before toggling
+        const toggleCooldown = 300; // Minimum ms between visibility toggles
         
         const handleScroll = () => {
             if (ticking) return;
@@ -147,22 +149,37 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             requestAnimationFrame(() => {
                 const currentScrollY = window.scrollY;
                 const scrollDelta = currentScrollY - lastScrollY.current;
+                const now = Date.now();
+                const timeSinceLastToggle = now - lastToggleTime.current;
                 
-                // Only change visibility if scroll delta exceeds threshold
-                if (Math.abs(scrollDelta) > scrollDeltaThreshold) {
-                    if (scrollDelta < 0) {
-                        // Scrolling up (page moving down) - show VP bar
+                // Always show at top of page (no cooldown needed)
+                if (currentScrollY < 10) {
+                    if (!isVpBarVisible) {
                         setIsVpBarVisible(true);
-                    } else if (currentScrollY > 50) {
-                        // Scrolling down (page moving up) and past threshold - hide VP bar
-                        setIsVpBarVisible(false);
+                        lastToggleTime.current = now;
                     }
                     lastScrollY.current = currentScrollY;
+                    ticking = false;
+                    return;
                 }
                 
-                // Always show at top of page
-                if (currentScrollY < 10) {
-                    setIsVpBarVisible(true);
+                // Only change visibility if scroll delta exceeds threshold AND cooldown has passed
+                if (Math.abs(scrollDelta) > scrollDeltaThreshold && timeSinceLastToggle > toggleCooldown) {
+                    if (scrollDelta < 0 && !isVpBarVisible) {
+                        // Scrolling up (page moving down) - show VP bar
+                        setIsVpBarVisible(true);
+                        lastToggleTime.current = now;
+                        lastScrollY.current = currentScrollY;
+                    } else if (scrollDelta > 0 && currentScrollY > 50 && isVpBarVisible) {
+                        // Scrolling down (page moving up) and past threshold - hide VP bar
+                        setIsVpBarVisible(false);
+                        lastToggleTime.current = now;
+                        lastScrollY.current = currentScrollY;
+                    }
+                }
+                
+                // Update scroll position for delta calculation if we've scrolled significantly
+                if (Math.abs(scrollDelta) > scrollDeltaThreshold * 2) {
                     lastScrollY.current = currentScrollY;
                 }
                 
@@ -172,7 +189,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
 
         window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+    }, [isVpBarVisible]);
 
     const menuSections = {
         'Sneed Hub': {
