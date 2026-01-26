@@ -2151,7 +2151,6 @@ function SneedexOffer() {
         },
         bidder: {
             fontSize: '0.9rem',
-            fontFamily: 'monospace',
             color: theme.colors.primaryText,
             fontWeight: '500',
         },
@@ -4360,8 +4359,7 @@ function SneedexOffer() {
                                                         <PrincipalDisplay 
                                                             principal={bid.bidder}
                                                             short={true}
-                                                            showCopyButton={false}
-                                                            style={{ fontSize: 'inherit', color: 'inherit' }}
+                                                            showCopyButton={true}
                                                             isAuthenticated={isAuthenticated}
                                                         />
                                                     </div>
