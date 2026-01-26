@@ -2,6 +2,13 @@
 .discussion-container {
     color: var(--color-primary-text);
     background: transparent;
+    --post-indent: 10px; /* Default indent per nesting level */
+}
+
+@media (max-width: 768px) {
+    .discussion-container {
+        --post-indent: 6px; /* Smaller indent on mobile */
+    }
 }
 
 .thread-header {
@@ -119,6 +126,13 @@
     display: flex;
     flex-direction: column;
     gap: 0;
+    --post-indent: 10px; /* Fallback indent per nesting level */
+}
+
+@media (max-width: 768px) {
+    .posts-container {
+        --post-indent: 6px; /* Smaller indent on mobile */
+    }
 }
 
 .posts-container.flat .post-item {

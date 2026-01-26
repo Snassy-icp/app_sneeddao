@@ -2697,8 +2697,8 @@ function ThreadViewer({
                 className={`post-item ${isFocused ? 'focused-post' : ''}`}
                 data-depth={depth}
                 style={{ 
-                    // Reduced indentation: 12px per level instead of 20px
-                    marginLeft: isFlat ? 0 : `${depth * 12}px`,
+                    // Minimal indentation - CSS will handle the actual value via custom property
+                    marginLeft: isFlat ? 0 : `calc(var(--post-indent, 8px) * ${depth})`,
                     // No right margin - all posts flush on right
                     marginRight: 0,
                     // Minimal padding - no right padding for nested flush layout
