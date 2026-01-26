@@ -5099,18 +5099,19 @@ function Wallet() {
                     onAdd={() => navigate('/create_icp_neuron')}
                     theme={theme}
                 />
-                <div style={{ marginBottom: '10px', marginTop: '-5px' }}>
-                    <Link 
-                        to="/help/icp-neuron-manager" 
-                        style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        Learn how it works →
-                    </Link>
-                </div>
                 {neuronManagersExpanded && (
                     <div style={{ marginBottom: '20px' }}>
+                        {/* Learn how it works link */}
+                        <div style={{ marginBottom: '12px' }}>
+                            <Link 
+                                to="/help/icp-neuron-manager" 
+                                style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Learn how it works →
+                            </Link>
+                        </div>
                         {/* Add existing manager input */}
                         <div style={{ 
                             backgroundColor: theme.colors.secondaryBg, 
@@ -6000,18 +6001,19 @@ function Wallet() {
                     isRefreshing={refreshingTrackedCanisters}
                     theme={theme}
                 />
-                <div style={{ marginBottom: '10px', marginTop: '-5px' }}>
-                    <Link 
-                        to="/canisters" 
-                        style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        Manage custom canister groups →
-                    </Link>
-                </div>
                 {trackedCanistersExpanded && (
                     <div style={{ marginBottom: '20px' }}>
+                        {/* Manage custom canister groups link */}
+                        <div style={{ marginBottom: '12px' }}>
+                            <Link 
+                                to="/canisters" 
+                                style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Manage custom canister groups →
+                            </Link>
+                        </div>
                         {/* Add canister input */}
                         <div style={{ 
                             backgroundColor: theme.colors.secondaryBg, 
