@@ -1,5 +1,6 @@
 import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
+import Buffer "mo:base/Buffer";
 
 import T "Types";
 import Utils "Utils";
@@ -135,13 +136,13 @@ module {
     };
     
     /// Verify caller and sneedex have owner hotkeys on the neuron
-    /// Returns ALL principals with any permissions (for complete removal during escrow)
+    /// Returns ALL permissions for each principal (so we can remove exactly what they have)
     public func verifyNeuronHotkeys(
         governanceCanisterId : Principal,
         neuronId : T.NeuronId,
         caller : Principal,
         sneedex : Principal
-    ) : async* T.Result<[Principal]> {
+    ) : async* T.Result<[T.NeuronPermission]> {
         let governance = getSNSGovernance(governanceCanisterId);
         
         try {
@@ -161,9 +162,8 @@ module {
                         return #err(#GovernanceError("Sneedex canister does not have owner permissions. Please add it as a hotkey first."));
                     };
                     
-                    // Return ALL principals (not just owners) so we remove everyone during escrow
-                    let allPrincipals = Utils.getAllPrincipals(neuron.permissions);
-                    #ok(allPrincipals);
+                    // Return ALL permissions for each principal so we can remove exactly what they have
+                    #ok(neuron.permissions);
                 };
                 case (?#Error(e)) {
                     #err(#GovernanceError(e.error_message));
@@ -178,31 +178,56 @@ module {
     };
     
     /// Remove all hotkeys from a neuron except sneedex
+    /// Takes the actual permissions for each principal so we only remove what they have
     public func escrowNeuron(
         governanceCanisterId : Principal,
         neuronId : T.NeuronId,
         sneedex : Principal,
-        originalOwners : [Principal]
+        allPermissions : [T.NeuronPermission]
     ) : async* T.Result<[Principal]> {
         let governance = getSNSGovernance(governanceCanisterId);
         
-        // Snapshot hotkeys (excluding sneedex)
-        let snapshot = Utils.removePrincipal(sneedex, originalOwners);
+        // Build snapshot of principals to restore (excluding sneedex)
+        let snapshotBuffer = Buffer.Buffer<Principal>(4);
         
-        // Remove ALL permissions from all hotkeys except sneedex
-        for (owner in snapshot.vals()) {
-            try {
-                let _ = await governance.manage_neuron({
-                    subaccount = neuronId.id;
-                    command = ?#RemoveNeuronPermissions({
-                        permissions_to_remove = ?{ permissions = T.ALL_PERMISSIONS };
-                        principal_id = ?owner;
-                    });
-                });
-            } catch (_e) {
-                return #err(#GovernanceError("Failed to remove permissions from hotkey"));
+        // Remove permissions from all principals except sneedex
+        // Use their ACTUAL permissions to avoid "missing permission" errors
+        for (perm in allPermissions.vals()) {
+            switch (perm.principal) {
+                case (?p) {
+                    if (not Principal.equal(p, sneedex)) {
+                        // Add to snapshot for later restoration
+                        snapshotBuffer.add(p);
+                        
+                        // Only remove if they have permissions
+                        if (perm.permission_type.size() > 0) {
+                            try {
+                                let response = await governance.manage_neuron({
+                                    subaccount = neuronId.id;
+                                    command = ?#RemoveNeuronPermissions({
+                                        // Use the ACTUAL permissions this principal has
+                                        permissions_to_remove = ?{ permissions = perm.permission_type };
+                                        principal_id = ?p;
+                                    });
+                                });
+                                // Check for errors in the response
+                                switch (response.command) {
+                                    case (?#Error(e)) {
+                                        return #err(#GovernanceError("Failed to remove permissions: " # e.error_message));
+                                    };
+                                    case _ {}; // Success or other response
+                                };
+                            } catch (_e) {
+                                return #err(#GovernanceError("Failed to remove permissions from hotkey"));
+                            };
+                        };
+                    };
+                };
+                case null {};
             };
         };
+        
+        let snapshot = Buffer.toArray(snapshotBuffer);
         
         // Verify that only sneedex remains with permissions
         try {
@@ -238,30 +263,44 @@ module {
         // Re-add all original owner hotkeys
         for (owner in originalOwners.vals()) {
             try {
-                let _ = await governance.manage_neuron({
+                let response = await governance.manage_neuron({
                     subaccount = neuronId.id;
                     command = ?#AddNeuronPermissions({
                         permissions_to_add = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
                         principal_id = ?owner;
                     });
                 });
+                // Check for errors in the response
+                switch (response.command) {
+                    case (?#Error(e)) {
+                        return #err(#GovernanceError("Failed to add hotkey: " # e.error_message));
+                    };
+                    case _ {}; // Success
+                };
             } catch (_e) {
                 return #err(#GovernanceError("Failed to add hotkey to neuron"));
             };
         };
         
-        // Remove sneedex (use ALL_PERMISSIONS to ensure complete removal including UNSPECIFIED)
+        // Remove sneedex (use FULL_OWNER_PERMISSIONS since that's what the frontend adds)
+        // Don't use ALL_PERMISSIONS as SNS governance fails if principal doesn't have a permission
         try {
-            let _ = await governance.manage_neuron({
+            let response = await governance.manage_neuron({
                 subaccount = neuronId.id;
                 command = ?#RemoveNeuronPermissions({
-                    permissions_to_remove = ?{ permissions = T.ALL_PERMISSIONS };
+                    permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
                     principal_id = ?sneedex;
                 });
             });
+            // Check for errors but don't fail - original owners have control
+            switch (response.command) {
+                case (?#Error(_e)) {
+                    // If removal fails, original owners still have control
+                };
+                case _ {};
+            };
         } catch (_e) {
-            // If removal fails, the original owners still have control
-            // which is acceptable
+            // If removal fails, original owners still have control
         };
         
         #ok();
@@ -279,27 +318,42 @@ module {
         // Add all new owners
         for (owner in newOwners.vals()) {
             try {
-                let _ = await governance.manage_neuron({
+                let response = await governance.manage_neuron({
                     subaccount = neuronId.id;
                     command = ?#AddNeuronPermissions({
                         permissions_to_add = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
                         principal_id = ?owner;
                     });
                 });
+                // Check for errors in the response
+                switch (response.command) {
+                    case (?#Error(e)) {
+                        return #err(#GovernanceError("Failed to add new owner: " # e.error_message));
+                    };
+                    case _ {}; // Success
+                };
             } catch (_e) {
                 return #err(#GovernanceError("Failed to add new owner to neuron"));
             };
         };
         
-        // Remove sneedex (use ALL_PERMISSIONS to ensure complete removal including UNSPECIFIED)
+        // Remove sneedex (use FULL_OWNER_PERMISSIONS since that's what the frontend adds)
+        // Don't use ALL_PERMISSIONS as SNS governance fails if principal doesn't have a permission
         try {
-            let _ = await governance.manage_neuron({
+            let response = await governance.manage_neuron({
                 subaccount = neuronId.id;
                 command = ?#RemoveNeuronPermissions({
-                    permissions_to_remove = ?{ permissions = T.ALL_PERMISSIONS };
+                    permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
                     principal_id = ?sneedex;
                 });
             });
+            // Check for errors but don't fail - new owners have control
+            switch (response.command) {
+                case (?#Error(_e)) {
+                    // Continue even if sneedex removal fails - new owners have control
+                };
+                case _ {};
+            };
         } catch (_e) {
             // Continue even if sneedex removal fails
         };

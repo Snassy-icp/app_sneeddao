@@ -1530,13 +1530,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         
                         switch (verifyResult) {
                             case (#err(e)) { return #err(e) };
-                            case (#ok(owners)) {
-                                // Escrow the neuron
+                            case (#ok(allPermissions)) {
+                                // Escrow the neuron (passing actual permissions so we can remove exactly what each principal has)
                                 let escrowResult = await* AssetHandlers.escrowNeuron(
                                     neuronAsset.governance_canister_id,
                                     neuronAsset.neuron_id,
                                     self(),
-                                    owners
+                                    allPermissions
                                 );
                                 
                                 switch (escrowResult) {
