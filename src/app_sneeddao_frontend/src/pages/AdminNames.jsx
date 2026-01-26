@@ -169,14 +169,14 @@ function AdminNames() {
             principalNames.forEach((name, principalId) => {
                 // Principal names are global, show them regardless of selectedSnsRoot filter
                 // Use a placeholder snsRoot for display purposes
-                entries.push({
-                    type: 'principal',
+                    entries.push({
+                        type: 'principal',
                     key: `global:${principalId}`,
                     snsRoot: 'global',
-                    id: principalId,
-                    name,
+                        id: principalId,
+                        name,
                     isVerified: verifiedNames?.get(principalId) || false
-                });
+                    });
             });
         }
         

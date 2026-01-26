@@ -201,15 +201,15 @@ module {
                         
                         // Only remove if they have permissions
                         if (perm.permission_type.size() > 0) {
-                            try {
+            try {
                                 let response = await governance.manage_neuron({
-                                    subaccount = neuronId.id;
-                                    command = ?#RemoveNeuronPermissions({
+                    subaccount = neuronId.id;
+                    command = ?#RemoveNeuronPermissions({
                                         // Use the ACTUAL permissions this principal has
                                         permissions_to_remove = ?{ permissions = perm.permission_type };
                                         principal_id = ?p;
-                                    });
-                                });
+                    });
+                });
                                 // Check for errors in the response
                                 switch (response.command) {
                                     case (?#Error(e)) {
@@ -217,8 +217,8 @@ module {
                                     };
                                     case _ {}; // Success or other response
                                 };
-                            } catch (_e) {
-                                return #err(#GovernanceError("Failed to remove permissions from hotkey"));
+            } catch (_e) {
+                return #err(#GovernanceError("Failed to remove permissions from hotkey"));
                             };
                         };
                     };

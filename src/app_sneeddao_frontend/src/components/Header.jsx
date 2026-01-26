@@ -331,8 +331,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     };
 
     const handleLogoClick = () => {
-        // Only open the hamburger menu
-        setIsMenuOpen(true);
+        // Toggle the hamburger menu
+        setIsMenuOpen(!isMenuOpen);
     };
 
     // Helper function to determine if a submenu item should be highlighted
@@ -428,7 +428,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         gap: '10px'
                     }}
                     onClick={() => {
-                        setIsMenuOpen(true);
+                        setIsMenuOpen(!isMenuOpen);
                     }}
                 >
                     {/* Show admin section name if on admin page, even during loading */}

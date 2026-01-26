@@ -593,7 +593,7 @@ const Post = () => {
                                         const totalUpVP = upvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
                                         const totalDownVP = downvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
                                         
-                                                        const netScore = totalUpVP - totalDownVP;
+                                        const netScore = totalUpVP - totalDownVP;
                                                         const netColor = netScore > 0 ? theme.colors.success : netScore < 0 ? theme.colors.error : theme.colors.mutedText;
                                         
                                         return (

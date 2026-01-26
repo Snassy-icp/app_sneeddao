@@ -155,7 +155,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             alignItems: 'center',
             marginTop: '8px',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-        }}>
+            }}>
             
             {Object.entries(tipsByToken).map(([tokenKey, tokenData]) => {
                 const decimals = getTokenDecimals(tokenData.principal);

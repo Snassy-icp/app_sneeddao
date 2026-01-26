@@ -120,9 +120,9 @@ function App() {
             <ForumProvider>
               <Router>
                 <PremiumProvider>
-                  <NamingProvider>
-                    <GlobalNamingSetup />
-                    <Layout>
+                <NamingProvider>
+                  <GlobalNamingSetup />
+                  <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />
                     <Route path="/login" element={<Login />} />
@@ -217,9 +217,9 @@ function App() {
                     <Route path="/admin/network" element={<NetworkAdmin />} />
                     <Route path="/admin/profits" element={<ProfitsAdmin />} />
                     <Route path="/admin/tokens" element={<TokensAdmin />} />
-                    </Routes>
-                    </Layout>
-                  </NamingProvider>
+                  </Routes>
+                  </Layout>
+                </NamingProvider>
                 </PremiumProvider>
               </Router>
             </ForumProvider>

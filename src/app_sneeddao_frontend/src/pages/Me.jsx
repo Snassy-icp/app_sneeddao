@@ -98,7 +98,7 @@ export default function Me() {
     const [cycleThresholdRed, setCycleThresholdRed] = useState('');
     const [cycleThresholdOrange, setCycleThresholdOrange] = useState('');
     const [settingsSaved, setSettingsSaved] = useState(false);
-    
+
     // Color coding settings
     const [principalColorCoding, setPrincipalColorCoding] = useState(() => {
         try {
@@ -881,11 +881,11 @@ export default function Me() {
                 <div 
                     id="settings-section"
                     style={{
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        border: `1px solid ${theme.colors.border}`,
-                        marginTop: '20px',
-                        overflow: 'hidden',
+                    backgroundColor: theme.colors.secondaryBg,
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.colors.border}`,
+                    marginTop: '20px',
+                    overflow: 'hidden',
                     }}
                 >
                     {/* Parent Settings Header */}

@@ -1577,9 +1577,9 @@ function Feed() {
                         <div style={getStyles(theme).feedItemBody}>
                             <MarkdownBody 
                                 text={(() => {
-                                    const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
-                                    return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
-                                })()}
+                                const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
+                                return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
+                            })()}
                             />
                         </div>
                     )}
@@ -1618,9 +1618,9 @@ function Feed() {
                             }}>
                                 <MarkdownBody 
                                     text={(() => {
-                                        const replyBody = item.replied_to_post[0].body;
-                                        return replyBody.length > 150 ? `${replyBody.substring(0, 150)}...` : replyBody;
-                                    })()}
+                                    const replyBody = item.replied_to_post[0].body;
+                                    return replyBody.length > 150 ? `${replyBody.substring(0, 150)}...` : replyBody;
+                                })()}
                                 />
                             </div>
                         </div>

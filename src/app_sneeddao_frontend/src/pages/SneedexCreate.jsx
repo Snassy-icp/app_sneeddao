@@ -1349,7 +1349,7 @@ function SneedexCreate() {
             if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
                 setNewAssetType('neuron_manager');
             } else {
-                setNewAssetType('canister');
+            setNewAssetType('canister');
             }
             setNewAssetCanisterId(asset.canister_id);
             setNewAssetCanisterKind(asset.canister_kind || 0);
@@ -3183,16 +3183,16 @@ function SneedexCreate() {
                                         ) : newAssetType === 'neuron_manager' ? (
                                             // Neuron Manager selection - only show neuron managers
                                             neuronManagers.length > 0 ? (
-                                                <>
-                                                    <select
-                                                        style={{
-                                                            ...styles.input,
-                                                            cursor: 'pointer',
-                                                        }}
-                                                        value={newAssetCanisterId}
-                                                        onChange={(e) => {
-                                                            const selectedId = e.target.value;
-                                                            setNewAssetCanisterId(selectedId);
+                                            <>
+                                                <select
+                                                    style={{
+                                                        ...styles.input,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    value={newAssetCanisterId}
+                                                    onChange={(e) => {
+                                                        const selectedId = e.target.value;
+                                                        setNewAssetCanisterId(selectedId);
                                                             // Auto-set canister kind and verify
                                                             setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
                                                             if (selectedId) {
@@ -3268,8 +3268,8 @@ function SneedexCreate() {
                                                     onChange={(e) => {
                                                         const selectedId = e.target.value;
                                                         setNewAssetCanisterId(selectedId);
-                                                        setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
-                                                        setCanisterKindVerified(null);
+                                                            setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
+                                                            setCanisterKindVerified(null);
                                                     }}
                                                 >
                                                     <option value="">Select a canister...</option>
@@ -3394,57 +3394,57 @@ function SneedexCreate() {
                                         
                                         {/* Neuron Manager Verification for neuron_manager asset type */}
                                         {newAssetType === 'neuron_manager' && newAssetCanisterId && (
-                                            <div style={{ marginTop: '8px' }}>
-                                                {canisterKindVerified?.verified ? (
-                                                    <div style={{ 
-                                                        background: theme.colors.secondaryBg,
-                                                        borderRadius: '8px',
-                                                        padding: '12px',
-                                                    }}>
+                                                <div style={{ marginTop: '8px' }}>
+                                                    {canisterKindVerified?.verified ? (
+                                                        <div style={{ 
+                                                            background: theme.colors.secondaryBg,
+                                                            borderRadius: '8px',
+                                                            padding: '12px',
+                                                        }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: '#10B981',
+                                                                fontSize: '0.9rem',
+                                                                marginBottom: '8px',
+                                                            }}>
+                                                                <FaCheck /> Verified as ICP Neuron Manager
+                                                            </div>
+                                                            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                                                                <div>Version: <strong>{canisterKindVerified.versionStr}</strong></div>
+                                                                {canisterKindVerified.moduleHash && (
+                                                                    <div style={{ marginTop: '4px' }}>
+                                                                        {canisterKindVerified.wasmVerified ? (
+                                                                            <span style={{ color: '#10B981' }}>
+                                                                                <FaCheck style={{ marginRight: '4px' }} />
+                                                                                Official WASM (v{Number(canisterKindVerified.officialVersion.major)}.{Number(canisterKindVerified.officialVersion.minor)}.{Number(canisterKindVerified.officialVersion.patch)})
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span style={{ color: '#F59E0B' }}>
+                                                                                <FaExclamationTriangle style={{ marginRight: '4px' }} />
+                                                                                Unknown WASM hash (not in official registry)
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {!canisterKindVerified.moduleHash && (
+                                                                    <div style={{ marginTop: '4px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                                        (Could not verify WASM - not a controller)
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : typeof canisterKindVerified === 'string' ? (
                                                         <div style={{ 
                                                             display: 'flex', 
                                                             alignItems: 'center', 
                                                             gap: '8px',
-                                                            color: '#10B981',
-                                                            fontSize: '0.9rem',
-                                                            marginBottom: '8px',
+                                                            color: '#EF4444',
+                                                            fontSize: '0.9rem'
                                                         }}>
-                                                            <FaCheck /> Verified as ICP Neuron Manager
+                                                            <FaExclamationTriangle /> {canisterKindVerified}
                                                         </div>
-                                                        <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
-                                                            <div>Version: <strong>{canisterKindVerified.versionStr}</strong></div>
-                                                            {canisterKindVerified.moduleHash && (
-                                                                <div style={{ marginTop: '4px' }}>
-                                                                    {canisterKindVerified.wasmVerified ? (
-                                                                        <span style={{ color: '#10B981' }}>
-                                                                            <FaCheck style={{ marginRight: '4px' }} />
-                                                                            Official WASM (v{Number(canisterKindVerified.officialVersion.major)}.{Number(canisterKindVerified.officialVersion.minor)}.{Number(canisterKindVerified.officialVersion.patch)})
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span style={{ color: '#F59E0B' }}>
-                                                                            <FaExclamationTriangle style={{ marginRight: '4px' }} />
-                                                                            Unknown WASM hash (not in official registry)
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                            {!canisterKindVerified.moduleHash && (
-                                                                <div style={{ marginTop: '4px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
-                                                                    (Could not verify WASM - not a controller)
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ) : typeof canisterKindVerified === 'string' ? (
-                                                    <div style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '8px',
-                                                        color: '#EF4444',
-                                                        fontSize: '0.9rem'
-                                                    }}>
-                                                        <FaExclamationTriangle /> {canisterKindVerified}
-                                                    </div>
                                                 ) : verifyingCanisterKind ? (
                                                     <div style={{ 
                                                         display: 'flex', 
@@ -3467,10 +3467,10 @@ function SneedexCreate() {
                                                             opacity: (!newAssetCanisterId || verifyingCanisterKind) ? 0.5 : 1,
                                                         }}
                                                     >
-                                                        <FaRobot /> Verify as Neuron Manager
+                                                                <FaRobot /> Verify as Neuron Manager
                                                     </button>
-                                                )}
-                                            </div>
+                                            )}
+                                        </div>
                                         )}
                                         
                                         {/* Title and Description */}

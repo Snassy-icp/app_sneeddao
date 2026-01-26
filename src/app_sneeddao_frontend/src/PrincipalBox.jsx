@@ -106,7 +106,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
       <div className="principal-box-container" style={{ position: 'relative' }}>
           <button 
               className={compact ? "principal-button-compact" : "principal-button"} 
-              onClick={() => setShowPopup(true)}
+              onClick={() => setShowPopup(!showPopup)}
               title={compact ? `Logged in as: ${truncateString(principalText, 15, "...", 3, 3)}` : undefined}
               style={compact ? {
                   background: 'none',

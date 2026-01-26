@@ -4572,7 +4572,7 @@ function SneedexOffer() {
                                     </span>
                                 </div>
                             )}
-                            <div style={styles.priceRow}>
+                                <div style={styles.priceRow}>
                                 <span style={styles.priceLabel}>{isSold ? 'Winning Bid' : 'Current Highest Bid'}</span>
                                 <div style={{ ...styles.priceValue, color: theme.colors.success, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                     {highestBid ? (

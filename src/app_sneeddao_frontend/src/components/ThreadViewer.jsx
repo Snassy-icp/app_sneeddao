@@ -2453,7 +2453,7 @@ function ThreadViewer({
                 backgroundColor: theme.colors.secondaryBg,
                 borderRadius: '8px',
                 border: `1px solid ${theme.colors.border}`,
-                marginBottom: '12px',
+                marginBottom: '6px',
                 overflow: 'hidden',
             }}>
                 {/* Settings Header */}
@@ -2501,231 +2501,231 @@ function ThreadViewer({
                             }}>
                                 View Mode
                             </h4>
-                            <div className="view-mode-controls">
-                                <button 
-                                    onClick={() => {
-                                        setViewMode('tree');
-                                        try {
-                                            localStorage.setItem('discussionViewMode', 'tree');
-                                        } catch (error) {
-                                            console.warn('Could not save to localStorage:', error);
-                                        }
-                                    }} 
-                                    className={viewMode === 'tree' ? 'active' : ''}
-                                >
+                <div className="view-mode-controls">
+                    <button 
+                        onClick={() => {
+                            setViewMode('tree');
+                            try {
+                                localStorage.setItem('discussionViewMode', 'tree');
+                            } catch (error) {
+                                console.warn('Could not save to localStorage:', error);
+                            }
+                        }} 
+                        className={viewMode === 'tree' ? 'active' : ''}
+                    >
                                     🌳 Tree
-                                </button>
-                                <button 
-                                    onClick={() => {
-                                        setViewMode('flat');
-                                        try {
-                                            localStorage.setItem('discussionViewMode', 'flat');
-                                        } catch (error) {
-                                            console.warn('Could not save to localStorage:', error);
-                                        }
-                                    }} 
-                                    className={viewMode === 'flat' ? 'active' : ''}
-                                >
+                    </button>
+                    <button 
+                        onClick={() => {
+                            setViewMode('flat');
+                            try {
+                                localStorage.setItem('discussionViewMode', 'flat');
+                            } catch (error) {
+                                console.warn('Could not save to localStorage:', error);
+                            }
+                        }} 
+                        className={viewMode === 'flat' ? 'active' : ''}
+                    >
                                     📋 Flat
-                                </button>
-                            </div>
-                        </div>
+                    </button>
+                </div>
+            </div>
                     
-                        {/* Sorting Options */}
+                    {/* Sorting Options */}
                         <div style={{ marginBottom: '20px' }}>
-                            <h4 style={{
-                                color: theme.colors.primaryText,
+                        <h4 style={{
+                            color: theme.colors.primaryText,
                                 fontSize: '13px',
-                                fontWeight: '500',
-                                marginBottom: '10px',
+                            fontWeight: '500',
+                            marginBottom: '10px',
                                 margin: '0 0 10px 0',
                                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                            }}>
-                                Sort Posts By
-                            </h4>
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                                gap: '8px'
-                            }}>
-                                {[
-                                    { value: 'age-newest', label: '📅 Newest First' },
-                                    { value: 'age-oldest', label: '📅 Oldest First' },
-                                    { value: 'score-best', label: '⭐ Best Score' },
-                                    { value: 'score-worst', label: '👎 Worst Score' },
-                                    { value: 'score-controversial', label: '🔥 Most Active' }
-                                ].map(option => (
+                        }}>
+                            Sort Posts By
+                        </h4>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: '8px'
+                        }}>
+                            {[
+                                { value: 'age-newest', label: '📅 Newest First' },
+                                { value: 'age-oldest', label: '📅 Oldest First' },
+                                { value: 'score-best', label: '⭐ Best Score' },
+                                { value: 'score-worst', label: '👎 Worst Score' },
+                                { value: 'score-controversial', label: '🔥 Most Active' }
+                            ].map(option => (
+                                <label 
+                                    key={option.value}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 12px',
+                                        backgroundColor: sortBy === option.value ? theme.colors.accentHover : theme.colors.secondaryBg,
+                                        border: `1px solid ${sortBy === option.value ? theme.colors.accent : theme.colors.border}`,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (sortBy !== option.value) {
+                                            e.target.style.backgroundColor = theme.colors.accentHover;
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (sortBy !== option.value) {
+                                            e.target.style.backgroundColor = theme.colors.secondaryBg;
+                                        }
+                                    }}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="sortBy"
+                                        value={option.value}
+                                        checked={sortBy === option.value}
+                                        onChange={(e) => {
+                                            setSortBy(e.target.value);
+                                            try {
+                                                localStorage.setItem('threadSortBy', e.target.value);
+                                            } catch (error) {
+                                                console.warn('Could not save sort preference to localStorage:', error);
+                                            }
+                                        }}
+                                        style={{
+                                            margin: 0,
+                                            accentColor: theme.colors.accent
+                                        }}
+                                    />
+                                    <span style={{ 
+                                        color: sortBy === option.value ? theme.colors.primaryText : theme.colors.secondaryText,
+                                        fontWeight: sortBy === option.value ? '500' : '400'
+                                    }}>
+                                        {option.label}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Voting Neurons Section */}
+                        <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '16px' }}>
+                        <h4 style={{
+                            color: theme.colors.primaryText,
+                                fontSize: '13px',
+                            fontWeight: '500',
+                            marginBottom: '10px',
+                                margin: '0 0 10px 0',
+                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+                        }}>
+                            Voting Neurons
+                        </h4>
+                        <p style={{
+                            color: theme.colors.secondaryText,
+                                fontSize: '12px',
+                            marginBottom: '15px',
+                                margin: '0 0 15px 0',
+                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+                        }}>
+                            Select which neurons to use when voting on posts
+                        </p>
+                    </div>
+                    
+                    {allNeurons && allNeurons.length > 0 ? (
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                            gap: '10px'
+                        }}>
+                            {allNeurons.map(neuron => {
+                                const neuronId = neuron.id[0].id ? Array.from(neuron.id[0].id).join(',') : '';
+                                const isSelected = selectedNeuronIds.has(neuronId);
+                                const neuronVotingPower = calculateVotingPower(neuron);
+                                
+                                return (
                                     <label 
-                                        key={option.value}
+                                        key={neuronId}
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '6px',
+                                            gap: '8px',
                                             padding: '8px 12px',
-                                            backgroundColor: sortBy === option.value ? theme.colors.accentHover : theme.colors.secondaryBg,
-                                            border: `1px solid ${sortBy === option.value ? theme.colors.accent : theme.colors.border}`,
+                                            backgroundColor: isSelected ? theme.colors.accentHover : theme.colors.secondaryBg,
+                                            border: `1px solid ${isSelected ? theme.colors.warning : theme.colors.border}`,
                                             borderRadius: '6px',
                                             cursor: 'pointer',
-                                            fontSize: '0.85rem',
                                             transition: 'all 0.2s ease'
                                         }}
                                         onMouseEnter={(e) => {
-                                            if (sortBy !== option.value) {
+                                            if (!isSelected) {
                                                 e.target.style.backgroundColor = theme.colors.accentHover;
                                             }
                                         }}
                                         onMouseLeave={(e) => {
-                                            if (sortBy !== option.value) {
+                                            if (!isSelected) {
                                                 e.target.style.backgroundColor = theme.colors.secondaryBg;
                                             }
                                         }}
                                     >
                                         <input
-                                            type="radio"
-                                            name="sortBy"
-                                            value={option.value}
-                                            checked={sortBy === option.value}
-                                            onChange={(e) => {
-                                                setSortBy(e.target.value);
-                                                try {
-                                                    localStorage.setItem('threadSortBy', e.target.value);
-                                                } catch (error) {
-                                                    console.warn('Could not save sort preference to localStorage:', error);
-                                                }
-                                            }}
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => handleNeuronToggle(neuronId)}
                                             style={{
-                                                margin: 0,
-                                                accentColor: theme.colors.accent
+                                                accentColor: '#ffd700',
+                                                width: '16px',
+                                                height: '16px'
                                             }}
                                         />
-                                        <span style={{ 
-                                            color: sortBy === option.value ? theme.colors.primaryText : theme.colors.secondaryText,
-                                            fontWeight: sortBy === option.value ? '500' : '400'
-                                        }}>
-                                            {option.label}
-                                        </span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                        
-                        {/* Voting Neurons Section */}
-                        <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '16px' }}>
-                            <h4 style={{
-                                color: theme.colors.primaryText,
-                                fontSize: '13px',
-                                fontWeight: '500',
-                                marginBottom: '10px',
-                                margin: '0 0 10px 0',
-                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                            }}>
-                                Voting Neurons
-                            </h4>
-                            <p style={{
-                                color: theme.colors.secondaryText,
-                                fontSize: '12px',
-                                marginBottom: '15px',
-                                margin: '0 0 15px 0',
-                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                            }}>
-                                Select which neurons to use when voting on posts
-                            </p>
-                        </div>
-                        
-                        {allNeurons && allNeurons.length > 0 ? (
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                                gap: '10px'
-                            }}>
-                                {allNeurons.map(neuron => {
-                                    const neuronId = neuron.id[0].id ? Array.from(neuron.id[0].id).join(',') : '';
-                                    const isSelected = selectedNeuronIds.has(neuronId);
-                                    const neuronVotingPower = calculateVotingPower(neuron);
-                                    
-                                    return (
-                                        <label 
-                                            key={neuronId}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                padding: '8px 12px',
-                                                backgroundColor: isSelected ? theme.colors.accentHover : theme.colors.secondaryBg,
-                                                border: `1px solid ${isSelected ? theme.colors.warning : theme.colors.border}`,
-                                                borderRadius: '6px',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s ease'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (!isSelected) {
-                                                    e.target.style.backgroundColor = theme.colors.accentHover;
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!isSelected) {
-                                                    e.target.style.backgroundColor = theme.colors.secondaryBg;
-                                                }
-                                            }}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => handleNeuronToggle(neuronId)}
-                                                style={{
-                                                    accentColor: '#ffd700',
-                                                    width: '16px',
-                                                    height: '16px'
-                                                }}
-                                            />
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{
-                                                    color: theme.colors.primaryText,
-                                                    fontSize: '0.9rem',
-                                                    fontWeight: '500'
-                                                }}>
-                                                    Neuron {neuron.id[0].id ? 
-                                                        Array.from(neuron.id[0].id).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('') 
-                                                        : 'Unknown'
-                                                    }...
-                                                </div>
-                                                <div style={{
-                                                    color: theme.colors.mutedText,
-                                                    fontSize: '0.8rem'
-                                                }}>
-                                                    {formatVotingPowerDisplay(neuronVotingPower)} VP
-                                                </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.9rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Neuron {neuron.id[0].id ? 
+                                                    Array.from(neuron.id[0].id).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('') 
+                                                    : 'Unknown'
+                                                }...
                                             </div>
-                                        </label>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div style={{
-                                color: theme.colors.mutedText,
+                                            <div style={{
+                                                color: theme.colors.mutedText,
+                                                fontSize: '0.8rem'
+                                            }}>
+                                                {formatVotingPowerDisplay(neuronVotingPower)} VP
+                                            </div>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div style={{
+                            color: theme.colors.mutedText,
                                 fontSize: '12px',
-                                textAlign: 'center',
+                            textAlign: 'center',
                                 padding: '20px',
                                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                            }}>
-                                No neurons available for voting
-                            </div>
-                        )}
-                        
-                        <div style={{
-                            marginTop: '15px',
-                            padding: '10px',
-                            backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                            border: '1px solid rgba(255, 215, 0, 0.3)',
-                            borderRadius: '6px',
+                        }}>
+                            No neurons available for voting
+                        </div>
+                    )}
+                    
+                    <div style={{
+                        marginTop: '15px',
+                        padding: '10px',
+                        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                        border: '1px solid rgba(255, 215, 0, 0.3)',
+                        borderRadius: '6px',
                             fontSize: '12px',
                             color: theme.colors.primaryText,
                             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                        }}>
-                            <strong>Total Selected Voting Power:</strong> {formatVotingPowerDisplay(totalVotingPower)}
-                        </div>
+                    }}>
+                        <strong>Total Selected Voting Power:</strong> {formatVotingPowerDisplay(totalVotingPower)}
                     </div>
-                )}
+                </div>
+            )}
             </div>
 
             {/* Posts Display */}
@@ -2789,7 +2789,7 @@ function ThreadViewer({
         
         return (
             <div 
-                className={`post-item ${isFocused ? 'focused-post' : ''}`}
+                className={`post-item ${isFocused ? 'focused-post' : ''}`} 
                 data-depth={depth}
                 style={{ 
                     // Minimal indentation - CSS will handle the actual value via custom property
@@ -3206,26 +3206,26 @@ function ThreadViewer({
                                                     y: rect.bottom + 4 
                                                 });
                                                 setOpenOverflowMenu(Number(post.id));
-                                            }
-                                        }}
-                                        style={{
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
+                                    }
+                                }}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
                                             color: theme.colors.secondaryText,
-                                            borderRadius: '4px',
-                                            padding: '4px 8px',
-                                            cursor: 'pointer',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
                                             fontSize: '16px',
-                                            display: 'flex',
-                                            alignItems: 'center',
+                                    display: 'flex',
+                                    alignItems: 'center',
                                             fontWeight: 'bold',
                                             letterSpacing: '2px'
-                                        }}
+                                }}
                                         title="More actions"
-                                    >
+                            >
                                         •••
-                                    </button>
-                                    
+                            </button>
+
                                     {/* Overflow Menu Dropdown - rendered via portal */}
                                     {openOverflowMenu === Number(post.id) && createPortal(
                                         <div 
@@ -3244,131 +3244,131 @@ function ThreadViewer({
                                                 zIndex: 10000
                                             }}>
                                             {/* Tip Option */}
-                                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
-                                                <button
+                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                <button
                                                     onClick={() => {
                                                         openTipModal(post);
                                                         setOpenOverflowMenu(null);
                                                     }}
-                                                    style={{
+                                    style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         width: '100%',
                                                         padding: '10px 14px',
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: theme.colors.warning,
-                                                        cursor: 'pointer',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: theme.colors.warning,
+                                        cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
-                                                    }}
-                                                >
+                                    }}
+                                >
                                                     💰 Tip
-                                                </button>
-                                            )}
+                                </button>
+                            )}
 
                                             {/* Message Option */}
-                                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
-                                                <button
-                                                    onClick={() => {
-                                                        const recipientPrincipal = post.created_by.toString();
-                                                        navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                <button
+                                    onClick={() => {
+                                        const recipientPrincipal = post.created_by.toString();
+                                        navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
                                                         setOpenOverflowMenu(null);
-                                                    }}
-                                                    style={{
+                                    }}
+                                    style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         width: '100%',
                                                         padding: '10px 14px',
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: theme.colors.success,
-                                                        cursor: 'pointer',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: theme.colors.success,
+                                        cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
-                                                    }}
-                                                >
+                                    }}
+                                >
                                                     📨 Message
-                                                </button>
-                                            )}
+                                </button>
+                            )}
 
                                             {/* Edit Option */}
-                                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
-                                                <button
+                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                <button
                                                     onClick={() => {
                                                         startEditPost(post);
                                                         setOpenOverflowMenu(null);
                                                     }}
-                                                    style={{
+                                    style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         width: '100%',
                                                         padding: '10px 14px',
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: '#9b59b6',
-                                                        cursor: 'pointer',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#9b59b6',
+                                        cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
-                                                    }}
-                                                >
+                                    }}
+                                >
                                                     ✏️ Edit
-                                                </button>
-                                            )}
+                                </button>
+                            )}
 
                                             {/* Delete Option */}
-                                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
-                                                <button
+                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                <button
                                                     onClick={() => {
                                                         handleDeletePost(post.id);
                                                         setOpenOverflowMenu(null);
                                                     }}
-                                                    disabled={deletingPost === Number(post.id)}
-                                                    style={{
+                                    disabled={deletingPost === Number(post.id)}
+                                    style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         width: '100%',
                                                         padding: '10px 14px',
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
-                                                        cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
+                                        cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
-                                                    }}
-                                                >
+                                    }}
+                                >
                                                     🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
-                                                </button>
-                                            )}
+                                </button>
+                            )}
 
                                             {/* Add Poll Option */}
-                                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
-                                             !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
-                                                <button
+                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
+                             !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
+                                <button
                                                     onClick={() => {
                                                         setShowPollForm(prev => new Map(prev.set(Number(post.id), true)));
                                                         setOpenOverflowMenu(null);
                                                     }}
-                                                    style={{
+                                    style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '8px',
                                                         width: '100%',
                                                         padding: '10px 14px',
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: theme.colors.accent,
-                                                        cursor: 'pointer',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: theme.colors.accent,
+                                        cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
-                                                    }}
-                                                >
+                                    }}
+                                >
                                                     📊 Add Poll
-                                                </button>
+                                </button>
                                             )}
                                         </div>,
                                         document.body
