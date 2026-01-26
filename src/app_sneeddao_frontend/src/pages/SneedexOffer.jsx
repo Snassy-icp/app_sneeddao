@@ -4493,12 +4493,11 @@ function SneedexOffer() {
                                 if (totalUsdEstimate === null || totalUsdEstimate <= 0) return null;
                                 
                                 // Determine if this is a "good deal"
-                                // Compare against buyout, current highest bid, or min bid (if no bids yet)
-                                const isGoodDeal = totalUsdEstimate > 0 && (
-                                    (buyoutUsd && totalUsdEstimate > buyoutUsd * 1.2) || // 20%+ undervalued vs buyout
-                                    (highestBidUsd && totalUsdEstimate > highestBidUsd * 1.5) || // 50%+ undervalued vs current bid
-                                    (!highestBidUsd && minBidUsd && totalUsdEstimate > minBidUsd * 1.5) // 50%+ undervalued vs min bid (no bids yet)
-                                );
+                                // Compare asset value against current effective price (what you'd pay now)
+                                // - If there are bids: compare vs current highest bid
+                                // - If no bids: compare vs minimum bid price
+                                const currentEffectivePrice = highestBidUsd || minBidUsd;
+                                const isGoodDeal = totalUsdEstimate > 0 && currentEffectivePrice && totalUsdEstimate > currentEffectivePrice;
                                 
                                 return (
                                     <div style={{
@@ -4555,17 +4554,6 @@ function SneedexOffer() {
                                                 ({formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenFee, tokenInfo.decimals)} {tokenInfo.symbol})
                                             </span>
                                         )}
-                                    </span>
-                                </div>
-                            )}
-                            {offer.fee_rate_bps !== undefined && Number(offer.fee_rate_bps) > 0 && (
-                                <div style={styles.priceRow}>
-                                    <span style={styles.priceLabel}>Marketplace Fee</span>
-                                    <span style={{ ...styles.priceValue, color: theme.colors.warning }}>
-                                        {formatFeeRate(offer.fee_rate_bps)}
-                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
-                                            (deducted from winning bid)
-                                        </span>
                                     </span>
                                 </div>
                             )}
@@ -5491,6 +5479,17 @@ function SneedexOffer() {
                                         isAuthenticated={isAuthenticated}
                                     />
                                 </div>
+                                {offer.fee_rate_bps !== undefined && Number(offer.fee_rate_bps) > 0 && (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                        <strong>Marketplace Fee:</strong>{' '}
+                                        <span style={{ color: theme.colors.warning }}>
+                                            {formatFeeRate(offer.fee_rate_bps)}
+                                        </span>
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '4px', fontSize: '0.85rem' }}>
+                                            (deducted from winning bid)
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

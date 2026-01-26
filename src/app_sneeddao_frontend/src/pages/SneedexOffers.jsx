@@ -1636,12 +1636,11 @@ function SneedexOffers() {
                                 : null;
                             
                             // Determine if this is a "good deal"
-                            // Compare against buyout, current highest bid, or min bid (if no bids yet)
-                            const isGoodDeal = estimatedValue > 0 && (
-                                (buyoutUsd && estimatedValue > buyoutUsd * 1.2) || // 20%+ undervalued vs buyout
-                                (highestBidUsd && estimatedValue > highestBidUsd * 1.5) || // 50%+ undervalued vs current bid
-                                (!highestBidUsd && minBidUsd && estimatedValue > minBidUsd * 1.5) // 50%+ undervalued vs min bid (no bids yet)
-                            );
+                            // Compare asset value against current effective price (what you'd pay now)
+                            // - If there are bids: compare vs current highest bid
+                            // - If no bids: compare vs minimum bid price
+                            const currentEffectivePrice = highestBidUsd || minBidUsd;
+                            const isGoodDeal = estimatedValue > 0 && currentEffectivePrice && estimatedValue > currentEffectivePrice;
                             
                             // Check if there's exactly one canister asset with a title
                             const canisterAssets = offer.assets.filter(a => a.asset && a.asset.Canister);
