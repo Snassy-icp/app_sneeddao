@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -388,6 +389,7 @@ function ThreadViewer({
     const [isNarrowScreen, setIsNarrowScreen] = useState(false);
     const [showCommentForm, setShowCommentForm] = useState(false);
     const [openOverflowMenu, setOpenOverflowMenu] = useState(null); // Track which post's overflow menu is open
+    const [overflowMenuPosition, setOverflowMenuPosition] = useState({ x: 0, y: 0 }); // Position for the overflow menu
     
     // Poll state
     const [threadPolls, setThreadPolls] = useState([]); // Polls for the thread
@@ -1571,14 +1573,15 @@ function ThreadViewer({
         if (openOverflowMenu === null) return;
         
         const handleClickOutside = (e) => {
-            // Close menu if clicking outside the menu area
-            if (!e.target.closest('[data-overflow-menu]')) {
+            // Close menu if clicking outside the portal menu
+            if (!e.target.closest('[data-overflow-portal]')) {
                 setOpenOverflowMenu(null);
             }
         };
         
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
+        // Use mousedown to catch clicks before they propagate
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [openOverflowMenu]);
 
     // Effect to fetch thread votes when neurons become available
@@ -2918,9 +2921,7 @@ function ThreadViewer({
                             gap: '8px',
                             marginTop: '8px',
                             flexWrap: 'wrap',
-                            alignItems: 'center',
-                            position: 'relative',
-                            zIndex: openOverflowMenu === Number(post.id) ? 9999 : 1
+                            alignItems: 'center'
                         }}>
                             {/* Voting Section - Layout like Discussion.jsx */}
                             <div style={{ 
@@ -3154,11 +3155,21 @@ function ThreadViewer({
 
                             {/* Mobile: Show overflow menu for extra buttons */}
                             {isNarrowScreen && (
-                                <div style={{ position: 'relative', zIndex: openOverflowMenu === Number(post.id) ? 9999 : 1 }} data-overflow-menu>
+                                <>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setOpenOverflowMenu(openOverflowMenu === Number(post.id) ? null : Number(post.id));
+                                            if (openOverflowMenu === Number(post.id)) {
+                                                setOpenOverflowMenu(null);
+                                            } else {
+                                                // Calculate position based on button click
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                setOverflowMenuPosition({ 
+                                                    x: rect.right, 
+                                                    y: rect.bottom + 4 
+                                                });
+                                                setOpenOverflowMenu(Number(post.id));
+                                            }
                                         }}
                                         style={{
                                             backgroundColor: 'transparent',
@@ -3178,21 +3189,22 @@ function ThreadViewer({
                                         •••
                                     </button>
                                     
-                                    {/* Overflow Menu Dropdown */}
-                                    {openOverflowMenu === Number(post.id) && (
+                                    {/* Overflow Menu Dropdown - rendered via portal */}
+                                    {openOverflowMenu === Number(post.id) && createPortal(
                                         <div 
+                                            data-overflow-portal
                                             onClick={(e) => e.stopPropagation()}
                                             style={{
-                                                position: 'absolute',
-                                                top: '100%',
-                                                right: 0,
+                                                position: 'fixed',
+                                                left: Math.min(overflowMenuPosition.x - 150, window.innerWidth - 160),
+                                                top: Math.min(overflowMenuPosition.y, window.innerHeight - 250),
                                                 backgroundColor: theme.colors.secondaryBg,
                                                 border: `1px solid ${theme.colors.border}`,
                                                 borderRadius: '8px',
                                                 padding: '4px 0',
-                                                minWidth: '140px',
+                                                minWidth: '150px',
                                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                                zIndex: 9999
+                                                zIndex: 10000
                                             }}>
                                             {/* Tip Option */}
                                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
@@ -3321,9 +3333,10 @@ function ThreadViewer({
                                                     📊 Add Poll
                                                 </button>
                                             )}
-                                        </div>
+                                        </div>,
+                                        document.body
                                     )}
-                                </div>
+                                </>
                             )}
                         </div>
                     )}
