@@ -124,6 +124,12 @@ function SneedexCreate() {
     const [expirationMinutes, setExpirationMinutes] = useState('0');
     const [priceTokenLedger, setPriceTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai'); // ICP default
     
+    // Custom price token metadata (for tokens not in whitelist)
+    const [customPriceTokenSymbol, setCustomPriceTokenSymbol] = useState('');
+    const [customPriceTokenDecimals, setCustomPriceTokenDecimals] = useState('');
+    const [customPriceTokenName, setCustomPriceTokenName] = useState('');
+    const [customPriceTokenLogo, setCustomPriceTokenLogo] = useState('');
+    
     // Minimum bid increment (in whole tokens, user-friendly)
     const [minBidIncrement, setMinBidIncrement] = useState('');
     const [suggestedMinBidIncrement, setSuggestedMinBidIncrement] = useState('1'); // Fallback suggestion
@@ -184,10 +190,10 @@ function SneedexCreate() {
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of canister ID strings
     const [loadingCanisters, setLoadingCanisters] = useState(true);
     
-    // Derived token info from selected ledger
+    // Derived token info from selected ledger (with custom token fallback)
     const selectedPriceToken = whitelistedTokens.find(t => t.ledger_id.toString() === priceTokenLedger);
-    const priceTokenSymbol = selectedPriceToken?.symbol || 'TOKEN';
-    const priceTokenDecimals = selectedPriceToken?.decimals || 8;
+    const priceTokenSymbol = selectedPriceToken?.symbol || customPriceTokenSymbol || 'TOKEN';
+    const priceTokenDecimals = selectedPriceToken?.decimals || (customPriceTokenDecimals ? parseInt(customPriceTokenDecimals) : 8);
     
     // Fetch whitelisted tokens on mount
     useEffect(() => {
@@ -2306,10 +2312,83 @@ function SneedexCreate() {
                             </label>
                             <TokenSelector
                                 value={priceTokenLedger}
-                                onChange={(ledgerId) => setPriceTokenLedger(ledgerId)}
+                                onChange={(ledgerId) => {
+                                    setPriceTokenLedger(ledgerId);
+                                    // Check if it's a whitelisted token and populate from there
+                                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                                    if (token) {
+                                        setCustomPriceTokenSymbol(token.symbol);
+                                        setCustomPriceTokenDecimals(token.decimals.toString());
+                                        setCustomPriceTokenName(token.name || '');
+                                        setCustomPriceTokenLogo(token.logo?.[0] || '');
+                                    } else {
+                                        // Clear custom fields for manual entry
+                                        setCustomPriceTokenSymbol('');
+                                        setCustomPriceTokenDecimals('');
+                                        setCustomPriceTokenName('');
+                                        setCustomPriceTokenLogo('');
+                                    }
+                                }}
+                                onSelectToken={(tokenData) => {
+                                    // Capture metadata from TokenSelector (for custom entries)
+                                    if (tokenData.symbol) {
+                                        setCustomPriceTokenSymbol(tokenData.symbol);
+                                    }
+                                    if (tokenData.decimals !== undefined) {
+                                        setCustomPriceTokenDecimals(tokenData.decimals.toString());
+                                    }
+                                    if (tokenData.name) {
+                                        setCustomPriceTokenName(tokenData.name);
+                                    }
+                                    if (tokenData.logo) {
+                                        setCustomPriceTokenLogo(tokenData.logo);
+                                    }
+                                }}
                                 placeholder="Select payment token..."
                                 disabled={loadingTokens}
+                                allowCustom={true}
                             />
+                            
+                            {/* Show selected custom token info */}
+                            {priceTokenLedger && !selectedPriceToken && customPriceTokenSymbol && (
+                                <div style={{
+                                    marginTop: '12px',
+                                    padding: '12px',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px'
+                                }}>
+                                    {customPriceTokenLogo ? (
+                                        <img 
+                                            src={customPriceTokenLogo} 
+                                            alt={customPriceTokenSymbol}
+                                            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                                        />
+                                    ) : (
+                                        <FaCoins style={{ fontSize: '24px', color: theme.colors.warning }} />
+                                    )}
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                            {customPriceTokenSymbol}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                                            {customPriceTokenName || 'Custom Token'} (Decimals: {customPriceTokenDecimals || '8'})
+                                        </div>
+                                    </div>
+                                    <div style={{ 
+                                        fontSize: '0.75rem', 
+                                        color: theme.colors.success, 
+                                        background: `${theme.colors.success}15`,
+                                        padding: '4px 8px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        Custom Token
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         
                         <div style={styles.formGroup}>
