@@ -33,7 +33,7 @@
 
 /* Global body styling with theme support */
 body {
-  font-family: "Fira Code", monospace;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--color-primaryText);
   margin: 0;
   padding: 0;
