@@ -61,6 +61,7 @@ img {
   z-index: 1000;
   border-bottom: 1px solid var(--color-border);
   transition: all 0.3s ease;
+  min-width: 100%; /* Ensure header stretches when content is wider than viewport */
 }
 
 /* Update card styling to use theme variables */
