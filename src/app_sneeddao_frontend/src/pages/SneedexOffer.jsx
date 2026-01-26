@@ -1909,6 +1909,8 @@ function SneedexOffer() {
     const isCreator = identity && offer && offer.creator.toString() === identity.getPrincipal().toString();
     const isActive = offer && 'Active' in offer.state;
     const isCompleted = offer && 'Completed' in offer.state;
+    const isClaimed = offer && 'Claimed' in offer.state;
+    const isSold = isCompleted || isClaimed;
 
     const styles = {
         container: {
@@ -4412,8 +4414,8 @@ function SneedexOffer() {
                     {/* Right Column - Pricing & Actions */}
                     <div style={styles.rightColumn}>
                         <div style={{ ...styles.priceCard, position: 'relative', overflow: 'hidden' }}>
-                            {/* SOLD overlay for completed offers */}
-                            {isCompleted && (
+                            {/* SOLD overlay for sold offers (Completed or Claimed) */}
+                            {isSold && (
                                 <div style={{
                                     position: 'absolute',
                                     top: '20px',
@@ -4573,7 +4575,7 @@ function SneedexOffer() {
                                 </div>
                             )}
                             <div style={styles.priceRow}>
-                                <span style={styles.priceLabel}>{isCompleted ? 'Winning Bid' : 'Current Highest Bid'}</span>
+                                <span style={styles.priceLabel}>{isSold ? 'Winning Bid' : 'Current Highest Bid'}</span>
                                 <div style={{ ...styles.priceValue, color: theme.colors.success, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                     {highestBid ? (
                                         <>
@@ -4591,8 +4593,8 @@ function SneedexOffer() {
                                             })()}
                                         </>
                                     ) : (
-                                        <span style={{ color: isCompleted ? theme.colors.accent : theme.colors.mutedText }}>
-                                            {isCompleted ? 'Buyout' : 'No bids yet'}
+                                        <span style={{ color: isSold ? theme.colors.accent : theme.colors.mutedText }}>
+                                            {isSold ? 'Buyout' : 'No bids yet'}
                                         </span>
                                     )}
                                 </div>
