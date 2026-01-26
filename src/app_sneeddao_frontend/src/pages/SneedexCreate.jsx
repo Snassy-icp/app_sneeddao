@@ -3586,6 +3586,8 @@ function SneedexCreate() {
                                         )}
                                         
                                         {/* Title and Description */}
+                                        {/* Title - only for generic canisters, not neuron managers */}
+                                        {newAssetType !== 'neuron_manager' && (
                                         <div style={styles.formGroup}>
                                             <label style={styles.label}>
                                                 Title (optional)
@@ -3607,6 +3609,7 @@ function SneedexCreate() {
                                                 style={styles.input}
                                             />
                                         </div>
+                                        )}
                                         
                                         <div style={styles.formGroup}>
                                             <label style={styles.label}>
@@ -3621,7 +3624,10 @@ function SneedexCreate() {
                                                 </span>
                                             </label>
                                             <textarea
-                                                placeholder="Describe what this canister does, its features, why it's valuable..."
+                                                placeholder={newAssetType === 'neuron_manager' 
+                                                    ? "Describe your neuron manager, specific notes, and why it's valuable..."
+                                                    : "Describe what this canister does, its features, why it's valuable..."
+                                                }
                                                 maxLength={MAX_CANISTER_DESCRIPTION_LENGTH}
                                                 value={newAssetCanisterDescription}
                                                 onChange={(e) => setNewAssetCanisterDescription(e.target.value)}
