@@ -2828,9 +2828,11 @@ function ThreadViewer({
                             href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
                             className="post-id"
                             style={{
-                                color: theme.colors.accent,
+                                color: theme.colors.mutedText,
                                 textDecoration: 'none',
-                                fontWeight: '500',
+                                fontWeight: '400',
+                                fontSize: '12px',
+                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                                 flexShrink: 0
                             }}
                             onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}

@@ -204,11 +204,12 @@
 
 .post-id {
     background: transparent;
-    color: var(--color-secondary-text);
+    color: var(--color-muted-text);
     padding: 0;
     border-radius: 0;
     font-size: 12px;
     font-weight: 400;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 .post-header h4 {
