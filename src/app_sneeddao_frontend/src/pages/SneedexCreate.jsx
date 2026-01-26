@@ -1182,16 +1182,18 @@ function SneedexCreate() {
         let asset;
         
         try {
-            if (newAssetType === 'canister') {
+            if (newAssetType === 'canister' || newAssetType === 'neuron_manager') {
                 if (!newAssetCanisterId.trim()) {
-                    setError('Please enter a canister ID');
+                    setError(newAssetType === 'neuron_manager' ? 'Please enter a neuron manager canister ID' : 'Please enter a canister ID');
                     return;
                 }
                 // Validate principal
                 Principal.fromText(newAssetCanisterId.trim());
                 
-                // If ICP Neuron Manager selected but not verified, show error
-                if (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && !canisterKindVerified?.verified) {
+                // For neuron_manager type, verification is always required
+                // For canister type, only required if ICP Neuron Manager kind is selected
+                const isNeuronManager = newAssetType === 'neuron_manager' || newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER;
+                if (isNeuronManager && !canisterKindVerified?.verified) {
                     setError('Please verify the canister is an ICP Neuron Manager first');
                     return;
                 }
@@ -1206,23 +1208,25 @@ function SneedexCreate() {
                     return;
                 }
                 
-                const kindName = CANISTER_KIND_NAMES[newAssetCanisterKind] || 'Canister';
+                // Use CANISTER_KIND_ICP_NEURON_MANAGER for neuron_manager asset type
+                const effectiveCanisterKind = newAssetType === 'neuron_manager' ? CANISTER_KIND_ICP_NEURON_MANAGER : newAssetCanisterKind;
+                const kindName = CANISTER_KIND_NAMES[effectiveCanisterKind] || 'Canister';
                 const displayTitle = newAssetCanisterTitle.trim() || `${newAssetCanisterId.trim().slice(0, 10)}...`;
                 
                 // For neuron managers, store the total ICP
                 let totalIcpE8s = null;
-                if (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && neuronManagerInfo) {
+                if (effectiveCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && neuronManagerInfo) {
                     totalIcpE8s = neuronManagerInfo.totalIcpE8s;
                 }
                 
-                const displayName = (newAssetCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && totalIcpE8s)
+                const displayName = (effectiveCanisterKind === CANISTER_KIND_ICP_NEURON_MANAGER && totalIcpE8s)
                     ? `${(Number(totalIcpE8s) / 1e8).toFixed(2)} ICP (Neuron Manager)`
                     : `${kindName}: ${displayTitle}`;
                 
                 asset = { 
-                    type: 'canister', 
+                    type: 'canister', // Always save as 'canister' type in the backend
                     canister_id: newAssetCanisterId.trim(),
-                    canister_kind: newAssetCanisterKind,
+                    canister_kind: effectiveCanisterKind,
                     title: newAssetCanisterTitle.trim() || null,
                     description: newAssetCanisterDescription.trim() || null,
                     totalIcpE8s, // Store for neuron managers
@@ -1342,7 +1346,12 @@ function SneedexCreate() {
         setError('');
         
         if (asset.type === 'canister') {
-            setNewAssetType('canister');
+            // Use 'neuron_manager' type if canister_kind indicates it's a neuron manager
+            if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                setNewAssetType('neuron_manager');
+            } else {
+                setNewAssetType('canister');
+            }
             setNewAssetCanisterId(asset.canister_id);
             setNewAssetCanisterKind(asset.canister_kind || 0);
             setNewAssetCanisterTitle(asset.title || '');
@@ -3073,6 +3082,7 @@ function SneedexCreate() {
                                 }}>
                                     {[
                                         { type: 'canister', icon: FaServer, label: 'Canister', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                                        { type: 'neuron_manager', icon: FaRobot, label: 'ICP Neuron Manager', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                                     ].map(({ type, icon: Icon, label, gradient }) => {
@@ -3081,7 +3091,20 @@ function SneedexCreate() {
                                         return (
                                             <button
                                                 key={type}
-                                                onClick={() => !isDisabled && setNewAssetType(type)}
+                                                onClick={() => {
+                                                    if (isDisabled) return;
+                                                    setNewAssetType(type);
+                                                    // Reset canister-related state when switching types
+                                                    if (type === 'neuron_manager') {
+                                                        setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
+                                                    } else if (type === 'canister') {
+                                                        setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
+                                                    }
+                                                    // Clear previous canister selection when switching types
+                                                    setNewAssetCanisterId('');
+                                                    setCanisterKindVerified(null);
+                                                    setCanisterControllerStatus(null);
+                                                }}
                                                 disabled={isDisabled}
                                                 style={{
                                                     flex: 1,
@@ -3142,9 +3165,11 @@ function SneedexCreate() {
                                     })}
                                 </div>
                                 
-                                {newAssetType === 'canister' && (
+                                {(newAssetType === 'canister' || newAssetType === 'neuron_manager') && (
                                     <div style={styles.formGroup}>
-                                        <label style={styles.label}>Select Canister</label>
+                                        <label style={styles.label}>
+                                            {newAssetType === 'neuron_manager' ? 'Select ICP Neuron Manager' : 'Select Canister'}
+                                        </label>
                                         
                                         {loadingCanisters ? (
                                             <div style={{ 
@@ -3154,9 +3179,86 @@ function SneedexCreate() {
                                                 borderRadius: '8px',
                                                 fontSize: '0.9rem'
                                             }}>
-                                                Loading your canisters...
+                                                {newAssetType === 'neuron_manager' ? 'Loading your neuron managers...' : 'Loading your canisters...'}
                                             </div>
-                                        ) : (userCanisters.length > 0 || walletCanisters.length > 0 || neuronManagers.length > 0) ? (
+                                        ) : newAssetType === 'neuron_manager' ? (
+                                            // Neuron Manager selection - only show neuron managers
+                                            neuronManagers.length > 0 ? (
+                                                <>
+                                                    <select
+                                                        style={{
+                                                            ...styles.input,
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        value={newAssetCanisterId}
+                                                        onChange={(e) => {
+                                                            const selectedId = e.target.value;
+                                                            setNewAssetCanisterId(selectedId);
+                                                            // Auto-set canister kind and verify
+                                                            setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
+                                                            if (selectedId) {
+                                                                verifyICPNeuronManager(selectedId);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <option value="">Select a neuron manager...</option>
+                                                        {neuronManagers.map(canisterId => (
+                                                            <option key={canisterId} value={canisterId}>
+                                                                {getCanisterName(canisterId)}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    
+                                                    <div style={{ 
+                                                        marginTop: '8px', 
+                                                        fontSize: '0.8rem', 
+                                                        color: theme.colors.mutedText 
+                                                    }}>
+                                                        Or enter an ICP Neuron Manager canister ID manually:
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                                        style={{ ...styles.input, marginTop: '4px' }}
+                                                        value={newAssetCanisterId}
+                                                        onChange={(e) => {
+                                                            setNewAssetCanisterId(e.target.value);
+                                                            setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
+                                                            setCanisterKindVerified(null);
+                                                        }}
+                                                    />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div style={{ 
+                                                        padding: '12px', 
+                                                        background: `${theme.colors.accent}10`,
+                                                        borderRadius: '8px',
+                                                        marginBottom: '8px',
+                                                        fontSize: '0.85rem',
+                                                        color: theme.colors.secondaryText,
+                                                    }}>
+                                                        <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> You don't have any ICP Neuron Managers registered yet.
+                                                        Create one on the{' '}
+                                                        <Link to="/canisters" style={{ color: theme.colors.accent }}>Canisters page</Link>{' '}
+                                                        or enter an existing one manually below.
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                                        style={styles.input}
+                                                        value={newAssetCanisterId}
+                                                        onChange={(e) => {
+                                                            setNewAssetCanisterId(e.target.value);
+                                                            setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
+                                                            setCanisterKindVerified(null);
+                                                        }}
+                                                    />
+                                                </>
+                                            )
+                                        ) : (
+                                            // Regular Canister selection - exclude neuron managers
+                                            (userCanisters.length > 0 || walletCanisters.filter(id => !neuronManagers.includes(id)).length > 0) ? (
                                             <>
                                                 <select
                                                     style={{
@@ -3167,25 +3269,17 @@ function SneedexCreate() {
                                                     onChange={(e) => {
                                                         const selectedId = e.target.value;
                                                         setNewAssetCanisterId(selectedId);
-                                                        // Auto-set canister kind if selecting from neuron managers
-                                                        if (neuronManagers.includes(selectedId)) {
-                                                            setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
-                                                            // Also auto-verify
-                                                            if (selectedId) {
-                                                                verifyICPNeuronManager(selectedId);
-                                                            }
-                                                        } else {
-                                                            setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
-                                                            setCanisterKindVerified(null);
-                                                        }
-                                                        // Controller status will be checked by debounced useEffect
+                                                        setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
+                                                        setCanisterKindVerified(null);
                                                     }}
                                                 >
                                                     <option value="">Select a canister...</option>
                                                     
-                                                    {userCanisters.length > 0 && (
+                                                    {userCanisters.filter(id => !neuronManagers.includes(id)).length > 0 && (
                                                         <optgroup label="📦 Registered Canisters">
-                                                            {userCanisters.map(canisterId => (
+                                                            {userCanisters
+                                                                .filter(id => !neuronManagers.includes(id))
+                                                                .map(canisterId => (
                                                                 <option key={canisterId} value={canisterId}>
                                                                     {getCanisterName(canisterId)}
                                                                 </option>
@@ -3198,16 +3292,6 @@ function SneedexCreate() {
                                                             {walletCanisters
                                                                 .filter(id => !neuronManagers.includes(id))
                                                                 .map(canisterId => (
-                                                                <option key={canisterId} value={canisterId}>
-                                                                    {getCanisterName(canisterId)}
-                                                                </option>
-                                                            ))}
-                                                        </optgroup>
-                                                    )}
-                                                    
-                                                    {neuronManagers.length > 0 && (
-                                                        <optgroup label="🤖 ICP Neuron Managers">
-                                                            {neuronManagers.map(canisterId => (
                                                                 <option key={canisterId} value={canisterId}>
                                                                     {getCanisterName(canisterId)}
                                                                 </option>
@@ -3253,6 +3337,7 @@ function SneedexCreate() {
                                                     onChange={(e) => setNewAssetCanisterId(e.target.value)}
                                                 />
                                             </>
+                                        )
                                         )}
                                         
                                         {/* Controller Status Display */}
@@ -3308,7 +3393,8 @@ function SneedexCreate() {
                                             </div>
                                         )}
                                         
-                                        {/* Canister Kind Selection */}
+                                        {/* Canister Kind Selection - only show for generic canister type, not neuron_manager */}
+                                        {newAssetType === 'canister' && (
                                         <div style={{ marginTop: '16px' }}>
                                             <label style={styles.label}>Canister Type (Optional)</label>
                                             <select
@@ -3416,6 +3502,88 @@ function SneedexCreate() {
                                                 </div>
                                             )}
                                         </div>
+                                        )}
+                                        
+                                        {/* Neuron Manager Verification for neuron_manager asset type */}
+                                        {newAssetType === 'neuron_manager' && newAssetCanisterId && (
+                                            <div style={{ marginTop: '8px' }}>
+                                                {canisterKindVerified?.verified ? (
+                                                    <div style={{ 
+                                                        background: theme.colors.secondaryBg,
+                                                        borderRadius: '8px',
+                                                        padding: '12px',
+                                                    }}>
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '8px',
+                                                            color: '#10B981',
+                                                            fontSize: '0.9rem',
+                                                            marginBottom: '8px',
+                                                        }}>
+                                                            <FaCheck /> Verified as ICP Neuron Manager
+                                                        </div>
+                                                        <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                                                            <div>Version: <strong>{canisterKindVerified.versionStr}</strong></div>
+                                                            {canisterKindVerified.moduleHash && (
+                                                                <div style={{ marginTop: '4px' }}>
+                                                                    {canisterKindVerified.wasmVerified ? (
+                                                                        <span style={{ color: '#10B981' }}>
+                                                                            <FaCheck style={{ marginRight: '4px' }} />
+                                                                            Official WASM (v{Number(canisterKindVerified.officialVersion.major)}.{Number(canisterKindVerified.officialVersion.minor)}.{Number(canisterKindVerified.officialVersion.patch)})
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span style={{ color: '#F59E0B' }}>
+                                                                            <FaExclamationTriangle style={{ marginRight: '4px' }} />
+                                                                            Unknown WASM hash (not in official registry)
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {!canisterKindVerified.moduleHash && (
+                                                                <div style={{ marginTop: '4px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                                    (Could not verify WASM - not a controller)
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : typeof canisterKindVerified === 'string' ? (
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        color: '#EF4444',
+                                                        fontSize: '0.9rem'
+                                                    }}>
+                                                        <FaExclamationTriangle /> {canisterKindVerified}
+                                                    </div>
+                                                ) : verifyingCanisterKind ? (
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        color: theme.colors.secondaryText,
+                                                        fontSize: '0.9rem'
+                                                    }}>
+                                                        <FaSync style={{ animation: 'spin 1s linear infinite' }} /> Verifying...
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => verifyICPNeuronManager(newAssetCanisterId)}
+                                                        disabled={!newAssetCanisterId || verifyingCanisterKind}
+                                                        style={{
+                                                            ...styles.secondaryButton,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            opacity: (!newAssetCanisterId || verifyingCanisterKind) ? 0.5 : 1,
+                                                        }}
+                                                    >
+                                                        <FaRobot /> Verify as Neuron Manager
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                         
                                         {/* Title and Description */}
                                         <div style={styles.formGroup}>
