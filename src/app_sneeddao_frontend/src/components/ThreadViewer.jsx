@@ -2920,7 +2920,9 @@ function ThreadViewer({
                             paddingTop: '10px',
                             borderTop: `1px solid ${theme.colors.border}`,
                             flexWrap: 'wrap',
-                            alignItems: 'center'
+                            alignItems: 'center',
+                            position: 'relative',
+                            zIndex: openOverflowMenu === Number(post.id) ? 9999 : 1
                         }}>
                             {/* Voting Section - Layout like Discussion.jsx */}
                             <div style={{ 
@@ -3154,9 +3156,12 @@ function ThreadViewer({
 
                             {/* Mobile: Show overflow menu for extra buttons */}
                             {isNarrowScreen && (
-                                <div style={{ position: 'relative' }} data-overflow-menu>
+                                <div style={{ position: 'relative', zIndex: openOverflowMenu === Number(post.id) ? 9999 : 1 }} data-overflow-menu>
                                     <button
-                                        onClick={() => setOpenOverflowMenu(openOverflowMenu === Number(post.id) ? null : Number(post.id))}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenOverflowMenu(openOverflowMenu === Number(post.id) ? null : Number(post.id));
+                                        }}
                                         style={{
                                             backgroundColor: 'transparent',
                                             border: 'none',
@@ -3177,18 +3182,20 @@ function ThreadViewer({
                                     
                                     {/* Overflow Menu Dropdown */}
                                     {openOverflowMenu === Number(post.id) && (
-                                        <div style={{
-                                            position: 'absolute',
-                                            top: '100%',
-                                            right: 0,
-                                            backgroundColor: theme.colors.secondaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
-                                            borderRadius: '8px',
-                                            padding: '4px 0',
-                                            minWidth: '140px',
-                                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                            zIndex: 9999
-                                        }}>
+                                        <div 
+                                            onClick={(e) => e.stopPropagation()}
+                                            style={{
+                                                position: 'absolute',
+                                                top: '100%',
+                                                right: 0,
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                padding: '4px 0',
+                                                minWidth: '140px',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                                zIndex: 9999
+                                            }}>
                                             {/* Tip Option */}
                                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                                 <button
