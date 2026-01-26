@@ -2688,18 +2688,38 @@ function ThreadViewer({
         const defaultCollapsed = isNegative;
         const isCollapsed = hasBeenManuallyToggled ? !defaultCollapsed : defaultCollapsed;
         
+        // Determine special styling states
+        const needsBorder = isFocused || isUnread;
+        const needsBackground = isNegative || isFocused || isUnread;
+        
         return (
             <div 
-                className={`post-item ${isFocused ? 'focused-post' : ''}`} 
+                className={`post-item ${isFocused ? 'focused-post' : ''}`}
+                data-depth={depth}
                 style={{ 
-                    marginLeft: isFlat ? 0 : `${depth * 20}px`,
-                    backgroundColor: isUnread ? theme.colors.accentHover : (isNegative ? theme.colors.primaryBg : (isFocused ? theme.colors.accentHover : theme.colors.secondaryBg)),
-                    borderColor: isUnread ? theme.colors.accent : (isFocused ? theme.colors.accent : (isNegative ? theme.colors.error : theme.colors.border)),
-                    borderWidth: isUnread ? '2px' : (isFocused ? '2px' : '1px'),
-                    borderStyle: 'solid',
-                    borderRadius: '6px',
-                    padding: '15px',
-                    marginBottom: '10px',
+                    // Reduced indentation: 12px per level instead of 20px
+                    marginLeft: isFlat ? 0 : `${depth * 12}px`,
+                    // No right margin - all posts flush on right
+                    marginRight: 0,
+                    // Minimal padding - no right padding for nested flush layout
+                    padding: needsBorder ? '10px' : '6px 0 6px 8px',
+                    paddingRight: 0,
+                    // Reduced vertical spacing
+                    marginBottom: '2px',
+                    marginTop: depth === 0 ? '8px' : '2px',
+                    // Background only for special states
+                    backgroundColor: needsBackground 
+                        ? (isUnread ? theme.colors.accentHover : (isNegative ? theme.colors.primaryBg : theme.colors.accentHover))
+                        : 'transparent',
+                    // Border only for focused/unread posts
+                    border: needsBorder 
+                        ? `2px solid ${isUnread ? theme.colors.accent : theme.colors.accent}` 
+                        : 'none',
+                    // Left border for nesting indication (not for top-level or bordered posts)
+                    borderLeft: !needsBorder && depth > 0 
+                        ? `2px solid ${isNegative ? theme.colors.error : theme.colors.border}` 
+                        : (needsBorder ? undefined : 'none'),
+                    borderRadius: needsBorder ? '6px' : '0',
                     position: 'relative'
                 }}
             >
@@ -3166,7 +3186,7 @@ function ThreadViewer({
                 
                 {/* Replies in tree mode */}
                 {!isFlat && !isCollapsed && post.replies && post.replies.length > 0 && (
-                    <div style={{ marginTop: '10px' }}>
+                    <div style={{ marginTop: '4px' }}>
                         {post.replies.map(reply => (
                             <PostComponent 
                                 key={reply.id} 

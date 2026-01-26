@@ -90,24 +90,14 @@
 /* Ancestor posts styling */
 .post-item[data-is-ancestor="true"] {
     opacity: 0.7;
-    border-left: 3px solid rgba(255, 215, 0, 0.5);
-    padding-left: 1rem;
-    margin-left: 0.5rem;
-}
-
-.post-item[data-is-ancestor="true"]::before {
-    content: '⬆️';
-    position: absolute;
-    left: -15px;
-    top: 10px;
-    font-size: 0.8rem;
+    border-left: 2px solid rgba(255, 215, 0, 0.5) !important;
+    padding-left: 8px;
 }
 
 /* Descendant posts styling */
 .post-item[data-is-descendant="true"] {
-    border-left: 3px solid rgba(100, 255, 100, 0.5);
-    padding-left: 1rem;
-    margin-left: 0.5rem;
+    border-left: 2px solid rgba(100, 255, 100, 0.5) !important;
+    padding-left: 8px;
 }
 
 /* Responsive Design */
