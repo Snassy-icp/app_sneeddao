@@ -137,19 +137,37 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
 
     // Scroll listener for VP bar visibility
     useEffect(() => {
+        let ticking = false;
+        const scrollDeltaThreshold = 15; // Minimum scroll distance before toggling
+        
         const handleScroll = () => {
-            const currentScrollY = window.scrollY;
+            if (ticking) return;
             
-            // Show VP bar when scrolling up (page moves down), hide when scrolling down (page moves up)
-            if (currentScrollY < lastScrollY.current) {
-                // Scrolling up (page moving down) - show VP bar
-                setIsVpBarVisible(true);
-            } else if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
-                // Scrolling down (page moving up) and past threshold - hide VP bar
-                setIsVpBarVisible(false);
-            }
-            
-            lastScrollY.current = currentScrollY;
+            ticking = true;
+            requestAnimationFrame(() => {
+                const currentScrollY = window.scrollY;
+                const scrollDelta = currentScrollY - lastScrollY.current;
+                
+                // Only change visibility if scroll delta exceeds threshold
+                if (Math.abs(scrollDelta) > scrollDeltaThreshold) {
+                    if (scrollDelta < 0) {
+                        // Scrolling up (page moving down) - show VP bar
+                        setIsVpBarVisible(true);
+                    } else if (currentScrollY > 50) {
+                        // Scrolling down (page moving up) and past threshold - hide VP bar
+                        setIsVpBarVisible(false);
+                    }
+                    lastScrollY.current = currentScrollY;
+                }
+                
+                // Always show at top of page
+                if (currentScrollY < 10) {
+                    setIsVpBarVisible(true);
+                    lastScrollY.current = currentScrollY;
+                }
+                
+                ticking = false;
+            });
         };
 
         window.addEventListener('scroll', handleScroll, { passive: true });
