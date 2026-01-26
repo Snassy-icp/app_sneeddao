@@ -42,6 +42,20 @@ import ConfirmationModal from '../ConfirmationModal';
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
+
+// Responsive CSS for mobile layout
+const RESPONSIVE_CSS = `
+    @media (max-width: 900px) {
+        .sneedex-offer-main-content {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 1.5rem !important;
+        }
+        .sneedex-offer-right-column {
+            order: 2 !important;
+        }
+    }
+`;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
 // Management canister IDL for canister_status and update_settings
@@ -169,6 +183,21 @@ function SneedexOffer() {
     
     // ConfirmationModal state
     const [confirmModal, setConfirmModal] = useState({ show: false, message: '', action: null });
+    
+    // Inject responsive CSS for mobile layout
+    useEffect(() => {
+        const styleId = 'sneedex-offer-responsive-css';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = RESPONSIVE_CSS;
+            document.head.appendChild(style);
+        }
+        return () => {
+            const style = document.getElementById(styleId);
+            if (style) style.remove();
+        };
+    }, []);
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -2293,7 +2322,7 @@ function SneedexOffer() {
                 
                 {error && <div style={styles.errorText}>{error}</div>}
                 
-                <div style={styles.mainContent}>
+                <div style={styles.mainContent} className="sneedex-offer-main-content">
                     {/* Left Column - Assets & Details */}
                     <div style={styles.leftColumn}>
                         {/* Assets */}
@@ -4410,7 +4439,7 @@ function SneedexOffer() {
                     </div>
                     
                     {/* Right Column - Pricing & Actions */}
-                    <div style={styles.rightColumn}>
+                    <div style={styles.rightColumn} className="sneedex-offer-right-column">
                         <div style={{ ...styles.priceCard, position: 'relative', overflow: 'hidden' }}>
                             {/* SOLD overlay for sold offers (Completed or Claimed) */}
                             {isSold && (
