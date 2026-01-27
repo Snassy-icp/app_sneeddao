@@ -1,7 +1,6 @@
 // SendTokenModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import './SendTokenModal.css';
-import { Principal } from "@dfinity/principal";
 import { formatAmount } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
@@ -11,7 +10,6 @@ import {
   resolveSubaccount,
   encodeExtendedAddress,
   bytesToHex,
-  formatSubaccountForDisplay,
   looksLikeExtendedAddress,
   isDefaultSubaccount,
   getSubaccountForTransfer
@@ -34,6 +32,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   // Review screen state
   const [showReviewScreen, setShowReviewScreen] = useState(false);
   const [reviewData, setReviewData] = useState(null);
+  const [showDetailsExpanded, setShowDetailsExpanded] = useState(false);
 
   useEffect(() => {
     if (show) {
@@ -64,6 +63,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       setErrorText('');
       setShowReviewScreen(false);
       setReviewData(null);
+      setShowDetailsExpanded(false);
     }
   }, [show]);
 
@@ -202,10 +202,14 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     // Prepare review data
     const subaccountForTransfer = getSubaccountForTransfer(parsedAccount);
     const hasSubaccount = parsedAccount.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved);
+    
+    // Generate extended address string
+    const extendedAddress = encodeExtendedAddress(parsedAccount);
 
     setReviewData({
       principal: parsedAccount.principal.toText(),
       subaccount: hasSubaccount ? bytesToHex(parsedAccount.subaccount.resolved) : null,
+      extendedAddress: extendedAddress,
       amount: amount,
       amountBigInt: bigIntAmount,
       fee: token.fee,
@@ -239,64 +243,48 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   // Check if token is DIP20 (doesn't support subaccounts)
   const isDIP20 = token.standard === 'DIP20' || token.standard === 'dip20';
 
-  // Copyable field component
-  const CopyableField = ({ label, value, mono = true }) => (
-    <div style={{ marginBottom: '16px' }}>
-      <div style={{ 
-        color: theme.colors.mutedText, 
-        fontSize: '0.8rem', 
-        marginBottom: '6px',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        fontWeight: '600'
+  // Compact copyable field component
+  const CopyableRow = ({ label, value }) => (
+    <div style={{
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: '8px',
+      padding: '8px 0',
+      borderBottom: `1px solid ${theme.colors.border}20`
+    }}>
+      <span style={{
+        color: theme.colors.mutedText,
+        fontSize: '0.75rem',
+        minWidth: '70px',
+        flexShrink: 0
       }}>
         {label}
-      </div>
-      <div style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: '8px',
-        background: theme.colors.tertiaryBg,
-        padding: '12px',
-        borderRadius: '8px',
-        border: `1px solid ${theme.colors.border}`
+      </span>
+      <span style={{
+        flex: 1,
+        fontFamily: 'monospace',
+        fontSize: '0.75rem',
+        color: theme.colors.primaryText,
+        wordBreak: 'break-all',
+        overflowWrap: 'anywhere'
       }}>
-        <span style={{
-          flex: 1,
-          fontFamily: mono ? 'monospace' : 'inherit',
-          fontSize: mono ? '0.85rem' : '1rem',
-          color: theme.colors.primaryText,
-          wordBreak: 'break-all',
-          overflowWrap: 'anywhere'
-        }}>
-          {value}
-        </span>
-        <button
-          onClick={() => navigator.clipboard.writeText(value)}
-          style={{
-            background: theme.colors.secondaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            padding: '6px 8px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            color: theme.colors.mutedText,
-            fontSize: '12px',
-            flexShrink: 0,
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.background = theme.colors.accent;
-            e.target.style.color = theme.colors.primaryBg;
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.background = theme.colors.secondaryBg;
-            e.target.style.color = theme.colors.mutedText;
-          }}
-          title="Copy to clipboard"
-        >
-          Copy
-        </button>
-      </div>
+        {value}
+      </span>
+      <button
+        onClick={() => navigator.clipboard.writeText(value)}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: '2px',
+          cursor: 'pointer',
+          color: theme.colors.mutedText,
+          fontSize: '12px',
+          flexShrink: 0
+        }}
+        title="Copy"
+      >
+        📋
+      </button>
     </div>
   );
 
@@ -319,123 +307,212 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           background: theme.colors.cardGradient,
           border: `1px solid ${theme.colors.border}`,
           boxShadow: theme.colors.cardShadow,
-          borderRadius: '16px',
-          padding: '32px',
-          width: '520px',
+          borderRadius: '12px',
+          padding: '24px',
+          width: '420px',
           maxWidth: '90vw',
           maxHeight: '90vh',
           overflow: 'auto'
         }}>
-          {/* Header */}
+          {/* Compact Header */}
           <div style={{ 
-            textAlign: 'center', 
-            marginBottom: '28px',
-            paddingBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '16px',
+            paddingBottom: '12px',
             borderBottom: `1px solid ${theme.colors.border}`
           }}>
             <div style={{
-              width: '64px',
-              height: '64px',
+              width: '40px',
+              height: '40px',
               borderRadius: '50%',
               background: `${theme.colors.accent}20`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 16px',
-              border: `2px solid ${theme.colors.accent}`
+              border: `2px solid ${theme.colors.accent}`,
+              flexShrink: 0
             }}>
               {token.logo && logoLoaded ? (
                 <img
                   src={token.logo}
                   alt={token.symbol}
-                  style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'contain' }}
+                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'contain' }}
                 />
               ) : (
-                <span style={{ fontSize: '28px' }}>💸</span>
+                <span style={{ fontSize: '18px' }}>💸</span>
               )}
             </div>
-            <h2 style={{
-              color: theme.colors.primaryText,
-              margin: '0 0 8px 0',
-              fontSize: '1.5rem',
-              fontWeight: '600'
-            }}>
-              Review Transaction
-            </h2>
-            <p style={{
-              color: theme.colors.mutedText,
-              margin: 0,
-              fontSize: '0.9rem'
-            }}>
-              Please review the details before confirming
-            </p>
+            <div>
+              <h2 style={{
+                color: theme.colors.primaryText,
+                margin: 0,
+                fontSize: '1.1rem',
+                fontWeight: '600'
+              }}>
+                Confirm Send
+              </h2>
+              <p style={{
+                color: theme.colors.mutedText,
+                margin: 0,
+                fontSize: '0.75rem'
+              }}>
+                Review before confirming
+              </p>
+            </div>
           </div>
 
-          {/* Amount Section */}
+          {/* Amount - Compact */}
           <div style={{
             textAlign: 'center',
-            marginBottom: '24px',
-            padding: '20px',
+            marginBottom: '16px',
+            padding: '16px',
             background: `linear-gradient(135deg, ${theme.colors.accent}15 0%, ${theme.colors.accent}05 100%)`,
-            borderRadius: '12px',
+            borderRadius: '10px',
             border: `1px solid ${theme.colors.accent}30`
           }}>
-            <div style={{ 
-              color: theme.colors.mutedText, 
-              fontSize: '0.85rem', 
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px'
-            }}>
-              You are sending
-            </div>
             <div style={{
-              fontSize: '2.2rem',
+              fontSize: '1.6rem',
               fontWeight: '700',
               color: theme.colors.primaryText,
-              marginBottom: '4px'
+              marginBottom: '2px'
             }}>
               {reviewData.amount} <span style={{ color: theme.colors.accent }}>{token.symbol}</span>
             </div>
             <div style={{
               color: theme.colors.mutedText,
-              fontSize: '0.85rem'
+              fontSize: '0.75rem'
             }}>
               + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} fee
             </div>
           </div>
 
-          {/* Recipient Section */}
-          <div style={{ marginBottom: '24px' }}>
-            <CopyableField 
-              label="Recipient Principal" 
-              value={reviewData.principal} 
-            />
+          {/* Recipient Summary */}
+          <div style={{
+            background: theme.colors.secondaryBg,
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '12px'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px'
+            }}>
+              <span style={{ color: theme.colors.mutedText, fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase' }}>
+                To
+              </span>
+              {reviewData.subaccount && (
+                <span style={{
+                  background: `${theme.colors.warning}20`,
+                  color: theme.colors.warning,
+                  fontSize: '0.65rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontWeight: '600'
+                }}>
+                  + SUBACCOUNT
+                </span>
+              )}
+            </div>
+            
+            {/* Principal - always show truncated with copy */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: theme.colors.tertiaryBg,
+              padding: '8px 10px',
+              borderRadius: '6px',
+              marginBottom: '8px'
+            }}>
+              <span style={{
+                flex: 1,
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+                color: theme.colors.primaryText,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {reviewData.principal.slice(0, 12)}...{reviewData.principal.slice(-8)}
+              </span>
+              <button
+                onClick={() => navigator.clipboard.writeText(reviewData.principal)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px 6px',
+                  cursor: 'pointer',
+                  color: theme.colors.accent,
+                  fontSize: '0.7rem',
+                  flexShrink: 0
+                }}
+              >
+                Copy
+              </button>
+            </div>
 
-            {reviewData.subaccount && (
-              <CopyableField 
-                label="Subaccount" 
-                value={reviewData.subaccount} 
-              />
+            {/* Expandable Details */}
+            <button
+              onClick={() => setShowDetailsExpanded(!showDetailsExpanded)}
+              style={{
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                color: theme.colors.accent,
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                padding: '4px 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px'
+              }}
+            >
+              <span style={{ 
+                transform: showDetailsExpanded ? 'rotate(90deg)' : 'rotate(0)', 
+                transition: 'transform 0.2s',
+                display: 'inline-block'
+              }}>▶</span>
+              {showDetailsExpanded ? 'Hide details' : 'Show full details'}
+            </button>
+
+            {showDetailsExpanded && (
+              <div style={{
+                marginTop: '8px',
+                padding: '8px',
+                background: theme.colors.tertiaryBg,
+                borderRadius: '6px'
+              }}>
+                <CopyableRow label="Principal" value={reviewData.principal} />
+                {reviewData.subaccount && (
+                  <CopyableRow label="Subaccount" value={reviewData.subaccount} />
+                )}
+                {reviewData.extendedAddress && (
+                  <CopyableRow label="Extended" value={reviewData.extendedAddress} />
+                )}
+              </div>
             )}
           </div>
 
-          {/* Warning for subaccount */}
+          {/* Warning for subaccount - compact */}
           {reviewData.subaccount && (
             <div style={{
-              padding: '12px 16px',
+              padding: '10px 12px',
               background: `${theme.colors.warning}15`,
               border: `1px solid ${theme.colors.warning}40`,
-              borderRadius: '8px',
-              marginBottom: '24px',
+              borderRadius: '6px',
+              marginBottom: '16px',
               display: 'flex',
               alignItems: 'flex-start',
-              gap: '10px'
+              gap: '8px'
             }}>
-              <span style={{ fontSize: '18px' }}>⚠️</span>
-              <div style={{ fontSize: '0.85rem', color: theme.colors.warning }}>
-                <strong>Sending to a subaccount.</strong> Make sure the recipient controls this subaccount. 
-                Tokens sent to the wrong subaccount may be unrecoverable.
+              <span style={{ fontSize: '14px' }}>⚠️</span>
+              <div style={{ fontSize: '0.75rem', color: theme.colors.warning, lineHeight: 1.4 }}>
+                <strong>Subaccount transfer.</strong> Verify the recipient controls this subaccount.
               </div>
             </div>
           )}
@@ -443,50 +520,50 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           {/* Error display */}
           {errorText && (
             <div style={{
-              padding: '12px',
+              padding: '10px',
               background: `${theme.colors.error}15`,
               border: `1px solid ${theme.colors.error}30`,
-              borderRadius: '8px',
-              marginBottom: '20px',
+              borderRadius: '6px',
+              marginBottom: '16px',
               color: theme.colors.error,
-              fontSize: '0.9rem'
+              fontSize: '0.8rem'
             }}>
               {errorText}
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Action Buttons - Compact */}
           {isLoading ? (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              padding: '20px'
+              padding: '16px'
             }}>
               <div style={{
-                width: '40px',
-                height: '40px',
+                width: '32px',
+                height: '32px',
                 border: `3px solid ${theme.colors.border}`,
                 borderTop: `3px solid ${theme.colors.accent}`,
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite',
-                marginBottom: '12px'
+                marginBottom: '8px'
               }}></div>
-              <div style={{ color: theme.colors.mutedText }}>Processing transaction...</div>
+              <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Sending...</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 onClick={() => setShowReviewScreen(false)}
                 style={{
                   flex: 1,
-                  padding: '14px 24px',
+                  padding: '12px 16px',
                   background: theme.colors.secondaryBg,
                   color: theme.colors.mutedText,
                   border: `1px solid ${theme.colors.border}`,
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   cursor: 'pointer',
-                  fontSize: '1rem',
+                  fontSize: '0.9rem',
                   fontWeight: '500',
                   transition: 'all 0.2s ease'
                 }}
@@ -505,13 +582,13 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                 onClick={handleConfirmSend}
                 style={{
                   flex: 2,
-                  padding: '14px 24px',
+                  padding: '12px 16px',
                   background: theme.colors.accent,
                   color: theme.colors.primaryBg,
                   border: 'none',
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   cursor: 'pointer',
-                  fontSize: '1rem',
+                  fontSize: '0.9rem',
                   fontWeight: '600',
                   transition: 'all 0.2s ease'
                 }}
