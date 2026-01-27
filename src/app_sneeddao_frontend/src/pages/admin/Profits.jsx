@@ -3,13 +3,14 @@ import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import Header from '../../components/Header';
-import { FaChartLine, FaDollarSign, FaSync, FaExclamationTriangle, FaCoins, FaCrown, FaLock, FaStore, FaCube } from 'react-icons/fa';
+import { FaChartLine, FaDollarSign, FaSync, FaExclamationTriangle, FaCoins, FaCrown, FaLock, FaStore, FaCube, FaUnlock } from 'react-icons/fa';
 
 // Canister imports
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createSneedexActor, canisterId as sneedexCanisterId } from 'declarations/sneedex';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createSneedPremiumActor } from '../../utils/SneedPremiumUtils';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 
 // Price service
 import priceService from '../../services/PriceService';
@@ -28,6 +29,7 @@ export default function ProfitsAdmin() {
     const [sneedexProfits, setSneedexProfits] = useState(null);
     const [sneedLockProfits, setSneedLockProfits] = useState(null);
     const [premiumProfits, setPremiumProfits] = useState(null);
+    const [jailbreakProfits, setJailbreakProfits] = useState(null);
     
     // Price states
     const [icpUsdPrice, setIcpUsdPrice] = useState(null);
@@ -38,6 +40,7 @@ export default function ProfitsAdmin() {
     const [loadingSneedex, setLoadingSneedex] = useState(false);
     const [loadingSneedLock, setLoadingSneedLock] = useState(false);
     const [loadingPremium, setLoadingPremium] = useState(false);
+    const [loadingJailbreak, setLoadingJailbreak] = useState(false);
     const [loadingPrices, setLoadingPrices] = useState(false);
 
     // Use admin check hook
@@ -179,6 +182,28 @@ export default function ProfitsAdmin() {
         }
     }, [identity]);
 
+    // Fetch Jailbreak profits
+    const fetchJailbreakProfits = useCallback(async () => {
+        if (!identity) return;
+        setLoadingJailbreak(true);
+        try {
+            const actor = createBackendActor(backendCanisterId, {
+                agentOptions: { identity }
+            });
+            const result = await actor.get_jailbreak_payment_stats();
+            if ('ok' in result) {
+                setJailbreakProfits(result.ok);
+            } else {
+                setJailbreakProfits({ error: result.err });
+            }
+        } catch (err) {
+            console.error('Failed to fetch Jailbreak profits:', err);
+            setJailbreakProfits({ error: err.message });
+        } finally {
+            setLoadingJailbreak(false);
+        }
+    }, [identity]);
+
     // Fetch all data
     const fetchAllData = useCallback(async () => {
         setLoading(true);
@@ -189,11 +214,12 @@ export default function ProfitsAdmin() {
             fetchFactoryProfits(),
             fetchSneedexProfits(),
             fetchSneedLockProfits(),
-            fetchPremiumProfits()
+            fetchPremiumProfits(),
+            fetchJailbreakProfits()
         ]);
         
         setLoading(false);
-    }, [fetchIcpPrice, fetchFactoryProfits, fetchSneedexProfits, fetchSneedLockProfits, fetchPremiumProfits]);
+    }, [fetchIcpPrice, fetchFactoryProfits, fetchSneedexProfits, fetchSneedLockProfits, fetchPremiumProfits, fetchJailbreakProfits]);
 
     // Initial load
     useEffect(() => {
@@ -238,6 +264,11 @@ export default function ProfitsAdmin() {
         // Premium profits
         if (premiumProfits && !premiumProfits.error && premiumProfits.total_icp_collected_e8s) {
             total += BigInt(premiumProfits.total_icp_collected_e8s);
+        }
+        
+        // Jailbreak profits
+        if (jailbreakProfits && !jailbreakProfits.error && jailbreakProfits.total_revenue_e8s) {
+            total += BigInt(jailbreakProfits.total_revenue_e8s);
         }
         
         return total;
@@ -445,6 +476,65 @@ export default function ProfitsAdmin() {
     };
 
     // Render individual section cards
+    const renderJailbreakCard = () => (
+        <div style={styles.card}>
+            <h3 style={styles.cardTitle}>
+                <FaUnlock style={styles.cardIcon} />
+                SNS Jailbreak
+            </h3>
+            {loadingJailbreak ? (
+                <p style={styles.loadingText}>Loading...</p>
+            ) : jailbreakProfits?.error ? (
+                <p style={styles.errorText}>
+                    <FaExclamationTriangle />
+                    {jailbreakProfits.error}
+                </p>
+            ) : jailbreakProfits ? (
+                <>
+                    <div style={styles.statRow}>
+                        <span style={styles.statLabel}>Total Revenue</span>
+                        <div style={styles.statValue}>
+                            {formatIcp(jailbreakProfits.total_revenue_e8s)} ICP
+                            <div style={styles.statUsd}>{formatUsd(e8sToUsd(jailbreakProfits.total_revenue_e8s))}</div>
+                        </div>
+                    </div>
+                    <div style={styles.statRow}>
+                        <span style={styles.statLabel}>Premium Revenue</span>
+                        <div style={styles.statValue}>
+                            {formatIcp(jailbreakProfits.premium_revenue_e8s)} ICP
+                            <div style={styles.statUsd}>
+                                {Number(jailbreakProfits.total_premium_payments).toLocaleString()} payments
+                            </div>
+                        </div>
+                    </div>
+                    <div style={styles.statRow}>
+                        <span style={styles.statLabel}>Regular Revenue</span>
+                        <div style={styles.statValue}>
+                            {formatIcp(jailbreakProfits.regular_revenue_e8s)} ICP
+                            <div style={styles.statUsd}>
+                                {Number(jailbreakProfits.total_regular_payments).toLocaleString()} payments
+                            </div>
+                        </div>
+                    </div>
+                    <div style={styles.statRow}>
+                        <span style={styles.statLabel}>Scripts Created</span>
+                        <div style={styles.statValue}>
+                            {Number(jailbreakProfits.total_scripts_created).toLocaleString()}
+                        </div>
+                    </div>
+                    <div style={{ ...styles.statRow, borderBottom: 'none' }}>
+                        <span style={styles.statLabel}>Unique Users</span>
+                        <div style={styles.statValue}>
+                            {Number(jailbreakProfits.unique_users).toLocaleString()}
+                        </div>
+                    </div>
+                </>
+            ) : (
+                <p style={styles.loadingText}>No data</p>
+            )}
+        </div>
+    );
+
     const renderFactoryCard = () => (
         <div style={styles.card}>
             <h3 style={styles.cardTitle}>
@@ -755,6 +845,7 @@ export default function ProfitsAdmin() {
                         {renderSneedexCard()}
                         {renderSneedLockCard()}
                         {renderPremiumCard()}
+                        {renderJailbreakCard()}
                     </div>
                 </div>
             </main>
