@@ -8,11 +8,15 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex, formatE8s, getDissolveState, getNeuronDetails } from '../utils/NeuronUtils';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
+
+// Permission type for MANAGE_PRINCIPALS (allows adding/removing principals and their permissions)
+const PERM_MANAGE_PRINCIPALS = 2;
 
 function SnsJailbreak() {
     const navigate = useNavigate();
@@ -31,6 +35,10 @@ function SnsJailbreak() {
     const [snsLogos, setSnsLogos] = useState(new Map());
     const [loadingLogos, setLoadingLogos] = useState(new Set());
     const [showStep1Info, setShowStep1Info] = useState(false);
+    const [supportedSnses, setSupportedSnses] = useState(new Set()); // SNSes that support full hotkey permissions
+    const [unsupportedSnses, setUnsupportedSnses] = useState([]); // {name, rootCanisterId, reason}
+    const [checkingSnsSupport, setCheckingSnsSupport] = useState(true);
+    const [showUnsupportedInfo, setShowUnsupportedInfo] = useState(false);
     
     // Step 2: Neuron selection
     const [snsNeurons, setSnsNeurons] = useState([]);
@@ -70,6 +78,7 @@ function SnsJailbreak() {
     useEffect(() => {
         const loadSnsData = async () => {
             setLoadingSnses(true);
+            setCheckingSnsSupport(true);
             try {
                 const data = await fetchAndCacheSnsData(identity);
                 const sortedData = [...data].sort((a, b) => {
@@ -85,6 +94,9 @@ function SnsJailbreak() {
                         loadSnsLogo(sns.canisters.governance);
                     }
                 });
+                
+                // Check which SNSes support full hotkey permissions
+                await checkSnsSupport(sortedData);
             } catch (e) {
                 console.error('Failed to load SNS data:', e);
             } finally {
@@ -93,6 +105,71 @@ function SnsJailbreak() {
         };
         loadSnsData();
     }, [identity]);
+    
+    // Check if each SNS supports granting MANAGE_PRINCIPALS permission to hotkeys
+    const checkSnsSupport = async (snses) => {
+        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+            ? 'https://ic0.app' 
+            : 'http://localhost:4943';
+        
+        const supported = new Set();
+        const unsupported = [];
+        
+        // Check in parallel with Promise.allSettled
+        const checks = snses.map(async (sns) => {
+            if (!sns.canisters?.governance) {
+                return { sns, supported: false, reason: 'No governance canister' };
+            }
+            
+            try {
+                const agent = new HttpAgent({ host, ...(identity && { identity }) });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const govActor = createSnsGovernanceActor(sns.canisters.governance, { agent });
+                const params = await govActor.get_nervous_system_parameters(null);
+                
+                // Check if MANAGE_PRINCIPALS is in grantable permissions
+                const grantablePerms = params.neuron_grantable_permissions?.[0]?.permissions || 
+                                       params.neuron_grantable_permissions?.permissions || [];
+                
+                if (grantablePerms.includes(PERM_MANAGE_PRINCIPALS)) {
+                    return { sns, supported: true };
+                } else {
+                    return { 
+                        sns, 
+                        supported: false, 
+                        reason: 'Does not allow granting ManagePrincipals permission to hotkeys' 
+                    };
+                }
+            } catch (error) {
+                console.error(`Error checking SNS ${sns.name}:`, error);
+                return { sns, supported: false, reason: 'Failed to check permissions' };
+            }
+        });
+        
+        const results = await Promise.allSettled(checks);
+        
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                const { sns, supported: isSupported, reason } = result.value;
+                if (isSupported) {
+                    supported.add(sns.rootCanisterId);
+                } else {
+                    unsupported.push({
+                        name: sns.name,
+                        rootCanisterId: sns.rootCanisterId,
+                        reason: reason || 'Unknown reason'
+                    });
+                }
+            }
+        });
+        
+        setSupportedSnses(supported);
+        setUnsupportedSnses(unsupported);
+        setCheckingSnsSupport(false);
+    };
     
     // Load individual SNS logo
     const loadSnsLogo = async (governanceId) => {
@@ -421,7 +498,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
     // Check if can proceed to next step
     const canProceed = () => {
         switch (currentStep) {
-            case 1: return !!selectedSnsRoot;
+            case 1: return !!selectedSnsRoot && supportedSnses.has(selectedSnsRoot);
             case 2: 
                 if (useManualEntry) {
                     // Must have valid ID and either loaded data or allow proceeding with valid format
@@ -846,16 +923,30 @@ const NEW_CONTROLLER = "${targetPrincipal}";
             </div>
             
             <div style={styles.card}>
-                <label style={styles.label}>Select an SNS</label>
+                <label style={styles.label}>
+                    Select an SNS
+                    {!loadingSnses && !checkingSnsSupport && (
+                        <span style={{ fontWeight: 'normal', color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                            ({supportedSnses.size} supported)
+                        </span>
+                    )}
+                </label>
                 
-                {loadingSnses ? (
+                {loadingSnses || checkingSnsSupport ? (
                     <div style={styles.loadingContainer}>
                         <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
-                        <p style={{ color: theme.colors.mutedText }}>Loading SNS DAOs...</p>
+                        <p style={{ color: theme.colors.mutedText }}>
+                            {loadingSnses ? 'Loading SNS DAOs...' : 'Checking SNS compatibility...'}
+                        </p>
                     </div>
                 ) : (
                     <div style={{ maxHeight: '400px', overflow: 'auto' }}>
-                        {snsList.map(sns => {
+                        {snsList.filter(sns => supportedSnses.has(sns.rootCanisterId)).length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                <p>No compatible SNSes found.</p>
+                            </div>
+                        ) : (
+                            snsList.filter(sns => supportedSnses.has(sns.rootCanisterId)).map(sns => {
                             const logo = snsLogos.get(sns.canisters?.governance);
                             const isLoadingLogo = loadingLogos.has(sns.canisters?.governance);
                             
@@ -905,10 +996,79 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                     )}
                                 </div>
                             );
-                        })}
+                        })
+                        )}
                     </div>
                 )}
             </div>
+            
+            {/* Unsupported SNSes notice */}
+            {!loadingSnses && !checkingSnsSupport && unsupportedSnses.length > 0 && (
+                <div style={{
+                    ...styles.infoBox,
+                    background: `${theme.colors.warning}10`,
+                    borderColor: `${theme.colors.warning}30`,
+                }}>
+                    <div 
+                        style={styles.infoHeader}
+                        onClick={() => setShowUnsupportedInfo(!showUnsupportedInfo)}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <FaExclamationTriangle style={{ color: theme.colors.warning }} />
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                {unsupportedSnses.length} SNS{unsupportedSnses.length !== 1 ? 'es' : ''} not supported
+                            </span>
+                        </div>
+                        {showUnsupportedInfo ? <FaChevronUp style={{ color: theme.colors.mutedText }} /> : <FaChevronDown style={{ color: theme.colors.mutedText }} />}
+                    </div>
+                    
+                    {showUnsupportedInfo && (
+                        <div style={styles.infoContent}>
+                            <p style={{ marginBottom: '12px' }}>
+                                <strong>Why are some SNSes not supported?</strong><br />
+                                SNS Jailbreak requires the ability to grant full control (ManagePrincipals permission) to hotkey principals.
+                                Some SNSes have governance parameters that restrict which permissions can be granted to hotkeys.
+                            </p>
+                            
+                            <p style={{ marginBottom: '12px' }}>
+                                If an SNS doesn't allow granting ManagePrincipals permission, you cannot add yourself as a full controller 
+                                through this wizard. The neuron will remain controlled only through the NNS app.
+                            </p>
+                            
+                            <p style={{ marginBottom: '8px' }}>
+                                <strong>Unsupported SNSes:</strong>
+                            </p>
+                            <div style={{ 
+                                background: theme.colors.secondaryBg, 
+                                borderRadius: '8px', 
+                                padding: '12px',
+                                maxHeight: '200px',
+                                overflow: 'auto',
+                            }}>
+                                {unsupportedSnses.map(sns => (
+                                    <div 
+                                        key={sns.rootCanisterId}
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '8px 0',
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                        }}
+                                    >
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                            {sns.name}
+                                        </span>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                            {sns.reason}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
             
             <div style={styles.buttonRow}>
                 <button
