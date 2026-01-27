@@ -1,8 +1,8 @@
 export const idlFactory = ({ IDL }) => {
   const CanisterGroup = IDL.Rec();
-  const Result_1 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const Result_2 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const PartnerLink = IDL.Record({ 'url' : IDL.Text, 'title' : IDL.Text });
-  const Result_2 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
+  const Result = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const ProjectType = IDL.Variant({
     'fork' : IDL.Null,
     'product' : IDL.Null,
@@ -116,7 +116,7 @@ export const idlFactory = ({ IDL }) => {
     'InsufficientFunds' : IDL.Record({ 'balance' : Balance }),
   });
   const TransferResult = IDL.Variant({ 'Ok' : TxIndex, 'Err' : TransferError });
-  const Result = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
+  const Result_1 = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const TransferPositionError = IDL.Variant({
     'CommonError' : IDL.Null,
     'InternalError' : IDL.Text,
@@ -130,10 +130,10 @@ export const idlFactory = ({ IDL }) => {
   const AppSneedDaoBackend = IDL.Service({
     'add_admin' : IDL.Func([IDL.Principal], [], []),
     'add_authorized_for_caller' : IDL.Func([IDL.Principal], [], []),
-    'add_blacklisted_word' : IDL.Func([IDL.Text], [Result_1], []),
+    'add_blacklisted_word' : IDL.Func([IDL.Text], [Result_2], []),
     'add_partner' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(PartnerLink), IDL.Opt(IDL.Nat)],
-        [Result_2],
+        [Result],
         [],
       ),
     'add_project' : IDL.Func(
@@ -145,15 +145,15 @@ export const idlFactory = ({ IDL }) => {
           IDL.Vec(ProjectLink),
           IDL.Opt(IDL.Nat),
         ],
-        [Result_2],
+        [Result],
         [],
       ),
     'add_whitelisted_token' : IDL.Func([WhitelistedToken], [], []),
-    'ban_user' : IDL.Func([IDL.Principal, IDL.Nat, IDL.Text], [Result_1], []),
+    'ban_user' : IDL.Func([IDL.Principal, IDL.Nat, IDL.Text], [Result_2], []),
     'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
-    'check_ban_status' : IDL.Func([IDL.Principal], [Result_1], ['query']),
+    'check_ban_status' : IDL.Func([IDL.Principal], [Result_2], ['query']),
     'delete_canister_groups' : IDL.Func([], [], []),
-    'delete_jailbreak_config' : IDL.Func([IDL.Nat], [Result_1], []),
+    'delete_jailbreak_config' : IDL.Func([IDL.Nat], [Result_2], []),
     'get_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_all_neuron_names' : IDL.Func(
         [],
@@ -212,11 +212,18 @@ export const idlFactory = ({ IDL }) => {
         [],
         [
           IDL.Record({
-            'fee_recipient' : IDL.Opt(IDL.Principal),
+            'fee_account_subaccount' : IDL.Opt(IDL.Vec(IDL.Nat8)),
             'fee_premium_e8s' : IDL.Nat,
             'fee_regular_e8s' : IDL.Nat,
+            'fee_account_owner' : IDL.Opt(IDL.Principal),
           }),
         ],
+        ['query'],
+      ),
+    'get_jailbreak_payment_balance' : IDL.Func([], [IDL.Nat], []),
+    'get_jailbreak_payment_subaccount' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Nat8)],
         ['query'],
       ),
     'get_ledger_canister_ids' : IDL.Func(
@@ -324,13 +331,13 @@ export const idlFactory = ({ IDL }) => {
       ),
     'remove_admin' : IDL.Func([IDL.Principal], [], []),
     'remove_authorized_for_caller' : IDL.Func([IDL.Principal], [], []),
-    'remove_blacklisted_word' : IDL.Func([IDL.Text], [Result_1], []),
-    'remove_partner' : IDL.Func([IDL.Nat], [Result_1], []),
-    'remove_project' : IDL.Func([IDL.Nat], [Result_1], []),
+    'remove_blacklisted_word' : IDL.Func([IDL.Text], [Result_2], []),
+    'remove_partner' : IDL.Func([IDL.Nat], [Result_2], []),
+    'remove_project' : IDL.Func([IDL.Nat], [Result_2], []),
     'remove_whitelisted_token' : IDL.Func([IDL.Principal], [], []),
     'save_jailbreak_config' : IDL.Func(
         [IDL.Principal, IDL.Text, IDL.Principal],
-        [Result_2],
+        [Result],
         [],
       ),
     'send_tokens' : IDL.Func(
@@ -339,37 +346,42 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'set_cached_token_meta' : IDL.Func([IDL.Principal, TokenMeta], [], []),
-    'set_canister_groups' : IDL.Func([CanisterGroupsRoot], [Result_1], []),
-    'set_canister_name' : IDL.Func([IDL.Principal, IDL.Text], [Result], []),
+    'set_canister_groups' : IDL.Func([CanisterGroupsRoot], [Result_2], []),
+    'set_canister_name' : IDL.Func([IDL.Principal, IDL.Text], [Result_1], []),
     'set_jailbreak_fee_settings' : IDL.Func(
-        [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat), IDL.Opt(IDL.Opt(IDL.Principal))],
-        [Result_1],
+        [
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Opt(IDL.Principal)),
+          IDL.Opt(IDL.Opt(IDL.Vec(IDL.Nat8))),
+        ],
+        [Result_2],
         [],
       ),
     'set_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],
-        [Result],
+        [Result_1],
         [],
       ),
     'set_neuron_nickname' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],
-        [Result],
+        [Result_1],
         [],
       ),
     'set_nickname_premium_canister' : IDL.Func(
         [IDL.Opt(IDL.Principal)],
-        [Result_1],
+        [Result_2],
         [],
       ),
-    'set_principal_name' : IDL.Func([IDL.Text], [Result], []),
+    'set_principal_name' : IDL.Func([IDL.Text], [Result_1], []),
     'set_principal_name_for' : IDL.Func(
         [IDL.Principal, IDL.Text, IDL.Opt(IDL.Principal)],
-        [Result],
+        [Result_1],
         [],
       ),
     'set_principal_nickname' : IDL.Func(
         [IDL.Principal, IDL.Text],
-        [Result],
+        [Result_1],
         [],
       ),
     'test_calculate_ban_duration' : IDL.Func([IDL.Principal], [IDL.Nat], []),
@@ -378,7 +390,7 @@ export const idlFactory = ({ IDL }) => {
         [TransferPositionResult],
         [],
       ),
-    'unban_user' : IDL.Func([IDL.Principal], [Result_1], []),
+    'unban_user' : IDL.Func([IDL.Principal], [Result_2], []),
     'unregister_ledger_canister_id' : IDL.Func([IDL.Principal], [], []),
     'unregister_swap_canister_id' : IDL.Func([IDL.Principal], [], []),
     'unregister_tracked_canister' : IDL.Func([IDL.Principal], [], []),
@@ -393,8 +405,12 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
-    'unverify_neuron_name' : IDL.Func([IDL.Principal, NeuronId], [Result], []),
-    'unverify_principal_name' : IDL.Func([IDL.Principal], [Result], []),
+    'unverify_neuron_name' : IDL.Func(
+        [IDL.Principal, NeuronId],
+        [Result_1],
+        [],
+      ),
+    'unverify_principal_name' : IDL.Func([IDL.Principal], [Result_1], []),
     'update_canister_groups_limits' : IDL.Func(
         [
           IDL.Opt(IDL.Nat),
@@ -404,7 +420,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Opt(IDL.Nat),
           IDL.Opt(IDL.Nat),
         ],
-        [Result_1],
+        [Result_2],
         [],
       ),
     'update_nickname_limits' : IDL.Func(
@@ -414,7 +430,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Opt(IDL.Nat),
           IDL.Opt(IDL.Nat),
         ],
-        [Result_1],
+        [Result_2],
         [],
       ),
     'update_partner' : IDL.Func(
@@ -426,7 +442,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Vec(PartnerLink),
           IDL.Opt(IDL.Nat),
         ],
-        [Result_1],
+        [Result_2],
         [],
       ),
     'update_project' : IDL.Func(
@@ -439,11 +455,12 @@ export const idlFactory = ({ IDL }) => {
           IDL.Vec(ProjectLink),
           IDL.Opt(IDL.Nat),
         ],
-        [Result_1],
+        [Result_2],
         [],
       ),
-    'verify_neuron_name' : IDL.Func([IDL.Principal, NeuronId], [Result], []),
-    'verify_principal_name' : IDL.Func([IDL.Principal], [Result], []),
+    'verify_neuron_name' : IDL.Func([IDL.Principal, NeuronId], [Result_1], []),
+    'verify_principal_name' : IDL.Func([IDL.Principal], [Result_1], []),
+    'withdraw_jailbreak_payment' : IDL.Func([IDL.Nat], [Result], []),
   });
   return AppSneedDaoBackend;
 };

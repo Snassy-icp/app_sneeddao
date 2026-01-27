@@ -5,10 +5,10 @@ import type { IDL } from '@dfinity/candid';
 export interface AppSneedDaoBackend {
   'add_admin' : ActorMethod<[Principal], undefined>,
   'add_authorized_for_caller' : ActorMethod<[Principal], undefined>,
-  'add_blacklisted_word' : ActorMethod<[string], Result_1>,
+  'add_blacklisted_word' : ActorMethod<[string], Result_2>,
   'add_partner' : ActorMethod<
     [string, string, string, Array<PartnerLink>, [] | [bigint]],
-    Result_2
+    Result
   >,
   'add_project' : ActorMethod<
     [
@@ -19,14 +19,14 @@ export interface AppSneedDaoBackend {
       Array<ProjectLink>,
       [] | [bigint],
     ],
-    Result_2
+    Result
   >,
   'add_whitelisted_token' : ActorMethod<[WhitelistedToken], undefined>,
-  'ban_user' : ActorMethod<[Principal, bigint, string], Result_1>,
+  'ban_user' : ActorMethod<[Principal, bigint, string], Result_2>,
   'caller_is_admin' : ActorMethod<[], boolean>,
-  'check_ban_status' : ActorMethod<[Principal], Result_1>,
+  'check_ban_status' : ActorMethod<[Principal], Result_2>,
   'delete_canister_groups' : ActorMethod<[], undefined>,
-  'delete_jailbreak_config' : ActorMethod<[bigint], Result_1>,
+  'delete_jailbreak_config' : ActorMethod<[bigint], Result_2>,
   'get_admins' : ActorMethod<[], Array<Principal>>,
   'get_all_neuron_names' : ActorMethod<
     [],
@@ -59,11 +59,14 @@ export interface AppSneedDaoBackend {
   'get_jailbreak_fee_settings' : ActorMethod<
     [],
     {
-      'fee_recipient' : [] | [Principal],
+      'fee_account_subaccount' : [] | [Uint8Array | number[]],
       'fee_premium_e8s' : bigint,
       'fee_regular_e8s' : bigint,
+      'fee_account_owner' : [] | [Principal],
     }
   >,
+  'get_jailbreak_payment_balance' : ActorMethod<[], bigint>,
+  'get_jailbreak_payment_subaccount' : ActorMethod<[], Uint8Array | number[]>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_my_canister_groups_usage' : ActorMethod<
     [],
@@ -130,37 +133,39 @@ export interface AppSneedDaoBackend {
   'register_user_token_for' : ActorMethod<[Principal, Principal], undefined>,
   'remove_admin' : ActorMethod<[Principal], undefined>,
   'remove_authorized_for_caller' : ActorMethod<[Principal], undefined>,
-  'remove_blacklisted_word' : ActorMethod<[string], Result_1>,
-  'remove_partner' : ActorMethod<[bigint], Result_1>,
-  'remove_project' : ActorMethod<[bigint], Result_1>,
+  'remove_blacklisted_word' : ActorMethod<[string], Result_2>,
+  'remove_partner' : ActorMethod<[bigint], Result_2>,
+  'remove_project' : ActorMethod<[bigint], Result_2>,
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
-  'save_jailbreak_config' : ActorMethod<
-    [Principal, string, Principal],
-    Result_2
-  >,
+  'save_jailbreak_config' : ActorMethod<[Principal, string, Principal], Result>,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
-  'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], Result_1>,
-  'set_canister_name' : ActorMethod<[Principal, string], Result>,
+  'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], Result_2>,
+  'set_canister_name' : ActorMethod<[Principal, string], Result_1>,
   'set_jailbreak_fee_settings' : ActorMethod<
-    [[] | [bigint], [] | [bigint], [] | [[] | [Principal]]],
-    Result_1
+    [
+      [] | [bigint],
+      [] | [bigint],
+      [] | [[] | [Principal]],
+      [] | [[] | [Uint8Array | number[]]],
+    ],
+    Result_2
   >,
-  'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result>,
-  'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result>,
-  'set_nickname_premium_canister' : ActorMethod<[[] | [Principal]], Result_1>,
-  'set_principal_name' : ActorMethod<[string], Result>,
+  'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result_1>,
+  'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result_1>,
+  'set_nickname_premium_canister' : ActorMethod<[[] | [Principal]], Result_2>,
+  'set_principal_name' : ActorMethod<[string], Result_1>,
   'set_principal_name_for' : ActorMethod<
     [Principal, string, [] | [Principal]],
-    Result
+    Result_1
   >,
-  'set_principal_nickname' : ActorMethod<[Principal, string], Result>,
+  'set_principal_nickname' : ActorMethod<[Principal, string], Result_1>,
   'test_calculate_ban_duration' : ActorMethod<[Principal], bigint>,
   'transfer_position' : ActorMethod<
     [Principal, Principal, bigint],
     TransferPositionResult
   >,
-  'unban_user' : ActorMethod<[Principal], Result_1>,
+  'unban_user' : ActorMethod<[Principal], Result_2>,
   'unregister_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'unregister_swap_canister_id' : ActorMethod<[Principal], undefined>,
   'unregister_tracked_canister' : ActorMethod<[Principal], undefined>,
@@ -170,8 +175,8 @@ export interface AppSneedDaoBackend {
   >,
   'unregister_user_token' : ActorMethod<[Principal], undefined>,
   'unregister_user_token_for' : ActorMethod<[Principal, Principal], undefined>,
-  'unverify_neuron_name' : ActorMethod<[Principal, NeuronId], Result>,
-  'unverify_principal_name' : ActorMethod<[Principal], Result>,
+  'unverify_neuron_name' : ActorMethod<[Principal, NeuronId], Result_1>,
+  'unverify_principal_name' : ActorMethod<[Principal], Result_1>,
   'update_canister_groups_limits' : ActorMethod<
     [
       [] | [bigint],
@@ -181,15 +186,15 @@ export interface AppSneedDaoBackend {
       [] | [bigint],
       [] | [bigint],
     ],
-    Result_1
+    Result_2
   >,
   'update_nickname_limits' : ActorMethod<
     [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
-    Result_1
+    Result_2
   >,
   'update_partner' : ActorMethod<
     [bigint, string, string, string, Array<PartnerLink>, [] | [bigint]],
-    Result_1
+    Result_2
   >,
   'update_project' : ActorMethod<
     [
@@ -201,10 +206,11 @@ export interface AppSneedDaoBackend {
       Array<ProjectLink>,
       [] | [bigint],
     ],
-    Result_1
+    Result_2
   >,
-  'verify_neuron_name' : ActorMethod<[Principal, NeuronId], Result>,
-  'verify_principal_name' : ActorMethod<[Principal], Result>,
+  'verify_neuron_name' : ActorMethod<[Principal, NeuronId], Result_1>,
+  'verify_principal_name' : ActorMethod<[Principal], Result_1>,
+  'withdraw_jailbreak_payment' : ActorMethod<[bigint], Result>,
 }
 export type Balance = bigint;
 export interface BanLogEntry {
@@ -266,11 +272,11 @@ export interface ProjectLink { 'url' : string, 'title' : string }
 export type ProjectType = { 'fork' : null } |
   { 'product' : null } |
   { 'project' : null };
-export type Result = { 'ok' : string } |
+export type Result = { 'ok' : bigint } |
   { 'err' : string };
-export type Result_1 = { 'ok' : null } |
+export type Result_1 = { 'ok' : string } |
   { 'err' : string };
-export type Result_2 = { 'ok' : bigint } |
+export type Result_2 = { 'ok' : null } |
   { 'err' : string };
 export type Result_3 = { 'ok' : Array<Neuron> } |
   { 'err' : string };

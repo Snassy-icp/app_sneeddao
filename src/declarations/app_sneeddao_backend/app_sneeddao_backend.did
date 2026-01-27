@@ -87,17 +87,17 @@ type Result_3 =
 type Result_2 = 
  variant {
    err: text;
-   ok: nat;
+   ok;
  };
 type Result_1 = 
  variant {
    err: text;
-   ok;
+   ok: text;
  };
 type Result = 
  variant {
    err: text;
-   ok: text;
+   ok: nat;
  };
 type ProjectType = 
  variant {
@@ -185,19 +185,19 @@ type AppSneedDaoBackend =
  service {
    add_admin: ("principal": principal) -> ();
    add_authorized_for_caller: (canister_id: principal) -> ();
-   add_blacklisted_word: (word: text) -> (Result_1);
+   add_blacklisted_word: (word: text) -> (Result_2);
    add_partner: (name: text, logo_url: text, description: text, links:
-    vec PartnerLink, index: opt nat) -> (Result_2);
+    vec PartnerLink, index: opt nat) -> (Result);
    add_project: (name: text, logo_url: opt text, description: text,
     project_type: ProjectType, links: vec ProjectLink, index: opt nat) ->
-    (Result_2);
+    (Result);
    add_whitelisted_token: (token: WhitelistedToken) -> ();
    ban_user: (user: principal, duration_hours: nat, reason: text) ->
-    (Result_1);
+    (Result_2);
    caller_is_admin: () -> (bool) query;
-   check_ban_status: (user: principal) -> (Result_1) query;
+   check_ban_status: (user: principal) -> (Result_2) query;
    delete_canister_groups: () -> ();
-   delete_jailbreak_config: (id: nat) -> (Result_1);
+   delete_jailbreak_config: (id: nat) -> (Result_2);
    get_admins: () -> (vec principal) query;
    get_all_neuron_names: () ->
     (vec record {
@@ -242,10 +242,13 @@ type AppSneedDaoBackend =
    get_canister_info: (canister_id: principal) -> (Result_5);
    get_jailbreak_fee_settings: () ->
     (record {
+       fee_account_owner: opt principal;
+       fee_account_subaccount: opt blob;
        fee_premium_e8s: nat;
-       fee_recipient: opt principal;
        fee_regular_e8s: nat;
      }) query;
+   get_jailbreak_payment_balance: () -> (nat);
+   get_jailbreak_payment_subaccount: () -> (blob) query;
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->
     (record {
@@ -310,34 +313,35 @@ type AppSneedDaoBackend =
    register_user_token_for: (user: principal, ledger_id: principal) -> ();
    remove_admin: ("principal": principal) -> ();
    remove_authorized_for_caller: (canister_id: principal) -> ();
-   remove_blacklisted_word: (word: text) -> (Result_1);
-   remove_partner: (id: nat) -> (Result_1);
-   remove_project: (id: nat) -> (Result_1);
+   remove_blacklisted_word: (word: text) -> (Result_2);
+   remove_partner: (id: nat) -> (Result_2);
+   remove_project: (id: nat) -> (Result_2);
    remove_whitelisted_token: (ledger_id: principal) -> ();
    save_jailbreak_config: (sns_root_canister_id: principal, neuron_id_hex:
-    text, target_principal: principal) -> (Result_2);
+    text, target_principal: principal) -> (Result);
    send_tokens: (icrc1_ledger_canister_id: principal, amount: nat, to:
     principal) -> (TransferResult);
    set_cached_token_meta: (swap_canister_id: principal, new_token_meta:
     TokenMeta) -> ();
-   set_canister_groups: (groups: CanisterGroupsRoot) -> (Result_1);
-   set_canister_name: (canister_id: principal, name: text) -> (Result);
+   set_canister_groups: (groups: CanisterGroupsRoot) -> (Result_2);
+   set_canister_name: (canister_id: principal, name: text) -> (Result_1);
    set_jailbreak_fee_settings: (fee_premium_e8s: opt nat, fee_regular_e8s:
-    opt nat, fee_recipient: opt opt principal) -> (Result_1);
+    opt nat, fee_account_owner: opt opt principal, fee_account_subaccount:
+    opt opt blob) -> (Result_2);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
-    name: text) -> (Result);
+    name: text) -> (Result_1);
    set_neuron_nickname: (sns_root_canister_id: principal, neuron_id:
-    NeuronId, nickname: text) -> (Result);
-   set_nickname_premium_canister: (canister_id: opt principal) -> (Result_1);
-   set_principal_name: (name: text) -> (Result);
+    NeuronId, nickname: text) -> (Result_1);
+   set_nickname_premium_canister: (canister_id: opt principal) -> (Result_2);
+   set_principal_name: (name: text) -> (Result_1);
    set_principal_name_for: ("principal": principal, name: text,
-    sns_root_canister_id: opt principal) -> (Result);
+    sns_root_canister_id: opt principal) -> (Result_1);
    set_principal_nickname: ("principal": principal, nickname: text) ->
-    (Result);
+    (Result_1);
    test_calculate_ban_duration: (user: principal) -> (nat);
    transfer_position: (swap_canister_id: principal, to: principal,
     position_id: nat) -> (TransferPositionResult);
-   unban_user: (user: principal) -> (Result_1);
+   unban_user: (user: principal) -> (Result_2);
    unregister_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    unregister_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
    unregister_tracked_canister: (canister_id: principal) -> ();
@@ -346,21 +350,22 @@ type AppSneedDaoBackend =
    unregister_user_token: (ledger_id: principal) -> ();
    unregister_user_token_for: (user: principal, ledger_id: principal) -> ();
    unverify_neuron_name: (sns_root_canister_id: principal, neuron_id:
-    NeuronId) -> (Result);
-   unverify_principal_name: ("principal": principal) -> (Result);
+    NeuronId) -> (Result_1);
+   unverify_principal_name: ("principal": principal) -> (Result_1);
    update_canister_groups_limits: (max_groups: opt nat, max_per_group:
     opt nat, max_total: opt nat, premium_max_groups: opt nat,
-    premium_max_per_group: opt nat, premium_max_total: opt nat) -> (Result_1);
+    premium_max_per_group: opt nat, premium_max_total: opt nat) -> (Result_2);
    update_nickname_limits: (max_neuron_nicknames: opt nat,
     max_principal_nicknames: opt nat, premium_max_neuron_nicknames: opt nat,
-    premium_max_principal_nicknames: opt nat) -> (Result_1);
+    premium_max_principal_nicknames: opt nat) -> (Result_2);
    update_partner: (id: nat, name: text, logo_url: text, description: 
-    text, links: vec PartnerLink, index: opt nat) -> (Result_1);
+    text, links: vec PartnerLink, index: opt nat) -> (Result_2);
    update_project: (id: nat, name: text, logo_url: opt text, description:
     text, project_type: ProjectType, links: vec ProjectLink, index:
-    opt nat) -> (Result_1);
+    opt nat) -> (Result_2);
    verify_neuron_name: (sns_root_canister_id: principal, neuron_id:
-    NeuronId) -> (Result);
-   verify_principal_name: ("principal": principal) -> (Result);
+    NeuronId) -> (Result_1);
+   verify_principal_name: ("principal": principal) -> (Result_1);
+   withdraw_jailbreak_payment: (amount: nat) -> (Result);
  };
 service : () -> AppSneedDaoBackend
