@@ -888,7 +888,7 @@ function CreateIcpNeuron() {
                                     ➕ Create New Neuron Manager
                                 </h3>
                                 <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginBottom: '20px' }}>
-                                    Create a dedicated canister to manage your ICP NNS neurons with full control.
+                                    Create a dedicated canister to manage your ICP neurons with full control.
                                 </p>
                                 <button
                                     style={{ 

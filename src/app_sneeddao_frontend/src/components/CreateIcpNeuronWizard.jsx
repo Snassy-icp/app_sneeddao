@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
+import { principalToSubAccount } from '@dfinity/utils';
 import { FaCheck, FaSpinner, FaArrowRight, FaArrowLeft, FaWallet, FaGasPump, FaBrain, FaClock, FaRocket } from 'react-icons/fa';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
@@ -45,9 +46,13 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
     const [extraGasIcp, setExtraGasIcp] = useState('');
     
     // Step 3: Staking configuration
-    const [stakingChoice, setStakingChoice] = useState(null); // 'now' | 'later'
+    const [stakingChoice, setStakingChoice] = useState('now'); // 'now' | 'later' - default to 'now'
     const [stakeAmount, setStakeAmount] = useState('1');
     const [dissolveDelayDays, setDissolveDelayDays] = useState('365');
+    
+    // Dissolve delay limits
+    const MIN_DISSOLVE_DELAY_DAYS = 183; // ~6 months to vote
+    const MAX_DISSOLVE_DELAY_DAYS = 2922; // 8 years
     
     // Payment subaccount
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
@@ -258,28 +263,33 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
             }
             
             const newCanisterId = createResult.Ok.canisterId;
-            setCreatedCanisterId(newCanisterId.toText());
+            const newCanisterIdText = newCanisterId.toText();
+            setCreatedCanisterId(newCanisterIdText);
             updateLastProgress('complete');
+            
+            // IMPORTANT: Immediately notify parent that manager was created
+            // This ensures the manager shows up in the list even if subsequent steps fail
+            if (onComplete) {
+                onComplete(newCanisterIdText);
+            }
             
             // Step 3: Top up with extra gas (if specified)
             if (extraGasE8s > 0) {
                 addProgress(`Topping up canister with ${formatIcp(extraGasE8s)} ICP for gas...`, 'active');
                 
                 try {
-                    // Convert canister ID to account identifier for CMC
-                    const canisterIdBytes = newCanisterId.toUint8Array();
-                    const cmcSubaccount = new Uint8Array(32);
-                    cmcSubaccount.set(canisterIdBytes, 32 - canisterIdBytes.length);
+                    // Use principalToSubAccount for correct subaccount computation
+                    const subaccount = principalToSubAccount(newCanisterId);
                     
                     // Transfer to CMC
                     const topUpTransfer = await ledger.icrc1_transfer({
                         to: {
                             owner: Principal.fromText(CMC_CANISTER_ID),
-                            subaccount: [cmcSubaccount],
+                            subaccount: [subaccount],
                         },
                         amount: BigInt(extraGasE8s),
                         fee: [BigInt(ICP_FEE)],
-                        memo: [Array.from(TOP_UP_MEMO)],
+                        memo: [TOP_UP_MEMO],
                         from_subaccount: [],
                         created_at_time: [],
                     });
@@ -299,6 +309,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                         if ('Err' in notifyResult) {
                             console.error('CMC notify failed:', notifyResult.Err);
                             updateLastProgress('warning');
+                            addProgress(`⚠️ CMC notification failed: ${JSON.stringify(notifyResult.Err)}`, 'warning');
                         } else {
                             updateLastProgress('complete');
                         }
@@ -315,7 +326,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                 addProgress(`Staking ${formatIcp(stakeE8s)} ICP in new neuron...`, 'active');
                 
                 try {
-                    const manager = createManagerActor(newCanisterId.toText(), { agent });
+                    const manager = createManagerActor(newCanisterIdText, { agent });
                     
                     // Generate memo and get stake account
                     const memo = await manager.generateMemo();
@@ -338,8 +349,11 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                         throw new Error(`Stake transfer failed: ${JSON.stringify(stakeTransfer.Err)}`);
                     }
                     
-                    // Claim the neuron
+                    // Wait a moment for the transfer to settle
+                    updateLastProgress('complete');
                     addProgress('Claiming neuron from deposit...', 'active');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
                     const dissolveDelaySeconds = BigInt(parseInt(dissolveDelayDays) * 24 * 60 * 60);
                     const claimResult = await manager.claimNeuronFromDeposit(memo, dissolveDelaySeconds);
                     
@@ -360,10 +374,6 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
             // Done!
             addProgress('✅ Neuron manager created successfully!', 'complete');
             setCreationComplete(true);
-            
-            if (onComplete) {
-                onComplete(newCanisterId.toText());
-            }
             
         } catch (err) {
             console.error('Creation error:', err);
@@ -983,10 +993,41 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                                     onChange={(e) => setDissolveDelayDays(e.target.value)}
                                     style={{ ...styles.input, flex: 1 }}
                                 />
-                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>days</span>
+                                <button
+                                    onClick={() => setDissolveDelayDays(String(MIN_DISSOLVE_DELAY_DAYS))}
+                                    style={{
+                                        padding: '10px 14px',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.primaryBg || theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontWeight: '600',
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    MIN
+                                </button>
+                                <button
+                                    onClick={() => setDissolveDelayDays(String(MAX_DISSOLVE_DELAY_DAYS))}
+                                    style={{
+                                        padding: '10px 14px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: theme.colors.accent,
+                                        color: '#fff',
+                                        fontWeight: '600',
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    MAX
+                                </button>
                             </div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '6px' }}>
-                                Min 183 days to vote. Max 8 years (2922 days) for maximum rewards.
+                                Min {MIN_DISSOLVE_DELAY_DAYS} days to vote. Max {MAX_DISSOLVE_DELAY_DAYS} days (8 years) for maximum rewards.
                             </div>
                         </div>
                     </div>
