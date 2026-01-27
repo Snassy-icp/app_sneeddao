@@ -126,6 +126,11 @@ const HotkeyNeurons = ({
             );
             if (!hasHotkeyAccess) return false;
 
+            // Check if neuron has voting power
+            const neuronVotingPower = nervousSystemParameters ? 
+                calculateVotingPower(neuron, nervousSystemParameters) : 0;
+            if (neuronVotingPower === 0) return false;
+
             // Check if neuron has already voted
             const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
             const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
@@ -852,6 +857,22 @@ const HotkeyNeurons = ({
                                                                                     color: theme.colors.mutedText
                                                                                 }}>
                                                                                     Proposal not open for voting
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        // Check if neuron has voting power
+                                                                        const neuronVotingPower = nervousSystemParameters ? 
+                                                                            calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                                                                        if (neuronVotingPower === 0) {
+                                                                            return (
+                                                                                <div style={{
+                                                                                    padding: '8px',
+                                                                                    backgroundColor: theme.colors.primaryBg,
+                                                                                    borderRadius: '4px',
+                                                                                    color: theme.colors.mutedText
+                                                                                }}>
+                                                                                    No voting power
                                                                                 </div>
                                                                             );
                                                                         }
