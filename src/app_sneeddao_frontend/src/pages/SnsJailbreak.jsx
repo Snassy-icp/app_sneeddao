@@ -12,9 +12,11 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const ICP_LEDGER_FEE = 10000; // 0.0001 ICP in e8s
 
 // Helper to format ICP from e8s
@@ -97,11 +99,13 @@ function SnsJailbreak() {
     // Payment state
     const [jailbreakFee, setJailbreakFee] = useState(null); // Fee in e8s
     const [paymentSubaccount, setPaymentSubaccount] = useState(null); // User's payment subaccount (Uint8Array)
-    const [paymentBalance, setPaymentBalance] = useState(null); // Balance in e8s
+    const [paymentBalance, setPaymentBalance] = useState(null); // Balance on subaccount in e8s
+    const [walletIcpBalance, setWalletIcpBalance] = useState(null); // User's wallet ICP balance in e8s
     const [loadingPaymentInfo, setLoadingPaymentInfo] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
     const [configError, setConfigError] = useState('');
     const [withdrawing, setWithdrawing] = useState(false);
+    const [paymentStep, setPaymentStep] = useState(''); // '', 'depositing', 'processing', 'done'
     
     // Step 5: Verification
     const [verificationStatus, setVerificationStatus] = useState(null); // null, 'loading', 'success', 'error'
@@ -370,6 +374,10 @@ function SnsJailbreak() {
         setConfigError('');
         
         try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            
             // Get the fee for this user
             const fee = await backendActor.get_my_jailbreak_fee();
             setJailbreakFee(Number(fee));
@@ -378,9 +386,19 @@ function SnsJailbreak() {
             const subaccount = await backendActor.get_jailbreak_payment_subaccount();
             setPaymentSubaccount(subaccount);
             
-            // Get current balance
+            // Get current balance on subaccount
             const balance = await backendActor.get_jailbreak_payment_balance();
             setPaymentBalance(Number(balance));
+            
+            // Get user's wallet ICP balance
+            const icpLedger = createLedgerActor(ICP_LEDGER_CANISTER_ID, {
+                agentOptions: { identity, host }
+            });
+            const walletBalance = await icpLedger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            setWalletIcpBalance(Number(walletBalance));
         } catch (error) {
             console.error('Error loading payment info:', error);
             setConfigError('Failed to load payment information: ' + error.message);
@@ -389,16 +407,31 @@ function SnsJailbreak() {
         }
     }, [identity, backendActor]);
     
-    // Refresh payment balance
-    const refreshPaymentBalance = useCallback(async () => {
-        if (!backendActor) return;
+    // Refresh balances
+    const refreshBalances = useCallback(async () => {
+        if (!backendActor || !identity) return;
         try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            
+            // Refresh subaccount balance
             const balance = await backendActor.get_jailbreak_payment_balance();
             setPaymentBalance(Number(balance));
+            
+            // Refresh wallet balance
+            const icpLedger = createLedgerActor(ICP_LEDGER_CANISTER_ID, {
+                agentOptions: { identity, host }
+            });
+            const walletBalance = await icpLedger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            setWalletIcpBalance(Number(walletBalance));
         } catch (error) {
-            console.error('Error refreshing balance:', error);
+            console.error('Error refreshing balances:', error);
         }
-    }, [backendActor]);
+    }, [backendActor, identity]);
     
     // Withdraw from payment subaccount
     const handleWithdraw = useCallback(async () => {
@@ -409,7 +442,7 @@ function SnsJailbreak() {
             const amount = paymentBalance - 10000; // Leave room for fee
             const result = await backendActor.withdraw_jailbreak_payment(BigInt(amount));
             if ('ok' in result) {
-                await refreshPaymentBalance();
+                await refreshBalances();
             } else {
                 setConfigError('Withdrawal failed: ' + result.err);
             }
@@ -419,16 +452,66 @@ function SnsJailbreak() {
         } finally {
             setWithdrawing(false);
         }
-    }, [paymentBalance, refreshPaymentBalance, backendActor]);
+    }, [paymentBalance, refreshBalances, backendActor]);
     
     // Pay and create config
     const handlePayAndCreate = useCallback(async () => {
-        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal || !backendActor) return;
+        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal || !backendActor || !identity) return;
         
         setSavingConfig(true);
         setConfigError('');
+        setPaymentStep('');
+        
+        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+            ? 'https://ic0.app' 
+            : 'http://localhost:4943';
         
         try {
+            const needsPayment = jailbreakFee && jailbreakFee > 0;
+            const totalRequired = (jailbreakFee || 0) + ICP_LEDGER_FEE; // Fee + transfer fee
+            
+            // Check if we have enough on subaccount already
+            const hasEnoughOnSubaccount = paymentBalance !== null && paymentBalance >= totalRequired;
+            
+            // If payment needed and not enough on subaccount, transfer from wallet
+            if (needsPayment && !hasEnoughOnSubaccount) {
+                setPaymentStep('depositing');
+                
+                // Check wallet balance
+                if (walletIcpBalance === null || walletIcpBalance < totalRequired + ICP_LEDGER_FEE) {
+                    throw new Error(`Insufficient ICP in wallet. Need at least ${formatIcp(totalRequired + ICP_LEDGER_FEE)} ICP (including fees).`);
+                }
+                
+                // Transfer from wallet to payment subaccount
+                const icpLedger = createLedgerActor(ICP_LEDGER_CANISTER_ID, {
+                    agentOptions: { identity, host }
+                });
+                
+                const transferResult = await icpLedger.icrc1_transfer({
+                    to: {
+                        owner: Principal.fromText(backendCanisterId),
+                        subaccount: [paymentSubaccount],
+                    },
+                    amount: BigInt(totalRequired),
+                    fee: [BigInt(ICP_LEDGER_FEE)],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                });
+                
+                if ('Err' in transferResult) {
+                    const err = transferResult.Err;
+                    if ('InsufficientFunds' in err) {
+                        throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available in wallet`);
+                    } else {
+                        throw new Error(`Payment transfer failed: ${JSON.stringify(err)}`);
+                    }
+                }
+            }
+            
+            // Now call backend to save config (which will charge from subaccount)
+            setPaymentStep('processing');
+            
             const result = await backendActor.save_jailbreak_config(
                 Principal.fromText(selectedSnsRoot),
                 effectiveNeuronId,
@@ -437,19 +520,23 @@ function SnsJailbreak() {
             
             if ('ok' in result) {
                 console.log('Jailbreak config saved with ID:', result.ok);
+                setPaymentStep('done');
                 setConfigSaved(true);
-                // Refresh balance after payment
-                await refreshPaymentBalance();
+                // Refresh balances after payment
+                await refreshBalances();
             } else {
-                setConfigError(result.err);
+                throw new Error(result.err);
             }
         } catch (error) {
-            console.error('Error saving jailbreak config:', error);
-            setConfigError('Failed to create script: ' + error.message);
+            console.error('Error in payment flow:', error);
+            setConfigError(error.message || 'Failed to create script');
+            setPaymentStep('');
+            // Refresh balances to show current state
+            await refreshBalances();
         } finally {
             setSavingConfig(false);
         }
-    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, refreshPaymentBalance, backendActor]);
+    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, backendActor, identity, jailbreakFee, paymentBalance, walletIcpBalance, paymentSubaccount, refreshBalances]);
     
     // Load payment info when entering step 4
     useEffect(() => {
@@ -1379,7 +1466,19 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                             style={styles.neuronCard(selectedNeuronId === neuronId)}
                                             onClick={() => setSelectedNeuronId(neuronId)}
                                         >
-                                            <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
+                                            {snsLogos.get(governanceId) ? (
+                                                <img 
+                                                    src={snsLogos.get(governanceId)} 
+                                                    alt={selectedSns?.name}
+                                                    style={{ 
+                                                        width: '40px', height: '40px', minWidth: '40px', minHeight: '40px',
+                                                        maxWidth: '40px', maxHeight: '40px', borderRadius: '50%', 
+                                                        objectFit: 'cover', padding: 0, margin: 0, flexShrink: 0 
+                                                    }}
+                                                />
+                                            ) : (
+                                                <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
+                                            )}
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {getNeuronDisplayName(neuron, selectedSnsRoot)}
@@ -1426,7 +1525,19 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                             cursor: 'default',
                                         }}
                                     >
-                                        <FaSpinner style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem', animation: 'spin 1s linear infinite' }} />
+                                        {snsLogos.get(governanceId) ? (
+                                            <img 
+                                                src={snsLogos.get(governanceId)} 
+                                                alt={selectedSns?.name}
+                                                style={{ 
+                                                    width: '40px', height: '40px', minWidth: '40px', minHeight: '40px',
+                                                    maxWidth: '40px', maxHeight: '40px', borderRadius: '50%', 
+                                                    objectFit: 'cover', padding: 0, margin: 0, flexShrink: 0, opacity: 0.5 
+                                                }}
+                                            />
+                                        ) : (
+                                            <FaSpinner style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem', animation: 'spin 1s linear infinite' }} />
+                                        )}
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
                                                 Loading neuron...
@@ -1461,7 +1572,19 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                             cursor: 'default',
                                         }}
                                     >
-                                        <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
+                                        {snsLogos.get(governanceId) ? (
+                                            <img 
+                                                src={snsLogos.get(governanceId)} 
+                                                alt={selectedSns?.name}
+                                                style={{ 
+                                                    width: '40px', height: '40px', minWidth: '40px', minHeight: '40px',
+                                                    maxWidth: '40px', maxHeight: '40px', borderRadius: '50%', 
+                                                    objectFit: 'cover', padding: 0, margin: 0, flexShrink: 0 
+                                                }}
+                                            />
+                                        ) : (
+                                            <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
+                                        )}
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
                                                 {getNeuronDisplayName(manualNeuronData, selectedSnsRoot)}
@@ -1693,15 +1816,21 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                     </span>
                                 </div>
                                 
-                                {/* Payment Balance */}
+                                {/* Wallet Balance */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px', marginBottom: '1rem' }}>
-                                    <span style={{ color: theme.colors.mutedText }}>Your Payment Balance:</span>
+                                    <span style={{ color: theme.colors.mutedText }}>Your Wallet Balance:</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontWeight: '600', color: hasEnoughBalance ? theme.colors.success : theme.colors.primaryText, fontSize: '1.1rem' }}>
-                                            {formatIcp(paymentBalance)} ICP
+                                        <span style={{ 
+                                            fontWeight: '600', 
+                                            color: walletIcpBalance !== null && walletIcpBalance >= (jailbreakFee || 0) + ICP_LEDGER_FEE * 2 
+                                                ? theme.colors.success 
+                                                : theme.colors.primaryText, 
+                                            fontSize: '1.1rem' 
+                                        }}>
+                                            {formatIcp(walletIcpBalance)} ICP
                                         </span>
                                         <button
-                                            onClick={refreshPaymentBalance}
+                                            onClick={refreshBalances}
                                             style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', padding: '4px' }}
                                             title="Refresh balance"
                                         >
@@ -1710,50 +1839,84 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                     </div>
                                 </div>
                                 
-                                {/* Deposit Address */}
-                                {!hasEnoughBalance && paymentSubaccount && (
-                                    <div style={{ marginBottom: '1rem', padding: '1rem', background: `${theme.colors.warning}10`, borderRadius: '8px', border: `1px solid ${theme.colors.warning}30` }}>
-                                        <p style={{ color: theme.colors.warning, fontWeight: '600', marginBottom: '8px' }}>
-                                            <FaArrowDown style={{ marginRight: '6px' }} />
-                                            Deposit ICP to continue
-                                        </p>
-                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '12px' }}>
-                                            Send at least <strong>{formatIcp((jailbreakFee || 0) + ICP_LEDGER_FEE)} ICP</strong> to this address:
-                                        </p>
-                                        <div style={{ background: theme.colors.secondaryBg, padding: '12px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '0.85rem', wordBreak: 'break-all' }}>
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Owner:</div>
-                                            <div style={{ color: theme.colors.primaryText, marginBottom: '8px' }}>{backendCanisterId}</div>
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Subaccount:</div>
-                                            <div style={{ color: theme.colors.primaryText }}>{uint8ArrayToHexString(paymentSubaccount)}</div>
+                                {/* Subaccount balance (only show if > 0) */}
+                                {paymentBalance !== null && paymentBalance > 0 && (
+                                    <div style={{ 
+                                        marginBottom: '1rem', 
+                                        padding: '12px', 
+                                        background: `${theme.colors.accent}10`, 
+                                        borderRadius: '8px', 
+                                        border: `1px solid ${theme.colors.accent}30` 
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                                Deposited balance:
+                                            </span>
+                                            <span style={{ fontWeight: '600', color: theme.colors.accent }}>
+                                                {formatIcp(paymentBalance)} ICP
+                                            </span>
                                         </div>
-                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '8px', marginBottom: 0 }}>
-                                            After sending, click the refresh button above to update your balance.
-                                        </p>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            {paymentBalance >= (jailbreakFee || 0) + ICP_LEDGER_FEE && (
+                                                <button
+                                                    onClick={handlePayAndCreate}
+                                                    disabled={savingConfig}
+                                                    style={{
+                                                        flex: 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '6px',
+                                                        padding: '8px 12px',
+                                                        background: theme.colors.accent,
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        color: theme.colors.primaryBg,
+                                                        cursor: savingConfig ? 'wait' : 'pointer',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '500',
+                                                    }}
+                                                >
+                                                    Use deposited balance
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={handleWithdraw}
+                                                disabled={withdrawing || paymentBalance <= ICP_LEDGER_FEE}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '8px 12px',
+                                                    background: theme.colors.secondaryBg,
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '6px',
+                                                    color: theme.colors.primaryText,
+                                                    cursor: withdrawing ? 'wait' : 'pointer',
+                                                    fontSize: '0.85rem',
+                                                }}
+                                            >
+                                                {withdrawing ? <FaSpinner style={styles.spinner} size={12} /> : <FaArrowLeft size={12} />}
+                                                Withdraw
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                                 
-                                {/* Withdraw option if they have balance */}
-                                {canWithdraw && (
-                                    <div style={{ marginBottom: '1rem' }}>
-                                        <button
-                                            onClick={handleWithdraw}
-                                            disabled={withdrawing}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                padding: '8px 12px',
-                                                background: theme.colors.secondaryBg,
-                                                border: `1px solid ${theme.colors.border}`,
-                                                borderRadius: '6px',
-                                                color: theme.colors.primaryText,
-                                                cursor: withdrawing ? 'wait' : 'pointer',
-                                                fontSize: '0.85rem',
-                                            }}
-                                        >
-                                            {withdrawing ? <FaSpinner style={styles.spinner} size={12} /> : <FaArrowLeft size={12} />}
-                                            Withdraw balance to my wallet
-                                        </button>
+                                {/* Insufficient balance warning */}
+                                {walletIcpBalance !== null && walletIcpBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE * 2 && 
+                                 (paymentBalance === null || paymentBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE) && (
+                                    <div style={{ 
+                                        marginBottom: '1rem', 
+                                        padding: '12px', 
+                                        background: `${theme.colors.warning}10`, 
+                                        borderRadius: '8px', 
+                                        border: `1px solid ${theme.colors.warning}30` 
+                                    }}>
+                                        <p style={{ color: theme.colors.warning, fontSize: '0.9rem', margin: 0 }}>
+                                            <FaExclamationTriangle style={{ marginRight: '6px' }} />
+                                            Insufficient ICP. You need at least <strong>{formatIcp((jailbreakFee || 0) + ICP_LEDGER_FEE * 2)} ICP</strong> in your wallet (including transaction fees).
+                                        </p>
                                     </div>
                                 )}
                             </>
@@ -1766,47 +1929,86 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                             </div>
                         )}
                         
-                        {/* Pay & Create Button */}
-                        <button
-                            onClick={handlePayAndCreate}
-                            disabled={savingConfig || (needsPayment && !hasEnoughBalance)}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '8px',
-                                width: '100%',
-                                padding: '14px 24px',
-                                marginTop: '1rem',
-                                background: (savingConfig || (needsPayment && !hasEnoughBalance)) 
-                                    ? theme.colors.tertiaryBg 
-                                    : `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
-                                border: 'none',
-                                borderRadius: '10px',
-                                color: (savingConfig || (needsPayment && !hasEnoughBalance)) ? theme.colors.mutedText : theme.colors.primaryBg,
-                                fontSize: '1rem',
-                                fontWeight: '600',
-                                cursor: (savingConfig || (needsPayment && !hasEnoughBalance)) ? 'not-allowed' : 'pointer',
-                                boxShadow: (savingConfig || (needsPayment && !hasEnoughBalance)) ? 'none' : theme.colors.accentShadow,
-                            }}
-                        >
-                            {savingConfig ? (
-                                <>
-                                    <FaSpinner style={styles.spinner} />
-                                    {needsPayment ? 'Processing Payment...' : 'Creating Script...'}
-                                </>
-                            ) : needsPayment ? (
-                                <>
-                                    <FaWallet />
-                                    Pay {formatIcp(jailbreakFee)} ICP & Generate Script
-                                </>
-                            ) : (
-                                <>
-                                    <FaCheck />
-                                    Generate Script (Free)
-                                </>
-                            )}
-                        </button>
+                        {/* Payment Progress Overlay */}
+                        {savingConfig && paymentStep && (
+                            <div style={{ 
+                                marginTop: '1rem', 
+                                padding: '16px', 
+                                background: `${theme.colors.accent}10`, 
+                                borderRadius: '8px', 
+                                border: `1px solid ${theme.colors.accent}30` 
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: paymentStep === 'done' ? '0' : '12px' }}>
+                                    {paymentStep !== 'done' ? (
+                                        <FaSpinner style={styles.spinner} size={20} />
+                                    ) : (
+                                        <FaCheck style={{ color: theme.colors.success }} size={20} />
+                                    )}
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                        {paymentStep === 'depositing' && 'Transferring ICP to payment account...'}
+                                        {paymentStep === 'processing' && 'Creating script and processing payment...'}
+                                        {paymentStep === 'done' && 'Payment complete!'}
+                                    </span>
+                                </div>
+                                {paymentStep !== 'done' && (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <div style={{ 
+                                            flex: 1, 
+                                            height: '4px', 
+                                            background: paymentStep === 'depositing' || paymentStep === 'processing' ? theme.colors.accent : theme.colors.border,
+                                            borderRadius: '2px',
+                                            opacity: paymentStep === 'depositing' ? 1 : 0.5,
+                                        }} />
+                                        <div style={{ 
+                                            flex: 1, 
+                                            height: '4px', 
+                                            background: paymentStep === 'processing' ? theme.colors.accent : theme.colors.border,
+                                            borderRadius: '2px',
+                                            opacity: paymentStep === 'processing' ? 1 : 0.5,
+                                        }} />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Pay & Generate Button - only show when not in progress and no deposited balance to use */}
+                        {!savingConfig && (paymentBalance === null || paymentBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE) && (
+                            <button
+                                onClick={handlePayAndCreate}
+                                disabled={savingConfig || (jailbreakFee > 0 && (walletIcpBalance === null || walletIcpBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE * 2))}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    width: '100%',
+                                    padding: '14px 24px',
+                                    marginTop: '1rem',
+                                    background: (savingConfig || (jailbreakFee > 0 && (walletIcpBalance === null || walletIcpBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE * 2))) 
+                                        ? theme.colors.tertiaryBg 
+                                        : `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    color: (savingConfig || (jailbreakFee > 0 && (walletIcpBalance === null || walletIcpBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE * 2))) ? theme.colors.mutedText : theme.colors.primaryBg,
+                                    fontSize: '1rem',
+                                    fontWeight: '600',
+                                    cursor: (savingConfig || (jailbreakFee > 0 && (walletIcpBalance === null || walletIcpBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE * 2))) ? 'not-allowed' : 'pointer',
+                                    boxShadow: (savingConfig || (jailbreakFee > 0 && (walletIcpBalance === null || walletIcpBalance < (jailbreakFee || 0) + ICP_LEDGER_FEE * 2))) ? 'none' : theme.colors.accentShadow,
+                                }}
+                            >
+                                {jailbreakFee > 0 ? (
+                                    <>
+                                        <FaWallet />
+                                        Pay {formatIcp(jailbreakFee)} ICP & Generate Script
+                                    </>
+                                ) : (
+                                    <>
+                                        <FaCheck />
+                                        Generate Script (Free)
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </div>
                 )}
                 
@@ -2123,7 +2325,9 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                     setJailbreakFee(null);
                                     setPaymentSubaccount(null);
                                     setPaymentBalance(null);
+                                    setWalletIcpBalance(null);
                                     setConfigError('');
+                                    setPaymentStep('');
                                     setScriptFetchAttempted(false);
                                     setBaseScript('');
                                 }}
