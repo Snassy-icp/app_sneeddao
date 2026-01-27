@@ -47,6 +47,16 @@ img {
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
+  /* Prevent SVG data URLs from having intrinsic size issues */
+  max-width: 100%;
+  height: auto;
+}
+
+/* SNS logos and icons should strictly obey their explicit dimensions */
+img[style*="borderRadius: 50%"],
+img[style*="border-radius: 50%"] {
+  max-width: none !important;
+  max-height: none !important;
 }
 
 /* Update existing site-header class to use theme variables */

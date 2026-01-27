@@ -765,9 +765,16 @@ const NEW_CONTROLLER = "${targetPrincipal}";
         snsLogo: {
             width: '40px',
             height: '40px',
+            minWidth: '40px',
+            minHeight: '40px',
+            maxWidth: '40px',
+            maxHeight: '40px',
             borderRadius: '50%',
             objectFit: 'cover',
             background: theme.colors.secondaryBg,
+            flexShrink: 0,
+            padding: 0,
+            margin: 0,
         },
         snsName: {
             fontSize: '1.1rem',
@@ -1608,7 +1615,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                         {/* SNS */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
                             {snsLogos.get(governanceId) ? (
-                                <img src={snsLogos.get(governanceId)} alt={selectedSns?.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                                <img src={snsLogos.get(governanceId)} alt={selectedSns?.name} style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', borderRadius: '50%', objectFit: 'cover', padding: 0, margin: 0 }} />
                             ) : (
                                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: theme.colors.border, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <FaBrain size={16} style={{ color: theme.colors.mutedText }} />

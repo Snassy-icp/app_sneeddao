@@ -295,10 +295,16 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
         snsLogo: {
             width: '48px',
             height: '48px',
+            minWidth: '48px',
+            minHeight: '48px',
+            maxWidth: '48px',
+            maxHeight: '48px',
             borderRadius: '50%',
             objectFit: 'cover',
             background: theme.colors.secondaryBg,
             flexShrink: 0,
+            padding: 0,
+            margin: 0,
         },
         configInfo: {
             flex: 1,
@@ -626,7 +632,7 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                                         const snsInfo = getSnsInfo(selectedConfig.sns_root_canister_id);
                                         const logo = snsInfo?.canisters?.governance ? snsLogos.get(snsInfo.canisters.governance) : null;
                                         return logo ? (
-                                            <img src={logo} alt={snsInfo?.name} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                                            <img src={logo} alt={snsInfo?.name} style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', borderRadius: '50%', objectFit: 'cover', padding: 0, margin: 0 }} />
                                         ) : (
                                             <FaBrain size={24} style={{ color: theme.colors.mutedText }} />
                                         );
