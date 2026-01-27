@@ -158,14 +158,15 @@ function AdminSnsJailbreak() {
             loadStats();
             loadLogs(0);
             // Also ensure SNS list is loaded for log display
-            if (snsList.length === 0) {
+            if (!snsList || snsList.length === 0) {
                 fetchAndCacheSnsData();
             }
         }
-    }, [backendActor, isAdmin, loadStats, loadLogs, snsList.length, fetchAndCacheSnsData]);
+    }, [backendActor, isAdmin, loadStats, loadLogs, snsList, fetchAndCacheSnsData]);
     
     // Get SNS name from root canister ID
     const getSnsName = useCallback((rootCanisterId) => {
+        if (!snsList) return rootCanisterId.toString().slice(0, 10) + '...';
         const sns = snsList.find(s => s.root_canister_id.toString() === rootCanisterId.toString());
         return sns?.name || rootCanisterId.toString().slice(0, 10) + '...';
     }, [snsList]);
