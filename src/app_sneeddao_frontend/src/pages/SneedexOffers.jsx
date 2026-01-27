@@ -1206,69 +1206,58 @@ function SneedexOffers() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main style={styles.container}>
+                {/* Jailbreak Wizard Banner */}
                 <div style={{
-                    backgroundColor: theme.colors.secondaryBg,
-                    border: `1px solid ${theme.colors.border}`,
-                    borderRadius: '12px',
-                    padding: '14px 16px',
-                    marginBottom: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    flexWrap: 'wrap'
-                }}>
-                    <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>
-                        🧠 ICP Neuron Manager: create a tradable neuron manager canister and list it on Sneedex.
-                    </div>
-                    <Link
-                        to="/create_icp_neuron"
-                        style={{
-                            background: theme.colors.accent,
-                            color: theme.colors.primaryBg,
-                            padding: '10px 14px',
-                            borderRadius: '10px',
-                            textDecoration: 'none',
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        Create ICP Neuron Manager →
-                    </Link>
-                </div>
-                {/* SNS Jailbreak Banner */}
-                <div style={{
-                    backgroundColor: '#e67e2210',
-                    border: `1px solid #e67e2240`,
-                    borderRadius: '12px',
-                    padding: '14px 16px',
+                    background: `linear-gradient(135deg, ${theme.colors.success}12, ${theme.colors.accent}08)`,
+                    border: `1px solid ${theme.colors.success}35`,
+                    borderRadius: '14px',
+                    padding: '16px 20px',
                     marginBottom: '16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '12px',
+                    gap: '16px',
                     flexWrap: 'wrap'
                 }}>
-                    <div style={{ color: theme.colors.primaryText, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FaUnlock style={{ color: '#e67e22' }} />
-                        <span>SNS Jailbreak: Already have SNS neurons? Make them tradable here!</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '10px',
+                            background: `${theme.colors.success}20`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaUnlock style={{ color: theme.colors.success, fontSize: '18px' }} />
+                        </div>
+                        <div>
+                            <div style={{ color: theme.colors.primaryText, fontWeight: 700, fontSize: '0.95rem' }}>
+                                Jailbreak Wizard
+                            </div>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                Already have SNS neurons? Make them tradable on Sneedex!
+                            </div>
+                        </div>
                     </div>
                     <Link
                         to="/tools/sns_jailbreak"
                         style={{
-                            background: '#e67e22',
+                            background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
                             color: '#fff',
-                            padding: '10px 14px',
+                            padding: '10px 18px',
                             borderRadius: '10px',
                             textDecoration: 'none',
                             fontWeight: 700,
                             whiteSpace: 'nowrap',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px'
+                            gap: '8px',
+                            boxShadow: `0 4px 12px ${theme.colors.success}30`,
+                            transition: 'all 0.2s ease',
                         }}
                     >
-                        <FaUnlock size={12} /> Jailbreak Neurons →
+                        <FaUnlock size={14} /> Open Wizard →
                     </Link>
                 </div>
                 <div style={styles.header}>

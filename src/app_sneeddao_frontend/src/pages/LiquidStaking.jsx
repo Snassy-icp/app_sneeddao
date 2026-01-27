@@ -250,31 +250,17 @@ export default function LiquidStaking() {
                     <div style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        background: `${theme.colors.warning || '#f59e0b'}15`,
-                        border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
-                        borderRadius: '8px',
-                        padding: '10px 16px',
-                        fontSize: '0.9rem',
-                        color: theme.colors.warning || '#f59e0b',
-                        marginBottom: '1rem',
-                    }}>
-                        ⚠️ <strong>ICP neurons:</strong> Must be created new here — existing NNS neurons cannot be made liquid.
-                    </div>
-                    <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: `#e67e2215`,
-                        border: `1px solid #e67e2240`,
-                        borderRadius: '8px',
-                        padding: '10px 16px',
-                        fontSize: '0.9rem',
-                        color: '#e67e22',
+                        gap: '10px',
+                        background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.accent}10)`,
+                        border: `1px solid ${theme.colors.success}40`,
+                        borderRadius: '12px',
+                        padding: '12px 20px',
+                        fontSize: '0.95rem',
+                        color: theme.colors.success,
                         marginBottom: '1.5rem',
                     }}>
-                        <FaUnlock size={14} />
-                        <strong>SNS neurons:</strong> Already have neurons? Use <Link to="/tools/sns_jailbreak" style={{ color: '#e67e22', fontWeight: '700' }}>SNS Jailbreak</Link> to make them tradable!
+                        <FaUnlock size={16} />
+                        <span><strong>Already have SNS neurons?</strong> Use the <Link to="/tools/sns_jailbreak" style={{ color: theme.colors.success, fontWeight: '700' }}>Jailbreak Wizard</Link> to make them tradable!</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
                         <Link to="/create_icp_neuron" style={styles.primaryButton}>
@@ -285,9 +271,9 @@ export default function LiquidStaking() {
                             Stake SNS Tokens
                             <FaArrowRight size={14} />
                         </Link>
-                        <Link to="/tools/sns_jailbreak" style={{ ...styles.secondaryButton, borderColor: '#e67e22', color: '#e67e22' }}>
+                        <Link to="/tools/sns_jailbreak" style={{ ...styles.secondaryButton, borderColor: theme.colors.success, color: theme.colors.success }}>
                             <FaUnlock size={14} />
-                            Jailbreak Existing Neurons
+                            Jailbreak Wizard
                         </Link>
                     </div>
                 </div>
@@ -383,15 +369,15 @@ export default function LiquidStaking() {
                             💡 <strong>New neurons:</strong> Create through Sneed's wizard for instant liquidity.
                         </div>
                         <div style={{
-                            background: `#e67e2215`,
+                            background: `${theme.colors.success}10`,
                             borderRadius: '8px',
                             padding: '10px 12px',
                             marginBottom: '1rem',
                             fontSize: '0.85rem',
-                            color: '#e67e22',
+                            color: theme.colors.success,
                             lineHeight: '1.5',
                         }}>
-                            🔓 <strong>Existing neurons:</strong> Use <Link to="/tools/sns_jailbreak" style={{ color: '#e67e22', fontWeight: '600' }}>SNS Jailbreak</Link> to 
+                            ✨ <strong>Existing neurons:</strong> Use the <Link to="/tools/sns_jailbreak" style={{ color: theme.colors.success, fontWeight: '600' }}>Jailbreak Wizard</Link> to 
                             add your Sneed Wallet as a controller and make them tradable!
                         </div>
                         <ul style={styles.featureBullets}>
@@ -421,9 +407,9 @@ export default function LiquidStaking() {
                                 Open SNS Staking Wizard
                                 <FaArrowRight size={14} />
                             </Link>
-                            <Link to="/tools/sns_jailbreak" style={{ ...styles.secondaryButton, borderColor: '#e67e22', color: '#e67e22' }}>
+                            <Link to="/tools/sns_jailbreak" style={{ ...styles.secondaryButton, borderColor: theme.colors.success, color: theme.colors.success }}>
                                 <FaUnlock size={14} />
-                                Jailbreak Existing
+                                Jailbreak Wizard
                             </Link>
                         </div>
                     </div>
