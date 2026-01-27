@@ -719,19 +719,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '20px',
+                        gap: '12px',
                         fontSize: '12px',
-                        color: theme.colors.mutedText
+                        color: theme.colors.mutedText,
+                        flexWrap: 'wrap'
                     }}>
-                        <div style={{ 
-                            fontSize: '10px', 
-                            color: theme.colors.mutedText
-                        }}>
-                            Your Neurons
-                        </div>
                         {neuronsLoading ? (
-                            <div style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
-                                Loading neurons...
+                            <div style={{ color: theme.colors.mutedText, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>🧠</span>
+                                <span>Loading...</span>
                             </div>
                         ) : (
                             <>
@@ -739,7 +735,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     const allNeurons = getAllNeurons();
                                     const hotkeyNeurons = getHotkeyNeurons();
                                     
-                                    // Calculate hotkeyed VP (only hotkeyed neurons) - using nervousSystemParameters
+                                    // Calculate hotkeyed VP (only hotkeyed neurons)
                                     const hotkeyedVP = hotkeyNeurons.reduce((total, neuron) => {
                                         try {
                                             const votingPower = nervousSystemParameters ? 
@@ -751,7 +747,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                         }
                                     }, 0);
                                     
-                                    // Calculate reachable VP (all neurons) - using nervousSystemParameters
+                                    // Calculate reachable VP (all neurons)
                                     const reachableVP = allNeurons.reduce((total, neuron) => {
                                         try {
                                             const votingPower = nervousSystemParameters ? 
@@ -763,47 +759,77 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                         }
                                     }, 0);
                                     
+                                    // Format VP with K, M suffixes
+                                    const formatCompactVP = (vp) => {
+                                        if (!nervousSystemParameters) return '...';
+                                        const displayValue = vp / 100_000_000;
+                                        if (displayValue >= 1_000_000) {
+                                            return (displayValue / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+                                        } else if (displayValue >= 1_000) {
+                                            return (displayValue / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+                                        }
+                                        return displayValue.toFixed(displayValue < 10 ? 1 : 0).replace(/\.0$/, '');
+                                    };
+                                    
                                     return (
                                         <>
-                                            {/* Hotkeyed neurons first */}
+                                            {/* Brain icon - Your neurons label (desktop only) */}
+                                            <div 
+                                                className="hide-on-narrow"
+                                                style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '4px',
+                                                    color: theme.colors.mutedText,
+                                                    fontSize: '11px'
+                                                }}
+                                            >
+                                                <span>🧠</span>
+                                            </div>
+                                            
+                                            {/* Hotkeyed neurons */}
                                             <div 
                                                 style={{ 
                                                     display: 'flex', 
                                                     alignItems: 'center', 
-                                                    gap: '8px',
-                                                    marginBottom: '2px'
+                                                    gap: '4px'
                                                 }}
                                                 title="Neurons where you have hotkey permission - can vote on SNS proposals"
                                             >
-                                                <span style={{ color: theme.colors.accent }}>
-                                                    {hotkeyNeurons.length} hotkeyed
+                                                <span>🔑</span>
+                                                {/* Desktop: full labels */}
+                                                <span className="hide-on-narrow" style={{ color: theme.colors.accent, fontSize: '11px' }}>
+                                                    {formatCompactVP(hotkeyedVP)} VP
                                                 </span>
-                                                <span style={{ color: theme.colors.mutedText }}>•</span>
-                                                <span style={{ color: theme.colors.accent }}>
-                                                    {nervousSystemParameters ? 
-                                                        formatVotingPower(hotkeyedVP) : 
-                                                        'Loading...'
-                                                    } VP
+                                                <span className="hide-on-narrow" style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                    hotkeys ({hotkeyNeurons.length})
+                                                </span>
+                                                {/* Mobile: compact */}
+                                                <span className="show-on-narrow" style={{ color: theme.colors.accent, fontSize: '11px' }}>
+                                                    {formatCompactVP(hotkeyedVP)} VP ({hotkeyNeurons.length})
                                                 </span>
                                             </div>
-                                            {/* Reachable neurons second */}
+                                            
+                                            {/* Reachable neurons */}
                                             <div 
                                                 style={{ 
                                                     display: 'flex', 
                                                     alignItems: 'center', 
-                                                    gap: '8px'
+                                                    gap: '4px'
                                                 }}
                                                 title="All neurons you can access (owned + hotkeyed) - for forum voting"
                                             >
-                                                <span style={{ color: theme.colors.success }}>
-                                                    {allNeurons.length} reachable
+                                                <span>💪</span>
+                                                {/* Desktop: full labels */}
+                                                <span className="hide-on-narrow" style={{ color: theme.colors.success, fontSize: '11px' }}>
+                                                    {formatCompactVP(reachableVP)} VP
                                                 </span>
-                                                <span style={{ color: theme.colors.mutedText }}>•</span>
-                                                <span style={{ color: theme.colors.success }}>
-                                                    {nervousSystemParameters ? 
-                                                        formatVotingPower(reachableVP) : 
-                                                        'Loading...'
-                                                    } VP
+                                                <span className="hide-on-narrow" style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                    reachable ({allNeurons.length})
+                                                </span>
+                                                {/* Mobile: compact */}
+                                                <span className="show-on-narrow" style={{ color: theme.colors.success, fontSize: '11px' }}>
+                                                    {formatCompactVP(reachableVP)} VP ({allNeurons.length})
                                                 </span>
                                             </div>
                                         </>
