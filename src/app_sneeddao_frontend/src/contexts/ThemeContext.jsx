@@ -43,7 +43,7 @@ export const themes = {
       
       // Gradients
       primaryGradient: 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%)',
-      cardGradient: 'linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%)',
+      cardGradient: 'linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%)',
       accentGradient: 'linear-gradient(to right, rgba(74, 144, 226, 0.15), rgba(74, 144, 226, 0.08))',
       
       // Shadows
@@ -82,7 +82,7 @@ export const themes = {
       
       // Gradients
       primaryGradient: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
-      cardGradient: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 249, 250, 0.8) 100%)',
+      cardGradient: 'linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%)',
       accentGradient: 'linear-gradient(to right, rgba(108, 92, 231, 0.12), rgba(108, 92, 231, 0.06))',
       
       // Shadows
