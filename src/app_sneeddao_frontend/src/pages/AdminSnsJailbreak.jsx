@@ -9,6 +9,7 @@ import { useAdminCheck } from '../hooks/useAdminCheck';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useSns } from '../contexts/SnsContext';
+import { fetchAndCacheSnsData } from '../utils/SnsUtils';
 
 // Helper to convert hex string to Uint8Array
 const hexToBytes = (hex) => {
@@ -29,7 +30,7 @@ const bytesToHex = (bytes) => {
 function AdminSnsJailbreak() {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
-    const { snsList, fetchAndCacheSnsData } = useSns();
+    const { snsList } = useSns();
     
     // Admin check
     const { isAdmin, loading: adminLoading } = useAdminCheck({
@@ -158,11 +159,11 @@ function AdminSnsJailbreak() {
             loadStats();
             loadLogs(0);
             // Also ensure SNS list is loaded for log display
-            if (!snsList || snsList.length === 0) {
-                fetchAndCacheSnsData();
+            if ((!snsList || snsList.length === 0) && identity) {
+                fetchAndCacheSnsData(identity);
             }
         }
-    }, [backendActor, isAdmin, loadStats, loadLogs, snsList, fetchAndCacheSnsData]);
+    }, [backendActor, isAdmin, loadStats, loadLogs, snsList, identity]);
     
     // Get SNS name from root canister ID
     const getSnsName = useCallback((rootCanisterId) => {
