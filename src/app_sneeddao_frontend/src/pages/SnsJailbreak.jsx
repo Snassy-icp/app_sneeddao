@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
-import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex, formatE8s, getDissolveState } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex, formatE8s, getDissolveState, getNeuronDetails } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 
@@ -39,6 +39,9 @@ function SnsJailbreak() {
     const [manualNeuronId, setManualNeuronId] = useState('');
     const [useManualEntry, setUseManualEntry] = useState(false);
     const [showStep2Info, setShowStep2Info] = useState(false);
+    const [manualNeuronData, setManualNeuronData] = useState(null);
+    const [loadingManualNeuron, setLoadingManualNeuron] = useState(false);
+    const [manualNeuronError, setManualNeuronError] = useState('');
     
     // Step 3: Principal selection
     const [targetPrincipal, setTargetPrincipal] = useState('');
@@ -281,6 +284,40 @@ const NEW_CONTROLLER = "${targetPrincipal}";
         return id && /^[a-f0-9]+$/i.test(id) && id.length >= 32;
     };
     
+    // Fetch manual neuron data when ID is valid
+    useEffect(() => {
+        const fetchManualNeuron = async () => {
+            if (!isValidNeuronId(manualNeuronId) || !governanceId || !identity) {
+                setManualNeuronData(null);
+                setManualNeuronError('');
+                return;
+            }
+            
+            setLoadingManualNeuron(true);
+            setManualNeuronError('');
+            
+            try {
+                const neuron = await getNeuronDetails(identity, governanceId, manualNeuronId);
+                if (neuron) {
+                    setManualNeuronData(neuron);
+                } else {
+                    setManualNeuronData(null);
+                    setManualNeuronError('Neuron not found. Please check the ID.');
+                }
+            } catch (error) {
+                console.error('Error fetching manual neuron:', error);
+                setManualNeuronData(null);
+                setManualNeuronError('Failed to fetch neuron data.');
+            } finally {
+                setLoadingManualNeuron(false);
+            }
+        };
+        
+        // Debounce the fetch
+        const timeout = setTimeout(fetchManualNeuron, 500);
+        return () => clearTimeout(timeout);
+    }, [manualNeuronId, governanceId, identity]);
+    
     // Go to step with reset
     const goToStep = (step) => {
         if (step < currentStep) {
@@ -288,6 +325,8 @@ const NEW_CONTROLLER = "${targetPrincipal}";
             if (step === 1) {
                 setSelectedNeuronId('');
                 setManualNeuronId('');
+                setManualNeuronData(null);
+                setManualNeuronError('');
                 setUseManualEntry(false);
             }
         }
@@ -297,7 +336,12 @@ const NEW_CONTROLLER = "${targetPrincipal}";
     const canProceed = () => {
         switch (currentStep) {
             case 1: return !!selectedSnsRoot;
-            case 2: return useManualEntry ? isValidNeuronId(manualNeuronId) : !!selectedNeuronId;
+            case 2: 
+                if (useManualEntry) {
+                    // Must have valid ID and either loaded data or allow proceeding with valid format
+                    return isValidNeuronId(manualNeuronId) && (manualNeuronData || !manualNeuronError);
+                }
+                return !!selectedNeuronId;
             case 3: return principalValid && targetPrincipal;
             case 4: return !!baseScript && !loadingBaseScript;
             default: return true;
@@ -737,6 +781,8 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                         setSelectedSnsRoot(sns.rootCanisterId);
                                         setSelectedNeuronId('');
                                         setManualNeuronId('');
+                                        setManualNeuronData(null);
+                                        setManualNeuronError('');
                                         fetchNeuronsForSelectedSns(sns.rootCanisterId);
                                     }}
                                 >
@@ -936,28 +982,66 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                             </p>
                         )}
                         
-                        {/* Show preview card when valid */}
+                        {/* Show neuron card when loading or loaded */}
                         {isValidNeuronId(manualNeuronId) && (
-                            <div 
-                                style={{ 
-                                    ...styles.neuronCard(true),
-                                    marginTop: '1rem',
-                                    cursor: 'default',
-                                }}
-                            >
-                                <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
-                                        Manual Entry
+                            <div style={{ marginTop: '1rem' }}>
+                                {loadingManualNeuron ? (
+                                    <div 
+                                        style={{ 
+                                            ...styles.neuronCard(false),
+                                            cursor: 'default',
+                                        }}
+                                    >
+                                        <FaSpinner style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem', animation: 'spin 1s linear infinite' }} />
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                                Loading neuron...
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                                {manualNeuronId.slice(0, 16)}...{manualNeuronId.slice(-16)}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
-                                        {manualNeuronId.slice(0, 16)}...{manualNeuronId.slice(-16)}
+                                ) : manualNeuronError ? (
+                                    <div 
+                                        style={{ 
+                                            ...styles.neuronCard(false),
+                                            cursor: 'default',
+                                            borderColor: theme.colors.error,
+                                        }}
+                                    >
+                                        <FaExclamationTriangle style={{ color: theme.colors.error, flexShrink: 0, fontSize: '1.5rem' }} />
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: '600', color: theme.colors.error }}>
+                                                {manualNeuronError}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                                {manualNeuronId.slice(0, 16)}...{manualNeuronId.slice(-16)}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.success }}>
-                                        ✓ Valid neuron ID format
+                                ) : manualNeuronData ? (
+                                    <div 
+                                        style={{ 
+                                            ...styles.neuronCard(true),
+                                            cursor: 'default',
+                                        }}
+                                    >
+                                        <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                                {getNeuronDisplayName(manualNeuronData, selectedSnsRoot)}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                                {manualNeuronId.slice(0, 16)}...{manualNeuronId.slice(-16)}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                                                {getDissolveState(manualNeuronData)}
+                                            </div>
+                                        </div>
+                                        <FaCheck style={{ color: theme.colors.accent }} />
                                     </div>
-                                </div>
-                                <FaCheck style={{ color: theme.colors.accent }} />
+                                ) : null}
                             </div>
                         )}
                     </div>
@@ -1289,6 +1373,8 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                         setSelectedSnsRoot('');
                         setSelectedNeuronId('');
                         setManualNeuronId('');
+                        setManualNeuronData(null);
+                        setManualNeuronError('');
                         setUseManualEntry(false);
                         setSnsNeurons([]);
                         setBaseScript('');
