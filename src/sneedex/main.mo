@@ -378,6 +378,22 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    // Notify bidder that an offer they bid on was cancelled (fire-and-forget)
+    func notifyCancellation<system>(offer : T.Offer, bid : T.Bid) {
+        // Always notify on cancellation - no user preference check since this is important
+        ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+            let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
+            let formattedAmount = formatTokenAmount(bid.amount, symbol, decimals);
+            let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
+            let subject = "❌ Sneedex Offer #" # Nat.toText(offer.id) # " Was Cancelled";
+            let body = "The seller has cancelled Sneedex offer #" # Nat.toText(offer.id) # " that you had bid on.\n\n" #
+                       "**Your bid:** " # formattedAmount # "\n\n" #
+                       "Your bid is being automatically refunded to your wallet.\n\n" #
+                       "[View offer details](" # offerUrl # ")";
+            await sendNotification([bid.bidder], subject, body);
+        });
+    };
+    
     // Helper to remove all hotkeys from all neurons in a neuron manager (best effort)
     func removeNeuronManagerHotkeys(canisterId : Principal) : async () {
         try {
@@ -2332,7 +2348,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 // Schedule auto-reclaim of assets back to seller (best effort)
                 scheduleAutoReclaimAssets<system>(offerId);
                 
-                // Schedule auto-refund for any bids that had escrowed tokens
+                // Schedule auto-refund for any bids that had escrowed tokens and notify bidders
                 for (bid in getBidsForOffer(offerId).vals()) {
                     if (bid.tokens_escrowed and bid.state == #Pending) {
                         // Mark as lost first
@@ -2347,6 +2363,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         };
                         updateBid(bid.id, updatedBid);
                         scheduleAutoRefund<system>(bid.id);
+                        
+                        // Notify bidder of cancellation (fire-and-forget)
+                        notifyCancellation<system>(offer, bid);
                     };
                 };
                 
