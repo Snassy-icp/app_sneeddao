@@ -82,6 +82,7 @@ import HelpSneedlock from './pages/HelpSneedlock';
 import HelpIcpNeuronManager from './pages/HelpIcpNeuronManager';
 import HelpSneedex from './pages/HelpSneedex';
 import HelpCanisterManager from './pages/HelpCanisterManager';
+import HelpSnsJailbreak from './pages/HelpSnsJailbreak';
 import Canister from './pages/Canister';
 import Canisters from './pages/Canisters';
 import CreateIcpNeuron from './pages/CreateIcpNeuron';
@@ -138,6 +139,7 @@ function App() {
                     <Route path="/help/icp-neuron-manager" element={<HelpIcpNeuronManager />} />
                     <Route path="/help/sneedex" element={<HelpSneedex />} />
                     <Route path="/help/canister-manager" element={<HelpCanisterManager />} />
+                    <Route path="/help/sns_jailbreak" element={<HelpSnsJailbreak />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />

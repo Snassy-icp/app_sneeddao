@@ -1138,21 +1138,36 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                 <p style={styles.subtitle}>
                     Add your Sneed Wallet as a controller to manage your SNS neuron from Sneed Hub
                 </p>
-                <Link
-                    to="/tools/sns_jailbreak_list"
-                    style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        color: theme.colors.accent,
-                        fontSize: '0.9rem',
-                        textDecoration: 'none',
-                        marginTop: '0.5rem',
-                    }}
-                >
-                    <FaList size={14} />
-                    View my saved jailbreak scripts
-                </Link>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', marginTop: '0.75rem' }}>
+                    <Link
+                        to="/tools/sns_jailbreak_list"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            color: theme.colors.accent,
+                            fontSize: '0.9rem',
+                            textDecoration: 'none',
+                        }}
+                    >
+                        <FaList size={14} />
+                        View my saved scripts
+                    </Link>
+                    <Link
+                        to="/help/sns_jailbreak"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            color: theme.colors.mutedText,
+                            fontSize: '0.9rem',
+                            textDecoration: 'none',
+                        }}
+                    >
+                        <FaInfoCircle size={14} />
+                        Learn more
+                    </Link>
+                </div>
             </div>
             
             {/* Collapsible Info Section */}

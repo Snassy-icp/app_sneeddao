@@ -2,7 +2,7 @@ import React from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock } from 'react-icons/fa';
 
 function Hub() {
     const { theme } = useTheme();
@@ -226,6 +226,15 @@ function Hub() {
             cta: 'Create Lock',
             color: '#9b59b6',
             badge: 'New',
+        },
+        {
+            title: 'SNS Jailbreak',
+            icon: <FaUnlock />,
+            desc: 'Unlock your SNS neurons! Add your Sneed Wallet as a full controller to make neurons tradable on Sneedex, fully manageable from your wallet, and truly liquid.',
+            path: '/tools/sns_jailbreak',
+            cta: 'Jailbreak Neurons',
+            color: '#e67e22',
+            badge: 'Tool',
         },
     ];
 

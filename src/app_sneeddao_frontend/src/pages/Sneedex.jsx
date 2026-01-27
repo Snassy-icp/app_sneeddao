@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaExchangeAlt, FaGavel, FaShieldAlt, FaCubes, FaCoins, FaBrain, FaCog } from 'react-icons/fa';
+import { FaExchangeAlt, FaGavel, FaShieldAlt, FaCubes, FaCoins, FaBrain, FaCog, FaUnlock } from 'react-icons/fa';
 import { createSneedexActor, formatFeeRate } from '../utils/SneedexUtils';
 
 function Sneedex() {
@@ -344,6 +344,43 @@ function Sneedex() {
                                 SNS Liquid Staking →
                             </Link>
                         </div>
+                    </div>
+                    {/* SNS Jailbreak Banner */}
+                    <div style={{
+                        margin: '12px auto 0 auto',
+                        maxWidth: '900px',
+                        background: `linear-gradient(135deg, #e67e2215, #f39c1215)`,
+                        border: `1px solid #e67e2240`,
+                        borderRadius: '14px',
+                        padding: '14px 20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '16px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <div style={{ color: theme.colors.primaryText, fontWeight: 600, flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FaUnlock style={{ color: '#e67e22' }} />
+                            <span><strong>SNS Jailbreak:</strong> Already have SNS neurons? Make them tradable on Sneedex!</span>
+                        </div>
+                        <Link
+                            to="/tools/sns_jailbreak"
+                            style={{
+                                background: '#e67e22',
+                                color: '#fff',
+                                padding: '10px 14px',
+                                borderRadius: '10px',
+                                textDecoration: 'none',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                                fontSize: '0.9rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                        >
+                            <FaUnlock size={12} /> Jailbreak Neurons →
+                        </Link>
                     </div>
                     <div style={styles.buttonRow}>
                         <Link

@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock } from 'react-icons/fa';
 import TokenSelector from '../components/TokenSelector';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
@@ -1202,7 +1202,7 @@ function SneedexOffers() {
                     border: `1px solid ${theme.colors.border}`,
                     borderRadius: '12px',
                     padding: '14px 16px',
-                    marginBottom: '16px',
+                    marginBottom: '12px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -1225,6 +1225,41 @@ function SneedexOffers() {
                         }}
                     >
                         Create ICP Neuron Manager →
+                    </Link>
+                </div>
+                {/* SNS Jailbreak Banner */}
+                <div style={{
+                    backgroundColor: '#e67e2210',
+                    border: `1px solid #e67e2240`,
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    flexWrap: 'wrap'
+                }}>
+                    <div style={{ color: theme.colors.primaryText, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FaUnlock style={{ color: '#e67e22' }} />
+                        <span>SNS Jailbreak: Already have SNS neurons? Make them tradable here!</span>
+                    </div>
+                    <Link
+                        to="/tools/sns_jailbreak"
+                        style={{
+                            background: '#e67e22',
+                            color: '#fff',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            textDecoration: 'none',
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <FaUnlock size={12} /> Jailbreak Neurons →
                     </Link>
                 </div>
                 <div style={styles.header}>
