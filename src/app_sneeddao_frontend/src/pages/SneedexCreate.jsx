@@ -1940,6 +1940,47 @@ function SneedexCreate() {
         return null;
     }, [assetPrices, icpPrice, getSnsLedgerFromGovernance, getSnsDecimals]);
 
+    // Responsive CSS for mobile
+    useEffect(() => {
+        const mediaQueryCSS = `
+            <style id="sneedex-create-responsive-css">
+                @media (max-width: 600px) {
+                    .sneedex-create-container {
+                        padding: 1rem !important;
+                    }
+                    .sneedex-create-card {
+                        padding: 1rem !important;
+                    }
+                    .sneedex-create-asset-types {
+                        gap: 8px !important;
+                        padding: 6px !important;
+                    }
+                    .sneedex-create-asset-types button {
+                        padding: 10px 6px !important;
+                        gap: 4px !important;
+                    }
+                    .sneedex-create-progress-bar {
+                        margin-bottom: 1rem !important;
+                    }
+                    .sneedex-create-progress-label {
+                        font-size: 0.7rem !important;
+                    }
+                }
+            </style>
+        `;
+        
+        const existingStyle = document.getElementById('sneedex-create-responsive-css');
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+        document.head.insertAdjacentHTML('beforeend', mediaQueryCSS);
+        
+        return () => {
+            const style = document.getElementById('sneedex-create-responsive-css');
+            if (style) style.remove();
+        };
+    }, []);
+
     const styles = {
         container: {
             maxWidth: '800px',
@@ -2257,7 +2298,7 @@ function SneedexCreate() {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
-                <main style={styles.container}>
+                <main style={styles.container} className="sneedex-create-container">
                     <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
                         <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem' }}>Connect Your Wallet</h2>
                         <p style={{ color: theme.colors.mutedText }}>Please connect your wallet to create an offer.</p>
@@ -2270,7 +2311,7 @@ function SneedexCreate() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
-            <main style={styles.container}>
+            <main style={styles.container} className="sneedex-create-container">
                 <Link 
                     to="/sneedex_offers" 
                     style={styles.backButton}
@@ -2285,7 +2326,7 @@ function SneedexCreate() {
                 
                 {/* Progress Bar */}
                 {step < 4 && (
-                    <div style={styles.progressBar}>
+                    <div style={styles.progressBar} className="sneedex-create-progress-bar">
                         <div style={styles.progressLine} />
                         <div style={styles.progressStep}>
                             <div style={getStepStyle(1)}>{step > 1 ? <FaCheck /> : '1'}</div>
@@ -2310,7 +2351,7 @@ function SneedexCreate() {
                 
                 {/* Step 1: Configure Pricing */}
                 {step === 1 && (
-                    <div style={styles.card}>
+                    <div style={styles.card} className="sneedex-create-card">
                         <h3 style={styles.cardTitle}>Pricing Configuration</h3>
                         
                         <div style={styles.formGroup}>
@@ -2851,7 +2892,7 @@ function SneedexCreate() {
                 
                 {/* Step 2: Add Assets */}
                 {step === 2 && (
-                    <div style={styles.card}>
+                    <div style={styles.card} className="sneedex-create-card">
                         <h3 style={styles.cardTitle}>Assets to Sell</h3>
                         
                         {assets.length === 0 ? (
@@ -3070,15 +3111,18 @@ function SneedexCreate() {
                                     )}
                                 </div>
                                 {/* Asset Type Tabs */}
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '12px',
-                                    marginBottom: '1.5rem',
-                                    padding: '8px',
-                                    background: theme.colors.secondaryBg,
-                                    borderRadius: '16px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                }}>
+                                <div 
+                                    className="sneedex-create-asset-types"
+                                    style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '10px',
+                                        marginBottom: '1.5rem',
+                                        padding: '8px',
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '16px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
                                     {[
                                         { type: 'canister', icon: FaServer, label: 'Canister', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
                                         { type: 'neuron_manager', icon: FaRobot, label: 'ICP Neuron Manager', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
@@ -3106,12 +3150,14 @@ function SneedexCreate() {
                                                 }}
                                                 disabled={isDisabled}
                                                 style={{
-                                                    flex: 1,
+                                                    flex: '1 1 calc(50% - 10px)',
+                                                    minWidth: '120px',
+                                                    maxWidth: 'calc(50% - 5px)',
                                                     display: 'flex',
                                                     flexDirection: 'column',
                                                     alignItems: 'center',
-                                                    gap: '8px',
-                                                    padding: '16px 12px',
+                                                    gap: '6px',
+                                                    padding: '12px 8px',
                                                     border: 'none',
                                                     borderRadius: '12px',
                                                     background: isSelected ? gradient : 'transparent',
@@ -3138,9 +3184,9 @@ function SneedexCreate() {
                                                 }}
                                             >
                                                 <div style={{
-                                                    width: '48px',
-                                                    height: '48px',
-                                                    borderRadius: '12px',
+                                                    width: '40px',
+                                                    height: '40px',
+                                                    borderRadius: '10px',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
@@ -3150,12 +3196,14 @@ function SneedexCreate() {
                                                     backdropFilter: isSelected ? 'blur(8px)' : 'none',
                                                     transition: 'all 0.3s ease',
                                                 }}>
-                                                    <Icon size={24} />
+                                                    <Icon size={20} />
                                                 </div>
                                                 <span style={{
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.75rem',
                                                     fontWeight: isSelected ? '600' : '500',
                                                     letterSpacing: '0.02em',
+                                                    textAlign: 'center',
+                                                    lineHeight: '1.2',
                                                 }}>
                                                     {label}
                                                 </span>
@@ -4127,7 +4175,7 @@ function SneedexCreate() {
                 
                 {/* Step 3: Review & Create */}
                 {step === 3 && (
-                    <div style={styles.card}>
+                    <div style={styles.card} className="sneedex-create-card">
                         <h3 style={styles.cardTitle}>Review Your Offer</h3>
                         
                         <div style={styles.reviewSection}>
