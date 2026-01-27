@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet, FaCopy } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
+import { useAdminCheck } from '../hooks/useAdminCheck';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 
 // Helper to convert hex string to Uint8Array
 const hexToBytes = (hex) => {
@@ -24,8 +25,28 @@ const bytesToHex = (bytes) => {
 };
 
 function AdminSnsJailbreak() {
-    const { isAdmin } = useAuth();
+    const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
+    
+    // Admin check
+    const { isAdmin, loading: adminLoading } = useAdminCheck({
+        identity,
+        isAuthenticated,
+        redirectPath: '/admin'
+    });
+    
+    // Create backend actor with identity
+    const backendActor = useMemo(() => {
+        if (!identity) return null;
+        return createBackendActor(backendCanisterId, {
+            agentOptions: {
+                identity,
+                host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943'
+            }
+        });
+    }, [identity]);
     
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -45,9 +66,11 @@ function AdminSnsJailbreak() {
     // Load current settings
     useEffect(() => {
         const loadSettings = async () => {
+            if (!backendActor) return;
+            
             setLoading(true);
             try {
-                const settings = await app_sneeddao_backend.get_jailbreak_fee_settings();
+                const settings = await backendActor.get_jailbreak_fee_settings();
                 // Convert e8s to ICP for display
                 setFeePremium((Number(settings.fee_premium_e8s) / 100_000_000).toString());
                 setFeeRegular((Number(settings.fee_regular_e8s) / 100_000_000).toString());
@@ -74,7 +97,7 @@ function AdminSnsJailbreak() {
             }
         };
         loadSettings();
-    }, []);
+    }, [backendActor]);
     
     // Validate principal
     const validatePrincipal = (value) => {
@@ -147,7 +170,7 @@ function AdminSnsJailbreak() {
                 }
             }
             
-            const result = await app_sneeddao_backend.set_jailbreak_fee_settings(
+            const result = await backendActor.set_jailbreak_fee_settings(
                 [BigInt(premiumE8s)],
                 [BigInt(regularE8s)],
                 [owner.length > 0 ? owner : []],
@@ -314,6 +337,20 @@ function AdminSnsJailbreak() {
             to { transform: rotate(360deg); }
         }
     `;
+    
+    if (adminLoading) {
+        return (
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <Header />
+                <main style={styles.container}>
+                    <div style={styles.loadingContainer}>
+                        <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
+                        <p style={{ color: theme.colors.mutedText }}>Checking admin access...</p>
+                    </div>
+                </main>
+            </div>
+        );
+    }
     
     if (!isAdmin) {
         return (

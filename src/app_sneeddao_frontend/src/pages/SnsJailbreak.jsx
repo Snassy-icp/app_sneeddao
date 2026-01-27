@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey, FaList, FaWallet, FaSync, FaArrowDown } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
@@ -11,7 +11,7 @@ import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex, formatE8s, getDis
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
-import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
@@ -42,6 +42,19 @@ function SnsJailbreak() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     const { getNeuronDisplayName: getNeuronNameInfo } = useNaming();
+    
+    // Create authenticated backend actor
+    const backendActor = useMemo(() => {
+        if (!identity) return null;
+        return createBackendActor(backendCanisterId, {
+            agentOptions: {
+                identity,
+                host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943'
+            }
+        });
+    }, [identity]);
     
     // Wizard state
     const [currentStep, setCurrentStep] = useState(1);
@@ -337,36 +350,36 @@ function SnsJailbreak() {
     // Save the jailbreak config to backend
     // Register the SNS token in user's wallet if not already registered
     const registerSnsToken = useCallback(async () => {
-        if (!selectedSns?.canisters?.ledger || tokenRegistered) return;
+        if (!selectedSns?.canisters?.ledger || tokenRegistered || !backendActor) return;
         
         try {
             const ledgerId = Principal.fromText(selectedSns.canisters.ledger);
-            await app_sneeddao_backend.register_user_token(ledgerId);
+            await backendActor.register_user_token(ledgerId);
             console.log('SNS token registered:', selectedSns.canisters.ledger);
             setTokenRegistered(true);
         } catch (error) {
             console.error('Error registering SNS token:', error);
         }
-    }, [selectedSns, tokenRegistered]);
+    }, [selectedSns, tokenRegistered, backendActor]);
     
     // Load payment info when entering step 4
     const loadPaymentInfo = useCallback(async () => {
-        if (!identity) return;
+        if (!identity || !backendActor) return;
         
         setLoadingPaymentInfo(true);
         setConfigError('');
         
         try {
             // Get the fee for this user
-            const fee = await app_sneeddao_backend.get_my_jailbreak_fee();
+            const fee = await backendActor.get_my_jailbreak_fee();
             setJailbreakFee(Number(fee));
             
             // Get the payment subaccount
-            const subaccount = await app_sneeddao_backend.get_jailbreak_payment_subaccount();
+            const subaccount = await backendActor.get_jailbreak_payment_subaccount();
             setPaymentSubaccount(subaccount);
             
             // Get current balance
-            const balance = await app_sneeddao_backend.get_jailbreak_payment_balance();
+            const balance = await backendActor.get_jailbreak_payment_balance();
             setPaymentBalance(Number(balance));
         } catch (error) {
             console.error('Error loading payment info:', error);
@@ -374,26 +387,27 @@ function SnsJailbreak() {
         } finally {
             setLoadingPaymentInfo(false);
         }
-    }, [identity]);
+    }, [identity, backendActor]);
     
     // Refresh payment balance
     const refreshPaymentBalance = useCallback(async () => {
+        if (!backendActor) return;
         try {
-            const balance = await app_sneeddao_backend.get_jailbreak_payment_balance();
+            const balance = await backendActor.get_jailbreak_payment_balance();
             setPaymentBalance(Number(balance));
         } catch (error) {
             console.error('Error refreshing balance:', error);
         }
-    }, []);
+    }, [backendActor]);
     
     // Withdraw from payment subaccount
     const handleWithdraw = useCallback(async () => {
-        if (!paymentBalance || paymentBalance <= 10000) return; // Need more than fee
+        if (!paymentBalance || paymentBalance <= 10000 || !backendActor) return; // Need more than fee
         
         setWithdrawing(true);
         try {
             const amount = paymentBalance - 10000; // Leave room for fee
-            const result = await app_sneeddao_backend.withdraw_jailbreak_payment(BigInt(amount));
+            const result = await backendActor.withdraw_jailbreak_payment(BigInt(amount));
             if ('ok' in result) {
                 await refreshPaymentBalance();
             } else {
@@ -405,17 +419,17 @@ function SnsJailbreak() {
         } finally {
             setWithdrawing(false);
         }
-    }, [paymentBalance, refreshPaymentBalance]);
+    }, [paymentBalance, refreshPaymentBalance, backendActor]);
     
     // Pay and create config
     const handlePayAndCreate = useCallback(async () => {
-        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal) return;
+        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal || !backendActor) return;
         
         setSavingConfig(true);
         setConfigError('');
         
         try {
-            const result = await app_sneeddao_backend.save_jailbreak_config(
+            const result = await backendActor.save_jailbreak_config(
                 Principal.fromText(selectedSnsRoot),
                 effectiveNeuronId,
                 Principal.fromText(targetPrincipal)
@@ -435,7 +449,7 @@ function SnsJailbreak() {
         } finally {
             setSavingConfig(false);
         }
-    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, refreshPaymentBalance]);
+    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, refreshPaymentBalance, backendActor]);
     
     // Load payment info when entering step 4
     useEffect(() => {

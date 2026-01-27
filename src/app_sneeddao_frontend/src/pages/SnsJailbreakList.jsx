@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaBrain, FaTrash, FaPlus, FaExclamationTriangle, FaCode } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
-import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { HttpAgent } from '@dfinity/agent';
 
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
@@ -16,6 +16,19 @@ function SnsJailbreakList() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     const { getNeuronDisplayName: getNeuronNameInfo } = useNaming();
+    
+    // Create authenticated backend actor
+    const backendActor = useMemo(() => {
+        if (!identity) return null;
+        return createBackendActor(backendCanisterId, {
+            agentOptions: {
+                identity,
+                host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943'
+            }
+        });
+    }, [identity]);
     
     const [configs, setConfigs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -57,11 +70,11 @@ function SnsJailbreakList() {
     // Load saved configs
     useEffect(() => {
         const loadConfigs = async () => {
-            if (!isAuthenticated) return;
+            if (!isAuthenticated || !backendActor) return;
             
             setLoading(true);
             try {
-                const result = await app_sneeddao_backend.get_my_jailbreak_configs();
+                const result = await backendActor.get_my_jailbreak_configs();
                 // Sort by created_at descending (newest first)
                 const sorted = [...result].sort((a, b) => 
                     Number(b.created_at) - Number(a.created_at)
@@ -74,7 +87,7 @@ function SnsJailbreakList() {
             }
         };
         loadConfigs();
-    }, [isAuthenticated]);
+    }, [isAuthenticated, backendActor]);
     
     // Load individual SNS logo
     const loadSnsLogo = async (governanceId) => {
@@ -211,9 +224,10 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
     
     // Delete a config
     const handleDelete = async (id) => {
+        if (!backendActor) return;
         setDeletingId(id);
         try {
-            const result = await app_sneeddao_backend.delete_jailbreak_config(BigInt(id));
+            const result = await backendActor.delete_jailbreak_config(BigInt(id));
             if ('ok' in result) {
                 setConfigs(prev => prev.filter(c => Number(c.id) !== id));
             } else {
