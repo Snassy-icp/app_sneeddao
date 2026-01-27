@@ -109,6 +109,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_jailbreak_configs : [(Principal, [JailbreakConfig])] = [];
   stable var stable_next_jailbreak_config_id : Nat = 1;
   
+  // Jailbreak fee settings (in e8s - 1 ICP = 100_000_000 e8s)
+  stable var stable_jailbreak_fee_premium : Nat = 0;      // Fee for premium members (default: free)
+  stable var stable_jailbreak_fee_regular : Nat = 0;      // Fee for regular users (default: free)
+  stable var stable_jailbreak_fee_recipient : ?Principal = null;  // Where fees are sent (null = canister keeps them)
+  
   // Stable storage for user token registrations (user -> list of ledger IDs)
   stable var stable_user_tokens : [(Principal, [Principal])] = [];
   
@@ -2293,6 +2298,61 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case null {
         #err("No configurations found")
       };
+    }
+  };
+
+  // ============================================
+  // JAILBREAK FEE SETTINGS (Admin)
+  // ============================================
+
+  // Get jailbreak fee settings
+  public query func get_jailbreak_fee_settings() : async {
+    fee_premium_e8s: Nat;
+    fee_regular_e8s: Nat;
+    fee_recipient: ?Principal;
+  } {
+    {
+      fee_premium_e8s = stable_jailbreak_fee_premium;
+      fee_regular_e8s = stable_jailbreak_fee_regular;
+      fee_recipient = stable_jailbreak_fee_recipient;
+    }
+  };
+
+  // Update jailbreak fee settings (admin only)
+  public shared ({ caller }) func set_jailbreak_fee_settings(
+    fee_premium_e8s: ?Nat,
+    fee_regular_e8s: ?Nat,
+    fee_recipient: ??Principal
+  ) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized: admin access required");
+    };
+    
+    switch (fee_premium_e8s) {
+      case (?fee) { stable_jailbreak_fee_premium := fee };
+      case null {};
+    };
+    
+    switch (fee_regular_e8s) {
+      case (?fee) { stable_jailbreak_fee_regular := fee };
+      case null {};
+    };
+    
+    switch (fee_recipient) {
+      case (?recipient) { stable_jailbreak_fee_recipient := recipient };
+      case null {};
+    };
+    
+    #ok()
+  };
+
+  // Get the fee that would be charged for a user to create a jailbreak script
+  public shared ({ caller }) func get_my_jailbreak_fee() : async Nat {
+    let is_premium = await* is_premium_member(caller);
+    if (is_premium) {
+      stable_jailbreak_fee_premium
+    } else {
+      stable_jailbreak_fee_regular
     }
   };
 

@@ -208,6 +208,17 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_canister_info' : IDL.Func([IDL.Principal], [Result_5], []),
+    'get_jailbreak_fee_settings' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'fee_recipient' : IDL.Opt(IDL.Principal),
+            'fee_premium_e8s' : IDL.Nat,
+            'fee_regular_e8s' : IDL.Nat,
+          }),
+        ],
+        ['query'],
+      ),
     'get_ledger_canister_ids' : IDL.Func(
         [],
         [IDL.Vec(IDL.Principal)],
@@ -234,6 +245,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(JailbreakConfig)],
         ['query'],
       ),
+    'get_my_jailbreak_fee' : IDL.Func([], [IDL.Nat], []),
     'get_my_nickname_usage' : IDL.Func(
         [],
         [
@@ -329,6 +341,11 @@ export const idlFactory = ({ IDL }) => {
     'set_cached_token_meta' : IDL.Func([IDL.Principal, TokenMeta], [], []),
     'set_canister_groups' : IDL.Func([CanisterGroupsRoot], [Result_1], []),
     'set_canister_name' : IDL.Func([IDL.Principal, IDL.Text], [Result], []),
+    'set_jailbreak_fee_settings' : IDL.Func(
+        [IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat), IDL.Opt(IDL.Opt(IDL.Principal))],
+        [Result_1],
+        [],
+      ),
     'set_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],
         [Result],

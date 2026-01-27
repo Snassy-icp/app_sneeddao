@@ -56,6 +56,14 @@ export interface AppSneedDaoBackend {
     }
   >,
   'get_canister_info' : ActorMethod<[Principal], Result_5>,
+  'get_jailbreak_fee_settings' : ActorMethod<
+    [],
+    {
+      'fee_recipient' : [] | [Principal],
+      'fee_premium_e8s' : bigint,
+      'fee_regular_e8s' : bigint,
+    }
+  >,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_my_canister_groups_usage' : ActorMethod<
     [],
@@ -71,6 +79,7 @@ export interface AppSneedDaoBackend {
     }
   >,
   'get_my_jailbreak_configs' : ActorMethod<[], Array<JailbreakConfig>>,
+  'get_my_jailbreak_fee' : ActorMethod<[], bigint>,
   'get_my_nickname_usage' : ActorMethod<
     [],
     {
@@ -133,6 +142,10 @@ export interface AppSneedDaoBackend {
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
   'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], Result_1>,
   'set_canister_name' : ActorMethod<[Principal, string], Result>,
+  'set_jailbreak_fee_settings' : ActorMethod<
+    [[] | [bigint], [] | [bigint], [] | [[] | [Principal]]],
+    Result_1
+  >,
   'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_nickname_premium_canister' : ActorMethod<[[] | [Principal]], Result_1>,

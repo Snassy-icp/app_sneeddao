@@ -240,6 +240,12 @@ type AppSneedDaoBackend =
        premium_max_total_grouped_canisters: nat;
      }) query;
    get_canister_info: (canister_id: principal) -> (Result_5);
+   get_jailbreak_fee_settings: () ->
+    (record {
+       fee_premium_e8s: nat;
+       fee_recipient: opt principal;
+       fee_regular_e8s: nat;
+     }) query;
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->
     (record {
@@ -253,6 +259,7 @@ type AppSneedDaoBackend =
        ungrouped_count: nat;
      });
    get_my_jailbreak_configs: () -> (vec JailbreakConfig) query;
+   get_my_jailbreak_fee: () -> (nat);
    get_my_nickname_usage: () ->
     (record {
        is_premium: bool;
@@ -315,6 +322,8 @@ type AppSneedDaoBackend =
     TokenMeta) -> ();
    set_canister_groups: (groups: CanisterGroupsRoot) -> (Result_1);
    set_canister_name: (canister_id: principal, name: text) -> (Result);
+   set_jailbreak_fee_settings: (fee_premium_e8s: opt nat, fee_regular_e8s:
+    opt nat, fee_recipient: opt opt principal) -> (Result_1);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
     name: text) -> (Result);
    set_neuron_nickname: (sns_root_canister_id: principal, neuron_id:

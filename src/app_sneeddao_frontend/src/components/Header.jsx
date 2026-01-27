@@ -408,7 +408,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Names', path: '/admin/names' },
                 { name: 'Projects', path: '/admin/projects' },
                 { name: 'SneedLock', path: '/admin/sneedlock' },
-                { name: 'Sneedex', path: '/admin/sneedex' }
+                { name: 'Sneedex', path: '/admin/sneedex' },
+                { name: 'SNS Jailbreak', path: '/admin/sns_jailbreak' }
             ]
         };
     }
