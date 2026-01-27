@@ -97,6 +97,23 @@ function ToolsMain() {
                         </div>
                     </div>
 
+                    {/* SNS Jailbreak Tool */}
+                    <div style={styles.tool}>
+                        <h2 style={styles.toolTitle}>🔓 SNS Jailbreak</h2>
+                        <p style={styles.description}>
+                            Free your SNS neurons from the NNS interface! This wizard generates a script that adds your 
+                            Sneed Wallet as a full controller to your SNS neurons. Once jailbroken, you can manage, 
+                            transfer, and even trade your neurons on Sneedex.
+                        </p>
+                        
+                        <Link 
+                            to="/tools/sns_jailbreak" 
+                            style={styles.button}
+                        >
+                            Launch Wizard
+                        </Link>
+                    </div>
+
                     {/* Placeholder for future tools */}
                     <div style={styles.tool}>
                         <h2 style={styles.toolTitle}>More Tools Coming</h2>

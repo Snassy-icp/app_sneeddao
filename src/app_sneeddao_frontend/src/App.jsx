@@ -86,6 +86,7 @@ import Canisters from './pages/Canisters';
 import CreateIcpNeuron from './pages/CreateIcpNeuron';
 import IcpNeuronManager from './pages/IcpNeuronManager';
 import LockWizard from './pages/LockWizard';
+import SnsJailbreak from './pages/SnsJailbreak';
 
 // Sneedex pages
 import Sneedex from './pages/Sneedex';
@@ -192,6 +193,7 @@ function App() {
                     <Route path="/tools/main" element={<ToolsMain />} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
                     <Route path="/tools/escrow/swap" element={<EscrowSwap />} />
+                    <Route path="/tools/sns_jailbreak" element={<SnsJailbreak />} />
 
                     {/* Sneedex routes */}
                     <Route path="/sneedex" element={<Sneedex />} />

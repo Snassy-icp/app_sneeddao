@@ -59,7 +59,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
-        if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
+        if (['/tools/main', '/tools/escrow', '/tools/escrow/swap', '/tools/sns_jailbreak'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
         return 'Sneed Hub';
@@ -372,14 +372,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         }
     };
 
-    // Add tools section only if user is authenticated and confirmed admin
-    if (isAuthenticated && isAdmin === true) {
+    // Add tools section for all authenticated users
+    if (isAuthenticated) {
         menuSections['Tools'] = {
             icon: <FaTools size={18} />,
             displayName: 'Sneed Tools',
             defaultPath: '/tools/main',
             subMenu: [
                 { name: 'Tools', path: '/tools/main' },
+                { name: 'SNS Jailbreak', path: '/tools/sns_jailbreak' },
                 { name: 'Escrow', path: '/tools/escrow' },
                 { name: 'Lookup Swap', path: '/tools/escrow/swap' }
             ]
