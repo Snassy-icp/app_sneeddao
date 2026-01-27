@@ -12,6 +12,7 @@ import { formatProposalIdLink, formatNeuronDisplayWithContext, uint8ArrayToHex }
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from '../utils/ProposalUtils';
 
 function Proposals() {
     const { theme } = useTheme();
@@ -480,27 +481,8 @@ function Proposals() {
         }
     };
 
-    const getProposalStatus = (data) => {
-        try {
-            const now = BigInt(Math.floor(Date.now() / 1000));
-            const executed = BigInt(data.executed_timestamp_seconds || 0);
-            const failed = BigInt(data.failed_timestamp_seconds || 0);
-            const decided = BigInt(data.decided_timestamp_seconds || 0);
-            const created = BigInt(data.proposal_creation_timestamp_seconds || 0);
-            const votingPeriod = BigInt(data.initial_voting_period_seconds || 0);
-            
-            if (executed > 0n) return 'Executed';
-            if (failed > 0n) return 'Failed';
-            if (decided > 0n) return 'Decided';
-            if (created + votingPeriod > now) {
-                return 'Open for Voting';
-            }
-            return 'Unknown';
-        } catch (err) {
-            console.error('Error in getProposalStatus:', err);
-            return 'Unknown';
-        }
-    };
+    // getProposalStatus is now imported from ProposalUtils
+    // It correctly handles executed proposals that are still accepting votes
 
     // Helper function to convert HTML breaks to Markdown
     const convertHtmlToMarkdown = (text) => {
@@ -1003,6 +985,17 @@ function Proposals() {
                                         <div style={getStyles(theme).status}>
                                             {getProposalStatus(proposal)}
                                         </div>
+                                        {isProposalAcceptingVotes(proposal) && (
+                                            <div style={{ 
+                                                fontSize: '12px', 
+                                                color: theme.colors.success,
+                                                backgroundColor: theme.colors.successBg || 'rgba(46, 204, 113, 0.1)',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px'
+                                            }}>
+                                                ⏱️ {getVotingTimeRemaining(proposal)}
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     {/* Proposal Title - Full Width */}

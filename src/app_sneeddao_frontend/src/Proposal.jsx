@@ -19,6 +19,7 @@ import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
+import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from './utils/ProposalUtils';
 
 function Proposal() {
     const { theme } = useTheme();
@@ -273,27 +274,8 @@ function Proposal() {
         return await fetchNeuronsForSns(selectedSnsRoot);
     };
 
-    const getProposalStatus = (data) => {
-        try {
-            const now = BigInt(Math.floor(Date.now() / 1000));
-            const executed = BigInt(data.executed_timestamp_seconds || 0);
-            const failed = BigInt(data.failed_timestamp_seconds || 0);
-            const decided = BigInt(data.decided_timestamp_seconds || 0);
-            const created = BigInt(data.proposal_creation_timestamp_seconds || 0);
-            const votingPeriod = BigInt(data.initial_voting_period_seconds || 0);
-            
-            if (executed > 0n) return 'Executed';
-            if (failed > 0n) return 'Failed';
-            if (decided > 0n) return 'Decided';
-            if (created + votingPeriod > now) {
-                return 'Open for Voting';
-            }
-            return 'Unknown';
-        } catch (err) {
-            console.error('Error in getProposalStatus:', err);
-            return 'Unknown';
-        }
-    };
+    // getProposalStatus is now imported from ProposalUtils
+    // It correctly handles executed proposals that are still accepting votes
 
     // Helper function to calculate voting percentages
     const calculateVotingPercentages = (tally) => {
@@ -957,6 +939,11 @@ function Proposal() {
                                     )}
                                     
                                     <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
+                                    {isProposalAcceptingVotes(proposalData) && (
+                                        <p style={{ color: theme.colors.success }}>
+                                            <strong>⏱️ Voting:</strong> {getVotingTimeRemaining(proposalData)}
+                                        </p>
+                                    )}
                                     <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                     <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
                                     

@@ -8,6 +8,7 @@ import { getSnsById } from '../utils/SnsUtils';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { useTheme } from '../contexts/ThemeContext';
+import { isProposalAcceptingVotes } from '../utils/ProposalUtils';
 
 const HotkeyNeurons = ({ 
     fetchNeuronsFromSns, 
@@ -140,21 +141,9 @@ const HotkeyNeurons = ({
     };
 
     // Check if proposal is open for voting
+    // Uses the new utility that correctly handles executed proposals still accepting votes
     const isProposalOpenForVoting = () => {
-        if (!proposalData) return false;
-        try {
-            const now = BigInt(Math.floor(Date.now() / 1000));
-            const executed = BigInt(proposalData.executed_timestamp_seconds || 0);
-            const failed = BigInt(proposalData.failed_timestamp_seconds || 0);
-            const decided = BigInt(proposalData.decided_timestamp_seconds || 0);
-            const created = BigInt(proposalData.proposal_creation_timestamp_seconds || 0);
-            const votingPeriod = BigInt(proposalData.initial_voting_period_seconds || 0);
-            
-            return executed === 0n && failed === 0n && decided === 0n && (created + votingPeriod > now);
-        } catch (err) {
-            console.error('Error checking proposal status:', err);
-            return false;
-        }
+        return isProposalAcceptingVotes(proposalData);
     };
 
     // Check if a neuron has already voted on the proposal
