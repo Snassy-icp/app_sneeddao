@@ -378,6 +378,23 @@ function SnsJailbreak() {
                 ? 'https://ic0.app' 
                 : 'http://localhost:4943';
             
+            // First, check if user already has a saved config for this exact combination
+            if (selectedSnsRoot && effectiveNeuronId && targetPrincipal) {
+                const existingConfigs = await backendActor.get_my_jailbreak_configs();
+                const existingConfig = existingConfigs.find(config => 
+                    config.sns_root_canister_id.toString() === selectedSnsRoot &&
+                    config.neuron_id_hex === effectiveNeuronId &&
+                    config.target_principal.toString() === targetPrincipal
+                );
+                
+                if (existingConfig) {
+                    console.log('Found existing config, skipping payment:', existingConfig.id);
+                    setConfigSaved(true);
+                    setLoadingPaymentInfo(false);
+                    return; // Skip loading payment info - config already exists
+                }
+            }
+            
             // Get the fee for this user
             const fee = await backendActor.get_my_jailbreak_fee();
             setJailbreakFee(Number(fee));
@@ -405,7 +422,7 @@ function SnsJailbreak() {
         } finally {
             setLoadingPaymentInfo(false);
         }
-    }, [identity, backendActor]);
+    }, [identity, backendActor, selectedSnsRoot, effectiveNeuronId, targetPrincipal]);
     
     // Refresh balances
     const refreshBalances = useCallback(async () => {
@@ -2015,6 +2032,40 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                 {/* Script Section - Only show after paid/saved */}
                 {configSaved && (
                     <>
+                        {/* Notice when resuming from saved config */}
+                        <div style={{ 
+                            padding: '16px', 
+                            background: `${theme.colors.success}15`, 
+                            borderRadius: '12px', 
+                            border: `1px solid ${theme.colors.success}30`,
+                            marginBottom: '1.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <FaCheck style={{ color: theme.colors.success }} />
+                                <span style={{ color: theme.colors.success, fontWeight: '500' }}>
+                                    Script ready! You've already generated this script before.
+                                </span>
+                            </div>
+                            <Link 
+                                to="/tools/sns_jailbreak_list" 
+                                style={{ 
+                                    color: theme.colors.accent, 
+                                    fontSize: '0.9rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                }}
+                            >
+                                <FaList size={14} />
+                                View all my scripts
+                            </Link>
+                        </div>
+                        
                         <div style={styles.warningBox}>
                             <FaExclamationTriangle size={24} style={{ color: theme.colors.warning, flexShrink: 0 }} />
                             <div>
