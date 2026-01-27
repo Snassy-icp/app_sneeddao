@@ -9,7 +9,7 @@ import ConfirmationModal from '../../ConfirmationModal';
 import { 
     FaNetworkWired, FaSave, FaSpinner, FaSync, FaCheck, FaTimes,
     FaDatabase, FaLock, FaComments, FaEnvelope, FaCrown, FaRobot, FaExchangeAlt,
-    FaCopy, FaLink, FaUnlink
+    FaCopy, FaLink, FaUnlink, FaServer, FaCoins, FaVoteYea, FaChevronDown, FaChevronUp
 } from 'react-icons/fa';
 
 // Import actors
@@ -105,6 +105,9 @@ export default function NetworkAdmin() {
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
+    
+    // Canister IDs section expanded state
+    const [canisterIdsExpanded, setCanisterIdsExpanded] = useState(true);
     
     const showInfo = (title, message, type = 'info') => {
         setInfoModal({ show: true, title, message, type });
@@ -970,6 +973,182 @@ export default function NetworkAdmin() {
                             </div>
                         </div>
                     </div>
+                </div>
+                
+                {/* System Canister IDs */}
+                <div style={{
+                    ...styles.summaryCard,
+                    backgroundColor: theme === 'dark' ? '#1a2a2a' : '#e8f5e9',
+                    border: `1px solid ${theme === 'dark' ? '#2a4a3a' : '#a5d6a7'}`,
+                }}>
+                    <div 
+                        style={{
+                            ...styles.summaryTitle,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            color: theme === 'dark' ? '#81c784' : '#388e3c',
+                        }}
+                        onClick={() => setCanisterIdsExpanded(!canisterIdsExpanded)}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FaServer />
+                            System Canister IDs
+                            <span style={{ 
+                                fontSize: '12px', 
+                                color: theme === 'dark' ? '#666' : '#888',
+                                fontWeight: 'normal',
+                            }}>
+                                ({process.env.DFX_NETWORK || 'local'})
+                            </span>
+                        </div>
+                        {canisterIdsExpanded ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
+                    </div>
+                    
+                    {canisterIdsExpanded && (
+                        <>
+                            {/* Our Canisters */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{ 
+                                    color: theme === 'dark' ? '#aaa' : '#666', 
+                                    fontSize: '11px', 
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                    marginBottom: '10px',
+                                }}>
+                                    Sneed System Canisters
+                                </div>
+                                <div style={{ 
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                    gap: '10px',
+                                }}>
+                                    {[
+                                        { name: 'Backend', id: backendCanisterId, icon: <FaDatabase size={12} /> },
+                                        { name: 'Sneed Premium', id: premiumCanisterId, icon: <FaCrown size={12} /> },
+                                        { name: 'Sneed Lock', id: sneedLockCanisterId, icon: <FaLock size={12} /> },
+                                        { name: 'SNS Forum', id: forumCanisterId, icon: <FaComments size={12} /> },
+                                        { name: 'SMS', id: smsCanisterId, icon: <FaEnvelope size={12} /> },
+                                        { name: 'Neuron Manager Factory', id: factoryCanisterId, icon: <FaRobot size={12} /> },
+                                        { name: 'Sneedex', id: sneedexCanisterId, icon: <FaExchangeAlt size={12} /> },
+                                    ].map(({ name, id, icon }) => (
+                                        <div key={name} style={{
+                                            backgroundColor: theme === 'dark' ? '#0f1a1a' : '#fff',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
+                                            <span style={{ color: theme === 'dark' ? '#81c784' : '#388e3c' }}>{icon}</span>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ 
+                                                    color: theme === 'dark' ? '#ccc' : '#333', 
+                                                    fontSize: '12px',
+                                                    fontWeight: '500',
+                                                }}>
+                                                    {name}
+                                                </div>
+                                                <div style={{ 
+                                                    color: theme === 'dark' ? '#81c784' : '#2e7d32',
+                                                    fontSize: '11px',
+                                                    fontFamily: 'monospace',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                    {id || 'Not available'}
+                                                </div>
+                                            </div>
+                                            {id && (
+                                                <button
+                                                    style={{
+                                                        ...styles.iconButton,
+                                                        padding: '4px',
+                                                        backgroundColor: 'transparent',
+                                                    }}
+                                                    onClick={() => copyToClipboard(id)}
+                                                    title="Copy"
+                                                >
+                                                    <FaCopy size={10} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* External Canisters */}
+                            <div>
+                                <div style={{ 
+                                    color: theme === 'dark' ? '#aaa' : '#666', 
+                                    fontSize: '11px', 
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                    marginBottom: '10px',
+                                }}>
+                                    External / SNS Canisters
+                                </div>
+                                <div style={{ 
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                    gap: '10px',
+                                }}>
+                                    {[
+                                        { name: 'ICP Ledger', id: KNOWN_CANISTERS.icp_ledger, icon: <FaCoins size={12} /> },
+                                        { name: 'Sneed Governance', id: KNOWN_CANISTERS.sneed_governance, icon: <FaVoteYea size={12} /> },
+                                        { name: 'Sneed Ledger', id: KNOWN_CANISTERS.sneed_ledger, icon: <FaCoins size={12} /> },
+                                    ].map(({ name, id, icon }) => (
+                                        <div key={name} style={{
+                                            backgroundColor: theme === 'dark' ? '#0f1a1a' : '#fff',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                        }}>
+                                            <span style={{ color: theme === 'dark' ? '#90a4ae' : '#546e7a' }}>{icon}</span>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ 
+                                                    color: theme === 'dark' ? '#ccc' : '#333', 
+                                                    fontSize: '12px',
+                                                    fontWeight: '500',
+                                                }}>
+                                                    {name}
+                                                </div>
+                                                <div style={{ 
+                                                    color: theme === 'dark' ? '#90a4ae' : '#455a64',
+                                                    fontSize: '11px',
+                                                    fontFamily: 'monospace',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                    {id || 'Not available'}
+                                                </div>
+                                            </div>
+                                            {id && (
+                                                <button
+                                                    style={{
+                                                        ...styles.iconButton,
+                                                        padding: '4px',
+                                                        backgroundColor: 'transparent',
+                                                    }}
+                                                    onClick={() => copyToClipboard(id)}
+                                                    title="Copy"
+                                                >
+                                                    <FaCopy size={10} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
                 
                 {error && (
