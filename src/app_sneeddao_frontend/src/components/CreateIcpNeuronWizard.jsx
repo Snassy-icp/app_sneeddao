@@ -1228,6 +1228,44 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     {creationComplete ? '🎉 Success!' : '⏳ Creating Your Neuron Manager...'}
                 </h3>
                 
+                {/* Show canister ID as soon as we have it - even during progress */}
+                {createdCanisterId && (
+                    <div style={{ 
+                        marginBottom: '1.5rem',
+                        padding: '14px',
+                        background: `${theme.colors.success || '#22c55e'}15`,
+                        borderRadius: '10px',
+                        border: `1px solid ${theme.colors.success || '#22c55e'}40`,
+                    }}>
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px', 
+                            marginBottom: '8px',
+                            color: theme.colors.success || '#22c55e',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                        }}>
+                            <FaCheck />
+                            Canister Created!
+                        </div>
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '6px' }}>
+                            Your new canister ID:
+                        </div>
+                        <div style={{ 
+                            fontFamily: 'monospace', 
+                            fontSize: '0.9rem', 
+                            color: theme.colors.primaryText,
+                            background: theme.colors.cardBackground || theme.colors.secondaryBg,
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            wordBreak: 'break-all',
+                        }}>
+                            {createdCanisterId}
+                        </div>
+                    </div>
+                )}
+                
                 <div style={{ marginBottom: '1.5rem' }}>
                     {creationProgress.map((item, index) => (
                         <div key={index} style={styles.progressItem(item.status)}>
@@ -1257,25 +1295,6 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                 
                 {creationComplete && (
                     <div style={{ textAlign: 'center' }}>
-                        {createdCanisterId && (
-                            <div style={{ marginBottom: '1rem' }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '6px' }}>
-                                    Canister ID:
-                                </div>
-                                <div style={{ 
-                                    fontFamily: 'monospace', 
-                                    fontSize: '0.9rem', 
-                                    color: theme.colors.primaryText,
-                                    background: theme.colors.primaryBg,
-                                    padding: '8px 12px',
-                                    borderRadius: '6px',
-                                    wordBreak: 'break-all',
-                                }}>
-                                    {createdCanisterId}
-                                </div>
-                            </div>
-                        )}
-                        
                         {createdNeuronId && (
                             <div style={{ marginBottom: '1rem' }}>
                                 <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '6px' }}>
@@ -1294,29 +1313,55 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                             </div>
                         )}
                         
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '1.5rem' }}>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '1.5rem', flexWrap: 'wrap' }}>
                             <button
                                 style={{
                                     ...styles.backButton,
                                     flex: 'none',
                                     padding: '12px 20px',
                                 }}
-                                onClick={() => navigate('/create_icp_neuron')}
+                                onClick={() => {
+                                    if (onCancel) {
+                                        onCancel();
+                                    }
+                                }}
                             >
                                 Back to List
                             </button>
-                            <button
-                                style={{
-                                    ...styles.continueButton(true),
-                                    flex: 'none',
-                                    padding: '12px 20px',
-                                }}
-                                onClick={() => navigate(`/icp_neuron_manager/${createdCanisterId}`)}
-                            >
-                                Open Manager
-                                <FaArrowRight />
-                            </button>
+                            {createdCanisterId && (
+                                <button
+                                    style={{
+                                        ...styles.continueButton(true),
+                                        flex: 'none',
+                                        padding: '12px 20px',
+                                    }}
+                                    onClick={() => navigate(`/icp_neuron_manager/${createdCanisterId}`)}
+                                >
+                                    Open Manager
+                                    <FaArrowRight />
+                                </button>
+                            )}
                         </div>
+                    </div>
+                )}
+                
+                {/* Show close button if there's an error and no canister was created */}
+                {creationError && !creationComplete && (
+                    <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                        <button
+                            style={{
+                                ...styles.backButton,
+                                flex: 'none',
+                                padding: '12px 20px',
+                            }}
+                            onClick={() => {
+                                if (onCancel) {
+                                    onCancel();
+                                }
+                            }}
+                        >
+                            Close
+                        </button>
                     </div>
                 )}
             </div>
