@@ -52,6 +52,12 @@ function SnsJailbreak() {
     const [baseScript, setBaseScript] = useState('');
     const [loadingBaseScript, setLoadingBaseScript] = useState(false);
     const [baseScriptError, setBaseScriptError] = useState('');
+    const [scriptFetchAttempted, setScriptFetchAttempted] = useState(false);
+    
+    // Step 5: Verification
+    const [verificationStatus, setVerificationStatus] = useState(null); // null, 'loading', 'success', 'error'
+    const [verificationMessage, setVerificationMessage] = useState('');
+    const [verifiedNeuronData, setVerifiedNeuronData] = useState(null);
     
     // Get selected SNS info
     const selectedSns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
@@ -117,17 +123,13 @@ function SnsJailbreak() {
         }
     };
     
-    // Fetch base script when entering step 4
-    useEffect(() => {
-        if (currentStep === 4 && !baseScript && !loadingBaseScript) {
-            fetchBaseScript();
-        }
-    }, [currentStep, baseScript, loadingBaseScript]);
-    
     // Fetch the base script from GitHub
-    const fetchBaseScript = async () => {
+    const fetchBaseScript = useCallback(async () => {
+        if (loadingBaseScript) return; // Prevent duplicate calls
+        
         setLoadingBaseScript(true);
         setBaseScriptError('');
+        setScriptFetchAttempted(true);
         try {
             const response = await fetch(RAW_GITHUB_BASE_URL);
             if (!response.ok) {
@@ -141,7 +143,85 @@ function SnsJailbreak() {
         } finally {
             setLoadingBaseScript(false);
         }
-    };
+    }, [loadingBaseScript]);
+    
+    // Fetch base script when entering step 4
+    useEffect(() => {
+        if (currentStep === 4 && !baseScript && !scriptFetchAttempted) {
+            fetchBaseScript();
+        }
+    }, [currentStep, baseScript, scriptFetchAttempted, fetchBaseScript]);
+    
+    // Verify controller was added when entering step 5
+    const verifyControllerAdded = useCallback(async () => {
+        if (!identity || !governanceId || !effectiveNeuronId || !targetPrincipal) {
+            setVerificationStatus('error');
+            setVerificationMessage('Missing required data for verification.');
+            return;
+        }
+        
+        setVerificationStatus('loading');
+        setVerificationMessage('Checking neuron permissions...');
+        
+        try {
+            const neuron = await getNeuronDetails(identity, governanceId, effectiveNeuronId);
+            
+            if (!neuron) {
+                setVerificationStatus('error');
+                setVerificationMessage('Could not fetch neuron data. The neuron may not exist.');
+                return;
+            }
+            
+            setVerifiedNeuronData(neuron);
+            
+            // Check if target principal has permissions
+            const permissions = neuron.permissions || [];
+            const targetPermission = permissions.find(p => 
+                p.principal?.[0]?.toString() === targetPrincipal
+            );
+            
+            if (!targetPermission) {
+                setVerificationStatus('error');
+                setVerificationMessage(`Principal ${targetPrincipal.slice(0, 10)}... is NOT found in the neuron's permissions. The script may not have run successfully.`);
+                return;
+            }
+            
+            // Check if they have full permissions
+            // SNS NeuronPermissionType enum (from governance):
+            // 0 = Unspecified, 1 = ConfigureDissolveState, 2 = ManagePrincipals, 
+            // 3 = SubmitProposal, 4 = Vote, 5 = Disburse, 6 = Split, 
+            // 7 = MergeMaturity, 8 = DisburseMaturity, 9 = StakeMaturity, 10 = ManageVotingPermission
+            const permTypes = targetPermission.permission_type || [];
+            const hasManagePrincipals = permTypes.includes(2);
+            const hasVote = permTypes.includes(4);
+            const hasDisburse = permTypes.includes(5);
+            const hasSplit = permTypes.includes(6);
+            
+            if (hasManagePrincipals && hasVote && hasDisburse) {
+                setVerificationStatus('success');
+                setVerificationMessage(`Verified! Principal has ${permTypes.length} permissions including ManagePrincipals, Vote, and Disburse.`);
+            } else if (permTypes.length > 0) {
+                setVerificationStatus('warning');
+                setVerificationMessage(`Principal found with ${permTypes.length} permissions, but may not have full control. Missing: ${
+                    [!hasManagePrincipals && 'ManagePrincipals', !hasVote && 'Vote', !hasDisburse && 'Disburse'].filter(Boolean).join(', ')
+                }`);
+            } else {
+                setVerificationStatus('error');
+                setVerificationMessage('Principal found but has no permissions assigned.');
+            }
+        } catch (error) {
+            console.error('Error verifying controller:', error);
+            setVerificationStatus('error');
+            setVerificationMessage(`Verification failed: ${error.message}`);
+        }
+    }, [identity, governanceId, effectiveNeuronId, targetPrincipal]);
+    
+    // Run verification when entering step 5
+    useEffect(() => {
+        if (currentStep === 5) {
+            verifyControllerAdded();
+        }
+    }, [currentStep, verifyControllerAdded]);
     
     // Set default principal when authenticated
     useEffect(() => {
@@ -328,6 +408,12 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                 setManualNeuronData(null);
                 setManualNeuronError('');
                 setUseManualEntry(false);
+            }
+            if (step <= 4) {
+                // Reset verification state when going back to step 4 or earlier
+                setVerificationStatus(null);
+                setVerificationMessage('');
+                setVerifiedNeuronData(null);
             }
         }
     };
@@ -1317,86 +1403,232 @@ const NEW_CONTROLLER = "${targetPrincipal}";
         </>
     );
     
-    // Step 5: Confirmation
-    const renderStep5 = () => (
-        <div style={styles.successCard}>
-            <div style={styles.successIcon}>
-                <FaCheck size={40} style={{ color: theme.colors.success }} />
-            </div>
-            <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1.8rem' }}>
-                Neuron Jailbroken!
-            </h2>
-            <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1.1rem' }}>
-                Your {selectedSns?.name} neuron now has <strong>{targetPrincipal.slice(0, 10)}...{targetPrincipal.slice(-5)}</strong> as a controller.
-            </p>
-            
-            <div style={{ 
-                background: theme.colors.secondaryBg, 
-                borderRadius: '12px', 
-                padding: '1.5rem', 
-                marginBottom: '2rem',
-                textAlign: 'left'
+    // Step 5: Verification & Confirmation
+    const renderStep5 = () => {
+        const isLoading = verificationStatus === 'loading';
+        const isSuccess = verificationStatus === 'success';
+        const isWarning = verificationStatus === 'warning';
+        const isError = verificationStatus === 'error';
+        
+        return (
+            <div style={{
+                ...styles.successCard,
+                borderColor: isLoading ? theme.colors.border : 
+                             isSuccess ? theme.colors.success : 
+                             isWarning ? theme.colors.warning : 
+                             isError ? theme.colors.error : theme.colors.border,
             }}>
-                <h3 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1rem' }}>
-                    What You Can Do Now:
-                </h3>
-                <ul style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.5rem' }}>
-                    <li style={{ marginBottom: '8px' }}>Manage the neuron from Sneed Hub's neuron page</li>
-                    <li style={{ marginBottom: '8px' }}>Add or remove hotkeys with custom permissions</li>
-                    <li style={{ marginBottom: '8px' }}>Transfer the neuron between wallets</li>
-                    <li style={{ marginBottom: '8px' }}>Trade the neuron on Sneedex</li>
-                    <li>The neuron is now a fully liquid SNS neuron!</li>
-                </ul>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <Link
-                    to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`}
-                    style={{
+                {/* Status Icon */}
+                <div style={{
+                    ...styles.successIcon,
+                    background: isLoading ? `${theme.colors.accent}20` :
+                                isSuccess ? `${theme.colors.success}20` :
+                                isWarning ? `${theme.colors.warning}20` :
+                                `${theme.colors.error}20`,
+                }}>
+                    {isLoading ? (
+                        <FaSpinner size={40} style={{ color: theme.colors.accent, animation: 'spin 1s linear infinite' }} />
+                    ) : isSuccess ? (
+                        <FaCheck size={40} style={{ color: theme.colors.success }} />
+                    ) : isWarning ? (
+                        <FaExclamationTriangle size={40} style={{ color: theme.colors.warning }} />
+                    ) : (
+                        <FaExclamationTriangle size={40} style={{ color: theme.colors.error }} />
+                    )}
+                </div>
+                
+                {/* Title */}
+                <h2 style={{ 
+                    color: theme.colors.primaryText, 
+                    marginBottom: '1rem', 
+                    fontSize: '1.8rem' 
+                }}>
+                    {isLoading ? 'Verifying...' :
+                     isSuccess ? 'Neuron Jailbroken!' :
+                     isWarning ? 'Partially Verified' :
+                     'Verification Failed'}
+                </h2>
+                
+                {/* Status Message */}
+                <p style={{ 
+                    color: isSuccess ? theme.colors.success : 
+                           isWarning ? theme.colors.warning : 
+                           isError ? theme.colors.error : theme.colors.secondaryText, 
+                    marginBottom: '1.5rem', 
+                    fontSize: '1rem',
+                    padding: '12px',
+                    background: isLoading ? 'transparent' :
+                                isSuccess ? `${theme.colors.success}10` :
+                                isWarning ? `${theme.colors.warning}10` :
+                                `${theme.colors.error}10`,
+                    borderRadius: '8px',
+                }}>
+                    {verificationMessage}
+                </p>
+                
+                {/* Neuron info card when verified */}
+                {verifiedNeuronData && (isSuccess || isWarning) && (
+                    <div style={{ 
+                        background: theme.colors.secondaryBg, 
+                        borderRadius: '12px', 
+                        padding: '1rem', 
+                        marginBottom: '1.5rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        padding: '14px 28px',
-                        background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
-                        color: theme.colors.primaryBg,
-                        borderRadius: '10px',
-                        textDecoration: 'none',
-                        fontWeight: '600',
-                    }}
-                >
-                    <FaExternalLinkAlt />
-                    View Neuron
-                </Link>
-                <button
-                    onClick={() => {
-                        setCurrentStep(1);
-                        setSelectedSnsRoot('');
-                        setSelectedNeuronId('');
-                        setManualNeuronId('');
-                        setManualNeuronData(null);
-                        setManualNeuronError('');
-                        setUseManualEntry(false);
-                        setSnsNeurons([]);
-                        setBaseScript('');
-                    }}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '14px 28px',
-                        background: theme.colors.secondaryBg,
-                        border: `1px solid ${theme.colors.border}`,
-                        color: theme.colors.primaryText,
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                    }}
-                >
-                    Jailbreak Another
-                </button>
+                        gap: '16px',
+                    }}>
+                        <FaBrain style={{ color: theme.colors.accent, fontSize: '2rem', flexShrink: 0 }} />
+                        <div style={{ textAlign: 'left' }}>
+                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                {getNeuronDisplayName(verifiedNeuronData, selectedSnsRoot)}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                                {getDissolveState(verifiedNeuronData)}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                ID: {effectiveNeuronId.slice(0, 16)}...{effectiveNeuronId.slice(-16)}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Success content */}
+                {isSuccess && (
+                    <div style={{ 
+                        background: theme.colors.secondaryBg, 
+                        borderRadius: '12px', 
+                        padding: '1.5rem', 
+                        marginBottom: '2rem',
+                        textAlign: 'left'
+                    }}>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1rem' }}>
+                            What You Can Do Now:
+                        </h3>
+                        <ul style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.5rem' }}>
+                            <li style={{ marginBottom: '8px' }}>Manage the neuron from Sneed Hub's neuron page</li>
+                            <li style={{ marginBottom: '8px' }}>Add or remove hotkeys with custom permissions</li>
+                            <li style={{ marginBottom: '8px' }}>Transfer the neuron between wallets</li>
+                            <li style={{ marginBottom: '8px' }}>Trade the neuron on Sneedex</li>
+                            <li>The neuron is now a fully liquid SNS neuron!</li>
+                        </ul>
+                    </div>
+                )}
+                
+                {/* Error/Warning content */}
+                {(isError || isWarning) && !isLoading && (
+                    <div style={{ 
+                        background: `${isError ? theme.colors.error : theme.colors.warning}10`, 
+                        borderRadius: '12px', 
+                        padding: '1.5rem', 
+                        marginBottom: '2rem',
+                        textAlign: 'left',
+                        border: `1px solid ${isError ? theme.colors.error : theme.colors.warning}30`,
+                    }}>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1rem' }}>
+                            What to do:
+                        </h3>
+                        <ul style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.5rem' }}>
+                            <li style={{ marginBottom: '8px' }}>Go back and make sure you copied the full script</li>
+                            <li style={{ marginBottom: '8px' }}>Ensure you're logged into NNS with the identity that controls the neuron</li>
+                            <li style={{ marginBottom: '8px' }}>Check that the script ran completely (look for success message in console)</li>
+                            <li style={{ marginBottom: '8px' }}>
+                                <button
+                                    onClick={verifyControllerAdded}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: theme.colors.accent,
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                        textDecoration: 'underline',
+                                    }}
+                                >
+                                    Click here to re-check
+                                </button>
+                                {' '}after running the script again
+                            </li>
+                        </ul>
+                    </div>
+                )}
+                
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {!isLoading && (
+                        <>
+                            {isError && (
+                                <button
+                                    onClick={() => goToStep(4)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '14px 28px',
+                                        background: theme.colors.secondaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        color: theme.colors.primaryText,
+                                        borderRadius: '10px',
+                                        cursor: 'pointer',
+                                        fontWeight: '500',
+                                    }}
+                                >
+                                    <FaArrowLeft />
+                                    Back to Script
+                                </button>
+                            )}
+                            <Link
+                                to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '14px 28px',
+                                    background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+                                    color: theme.colors.primaryBg,
+                                    borderRadius: '10px',
+                                    textDecoration: 'none',
+                                    fontWeight: '600',
+                                }}
+                            >
+                                <FaExternalLinkAlt />
+                                View Neuron
+                            </Link>
+                            <button
+                                onClick={() => {
+                                    setCurrentStep(1);
+                                    setSelectedSnsRoot('');
+                                    setSelectedNeuronId('');
+                                    setManualNeuronId('');
+                                    setManualNeuronData(null);
+                                    setManualNeuronError('');
+                                    setUseManualEntry(false);
+                                    setSnsNeurons([]);
+                                    setBaseScript('');
+                                    setScriptFetchAttempted(false);
+                                    setVerificationStatus(null);
+                                    setVerificationMessage('');
+                                    setVerifiedNeuronData(null);
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '14px 28px',
+                                    background: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    color: theme.colors.primaryText,
+                                    borderRadius: '10px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500',
+                                }}
+                            >
+                                Jailbreak Another
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
     
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
