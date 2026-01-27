@@ -250,65 +250,72 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    // Notify seller about a new bid on their offer
-    func notifyNewBid(offer : T.Offer, bid : T.Bid) : async () {
+    // Schedule a notification to be sent asynchronously (fire-and-forget via 0-second timer)
+    func scheduleNotification<system>(recipients : [Principal], subject : Text, body : Text) {
+        ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+            await sendNotification(recipients, subject, body);
+        });
+    };
+    
+    // Notify seller about a new bid on their offer (fire-and-forget)
+    func notifyNewBid<system>(offer : T.Offer, bid : T.Bid) {
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_bid) {
             let subject = "🔔 New Bid on Sneedex Offer #" # Nat.toText(offer.id);
             let body = "You have received a new bid on your Sneedex offer #" # Nat.toText(offer.id) # ".\n\n" #
                        "Bid amount: " # Nat.toText(bid.amount) # " (raw units)\n" #
                        "Bidder: " # Principal.toText(bid.bidder) # "\n\n" #
-                       "View your offer at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
-            await sendNotification([offer.creator], subject, body);
+                       "View your offer at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+            scheduleNotification<system>([offer.creator], subject, body);
         };
     };
     
-    // Notify a bidder that they've been outbid
-    func notifyOutbid(offer : T.Offer, previousBid : T.Bid, newBid : T.Bid) : async () {
+    // Notify a bidder that they've been outbid (fire-and-forget)
+    func notifyOutbid<system>(offer : T.Offer, previousBid : T.Bid, newBid : T.Bid) {
         let settings = getUserNotificationSettings(previousBid.bidder);
         if (settings.notify_on_outbid) {
             let subject = "⚠️ You've Been Outbid on Sneedex Offer #" # Nat.toText(offer.id);
             let body = "Your bid on Sneedex offer #" # Nat.toText(offer.id) # " has been outbid.\n\n" #
                        "Your bid: " # Nat.toText(previousBid.amount) # " (raw units)\n" #
                        "New highest bid: " # Nat.toText(newBid.amount) # " (raw units)\n\n" #
-                       "Place a higher bid at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
-            await sendNotification([previousBid.bidder], subject, body);
+                       "Place a higher bid at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+            scheduleNotification<system>([previousBid.bidder], subject, body);
         };
     };
     
-    // Notify seller that their offer has sold
-    func notifySale(offer : T.Offer, winningBid : T.Bid) : async () {
+    // Notify seller that their offer has sold (fire-and-forget)
+    func notifySale<system>(offer : T.Offer, winningBid : T.Bid) {
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_sale) {
             let subject = "🎉 Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Sold!";
             let body = "Congratulations! Your Sneedex offer #" # Nat.toText(offer.id) # " has been completed.\n\n" #
                        "Winning bid: " # Nat.toText(winningBid.amount) # " (raw units)\n" #
                        "Buyer: " # Principal.toText(winningBid.bidder) # "\n\n" #
-                       "Claim your payment at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
-            await sendNotification([offer.creator], subject, body);
+                       "Claim your payment at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+            scheduleNotification<system>([offer.creator], subject, body);
         };
     };
     
-    // Notify winner that they won the auction
-    func notifyWin(offer : T.Offer, winningBid : T.Bid) : async () {
+    // Notify winner that they won the auction (fire-and-forget)
+    func notifyWin<system>(offer : T.Offer, winningBid : T.Bid) {
         let settings = getUserNotificationSettings(winningBid.bidder);
         if (settings.notify_on_win) {
             let subject = "🏆 You Won Sneedex Auction #" # Nat.toText(offer.id) # "!";
             let body = "Congratulations! You have won Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
                        "Your winning bid: " # Nat.toText(winningBid.amount) # " (raw units)\n\n" #
-                       "Claim your assets at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
-            await sendNotification([winningBid.bidder], subject, body);
+                       "Claim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+            scheduleNotification<system>([winningBid.bidder], subject, body);
         };
     };
     
-    // Notify seller that their offer has expired without bids
-    func notifyExpiration(offer : T.Offer) : async () {
+    // Notify seller that their offer has expired without bids (fire-and-forget)
+    func notifyExpiration<system>(offer : T.Offer) {
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_expiration) {
             let subject = "⏰ Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Expired";
             let body = "Your Sneedex offer #" # Nat.toText(offer.id) # " has expired without receiving any bids.\n\n" #
-                       "You can reclaim your assets at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
-            await sendNotification([offer.creator], subject, body);
+                       "You can reclaim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+            scheduleNotification<system>([offer.creator], subject, body);
         };
     };
     
@@ -949,8 +956,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                                 updateOffer(offer.id, updatedOffer);
                                 
-                                // Notify seller of expiration (best effort, non-blocking)
-                                ignore notifyExpiration(offer);
+                                // Notify seller of expiration (fire-and-forget)
+                                notifyExpiration<system>(offer);
                                 
                                 // Schedule auto-reclaim of assets
                                 scheduleAutoReclaimAssets<system>(offer.id);
@@ -2029,13 +2036,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         // Schedule auto-refund via Timer (best effort)
                                         scheduleAutoRefund<system>(otherBid.id);
                                         
-                                        // Notify outbid user (best effort, non-blocking)
-                                        ignore notifyOutbid(offer, otherBid, updatedBid);
+                                        // Notify outbid user (fire-and-forget)
+                                        notifyOutbid<system>(offer, otherBid, updatedBid);
                                     };
                                 };
                                 
-                                // Notify seller of new bid (best effort, non-blocking)
-                                ignore notifyNewBid(offer, updatedBid);
+                                // Notify seller of new bid (fire-and-forget)
+                                notifyNewBid<system>(offer, updatedBid);
                                 
                                 // Check for buyout (using effective amount which is capped at buyout)
                                 switch (offer.buyout_price) {
@@ -2104,9 +2111,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                         };
                         updateBid(winningBidId, updatedBid);
                         
-                        // Notify seller of sale and winner of win (best effort, non-blocking)
-                        ignore notifySale(offer, updatedBid);
-                        ignore notifyWin(offer, updatedBid);
+                        // Notify seller of sale and winner of win (fire-and-forget)
+                        notifySale<system>(offer, updatedBid);
+                        notifyWin<system>(offer, updatedBid);
                     };
                     case null {};
                 };
@@ -2212,8 +2219,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 
                                 updateOffer(offerId, updatedOffer);
                                 
-                                // Notify seller of expiration (best effort, non-blocking)
-                                ignore notifyExpiration(offer);
+                                // Notify seller of expiration (fire-and-forget)
+                                notifyExpiration<system>(offer);
                                 
                                 // Schedule auto-reclaim of assets back to seller (best effort)
                                 scheduleAutoReclaimAssets<system>(offerId);
