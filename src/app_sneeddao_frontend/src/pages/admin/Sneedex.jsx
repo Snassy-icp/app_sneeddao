@@ -43,6 +43,7 @@ export default function SneedexAdmin() {
     // Wallet registration settings
     const [backendCanisterId, setBackendCanisterId] = useState(null);
     const [factoryCanisterId, setFactoryCanisterId] = useState(null);
+    const [smsCanisterId, setSmsCanisterId] = useState(null);
     
     // Expiration timer settings
     const [expirationTimerRunning, setExpirationTimerRunning] = useState(false);
@@ -72,6 +73,7 @@ export default function SneedexAdmin() {
     const [newMaxAssets, setNewMaxAssets] = useState('');
     const [newBackendCanisterId, setNewBackendCanisterId] = useState('');
     const [newFactoryCanisterId, setNewFactoryCanisterId] = useState('');
+    const [newSmsCanisterId, setNewSmsCanisterId] = useState('');
     const [newExpirationInterval, setNewExpirationInterval] = useState('');
     const [newOfferCreationFee, setNewOfferCreationFee] = useState('');
     const [newPremiumOfferCreationFee, setNewPremiumOfferCreationFee] = useState('');
@@ -94,6 +96,7 @@ export default function SneedexAdmin() {
     const [savingConfig, setSavingConfig] = useState(false);
     const [savingBackendCanisterId, setSavingBackendCanisterId] = useState(false);
     const [savingFactoryCanisterId, setSavingFactoryCanisterId] = useState(false);
+    const [savingSmsCanisterId, setSavingSmsCanisterId] = useState(false);
     const [togglingExpirationTimer, setTogglingExpirationTimer] = useState(false);
     const [savingExpirationInterval, setSavingExpirationInterval] = useState(false);
     const [triggeringExpirationCheck, setTriggeringExpirationCheck] = useState(false);
@@ -153,7 +156,7 @@ export default function SneedexAdmin() {
             const actor = getSneedexActor();
             if (!actor) return;
             
-            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, timerRunningResult, workerRunningResult, intervalResult, offerFeeResult, premiumOfferFeeResult, premiumAuctionCutResult, premiumCanisterIdResult, minIncrementResult] = await Promise.all([
+            const [configResult, feeRateResult, feeRecipientResult, ledgerRecipientsResult, assetTypesResult, statsResult, backendIdResult, factoryIdResult, smsIdResult, timerRunningResult, workerRunningResult, intervalResult, offerFeeResult, premiumOfferFeeResult, premiumAuctionCutResult, premiumCanisterIdResult, minIncrementResult] = await Promise.all([
                 actor.getConfig(),
                 actor.getMarketplaceFeeRate(),
                 actor.getFeeRecipient(),
@@ -162,6 +165,7 @@ export default function SneedexAdmin() {
                 actor.getMarketStats(),
                 actor.getBackendCanisterId(),
                 actor.getNeuronManagerFactoryCanisterId(),
+                actor.getSneedSmsCanisterId().catch(() => null),
                 actor.isExpirationTimerRunning(),
                 actor.isExpirationWorkerRunning(),
                 actor.getExpirationCheckInterval(),
@@ -183,6 +187,7 @@ export default function SneedexAdmin() {
             // Wallet registration settings
             setBackendCanisterId(backendIdResult && backendIdResult.length > 0 ? backendIdResult[0] : null);
             setFactoryCanisterId(factoryIdResult && factoryIdResult.length > 0 ? factoryIdResult[0] : null);
+            setSmsCanisterId(smsIdResult && smsIdResult.length > 0 ? smsIdResult[0] : (smsIdResult || null));
             
             // Expiration timer settings
             setExpirationTimerRunning(timerRunningResult);
@@ -836,6 +841,40 @@ export default function SneedexAdmin() {
             showInfo('Error', 'Failed to set factory canister ID: ' + e.message, 'error');
         }
         setSavingFactoryCanisterId(false);
+    };
+    
+    const handleSaveSmsCanisterId = async () => {
+        setSavingSmsCanisterId(true);
+        try {
+            const actor = getSneedexActor();
+            let principal = null;
+            
+            if (newSmsCanisterId.trim()) {
+                try {
+                    principal = [Principal.fromText(newSmsCanisterId.trim())];
+                } catch (e) {
+                    showInfo('Invalid Principal', 'Please enter a valid canister ID', 'error');
+                    setSavingSmsCanisterId(false);
+                    return;
+                }
+            } else {
+                principal = []; // Clear the setting
+            }
+            
+            const result = await actor.setSneedSmsCanisterId(principal);
+            if ('ok' in result) {
+                showInfo('Success', principal.length > 0 
+                    ? 'Sneed SMS canister ID set successfully' 
+                    : 'Sneed SMS canister ID cleared', 'success');
+                setSmsCanisterId(principal.length > 0 ? principal[0] : null);
+                setNewSmsCanisterId('');
+            } else {
+                showInfo('Error', 'Failed to set SMS canister ID: ' + JSON.stringify(result.err), 'error');
+            }
+        } catch (e) {
+            showInfo('Error', 'Failed to set SMS canister ID: ' + e.message, 'error');
+        }
+        setSavingSmsCanisterId(false);
     };
     
     // Expiration Timer handlers
@@ -2160,6 +2199,41 @@ export default function SneedexAdmin() {
                                 >
                                     {savingFactoryCanisterId ? <FaSpinner className="spin" /> : <FaSave />}
                                     {newFactoryCanisterId.trim() ? 'Set' : (factoryCanisterId ? 'Clear' : 'Set')}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Sneed SMS Canister ID */}
+                        <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
+                            <label style={styles.label}>Sneed SMS Canister ID</label>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                                Used for sending auction notifications (bid received, outbid, sale, etc.)
+                            </p>
+                            {smsCanisterId && (
+                                <div style={{ marginBottom: '0.75rem', padding: '0.5rem', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
+                                    <span style={{ color: theme.colors.success, marginRight: '8px' }}>✓ Current:</span>
+                                    <PrincipalDisplay principal={smsCanisterId.toString()} short={true} />
+                                </div>
+                            )}
+                            <div style={{ ...styles.row, gap: '0.5rem' }}>
+                                <input
+                                    type="text"
+                                    placeholder={smsCanisterId ? "New canister ID (or leave empty to clear)" : "Enter canister ID"}
+                                    value={newSmsCanisterId}
+                                    onChange={(e) => setNewSmsCanisterId(e.target.value)}
+                                    style={{ ...styles.input, flex: 1 }}
+                                />
+                                <button
+                                    onClick={handleSaveSmsCanisterId}
+                                    disabled={savingSmsCanisterId}
+                                    style={{
+                                        ...styles.button,
+                                        opacity: savingSmsCanisterId ? 0.5 : 1,
+                                        cursor: savingSmsCanisterId ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {savingSmsCanisterId ? <FaSpinner className="spin" /> : <FaSave />}
+                                    {newSmsCanisterId.trim() ? 'Set' : (smsCanisterId ? 'Clear' : 'Set')}
                                 </button>
                             </div>
                         </div>
