@@ -28,6 +28,7 @@ export interface AppSneedDaoBackend {
   'delete_canister_groups' : ActorMethod<[], undefined>,
   'delete_jailbreak_config' : ActorMethod<[bigint], Result_2>,
   'get_admins' : ActorMethod<[], Array<Principal>>,
+  'get_all_jailbreak_configs_count' : ActorMethod<[], Result>,
   'get_all_neuron_names' : ActorMethod<
     [],
     Array<[NeuronNameKey, [string, boolean]]>
@@ -40,7 +41,7 @@ export interface AppSneedDaoBackend {
   'get_all_principal_nicknames' : ActorMethod<[], Array<[Principal, string]>>,
   'get_authorized_for_callers' : ActorMethod<[], Array<Principal>>,
   'get_ban_log' : ActorMethod<[], Result_4>,
-  'get_banned_users' : ActorMethod<[], Result_6>,
+  'get_banned_users' : ActorMethod<[], Result_8>,
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
   'get_cached_token_meta' : ActorMethod<[Principal], [] | [TokenMeta]>,
   'get_canister_groups' : ActorMethod<[], [] | [CanisterGroupsRoot]>,
@@ -55,7 +56,7 @@ export interface AppSneedDaoBackend {
       'max_canister_groups' : bigint,
     }
   >,
-  'get_canister_info' : ActorMethod<[Principal], Result_5>,
+  'get_canister_info' : ActorMethod<[Principal], Result_7>,
   'get_jailbreak_fee_settings' : ActorMethod<
     [],
     {
@@ -66,6 +67,8 @@ export interface AppSneedDaoBackend {
     }
   >,
   'get_jailbreak_payment_balance' : ActorMethod<[], bigint>,
+  'get_jailbreak_payment_logs' : ActorMethod<[bigint, bigint], Result_6>,
+  'get_jailbreak_payment_stats' : ActorMethod<[], Result_5>,
   'get_jailbreak_payment_subaccount' : ActorMethod<[], Uint8Array | number[]>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_my_canister_groups_usage' : ActorMethod<
@@ -237,6 +240,17 @@ export interface JailbreakConfig {
   'created_at' : bigint,
   'neuron_id_hex' : string,
 }
+export interface JailbreakPaymentLog {
+  'id' : bigint,
+  'sns_root_canister_id' : Principal,
+  'is_premium' : boolean,
+  'target_principal' : Principal,
+  'user' : Principal,
+  'amount_e8s' : bigint,
+  'timestamp' : bigint,
+  'neuron_id_hex' : string,
+  'config_id' : bigint,
+}
 export interface Neuron {
   'id' : [] | [NeuronId],
   'permissions' : Array<[Principal, Int32Array | number[]]>,
@@ -284,12 +298,28 @@ export type Result_4 = { 'ok' : Array<BanLogEntry> } |
   { 'err' : string };
 export type Result_5 = {
     'ok' : {
+      'total_scripts_created' : bigint,
+      'premium_revenue_e8s' : bigint,
+      'total_premium_payments' : bigint,
+      'regular_revenue_e8s' : bigint,
+      'total_regular_payments' : bigint,
+      'unique_users' : bigint,
+      'total_revenue_e8s' : bigint,
+    }
+  } |
+  { 'err' : string };
+export type Result_6 = {
+    'ok' : { 'total' : bigint, 'logs' : Array<JailbreakPaymentLog> }
+  } |
+  { 'err' : string };
+export type Result_7 = {
+    'ok' : {
       'controllers' : Array<Principal>,
       'module_hash' : [] | [Uint8Array | number[]],
     }
   } |
   { 'err' : string };
-export type Result_6 = { 'ok' : Array<[Principal, bigint]> } |
+export type Result_8 = { 'ok' : Array<[Principal, bigint]> } |
   { 'err' : string };
 export type Timestamp = bigint;
 export interface TokenMeta {

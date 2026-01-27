@@ -108,8 +108,25 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     created_at: Int;
   };
 
+  // Jailbreak payment log type
+  type JailbreakPaymentLog = {
+    id: Nat;
+    user: Principal;
+    config_id: Nat;
+    sns_root_canister_id: Principal;
+    neuron_id_hex: Text;
+    target_principal: Principal;
+    amount_e8s: Nat;
+    is_premium: Bool;
+    timestamp: Int;
+  };
+
   stable var stable_jailbreak_configs : [(Principal, [JailbreakConfig])] = [];
   stable var stable_next_jailbreak_config_id : Nat = 1;
+  
+  // Jailbreak payment logs
+  stable var stable_jailbreak_payment_logs : [JailbreakPaymentLog] = [];
+  stable var stable_next_jailbreak_payment_log_id : Nat = 1;
   
   // Jailbreak fee settings (in e8s - 1 ICP = 100_000_000 e8s)
   stable var stable_jailbreak_fee_premium : Nat = 0;      // Fee for premium members (default: free)
@@ -188,6 +205,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Runtime storage for jailbreak configs (user -> configs)
   private var jailbreak_configs = HashMap.HashMap<Principal, Buffer.Buffer<JailbreakConfig>>(100, Principal.equal, Principal.hash);
   private var next_jailbreak_config_id : Nat = 1;
+  
+  // Runtime storage for jailbreak payment logs
+  private var jailbreak_payment_logs = Buffer.Buffer<JailbreakPaymentLog>(100);
+  private var next_jailbreak_payment_log_id : Nat = 1;
 
   // ephemeral state
   let state : State = object { 
@@ -2245,8 +2266,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case null {};
     };
 
-    // Get the fee for this user
-    let fee = if (await* is_premium_member(caller)) {
+    // Get the fee for this user and check if premium
+    let isPremium = await* is_premium_member(caller);
+    let fee = if (isPremium) {
       stable_jailbreak_fee_premium
     } else {
       stable_jailbreak_fee_regular
@@ -2298,7 +2320,22 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (#Err(err)) {
           return #err("Payment failed: " # debug_show(err));
         };
-        case (#Ok(_)) {};
+        case (#Ok(_)) {
+          // Log the successful payment
+          let paymentLog : JailbreakPaymentLog = {
+            id = next_jailbreak_payment_log_id;
+            user = caller;
+            config_id = next_jailbreak_config_id; // Will be assigned to the config
+            sns_root_canister_id = sns_root_canister_id;
+            neuron_id_hex = neuron_id_hex;
+            target_principal = target_principal;
+            amount_e8s = fee;
+            is_premium = isPremium;
+            timestamp = Time.now();
+          };
+          jailbreak_payment_logs.add(paymentLog);
+          next_jailbreak_payment_log_id += 1;
+        };
       };
     };
 
@@ -2424,6 +2461,110 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     } else {
       stable_jailbreak_fee_regular
     }
+  };
+
+  // ============================================
+  // JAILBREAK ADMIN STATS AND LOGS (Admin only)
+  // ============================================
+
+  // Get jailbreak payment statistics (admin only)
+  public query ({ caller }) func get_jailbreak_payment_stats() : async Result.Result<{
+    total_scripts_created: Nat;
+    total_revenue_e8s: Nat;
+    total_premium_payments: Nat;
+    total_regular_payments: Nat;
+    premium_revenue_e8s: Nat;
+    regular_revenue_e8s: Nat;
+    unique_users: Nat;
+  }, Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized: admin access required");
+    };
+
+    var totalScripts : Nat = 0;
+    var totalRevenue : Nat = 0;
+    var premiumPayments : Nat = 0;
+    var regularPayments : Nat = 0;
+    var premiumRevenue : Nat = 0;
+    var regularRevenue : Nat = 0;
+    let uniqueUsers = HashMap.HashMap<Principal, Bool>(50, Principal.equal, Principal.hash);
+
+    for (log in jailbreak_payment_logs.vals()) {
+      totalScripts += 1;
+      totalRevenue += log.amount_e8s;
+      uniqueUsers.put(log.user, true);
+      
+      if (log.is_premium) {
+        premiumPayments += 1;
+        premiumRevenue += log.amount_e8s;
+      } else {
+        regularPayments += 1;
+        regularRevenue += log.amount_e8s;
+      };
+    };
+
+    #ok({
+      total_scripts_created = totalScripts;
+      total_revenue_e8s = totalRevenue;
+      total_premium_payments = premiumPayments;
+      total_regular_payments = regularPayments;
+      premium_revenue_e8s = premiumRevenue;
+      regular_revenue_e8s = regularRevenue;
+      unique_users = uniqueUsers.size();
+    })
+  };
+
+  // Get jailbreak payment logs with pagination (admin only)
+  public query ({ caller }) func get_jailbreak_payment_logs(
+    offset: Nat,
+    limit: Nat
+  ) : async Result.Result<{
+    logs: [JailbreakPaymentLog];
+    total: Nat;
+  }, Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized: admin access required");
+    };
+
+    let total = jailbreak_payment_logs.size();
+    
+    // Return empty if offset is beyond total
+    if (offset >= total) {
+      return #ok({ logs = []; total = total });
+    };
+
+    // Get logs in reverse order (newest first)
+    let logsArray = Buffer.toArray(jailbreak_payment_logs);
+    let effectiveLimit = if (offset + limit > total) { total - offset } else { limit };
+    
+    let result = Buffer.Buffer<JailbreakPaymentLog>(effectiveLimit);
+    var i = total - 1 - offset;
+    var count : Nat = 0;
+    
+    label loopLabel while (count < effectiveLimit and i >= 0) {
+      result.add(logsArray[i]);
+      count += 1;
+      if (i == 0) { break loopLabel };
+      i -= 1;
+    };
+
+    #ok({
+      logs = Buffer.toArray(result);
+      total = total;
+    })
+  };
+
+  // Get all jailbreak configs across all users (admin only) for stats
+  public query ({ caller }) func get_all_jailbreak_configs_count() : async Result.Result<Nat, Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized: admin access required");
+    };
+    
+    var total : Nat = 0;
+    for ((_, configs) in jailbreak_configs.entries()) {
+      total += configs.size();
+    };
+    #ok(total)
   };
 
   // ============================================
@@ -2637,6 +2778,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_jailbreak_configs := Buffer.toArray(jailbreak_entries);
     stable_next_jailbreak_config_id := next_jailbreak_config_id;
     
+    // Save jailbreak payment logs to stable storage
+    stable_jailbreak_payment_logs := Buffer.toArray(jailbreak_payment_logs);
+    stable_next_jailbreak_payment_log_id := next_jailbreak_payment_log_id;
+    
     // Save user tokens to stable storage
     stable_user_tokens := Iter.toArray(user_tokens.entries());
     
@@ -2793,6 +2938,13 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       };
       stable_jailbreak_configs := [];
       next_jailbreak_config_id := stable_next_jailbreak_config_id;
+      
+      // Restore jailbreak payment logs from stable storage
+      for (log in stable_jailbreak_payment_logs.vals()) {
+        jailbreak_payment_logs.add(log);
+      };
+      stable_jailbreak_payment_logs := [];
+      next_jailbreak_payment_log_id := stable_next_jailbreak_payment_log_id;
   };
 
 };

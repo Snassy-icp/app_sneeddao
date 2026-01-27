@@ -58,7 +58,7 @@ type TokenMeta =
                };
  };
 type Timestamp = nat64;
-type Result_6 = 
+type Result_8 = 
  variant {
    err: text;
    ok: vec record {
@@ -66,13 +66,35 @@ type Result_6 =
              int;
            };
  };
-type Result_5 = 
+type Result_7 = 
  variant {
    err: text;
    ok: record {
          controllers: vec principal;
          module_hash: opt blob;
        };
+ };
+type Result_6 = 
+ variant {
+   err: text;
+   ok: record {
+         logs: vec JailbreakPaymentLog;
+         total: nat;
+       };
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok:
+    record {
+      premium_revenue_e8s: nat;
+      regular_revenue_e8s: nat;
+      total_premium_payments: nat;
+      total_regular_payments: nat;
+      total_revenue_e8s: nat;
+      total_scripts_created: nat;
+      unique_users: nat;
+    };
  };
 type Result_4 = 
  variant {
@@ -152,6 +174,18 @@ type Neuron =
                       vec int32;
                     };
  };
+type JailbreakPaymentLog = 
+ record {
+   amount_e8s: nat;
+   config_id: nat;
+   id: nat;
+   is_premium: bool;
+   neuron_id_hex: text;
+   sns_root_canister_id: principal;
+   target_principal: principal;
+   timestamp: int;
+   user: principal;
+ };
 type JailbreakConfig = 
  record {
    created_at: int;
@@ -199,6 +233,7 @@ type AppSneedDaoBackend =
    delete_canister_groups: () -> ();
    delete_jailbreak_config: (id: nat) -> (Result_2);
    get_admins: () -> (vec principal) query;
+   get_all_jailbreak_configs_count: () -> (Result) query;
    get_all_neuron_names: () ->
     (vec record {
            NeuronNameKey;
@@ -225,7 +260,7 @@ type AppSneedDaoBackend =
                                            }) query;
    get_authorized_for_callers: () -> (vec principal) query;
    get_ban_log: () -> (Result_4) query;
-   get_banned_users: () -> (Result_6) query;
+   get_banned_users: () -> (Result_8) query;
    get_blacklisted_words: () -> (vec text) query;
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
@@ -239,7 +274,7 @@ type AppSneedDaoBackend =
        premium_max_canisters_per_group: nat;
        premium_max_total_grouped_canisters: nat;
      }) query;
-   get_canister_info: (canister_id: principal) -> (Result_5);
+   get_canister_info: (canister_id: principal) -> (Result_7);
    get_jailbreak_fee_settings: () ->
     (record {
        fee_account_owner: opt principal;
@@ -248,6 +283,8 @@ type AppSneedDaoBackend =
        fee_regular_e8s: nat;
      }) query;
    get_jailbreak_payment_balance: () -> (nat);
+   get_jailbreak_payment_logs: (offset: nat, limit: nat) -> (Result_6) query;
+   get_jailbreak_payment_stats: () -> (Result_5) query;
    get_jailbreak_payment_subaccount: () -> (blob) query;
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->

@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet, FaCopy } from 'react-icons/fa';
+import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet, FaCopy, FaChartBar, FaList, FaChevronDown, FaChevronUp, FaSync } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { useSns } from '../contexts/SnsContext';
 
 // Helper to convert hex string to Uint8Array
 const hexToBytes = (hex) => {
@@ -27,6 +29,7 @@ const bytesToHex = (bytes) => {
 function AdminSnsJailbreak() {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
+    const { snsList, fetchAndCacheSnsData } = useSns();
     
     // Admin check
     const { isAdmin, loading: adminLoading } = useAdminCheck({
@@ -63,6 +66,18 @@ function AdminSnsJailbreak() {
     const [ownerValid, setOwnerValid] = useState(true);
     const [subaccountValid, setSubaccountValid] = useState(true);
     
+    // Stats and logs
+    const [stats, setStats] = useState(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const [statsExpanded, setStatsExpanded] = useState(true);
+    
+    const [logs, setLogs] = useState([]);
+    const [logsTotal, setLogsTotal] = useState(0);
+    const [logsOffset, setLogsOffset] = useState(0);
+    const [logsLoading, setLogsLoading] = useState(false);
+    const [logsExpanded, setLogsExpanded] = useState(true);
+    const LOGS_PER_PAGE = 10;
+    
     // Load current settings
     useEffect(() => {
         const loadSettings = async () => {
@@ -98,6 +113,73 @@ function AdminSnsJailbreak() {
         };
         loadSettings();
     }, [backendActor]);
+    
+    // Load stats
+    const loadStats = useCallback(async () => {
+        if (!backendActor) return;
+        setStatsLoading(true);
+        try {
+            const result = await backendActor.get_jailbreak_payment_stats();
+            if ('ok' in result) {
+                setStats(result.ok);
+            } else {
+                console.error('Error loading stats:', result.err);
+            }
+        } catch (err) {
+            console.error('Error loading stats:', err);
+        } finally {
+            setStatsLoading(false);
+        }
+    }, [backendActor]);
+    
+    // Load logs
+    const loadLogs = useCallback(async (offset = 0) => {
+        if (!backendActor) return;
+        setLogsLoading(true);
+        try {
+            const result = await backendActor.get_jailbreak_payment_logs(BigInt(offset), BigInt(LOGS_PER_PAGE));
+            if ('ok' in result) {
+                setLogs(result.ok.logs);
+                setLogsTotal(Number(result.ok.total));
+                setLogsOffset(offset);
+            } else {
+                console.error('Error loading logs:', result.err);
+            }
+        } catch (err) {
+            console.error('Error loading logs:', err);
+        } finally {
+            setLogsLoading(false);
+        }
+    }, [backendActor]);
+    
+    // Load stats and logs on mount
+    useEffect(() => {
+        if (backendActor && isAdmin) {
+            loadStats();
+            loadLogs(0);
+            // Also ensure SNS list is loaded for log display
+            if (snsList.length === 0) {
+                fetchAndCacheSnsData();
+            }
+        }
+    }, [backendActor, isAdmin, loadStats, loadLogs, snsList.length, fetchAndCacheSnsData]);
+    
+    // Get SNS name from root canister ID
+    const getSnsName = useCallback((rootCanisterId) => {
+        const sns = snsList.find(s => s.root_canister_id.toString() === rootCanisterId.toString());
+        return sns?.name || rootCanisterId.toString().slice(0, 10) + '...';
+    }, [snsList]);
+    
+    // Format timestamp
+    const formatTimestamp = (timestamp) => {
+        const date = new Date(Number(timestamp) / 1_000_000);
+        return date.toLocaleString();
+    };
+    
+    // Format e8s to ICP
+    const formatE8s = (e8s) => {
+        return (Number(e8s) / 100_000_000).toFixed(4);
+    };
     
     // Validate principal
     const validatePrincipal = (value) => {
@@ -329,6 +411,104 @@ function AdminSnsJailbreak() {
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '16px',
         },
+        sectionHeader: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            padding: '0.5rem 0',
+        },
+        statsGrid: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: '1rem',
+            marginTop: '1rem',
+        },
+        statCard: {
+            background: theme.colors.secondaryBg,
+            borderRadius: '12px',
+            padding: '1rem',
+            textAlign: 'center',
+        },
+        statValue: {
+            fontSize: '1.5rem',
+            fontWeight: '700',
+            color: theme.colors.accent,
+            marginBottom: '4px',
+        },
+        statLabel: {
+            fontSize: '0.8rem',
+            color: theme.colors.mutedText,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+        },
+        logsTable: {
+            width: '100%',
+            borderCollapse: 'collapse',
+            marginTop: '1rem',
+            fontSize: '0.9rem',
+        },
+        tableHeader: {
+            background: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            textAlign: 'left',
+            padding: '12px 10px',
+            fontWeight: '600',
+            borderBottom: `2px solid ${theme.colors.border}`,
+        },
+        tableCell: {
+            padding: '12px 10px',
+            borderBottom: `1px solid ${theme.colors.border}`,
+            color: theme.colors.secondaryText,
+            verticalAlign: 'middle',
+        },
+        paginationContainer: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: '1rem',
+            padding: '0.5rem 0',
+        },
+        paginationButton: {
+            padding: '8px 16px',
+            background: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '8px',
+            color: theme.colors.primaryText,
+            cursor: 'pointer',
+            fontSize: '0.9rem',
+        },
+        paginationButtonDisabled: {
+            opacity: 0.5,
+            cursor: 'not-allowed',
+        },
+        badge: {
+            display: 'inline-block',
+            padding: '3px 8px',
+            borderRadius: '12px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+        },
+        premiumBadge: {
+            background: '#FFD70020',
+            color: '#FFD700',
+        },
+        regularBadge: {
+            background: `${theme.colors.mutedText}20`,
+            color: theme.colors.mutedText,
+        },
+        refreshButton: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 12px',
+            background: 'transparent',
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '6px',
+            color: theme.colors.accent,
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+        },
     };
     
     const spinnerKeyframes = `
@@ -557,6 +737,206 @@ function AdminSnsJailbreak() {
                                 </>
                             )}
                         </button>
+                        
+                        {/* Stats Section */}
+                        <div style={{ ...styles.card, marginTop: '2rem' }}>
+                            <div 
+                                style={styles.sectionHeader}
+                                onClick={() => setStatsExpanded(!statsExpanded)}
+                            >
+                                <h2 style={{ ...styles.cardTitle, margin: 0 }}>
+                                    <FaChartBar style={{ color: theme.colors.success }} />
+                                    Payment Statistics
+                                </h2>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <button
+                                        style={styles.refreshButton}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            loadStats();
+                                        }}
+                                        disabled={statsLoading}
+                                    >
+                                        <FaSync style={statsLoading ? styles.spinner : {}} size={12} />
+                                        Refresh
+                                    </button>
+                                    {statsExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                                </div>
+                            </div>
+                            
+                            {statsExpanded && (
+                                <>
+                                    {statsLoading && !stats ? (
+                                        <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                            <FaSpinner style={styles.spinner} size={24} />
+                                        </div>
+                                    ) : stats ? (
+                                        <div style={styles.statsGrid}>
+                                            <div style={styles.statCard}>
+                                                <div style={styles.statValue}>{stats.total_scripts_created.toString()}</div>
+                                                <div style={styles.statLabel}>Scripts Sold</div>
+                                            </div>
+                                            <div style={styles.statCard}>
+                                                <div style={styles.statValue}>{formatE8s(stats.total_revenue_e8s)}</div>
+                                                <div style={styles.statLabel}>Total Revenue (ICP)</div>
+                                            </div>
+                                            <div style={styles.statCard}>
+                                                <div style={styles.statValue}>{stats.unique_users.toString()}</div>
+                                                <div style={styles.statLabel}>Unique Buyers</div>
+                                            </div>
+                                            <div style={{ ...styles.statCard, background: '#FFD70015' }}>
+                                                <div style={{ ...styles.statValue, color: '#FFD700' }}>{stats.total_premium_payments.toString()}</div>
+                                                <div style={styles.statLabel}>Premium Purchases</div>
+                                            </div>
+                                            <div style={{ ...styles.statCard, background: `${theme.colors.mutedText}10` }}>
+                                                <div style={{ ...styles.statValue, color: theme.colors.secondaryText }}>{stats.total_regular_payments.toString()}</div>
+                                                <div style={styles.statLabel}>Regular Purchases</div>
+                                            </div>
+                                            <div style={styles.statCard}>
+                                                <div style={{ ...styles.statValue, fontSize: '1.2rem' }}>{formatE8s(stats.premium_revenue_e8s)} / {formatE8s(stats.regular_revenue_e8s)}</div>
+                                                <div style={styles.statLabel}>Premium / Regular Rev (ICP)</div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p style={{ color: theme.colors.mutedText, textAlign: 'center', padding: '1rem' }}>
+                                            No stats available
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        
+                        {/* Logs Section */}
+                        <div style={{ ...styles.card, marginTop: '1.5rem' }}>
+                            <div 
+                                style={styles.sectionHeader}
+                                onClick={() => setLogsExpanded(!logsExpanded)}
+                            >
+                                <h2 style={{ ...styles.cardTitle, margin: 0 }}>
+                                    <FaList style={{ color: theme.colors.accent }} />
+                                    Payment Logs
+                                    {logsTotal > 0 && (
+                                        <span style={{ 
+                                            fontSize: '0.85rem', 
+                                            fontWeight: 'normal', 
+                                            color: theme.colors.mutedText,
+                                            marginLeft: '8px'
+                                        }}>
+                                            ({logsTotal} total)
+                                        </span>
+                                    )}
+                                </h2>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <button
+                                        style={styles.refreshButton}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            loadLogs(0);
+                                        }}
+                                        disabled={logsLoading}
+                                    >
+                                        <FaSync style={logsLoading ? styles.spinner : {}} size={12} />
+                                        Refresh
+                                    </button>
+                                    {logsExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                                </div>
+                            </div>
+                            
+                            {logsExpanded && (
+                                <>
+                                    {logsLoading && logs.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                            <FaSpinner style={styles.spinner} size={24} />
+                                        </div>
+                                    ) : logs.length > 0 ? (
+                                        <>
+                                            <div style={{ overflowX: 'auto' }}>
+                                                <table style={styles.logsTable}>
+                                                    <thead>
+                                                        <tr>
+                                                            <th style={styles.tableHeader}>#</th>
+                                                            <th style={styles.tableHeader}>Date</th>
+                                                            <th style={styles.tableHeader}>User</th>
+                                                            <th style={styles.tableHeader}>SNS</th>
+                                                            <th style={styles.tableHeader}>Amount</th>
+                                                            <th style={styles.tableHeader}>Type</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {logs.map((log, idx) => (
+                                                            <tr key={log.id.toString()}>
+                                                                <td style={styles.tableCell}>
+                                                                    {log.id.toString()}
+                                                                </td>
+                                                                <td style={styles.tableCell}>
+                                                                    {formatTimestamp(log.timestamp)}
+                                                                </td>
+                                                                <td style={styles.tableCell}>
+                                                                    <PrincipalDisplay principal={log.user.toString()} />
+                                                                </td>
+                                                                <td style={styles.tableCell}>
+                                                                    {getSnsName(log.sns_root_canister_id)}
+                                                                </td>
+                                                                <td style={styles.tableCell}>
+                                                                    <strong>{formatE8s(log.amount_e8s)} ICP</strong>
+                                                                </td>
+                                                                <td style={styles.tableCell}>
+                                                                    <span style={{
+                                                                        ...styles.badge,
+                                                                        ...(log.is_premium ? styles.premiumBadge : styles.regularBadge)
+                                                                    }}>
+                                                                        {log.is_premium ? (
+                                                                            <><FaCrown size={10} style={{ marginRight: '4px' }} />Premium</>
+                                                                        ) : (
+                                                                            'Regular'
+                                                                        )}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            
+                                            {/* Pagination */}
+                                            {logsTotal > LOGS_PER_PAGE && (
+                                                <div style={styles.paginationContainer}>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                                        Showing {logsOffset + 1}-{Math.min(logsOffset + LOGS_PER_PAGE, logsTotal)} of {logsTotal}
+                                                    </span>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <button
+                                                            style={{
+                                                                ...styles.paginationButton,
+                                                                ...(logsOffset === 0 ? styles.paginationButtonDisabled : {})
+                                                            }}
+                                                            onClick={() => loadLogs(Math.max(0, logsOffset - LOGS_PER_PAGE))}
+                                                            disabled={logsOffset === 0 || logsLoading}
+                                                        >
+                                                            Previous
+                                                        </button>
+                                                        <button
+                                                            style={{
+                                                                ...styles.paginationButton,
+                                                                ...(logsOffset + LOGS_PER_PAGE >= logsTotal ? styles.paginationButtonDisabled : {})
+                                                            }}
+                                                            onClick={() => loadLogs(logsOffset + LOGS_PER_PAGE)}
+                                                            disabled={logsOffset + LOGS_PER_PAGE >= logsTotal || logsLoading}
+                                                        >
+                                                            Next
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <p style={{ color: theme.colors.mutedText, textAlign: 'center', padding: '1.5rem' }}>
+                                            No payment logs yet. Payment logs will appear here when users purchase scripts.
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     </>
                 )}
             </main>

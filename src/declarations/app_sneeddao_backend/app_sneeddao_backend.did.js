@@ -33,7 +33,7 @@ export const idlFactory = ({ IDL }) => {
     'ok' : IDL.Vec(BanLogEntry),
     'err' : IDL.Text,
   });
-  const Result_6 = IDL.Variant({
+  const Result_8 = IDL.Variant({
     'ok' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Int)),
     'err' : IDL.Text,
   });
@@ -59,10 +59,40 @@ export const idlFactory = ({ IDL }) => {
     'groups' : IDL.Vec(CanisterGroup),
     'ungrouped' : IDL.Vec(IDL.Principal),
   });
-  const Result_5 = IDL.Variant({
+  const Result_7 = IDL.Variant({
     'ok' : IDL.Record({
       'controllers' : IDL.Vec(IDL.Principal),
       'module_hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    }),
+    'err' : IDL.Text,
+  });
+  const JailbreakPaymentLog = IDL.Record({
+    'id' : IDL.Nat,
+    'sns_root_canister_id' : IDL.Principal,
+    'is_premium' : IDL.Bool,
+    'target_principal' : IDL.Principal,
+    'user' : IDL.Principal,
+    'amount_e8s' : IDL.Nat,
+    'timestamp' : IDL.Int,
+    'neuron_id_hex' : IDL.Text,
+    'config_id' : IDL.Nat,
+  });
+  const Result_6 = IDL.Variant({
+    'ok' : IDL.Record({
+      'total' : IDL.Nat,
+      'logs' : IDL.Vec(JailbreakPaymentLog),
+    }),
+    'err' : IDL.Text,
+  });
+  const Result_5 = IDL.Variant({
+    'ok' : IDL.Record({
+      'total_scripts_created' : IDL.Nat,
+      'premium_revenue_e8s' : IDL.Nat,
+      'total_premium_payments' : IDL.Nat,
+      'regular_revenue_e8s' : IDL.Nat,
+      'total_regular_payments' : IDL.Nat,
+      'unique_users' : IDL.Nat,
+      'total_revenue_e8s' : IDL.Nat,
     }),
     'err' : IDL.Text,
   });
@@ -155,6 +185,7 @@ export const idlFactory = ({ IDL }) => {
     'delete_canister_groups' : IDL.Func([], [], []),
     'delete_jailbreak_config' : IDL.Func([IDL.Nat], [Result_2], []),
     'get_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_all_jailbreak_configs_count' : IDL.Func([], [Result], ['query']),
     'get_all_neuron_names' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(NeuronNameKey, IDL.Tuple(IDL.Text, IDL.Bool)))],
@@ -181,7 +212,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_ban_log' : IDL.Func([], [Result_4], ['query']),
-    'get_banned_users' : IDL.Func([], [Result_6], ['query']),
+    'get_banned_users' : IDL.Func([], [Result_8], ['query']),
     'get_blacklisted_words' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'get_cached_token_meta' : IDL.Func(
         [IDL.Principal],
@@ -207,7 +238,7 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
-    'get_canister_info' : IDL.Func([IDL.Principal], [Result_5], []),
+    'get_canister_info' : IDL.Func([IDL.Principal], [Result_7], []),
     'get_jailbreak_fee_settings' : IDL.Func(
         [],
         [
@@ -221,6 +252,12 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_jailbreak_payment_balance' : IDL.Func([], [IDL.Nat], []),
+    'get_jailbreak_payment_logs' : IDL.Func(
+        [IDL.Nat, IDL.Nat],
+        [Result_6],
+        ['query'],
+      ),
+    'get_jailbreak_payment_stats' : IDL.Func([], [Result_5], ['query']),
     'get_jailbreak_payment_subaccount' : IDL.Func(
         [],
         [IDL.Vec(IDL.Nat8)],
