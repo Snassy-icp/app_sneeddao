@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey, FaList } from 'react-icons/fa';
+import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey, FaList, FaWallet, FaSync, FaArrowDown } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
@@ -15,6 +15,19 @@ import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
+const ICP_LEDGER_FEE = 10000; // 0.0001 ICP in e8s
+
+// Helper to format ICP from e8s
+const formatIcp = (e8s) => {
+    if (e8s === null || e8s === undefined) return '...';
+    return (e8s / 100_000_000).toFixed(4);
+};
+
+// Helper to convert Uint8Array to hex string
+const uint8ArrayToHexString = (arr) => {
+    if (!arr) return '';
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
 // Permission types (SNS NeuronPermissionType enum)
 // 0 = Unspecified, 1 = ConfigureDissolveState, 2 = ManagePrincipals, 
@@ -61,12 +74,21 @@ function SnsJailbreak() {
     const [targetPrincipal, setTargetPrincipal] = useState('');
     const [principalValid, setPrincipalValid] = useState(false);
     
-    // Step 4: Script generation
+    // Step 4: Script generation & payment
     const [copied, setCopied] = useState(false);
     const [baseScript, setBaseScript] = useState('');
     const [loadingBaseScript, setLoadingBaseScript] = useState(false);
     const [baseScriptError, setBaseScriptError] = useState('');
     const [scriptFetchAttempted, setScriptFetchAttempted] = useState(false);
+    
+    // Payment state
+    const [jailbreakFee, setJailbreakFee] = useState(null); // Fee in e8s
+    const [paymentSubaccount, setPaymentSubaccount] = useState(null); // User's payment subaccount (Uint8Array)
+    const [paymentBalance, setPaymentBalance] = useState(null); // Balance in e8s
+    const [loadingPaymentInfo, setLoadingPaymentInfo] = useState(false);
+    const [savingConfig, setSavingConfig] = useState(false);
+    const [configError, setConfigError] = useState('');
+    const [withdrawing, setWithdrawing] = useState(false);
     
     // Step 5: Verification
     const [verificationStatus, setVerificationStatus] = useState(null); // null, 'loading', 'success', 'error'
@@ -241,11 +263,12 @@ function SnsJailbreak() {
     }, [loadingBaseScript]);
     
     // Fetch base script when entering step 4
+    // Fetch script when config is saved (payment complete)
     useEffect(() => {
-        if (currentStep === 4 && !baseScript && !scriptFetchAttempted) {
+        if (currentStep === 4 && configSaved && !baseScript && !scriptFetchAttempted) {
             fetchBaseScript();
         }
-    }, [currentStep, baseScript, scriptFetchAttempted, fetchBaseScript]);
+    }, [currentStep, configSaved, baseScript, scriptFetchAttempted, fetchBaseScript]);
     
     // Verify controller was added when entering step 5
     const verifyControllerAdded = useCallback(async () => {
@@ -312,26 +335,6 @@ function SnsJailbreak() {
     }, [identity, governanceId, effectiveNeuronId, targetPrincipal]);
     
     // Save the jailbreak config to backend
-    const saveJailbreakConfig = useCallback(async () => {
-        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal || configSaved) return;
-        
-        try {
-            const result = await app_sneeddao_backend.save_jailbreak_config(
-                Principal.fromText(selectedSnsRoot),
-                effectiveNeuronId,
-                Principal.fromText(targetPrincipal)
-            );
-            if ('ok' in result) {
-                console.log('Jailbreak config saved with ID:', result.ok);
-                setConfigSaved(true);
-            } else {
-                console.error('Failed to save jailbreak config:', result.err);
-            }
-        } catch (error) {
-            console.error('Error saving jailbreak config:', error);
-        }
-    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, configSaved]);
-    
     // Register the SNS token in user's wallet if not already registered
     const registerSnsToken = useCallback(async () => {
         if (!selectedSns?.canisters?.ledger || tokenRegistered) return;
@@ -346,12 +349,100 @@ function SnsJailbreak() {
         }
     }, [selectedSns, tokenRegistered]);
     
-    // Save the config when entering step 4 (when script is generated)
-    useEffect(() => {
-        if (currentStep === 4 && !configSaved) {
-            saveJailbreakConfig();
+    // Load payment info when entering step 4
+    const loadPaymentInfo = useCallback(async () => {
+        if (!identity) return;
+        
+        setLoadingPaymentInfo(true);
+        setConfigError('');
+        
+        try {
+            // Get the fee for this user
+            const fee = await app_sneeddao_backend.get_my_jailbreak_fee();
+            setJailbreakFee(Number(fee));
+            
+            // Get the payment subaccount
+            const subaccount = await app_sneeddao_backend.get_jailbreak_payment_subaccount();
+            setPaymentSubaccount(subaccount);
+            
+            // Get current balance
+            const balance = await app_sneeddao_backend.get_jailbreak_payment_balance();
+            setPaymentBalance(Number(balance));
+        } catch (error) {
+            console.error('Error loading payment info:', error);
+            setConfigError('Failed to load payment information: ' + error.message);
+        } finally {
+            setLoadingPaymentInfo(false);
         }
-    }, [currentStep, configSaved, saveJailbreakConfig]);
+    }, [identity]);
+    
+    // Refresh payment balance
+    const refreshPaymentBalance = useCallback(async () => {
+        try {
+            const balance = await app_sneeddao_backend.get_jailbreak_payment_balance();
+            setPaymentBalance(Number(balance));
+        } catch (error) {
+            console.error('Error refreshing balance:', error);
+        }
+    }, []);
+    
+    // Withdraw from payment subaccount
+    const handleWithdraw = useCallback(async () => {
+        if (!paymentBalance || paymentBalance <= 10000) return; // Need more than fee
+        
+        setWithdrawing(true);
+        try {
+            const amount = paymentBalance - 10000; // Leave room for fee
+            const result = await app_sneeddao_backend.withdraw_jailbreak_payment(BigInt(amount));
+            if ('ok' in result) {
+                await refreshPaymentBalance();
+            } else {
+                setConfigError('Withdrawal failed: ' + result.err);
+            }
+        } catch (error) {
+            console.error('Error withdrawing:', error);
+            setConfigError('Withdrawal failed: ' + error.message);
+        } finally {
+            setWithdrawing(false);
+        }
+    }, [paymentBalance, refreshPaymentBalance]);
+    
+    // Pay and create config
+    const handlePayAndCreate = useCallback(async () => {
+        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal) return;
+        
+        setSavingConfig(true);
+        setConfigError('');
+        
+        try {
+            const result = await app_sneeddao_backend.save_jailbreak_config(
+                Principal.fromText(selectedSnsRoot),
+                effectiveNeuronId,
+                Principal.fromText(targetPrincipal)
+            );
+            
+            if ('ok' in result) {
+                console.log('Jailbreak config saved with ID:', result.ok);
+                setConfigSaved(true);
+                // Refresh balance after payment
+                await refreshPaymentBalance();
+            } else {
+                setConfigError(result.err);
+            }
+        } catch (error) {
+            console.error('Error saving jailbreak config:', error);
+            setConfigError('Failed to create script: ' + error.message);
+        } finally {
+            setSavingConfig(false);
+        }
+    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, refreshPaymentBalance]);
+    
+    // Load payment info when entering step 4
+    useEffect(() => {
+        if (currentStep === 4) {
+            loadPaymentInfo();
+        }
+    }, [currentStep, loadPaymentInfo]);
     
     // Run verification and register token when entering step 5
     useEffect(() => {
@@ -1471,293 +1562,335 @@ const NEW_CONTROLLER = "${targetPrincipal}";
         </>
     );
     
-    // Step 4: Generate Script
-    const renderStep4 = () => (
-        <>
-            <div style={styles.hero}>
-                <h1 style={styles.title}>
-                    <FaUnlock style={{ color: theme.colors.accent }} />
-                    Generated Script
-                </h1>
-                <p style={styles.subtitle}>
-                    Copy this script and run it in the NNS app browser console
-                </p>
-            </div>
-            
-            {/* Summary Card */}
-            <div style={styles.card}>
-                <label style={styles.label}>Summary</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {/* SNS */}
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '12px',
-                        padding: '12px',
-                        background: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                    }}>
-                        {snsLogos.get(governanceId) ? (
-                            <img 
-                                src={snsLogos.get(governanceId)} 
-                                alt={selectedSns?.name}
-                                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
-                            />
+    // Step 4: Payment & Generate Script
+    const renderStep4 = () => {
+        const needsPayment = jailbreakFee !== null && jailbreakFee > 0 && !configSaved;
+        const hasEnoughBalance = paymentBalance !== null && paymentBalance >= (jailbreakFee || 0) + ICP_LEDGER_FEE;
+        const canWithdraw = paymentBalance !== null && paymentBalance > ICP_LEDGER_FEE;
+        
+        // Get backend canister ID for deposit address
+        const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || 'zksrb-maaaa-aaaal-qjcna-cai';
+        
+        return (
+            <>
+                <div style={styles.hero}>
+                    <h1 style={styles.title}>
+                        <FaUnlock style={{ color: theme.colors.accent }} />
+                        {configSaved ? 'Generated Script' : 'Generate Script'}
+                    </h1>
+                    <p style={styles.subtitle}>
+                        {configSaved 
+                            ? 'Copy this script and run it in the NNS app browser console'
+                            : needsPayment 
+                                ? 'Pay to generate your jailbreak script'
+                                : 'Generate your jailbreak script'}
+                    </p>
+                </div>
+                
+                {/* Summary Card */}
+                <div style={styles.card}>
+                    <label style={styles.label}>Summary</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* SNS */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
+                            {snsLogos.get(governanceId) ? (
+                                <img src={snsLogos.get(governanceId)} alt={selectedSns?.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                            ) : (
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: theme.colors.border, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <FaBrain size={16} style={{ color: theme.colors.mutedText }} />
+                                </div>
+                            )}
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>SNS</div>
+                                <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>{selectedSns?.name}</div>
+                            </div>
+                        </div>
+                        
+                        {/* Neuron */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
+                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: `${theme.colors.accent}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <FaBrain size={16} style={{ color: theme.colors.accent }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>Neuron</div>
+                                <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                    {useManualEntry && manualNeuronData ? getNeuronDisplayName(manualNeuronData, selectedSnsRoot) :
+                                     !useManualEntry && selectedNeuronId ? getNeuronDisplayName(snsNeurons.find(n => extractNeuronId(n) === selectedNeuronId), selectedSnsRoot) : 'Manual Entry'}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                    {effectiveNeuronId.slice(0, 20)}...{effectiveNeuronId.slice(-20)}
+                                </div>
+                            </div>
+                            <Link to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`} target="_blank" style={{ color: theme.colors.accent, flexShrink: 0 }} title="View neuron">
+                                <FaExternalLinkAlt size={14} />
+                            </Link>
+                        </div>
+                        
+                        {/* Principal to Add */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px' }}>
+                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: `${theme.colors.success}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <FaKey size={16} style={{ color: theme.colors.success }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>Adding Controller</div>
+                                <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: theme.colors.primaryText, wordBreak: 'break-all' }}>{targetPrincipal}</div>
+                                {identity && targetPrincipal === identity.getPrincipal().toText() && (
+                                    <div style={{ fontSize: '0.75rem', color: theme.colors.success }}>(Your logged-in principal)</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                {/* Payment Section - Only show if not yet saved */}
+                {!configSaved && (
+                    <div style={styles.card}>
+                        <label style={styles.label}>
+                            <FaWallet style={{ marginRight: '8px', color: theme.colors.accent }} />
+                            Payment
+                        </label>
+                        
+                        {loadingPaymentInfo ? (
+                            <div style={styles.loadingContainer}>
+                                <FaSpinner size={24} style={{ ...styles.spinner, color: theme.colors.accent }} />
+                                <p style={{ color: theme.colors.mutedText }}>Loading payment info...</p>
+                            </div>
+                        ) : jailbreakFee === 0 ? (
+                            <div style={{ padding: '1rem', background: `${theme.colors.success}15`, borderRadius: '8px', textAlign: 'center' }}>
+                                <FaCheck style={{ color: theme.colors.success, marginBottom: '8px' }} size={24} />
+                                <p style={{ color: theme.colors.success, fontWeight: '600', margin: 0 }}>
+                                    Free! No payment required.
+                                </p>
+                            </div>
                         ) : (
-                            <div style={{ 
-                                width: '32px', 
-                                height: '32px', 
-                                borderRadius: '50%', 
-                                background: theme.colors.border,
+                            <>
+                                {/* Fee Amount */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px', marginBottom: '1rem' }}>
+                                    <span style={{ color: theme.colors.mutedText }}>Script Fee:</span>
+                                    <span style={{ fontWeight: '600', color: theme.colors.primaryText, fontSize: '1.1rem' }}>
+                                        {formatIcp(jailbreakFee)} ICP
+                                    </span>
+                                </div>
+                                
+                                {/* Payment Balance */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px', marginBottom: '1rem' }}>
+                                    <span style={{ color: theme.colors.mutedText }}>Your Payment Balance:</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontWeight: '600', color: hasEnoughBalance ? theme.colors.success : theme.colors.primaryText, fontSize: '1.1rem' }}>
+                                            {formatIcp(paymentBalance)} ICP
+                                        </span>
+                                        <button
+                                            onClick={refreshPaymentBalance}
+                                            style={{ background: 'none', border: 'none', color: theme.colors.accent, cursor: 'pointer', padding: '4px' }}
+                                            title="Refresh balance"
+                                        >
+                                            <FaSync size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {/* Deposit Address */}
+                                {!hasEnoughBalance && paymentSubaccount && (
+                                    <div style={{ marginBottom: '1rem', padding: '1rem', background: `${theme.colors.warning}10`, borderRadius: '8px', border: `1px solid ${theme.colors.warning}30` }}>
+                                        <p style={{ color: theme.colors.warning, fontWeight: '600', marginBottom: '8px' }}>
+                                            <FaArrowDown style={{ marginRight: '6px' }} />
+                                            Deposit ICP to continue
+                                        </p>
+                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '12px' }}>
+                                            Send at least <strong>{formatIcp((jailbreakFee || 0) + ICP_LEDGER_FEE)} ICP</strong> to this address:
+                                        </p>
+                                        <div style={{ background: theme.colors.secondaryBg, padding: '12px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '0.85rem', wordBreak: 'break-all' }}>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Owner:</div>
+                                            <div style={{ color: theme.colors.primaryText, marginBottom: '8px' }}>{backendCanisterId}</div>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Subaccount:</div>
+                                            <div style={{ color: theme.colors.primaryText }}>{uint8ArrayToHexString(paymentSubaccount)}</div>
+                                        </div>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '8px', marginBottom: 0 }}>
+                                            After sending, click the refresh button above to update your balance.
+                                        </p>
+                                    </div>
+                                )}
+                                
+                                {/* Withdraw option if they have balance */}
+                                {canWithdraw && (
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <button
+                                            onClick={handleWithdraw}
+                                            disabled={withdrawing}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '8px 12px',
+                                                background: theme.colors.secondaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '6px',
+                                                color: theme.colors.primaryText,
+                                                cursor: withdrawing ? 'wait' : 'pointer',
+                                                fontSize: '0.85rem',
+                                            }}
+                                        >
+                                            {withdrawing ? <FaSpinner style={styles.spinner} size={12} /> : <FaArrowLeft size={12} />}
+                                            Withdraw balance to my wallet
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                        
+                        {/* Error message */}
+                        {configError && (
+                            <div style={{ padding: '12px', background: `${theme.colors.error}15`, borderRadius: '8px', color: theme.colors.error, marginTop: '1rem' }}>
+                                {configError}
+                            </div>
+                        )}
+                        
+                        {/* Pay & Create Button */}
+                        <button
+                            onClick={handlePayAndCreate}
+                            disabled={savingConfig || (needsPayment && !hasEnoughBalance)}
+                            style={{
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                            }}>
-                                <FaBrain size={16} style={{ color: theme.colors.mutedText }} />
-                            </div>
-                        )}
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>SNS</div>
-                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>{selectedSns?.name}</div>
-                        </div>
-                    </div>
-                    
-                    {/* Neuron */}
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '12px',
-                        padding: '12px',
-                        background: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                    }}>
-                        <div style={{ 
-                            width: '32px', 
-                            height: '32px', 
-                            borderRadius: '50%', 
-                            background: `${theme.colors.accent}20`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            <FaBrain size={16} style={{ color: theme.colors.accent }} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>Neuron</div>
-                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
-                                {useManualEntry && manualNeuronData ? getNeuronDisplayName(manualNeuronData, selectedSnsRoot) :
-                                 !useManualEntry && selectedNeuronId ? 
-                                    getNeuronDisplayName(snsNeurons.find(n => extractNeuronId(n) === selectedNeuronId), selectedSnsRoot) :
-                                    'Manual Entry'}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
-                                {effectiveNeuronId.slice(0, 20)}...{effectiveNeuronId.slice(-20)}
-                            </div>
-                        </div>
-                        <Link
-                            to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`}
-                            target="_blank"
-                            style={{ color: theme.colors.accent, flexShrink: 0 }}
-                            title="View neuron"
-                        >
-                            <FaExternalLinkAlt size={14} />
-                        </Link>
-                    </div>
-                    
-                    {/* Principal to Add */}
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '12px',
-                        padding: '12px',
-                        background: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                    }}>
-                        <div style={{ 
-                            width: '32px', 
-                            height: '32px', 
-                            borderRadius: '50%', 
-                            background: `${theme.colors.success}20`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}>
-                            <FaKey size={16} style={{ color: theme.colors.success }} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>Adding Controller</div>
-                            <div style={{ 
-                                fontFamily: 'monospace', 
-                                fontSize: '0.85rem', 
-                                color: theme.colors.primaryText,
-                                wordBreak: 'break-all',
-                            }}>
-                                {targetPrincipal}
-                            </div>
-                            {identity && targetPrincipal === identity.getPrincipal().toText() && (
-                                <div style={{ fontSize: '0.75rem', color: theme.colors.success }}>
-                                    (Your logged-in principal)
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div style={styles.warningBox}>
-                <FaExclamationTriangle size={24} style={{ color: theme.colors.warning, flexShrink: 0 }} />
-                <div>
-                    <div style={{ fontWeight: '600', color: theme.colors.warning, marginBottom: '4px' }}>
-                        Security Notice
-                    </div>
-                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', margin: 0 }}>
-                        Only run scripts in your browser console that you trust. This script is open-source 
-                        and you can verify the source code on{' '}
-                        <a 
-                            href="https://github.com/Snassy-icp/app_sneeddao/blob/main/resources/sns_jailbreak/base_script.js"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: theme.colors.accent }}
-                        >
-                            GitHub
-                        </a>.
-                    </p>
-                </div>
-            </div>
-            
-            <div style={styles.card}>
-                {loadingBaseScript ? (
-                    <div style={styles.loadingContainer}>
-                        <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
-                        <p style={{ color: theme.colors.mutedText }}>Loading script from GitHub...</p>
-                    </div>
-                ) : baseScriptError ? (
-                    <div style={{ textAlign: 'center', padding: '2rem' }}>
-                        <p style={{ color: theme.colors.error, marginBottom: '1rem' }}>{baseScriptError}</p>
-                        <button
-                            onClick={fetchBaseScript}
-                            style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
+                                gap: '8px',
+                                width: '100%',
+                                padding: '14px 24px',
+                                marginTop: '1rem',
+                                background: (savingConfig || (needsPayment && !hasEnoughBalance)) 
+                                    ? theme.colors.tertiaryBg 
+                                    : `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
                                 border: 'none',
-                                padding: '10px 20px',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
+                                borderRadius: '10px',
+                                color: (savingConfig || (needsPayment && !hasEnoughBalance)) ? theme.colors.mutedText : theme.colors.primaryBg,
+                                fontSize: '1rem',
+                                fontWeight: '600',
+                                cursor: (savingConfig || (needsPayment && !hasEnoughBalance)) ? 'not-allowed' : 'pointer',
+                                boxShadow: (savingConfig || (needsPayment && !hasEnoughBalance)) ? 'none' : theme.colors.accentShadow,
                             }}
                         >
-                            Retry
+                            {savingConfig ? (
+                                <>
+                                    <FaSpinner style={styles.spinner} />
+                                    {needsPayment ? 'Processing Payment...' : 'Creating Script...'}
+                                </>
+                            ) : needsPayment ? (
+                                <>
+                                    <FaWallet />
+                                    Pay {formatIcp(jailbreakFee)} ICP & Generate Script
+                                </>
+                            ) : (
+                                <>
+                                    <FaCheck />
+                                    Generate Script (Free)
+                                </>
+                            )}
                         </button>
                     </div>
-                ) : (
+                )}
+                
+                {/* Script Section - Only show after paid/saved */}
+                {configSaved && (
                     <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <label style={{ ...styles.label, margin: 0 }}>JavaScript Code</label>
-                            <button
-                                onClick={handleCopy}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: copied ? theme.colors.success : theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    padding: '8px 16px',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontWeight: '500',
-                                }}
-                            >
-                                {copied ? <FaCheck /> : <FaCopy />}
-                                {copied ? 'Copied!' : 'Copy'}
-                            </button>
+                        <div style={styles.warningBox}>
+                            <FaExclamationTriangle size={24} style={{ color: theme.colors.warning, flexShrink: 0 }} />
+                            <div>
+                                <div style={{ fontWeight: '600', color: theme.colors.warning, marginBottom: '4px' }}>Security Notice</div>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', margin: 0 }}>
+                                    Only run scripts in your browser console that you trust. This script is open-source 
+                                    and you can verify the source code on{' '}
+                                    <a href="https://github.com/Snassy-icp/app_sneeddao/blob/main/resources/sns_jailbreak/base_script.js" target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent }}>GitHub</a>.
+                                </p>
+                            </div>
                         </div>
-                        <pre style={styles.codeBlock}>{generateScript()}</pre>
+                        
+                        <div style={styles.card}>
+                            {loadingBaseScript ? (
+                                <div style={styles.loadingContainer}>
+                                    <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
+                                    <p style={{ color: theme.colors.mutedText }}>Loading script from GitHub...</p>
+                                </div>
+                            ) : baseScriptError ? (
+                                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <p style={{ color: theme.colors.error, marginBottom: '1rem' }}>{baseScriptError}</p>
+                                    <button onClick={fetchBaseScript} style={{ background: theme.colors.accent, color: theme.colors.primaryBg, border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>Retry</button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                        <label style={{ ...styles.label, margin: 0 }}>JavaScript Code</label>
+                                        <button onClick={handleCopy} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: copied ? theme.colors.success : theme.colors.accent, color: theme.colors.primaryBg, border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>
+                                            {copied ? <FaCheck /> : <FaCopy />}
+                                            {copied ? 'Copied!' : 'Copy'}
+                                        </button>
+                                    </div>
+                                    <pre style={styles.codeBlock}>{generateScript()}</pre>
+                                </>
+                            )}
+                        </div>
+                        
+                        <div style={styles.card}>
+                            <label style={styles.label}>Instructions</label>
+                            <div style={styles.instructionStep}>
+                                <div style={styles.instructionNumber}>1</div>
+                                <div>
+                                    <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Open NNS App</div>
+                                    <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
+                                        Go to <a href="https://nns.ic0.app" target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent }}>nns.ic0.app</a> in a new tab
+                                    </p>
+                                </div>
+                            </div>
+                            <div style={styles.instructionStep}>
+                                <div style={styles.instructionNumber}>2</div>
+                                <div>
+                                    <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Log In</div>
+                                    <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>Log in with the identity that owns/controls the neuron</p>
+                                </div>
+                            </div>
+                            <div style={styles.instructionStep}>
+                                <div style={styles.instructionNumber}>3</div>
+                                <div>
+                                    <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Open Console</div>
+                                    <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
+                                        Press <code style={{ background: theme.colors.secondaryBg, padding: '2px 6px', borderRadius: '4px' }}>Ctrl+Shift+J</code> (Windows/Linux) or <code style={{ background: theme.colors.secondaryBg, padding: '2px 6px', borderRadius: '4px' }}>Cmd+Option+J</code> (Mac)
+                                    </p>
+                                </div>
+                            </div>
+                            <div style={styles.instructionStep}>
+                                <div style={styles.instructionNumber}>4</div>
+                                <div>
+                                    <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Paste & Run</div>
+                                    <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>Paste the copied script and press Enter. Wait for the success message.</p>
+                                </div>
+                            </div>
+                            <div style={styles.instructionStep}>
+                                <div style={styles.instructionNumber}>5</div>
+                                <div>
+                                    <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Verify</div>
+                                    <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>When done, click "I've Done It" to verify the controller was added</p>
+                                </div>
+                            </div>
+                        </div>
                     </>
                 )}
-            </div>
-            
-            <div style={styles.card}>
-                <label style={styles.label}>Instructions</label>
                 
-                <div style={styles.instructionStep}>
-                    <div style={styles.instructionNumber}>1</div>
-                    <div>
-                        <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Open NNS App</div>
-                        <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
-                            Go to{' '}
-                            <a 
-                                href="https://nns.ic0.app" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                style={{ color: theme.colors.accent }}
-                            >
-                                nns.ic0.app
-                            </a>{' '}
-                            in a new tab
-                        </p>
-                    </div>
+                <div style={styles.buttonRow}>
+                    <button style={styles.backButton} onClick={() => goToStep(3)}>
+                        <FaArrowLeft />
+                        Back
+                    </button>
+                    <button
+                        style={styles.continueButton(configSaved && !!baseScript && !loadingBaseScript)}
+                        onClick={() => configSaved && !!baseScript && !loadingBaseScript && setCurrentStep(5)}
+                        disabled={!configSaved || !baseScript || loadingBaseScript}
+                    >
+                        I've Done It
+                        <FaArrowRight />
+                    </button>
                 </div>
-                
-                <div style={styles.instructionStep}>
-                    <div style={styles.instructionNumber}>2</div>
-                    <div>
-                        <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Log In</div>
-                        <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
-                            Log in with the identity that owns/controls the neuron
-                        </p>
-                    </div>
-                </div>
-                
-                <div style={styles.instructionStep}>
-                    <div style={styles.instructionNumber}>3</div>
-                    <div>
-                        <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Open Console</div>
-                        <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
-                            Press <code style={{ background: theme.colors.secondaryBg, padding: '2px 6px', borderRadius: '4px' }}>
-                            Ctrl+Shift+J</code> (Windows/Linux) or{' '}
-                            <code style={{ background: theme.colors.secondaryBg, padding: '2px 6px', borderRadius: '4px' }}>
-                            Cmd+Option+J</code> (Mac)
-                        </p>
-                    </div>
-                </div>
-                
-                <div style={styles.instructionStep}>
-                    <div style={styles.instructionNumber}>4</div>
-                    <div>
-                        <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Paste & Run</div>
-                        <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
-                            Paste the copied script and press Enter. Wait for the success message.
-                        </p>
-                    </div>
-                </div>
-                
-                <div style={styles.instructionStep}>
-                    <div style={styles.instructionNumber}>5</div>
-                    <div>
-                        <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>Verify</div>
-                        <p style={{ color: theme.colors.mutedText, margin: '4px 0 0 0', fontSize: '0.9rem' }}>
-                            When done, click "I've Done It" to verify the controller was added
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div style={styles.buttonRow}>
-                <button style={styles.backButton} onClick={() => goToStep(3)}>
-                    <FaArrowLeft />
-                    Back
-                </button>
-                <button
-                    style={styles.continueButton(canProceed())}
-                    onClick={() => canProceed() && setCurrentStep(5)}
-                    disabled={!canProceed()}
-                >
-                    I've Done It
-                    <FaArrowRight />
-                </button>
-            </div>
-        </>
-    );
+            </>
+        );
+    };
     
     // Step 5: Verification & Confirmation
     const renderStep5 = () => {
@@ -1965,6 +2098,13 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                     setVerifiedNeuronData(null);
                                     setConfigSaved(false);
                                     setTokenRegistered(false);
+                                    // Reset payment state
+                                    setJailbreakFee(null);
+                                    setPaymentSubaccount(null);
+                                    setPaymentBalance(null);
+                                    setConfigError('');
+                                    setScriptFetchAttempted(false);
+                                    setBaseScript('');
                                 }}
                                 style={{
                                     display: 'flex',

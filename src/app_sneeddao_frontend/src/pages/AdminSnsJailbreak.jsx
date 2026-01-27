@@ -1,11 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet } from 'react-icons/fa';
+import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet, FaCopy } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
+
+// Helper to convert hex string to Uint8Array
+const hexToBytes = (hex) => {
+    if (!hex || hex.length === 0) return null;
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) {
+        bytes.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return new Uint8Array(bytes);
+};
+
+// Helper to convert Uint8Array to hex string
+const bytesToHex = (bytes) => {
+    if (!bytes || bytes.length === 0) return '';
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
 function AdminSnsJailbreak() {
     const { isAdmin } = useAuth();
@@ -19,8 +35,12 @@ function AdminSnsJailbreak() {
     // Fee settings (stored in e8s, displayed in ICP)
     const [feePremium, setFeePremium] = useState('0');
     const [feeRegular, setFeeRegular] = useState('0');
-    const [feeRecipient, setFeeRecipient] = useState('');
-    const [recipientValid, setRecipientValid] = useState(true);
+    
+    // ICRC1 Account settings
+    const [feeAccountOwner, setFeeAccountOwner] = useState('');
+    const [feeAccountSubaccount, setFeeAccountSubaccount] = useState('');
+    const [ownerValid, setOwnerValid] = useState(true);
+    const [subaccountValid, setSubaccountValid] = useState(true);
     
     // Load current settings
     useEffect(() => {
@@ -31,10 +51,20 @@ function AdminSnsJailbreak() {
                 // Convert e8s to ICP for display
                 setFeePremium((Number(settings.fee_premium_e8s) / 100_000_000).toString());
                 setFeeRegular((Number(settings.fee_regular_e8s) / 100_000_000).toString());
-                if (settings.fee_recipient && settings.fee_recipient.length > 0) {
-                    setFeeRecipient(settings.fee_recipient[0].toString());
+                
+                // Fee account owner
+                if (settings.fee_account_owner && settings.fee_account_owner.length > 0) {
+                    setFeeAccountOwner(settings.fee_account_owner[0].toString());
                 } else {
-                    setFeeRecipient('');
+                    setFeeAccountOwner('');
+                }
+                
+                // Fee account subaccount (convert from Blob to hex)
+                if (settings.fee_account_subaccount && settings.fee_account_subaccount.length > 0) {
+                    const subBytes = settings.fee_account_subaccount[0];
+                    setFeeAccountSubaccount(bytesToHex(subBytes));
+                } else {
+                    setFeeAccountSubaccount('');
                 }
             } catch (err) {
                 console.error('Error loading jailbreak fee settings:', err);
@@ -59,16 +89,37 @@ function AdminSnsJailbreak() {
         }
     };
     
-    // Handle recipient change
-    const handleRecipientChange = (value) => {
-        setFeeRecipient(value);
-        setRecipientValid(validatePrincipal(value));
+    // Validate subaccount (should be hex, 0-64 chars, converts to 0-32 bytes)
+    const validateSubaccount = (value) => {
+        if (!value || value.trim() === '') {
+            return true; // Empty is valid
+        }
+        // Must be valid hex and max 64 chars (32 bytes)
+        return /^[a-fA-F0-9]{0,64}$/.test(value.trim());
+    };
+    
+    // Handle owner change
+    const handleOwnerChange = (value) => {
+        setFeeAccountOwner(value);
+        setOwnerValid(validatePrincipal(value));
+    };
+    
+    // Handle subaccount change
+    const handleSubaccountChange = (value) => {
+        // Only allow hex characters
+        const cleaned = value.replace(/[^a-fA-F0-9]/g, '').substring(0, 64);
+        setFeeAccountSubaccount(cleaned);
+        setSubaccountValid(validateSubaccount(cleaned));
     };
     
     // Save settings
     const handleSave = async () => {
-        if (!recipientValid) {
-            setError('Invalid fee recipient principal');
+        if (!ownerValid) {
+            setError('Invalid fee account owner principal');
+            return;
+        }
+        if (!subaccountValid) {
+            setError('Invalid fee account subaccount');
             return;
         }
         
@@ -81,16 +132,26 @@ function AdminSnsJailbreak() {
             const premiumE8s = Math.floor(parseFloat(feePremium || '0') * 100_000_000);
             const regularE8s = Math.floor(parseFloat(feeRegular || '0') * 100_000_000);
             
-            // Prepare recipient (null means canister keeps fees)
-            let recipient = [];
-            if (feeRecipient && feeRecipient.trim()) {
-                recipient = [Principal.fromText(feeRecipient.trim())];
+            // Prepare owner (null means canister keeps fees)
+            let owner = [];
+            if (feeAccountOwner && feeAccountOwner.trim()) {
+                owner = [Principal.fromText(feeAccountOwner.trim())];
+            }
+            
+            // Prepare subaccount (convert hex to bytes, pad to 32 bytes)
+            let subaccount = [];
+            if (feeAccountSubaccount && feeAccountSubaccount.trim()) {
+                const bytes = hexToBytes(feeAccountSubaccount.trim().padStart(64, '0'));
+                if (bytes) {
+                    subaccount = [bytes];
+                }
             }
             
             const result = await app_sneeddao_backend.set_jailbreak_fee_settings(
                 [BigInt(premiumE8s)],
                 [BigInt(regularE8s)],
-                [recipient.length > 0 ? recipient : []]
+                [owner.length > 0 ? owner : []],
+                [subaccount.length > 0 ? subaccount : []]
             );
             
             if ('ok' in result) {
@@ -299,8 +360,9 @@ function AdminSnsJailbreak() {
                         {/* Info Box */}
                         <div style={styles.infoBox}>
                             <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: 0 }}>
-                                <strong>How fees work:</strong> When a user creates a jailbreak script, they will be charged the fee 
-                                based on their membership status. Premium members pay the premium fee, regular users pay the regular fee.
+                                <strong>How fees work:</strong> Users must deposit ICP to their payment subaccount on this canister before 
+                                creating a jailbreak script. When they create a script, the fee is deducted from their payment balance and 
+                                sent to the fee account. Premium members pay the premium fee, regular users pay the regular fee.
                                 Set a fee to 0 to make it free for that user type.
                             </p>
                         </div>
@@ -359,28 +421,64 @@ function AdminSnsJailbreak() {
                                     Current: {feeRegular || '0'} ICP ({Math.floor(parseFloat(feeRegular || '0') * 100_000_000).toLocaleString()} e8s)
                                 </p>
                             </div>
+                        </div>
+                        
+                        {/* Fee Recipient Account Card */}
+                        <div style={styles.card}>
+                            <h2 style={styles.cardTitle}>
+                                <FaWallet style={{ color: theme.colors.success }} />
+                                Fee Recipient Account (ICRC-1)
+                            </h2>
                             
-                            {/* Fee Recipient */}
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                                Fees collected will be sent to this ICRC-1 account. Leave empty for the canister to keep the fees.
+                            </p>
+                            
+                            {/* Account Owner */}
                             <div style={styles.formGroup}>
                                 <label style={styles.label}>
-                                    Fee Recipient
+                                    Account Owner (Principal)
                                     <span style={styles.labelHint}>(Leave empty for canister to keep fees)</span>
                                 </label>
                                 <input
                                     type="text"
                                     style={{
                                         ...styles.inputFull,
-                                        borderColor: recipientValid ? theme.colors.border : theme.colors.error,
+                                        borderColor: ownerValid ? theme.colors.border : theme.colors.error,
                                     }}
-                                    value={feeRecipient}
-                                    onChange={(e) => handleRecipientChange(e.target.value)}
+                                    value={feeAccountOwner}
+                                    onChange={(e) => handleOwnerChange(e.target.value)}
                                     placeholder="Principal ID (e.g., aaaaa-aa)"
                                 />
-                                {!recipientValid && (
+                                {!ownerValid && (
                                     <p style={styles.error}>Invalid principal ID</p>
                                 )}
+                            </div>
+                            
+                            {/* Account Subaccount */}
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>
+                                    Account Subaccount (Hex)
+                                    <span style={styles.labelHint}>(Optional, max 32 bytes / 64 hex chars)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    style={{
+                                        ...styles.inputFull,
+                                        borderColor: subaccountValid ? theme.colors.border : theme.colors.error,
+                                    }}
+                                    value={feeAccountSubaccount}
+                                    onChange={(e) => handleSubaccountChange(e.target.value)}
+                                    placeholder="Optional hex subaccount (e.g., 0000...0001)"
+                                />
+                                {!subaccountValid && (
+                                    <p style={styles.error}>Invalid subaccount (must be hex, max 64 characters)</p>
+                                )}
                                 <p style={styles.hint}>
-                                    {feeRecipient ? `Fees will be sent to: ${feeRecipient}` : 'Fees will be kept by the canister'}
+                                    {feeAccountOwner 
+                                        ? `Fees will be sent to: ${feeAccountOwner.slice(0, 15)}...${feeAccountSubaccount ? ` (subaccount: ${feeAccountSubaccount.slice(0, 16)}...)` : ''}`
+                                        : 'Fees will be kept by the canister'
+                                    }
                                 </p>
                             </div>
                         </div>
@@ -403,7 +501,7 @@ function AdminSnsJailbreak() {
                         <button
                             style={styles.saveButton}
                             onClick={handleSave}
-                            disabled={saving || !recipientValid}
+                            disabled={saving || !ownerValid || !subaccountValid}
                         >
                             {saving ? (
                                 <>

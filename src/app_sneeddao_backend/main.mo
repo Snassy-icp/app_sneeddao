@@ -22,7 +22,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       Principal.fromActor(this);
   };
   
-  let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
+  transient let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
+  transient let ICP_LEDGER_CANISTER_ID : Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+  transient let ICP_LEDGER_FEE : Nat = 10_000; // 0.0001 ICP
 
   // aliases
   type State = T.State;
@@ -112,7 +114,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Jailbreak fee settings (in e8s - 1 ICP = 100_000_000 e8s)
   stable var stable_jailbreak_fee_premium : Nat = 0;      // Fee for premium members (default: free)
   stable var stable_jailbreak_fee_regular : Nat = 0;      // Fee for regular users (default: free)
-  stable var stable_jailbreak_fee_recipient : ?Principal = null;  // Where fees are sent (null = canister keeps them)
+  // Fee recipient ICRC1 account (owner + optional subaccount). Null = canister keeps fees
+  stable var stable_jailbreak_fee_account_owner : ?Principal = null;
+  stable var stable_jailbreak_fee_account_subaccount : ?Blob = null;
   
   // Stable storage for user token registrations (user -> list of ledger IDs)
   stable var stable_user_tokens : [(Principal, [Principal])] = [];
@@ -2216,7 +2220,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // JAILBREAK CONFIGURATION MANAGEMENT
   // ============================================
 
-  // Save a jailbreak configuration
+  // Save a jailbreak configuration (with payment)
   public shared ({ caller }) func save_jailbreak_config(
     sns_root_canister_id: Principal,
     neuron_id_hex: Text,
@@ -2226,14 +2230,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       return #err("Anonymous users cannot save configurations");
     };
 
-    // Check if this exact config already exists for the user
+    // Check if this exact config already exists for the user - no charge for existing configs
     switch (jailbreak_configs.get(caller)) {
       case (?user_configs) {
         for (config in user_configs.vals()) {
           if (Principal.equal(config.sns_root_canister_id, sns_root_canister_id) and
               Text.equal(config.neuron_id_hex, neuron_id_hex) and
               Principal.equal(config.target_principal, target_principal)) {
-            // Config already exists, return its ID
+            // Config already exists, return its ID without charging
             return #ok(config.id);
           };
         };
@@ -2241,6 +2245,64 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case null {};
     };
 
+    // Get the fee for this user
+    let fee = if (await* is_premium_member(caller)) {
+      stable_jailbreak_fee_premium
+    } else {
+      stable_jailbreak_fee_regular
+    };
+
+    // If there's a fee, process payment
+    if (fee > 0) {
+      let paymentSubaccount = jailbreakPaymentSubaccount(caller);
+      
+      let icpLedger = actor(ICP_LEDGER_CANISTER_ID) : actor {
+        icrc1_balance_of : shared query ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+        icrc1_transfer : shared ({
+          from_subaccount : ?Blob;
+          to : { owner : Principal; subaccount : ?Blob };
+          amount : Nat;
+          fee : ?Nat;
+          memo : ?Blob;
+          created_at_time : ?Nat64;
+        }) -> async { #Ok : Nat; #Err : T.TransferError };
+      };
+      
+      // Check user's payment balance
+      let balance = await icpLedger.icrc1_balance_of({
+        owner = this_canister_id();
+        subaccount = ?paymentSubaccount;
+      });
+      
+      if (balance < fee + ICP_LEDGER_FEE) {
+        return #err("Insufficient payment balance. Required: " # Nat.toText(fee) # " e8s + " # Nat.toText(ICP_LEDGER_FEE) # " fee. Available: " # Nat.toText(balance) # " e8s. Please deposit ICP to your payment account first.");
+      };
+      
+      // Determine where to send the fee
+      let feeRecipient : { owner : Principal; subaccount : ?Blob } = switch (stable_jailbreak_fee_account_owner) {
+        case (?owner) { { owner = owner; subaccount = stable_jailbreak_fee_account_subaccount } };
+        case null { { owner = this_canister_id(); subaccount = null } }; // Keep in canister's main account
+      };
+      
+      // Transfer the fee
+      let transferResult = await icpLedger.icrc1_transfer({
+        from_subaccount = ?paymentSubaccount;
+        to = feeRecipient;
+        amount = fee;
+        fee = ?ICP_LEDGER_FEE;
+        memo = ?Blob.fromArray([0x6A, 0x61, 0x69, 0x6C, 0x62, 0x72, 0x65, 0x61, 0x6B]); // "jailbreak"
+        created_at_time = null;
+      });
+      
+      switch (transferResult) {
+        case (#Err(err)) {
+          return #err("Payment failed: " # debug_show(err));
+        };
+        case (#Ok(_)) {};
+      };
+    };
+
+    // Payment successful (or no fee required), save the config
     let config : JailbreakConfig = {
       id = next_jailbreak_config_id;
       sns_root_canister_id = sns_root_canister_id;
@@ -2309,12 +2371,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   public query func get_jailbreak_fee_settings() : async {
     fee_premium_e8s: Nat;
     fee_regular_e8s: Nat;
-    fee_recipient: ?Principal;
+    fee_account_owner: ?Principal;
+    fee_account_subaccount: ?Blob;
   } {
     {
       fee_premium_e8s = stable_jailbreak_fee_premium;
       fee_regular_e8s = stable_jailbreak_fee_regular;
-      fee_recipient = stable_jailbreak_fee_recipient;
+      fee_account_owner = stable_jailbreak_fee_account_owner;
+      fee_account_subaccount = stable_jailbreak_fee_account_subaccount;
     }
   };
 
@@ -2322,7 +2386,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func set_jailbreak_fee_settings(
     fee_premium_e8s: ?Nat,
     fee_regular_e8s: ?Nat,
-    fee_recipient: ??Principal
+    fee_account_owner: ??Principal,
+    fee_account_subaccount: ??Blob
   ) : async Result.Result<(), Text> {
     if (not is_admin(caller)) {
       return #err("Not authorized: admin access required");
@@ -2338,8 +2403,13 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case null {};
     };
     
-    switch (fee_recipient) {
-      case (?recipient) { stable_jailbreak_fee_recipient := recipient };
+    switch (fee_account_owner) {
+      case (?owner) { stable_jailbreak_fee_account_owner := owner };
+      case null {};
+    };
+    
+    switch (fee_account_subaccount) {
+      case (?sub) { stable_jailbreak_fee_account_subaccount := sub };
       case null {};
     };
     
@@ -2353,6 +2423,96 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       stable_jailbreak_fee_premium
     } else {
       stable_jailbreak_fee_regular
+    }
+  };
+
+  // ============================================
+  // JAILBREAK PAYMENT FUNCTIONS
+  // ============================================
+
+  // Get the user's payment subaccount for jailbreak fees
+  // This is derived from the user's principal using a "jailbreak" prefix
+  public query ({ caller }) func get_jailbreak_payment_subaccount() : async Blob {
+    jailbreakPaymentSubaccount(caller)
+  };
+
+  // Helper to generate jailbreak payment subaccount for a user
+  private func jailbreakPaymentSubaccount(user : Principal) : Blob {
+    let prefix : [Nat8] = [0x0A, 0x6A, 0x61, 0x69, 0x6C, 0x62, 0x72, 0x65, 0x61, 0x6B]; // "\njailbreak"
+    let principalBytes = Blob.toArray(Principal.toBlob(user));
+    let size = prefix.size() + principalBytes.size();
+    
+    // Pad to 32 bytes
+    let subaccount = Array.tabulate<Nat8>(32, func(i) {
+      if (i < prefix.size()) {
+        prefix[i]
+      } else if (i < size) {
+        principalBytes[i - prefix.size()]
+      } else {
+        0
+      }
+    });
+    
+    Blob.fromArray(subaccount)
+  };
+
+  // Get user's balance on their jailbreak payment subaccount
+  public shared ({ caller }) func get_jailbreak_payment_balance() : async Nat {
+    let subaccount = jailbreakPaymentSubaccount(caller);
+    
+    let icpLedger = actor(ICP_LEDGER_CANISTER_ID) : actor {
+      icrc1_balance_of : shared query ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+    };
+    
+    await icpLedger.icrc1_balance_of({
+      owner = this_canister_id();
+      subaccount = ?subaccount;
+    })
+  };
+
+  // Withdraw funds from user's jailbreak payment subaccount
+  public shared ({ caller }) func withdraw_jailbreak_payment(amount: Nat) : async Result.Result<Nat, Text> {
+    if (Principal.isAnonymous(caller)) {
+      return #err("Anonymous users cannot withdraw");
+    };
+    
+    let subaccount = jailbreakPaymentSubaccount(caller);
+    
+    let icpLedger = actor(ICP_LEDGER_CANISTER_ID) : actor {
+      icrc1_balance_of : shared query ({ owner : Principal; subaccount : ?Blob }) -> async Nat;
+      icrc1_transfer : shared ({
+        from_subaccount : ?Blob;
+        to : { owner : Principal; subaccount : ?Blob };
+        amount : Nat;
+        fee : ?Nat;
+        memo : ?Blob;
+        created_at_time : ?Nat64;
+      }) -> async { #Ok : Nat; #Err : T.TransferError };
+    };
+    
+    // Check balance
+    let balance = await icpLedger.icrc1_balance_of({
+      owner = this_canister_id();
+      subaccount = ?subaccount;
+    });
+    
+    if (balance < amount + ICP_LEDGER_FEE) {
+      return #err("Insufficient balance. Available: " # Nat.toText(balance) # " e8s, requested: " # Nat.toText(amount) # " e8s + " # Nat.toText(ICP_LEDGER_FEE) # " fee");
+    };
+    
+    // Transfer to caller's main account
+    let transferResult = await icpLedger.icrc1_transfer({
+      from_subaccount = ?subaccount;
+      to = { owner = caller; subaccount = null };
+      amount = amount;
+      fee = ?ICP_LEDGER_FEE;
+      memo = null;
+      created_at_time = null;
+    });
+    
+    switch (transferResult) {
+      case (#Ok(blockIndex)) { #ok(blockIndex) };
+      case (#Err(err)) { #err("Transfer failed: " # debug_show(err)) };
     }
   };
 
