@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
-import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
@@ -24,9 +23,6 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null);
-  const [confirmMessage, setConfirmMessage] = useState('');
   const [logoLoaded, setLogoLoaded] = useState(false);
 
   // Subaccount state
@@ -34,6 +30,10 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const [subaccountType, setSubaccountType] = useState('hex'); // 'hex' | 'bytes' | 'principal'
   const [subaccountValue, setSubaccountValue] = useState('');
   const [extendedAddressDetected, setExtendedAddressDetected] = useState(null);
+
+  // Review screen state
+  const [showReviewScreen, setShowReviewScreen] = useState(false);
+  const [reviewData, setReviewData] = useState(null);
 
   useEffect(() => {
     if (show) {
@@ -62,6 +62,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       setSubaccountValue('');
       setExtendedAddressDetected(null);
       setErrorText('');
+      setShowReviewScreen(false);
+      setReviewData(null);
     }
   }, [show]);
 
@@ -116,14 +118,6 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     const willNeedSplit = token.available > token.balance;
     const feesNeeded = willNeedSplit ? 2n * token.fee : token.fee;
 
-    console.log('MAX button calculation:', {
-      tokenAvailable: token.available.toString(),
-      tokenBalance: token.balance.toString(),
-      willNeedSplit,
-      feesNeeded: feesNeeded.toString(),
-      calculation: `${token.available.toString()} - ${feesNeeded.toString()}`
-    });
-
     var max = token.available - feesNeeded;
     if (max < 0n) { max = 0n; }
     setAmount(formatAmount(max, token.decimals));
@@ -145,55 +139,47 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     }
   };
 
-  const handleSend = async () => {
-    console.log('=== SendTokenModal.handleSend START ===');
-    console.log('Input values:', { recipient, amount, tokenSymbol: token.symbol });
+  // Convert extended address to explicit principal + subaccount
+  const handleConvertToExplicit = () => {
+    if (!extendedAddressDetected) return;
 
+    const principalText = extendedAddressDetected.principal.toText();
+    setRecipient(principalText);
+    
+    if (extendedAddressDetected.subaccount) {
+      setShowSubaccountInput(true);
+      setSubaccountType('hex');
+      setSubaccountValue(bytesToHex(extendedAddressDetected.subaccount.resolved));
+    }
+    
+    setExtendedAddressDetected(null);
+  };
+
+  const handleReview = async () => {
     setErrorText('');
 
     if (recipient == "") {
-      console.log('ERROR: Empty recipient');
       setErrorText("Please enter a recipient address first!");
       return;
     }
 
-    // Validate the parsed account
     if (!parsedAccount || !parsedAccount.principal) {
-      console.log('ERROR: Invalid recipient');
       setErrorText("Invalid recipient address! Please enter a valid principal ID or extended address.");
       return;
     }
 
-    // Validate manual subaccount if entered
     if (showSubaccountInput && subaccountValue.trim() && !resolvedManualSubaccount) {
-      console.log('ERROR: Invalid subaccount');
       setErrorText("Invalid subaccount format! Please check your input.");
       return;
     }
 
-    console.log('Recipient validation: SUCCESS');
-    console.log('Parsed account:', {
-      principal: parsedAccount.principal.toText(),
-      hasSubaccount: !!parsedAccount.subaccount,
-      subaccountHex: parsedAccount.subaccount ? bytesToHex(parsedAccount.subaccount.resolved) : null
-    });
-
     if (amount == "") {
-      console.log('ERROR: Empty amount');
       setErrorText("Please enter an amount first!");
       return;
     }
 
     const amountFloat = parseFloat(amount);
-    console.log('Amount parsing:', {
-      originalAmount: amount,
-      amountFloat,
-      isNaN: isNaN(amountFloat),
-      isPositive: amountFloat > 0
-    });
-
     if (isNaN(amountFloat) || amountFloat <= 0) {
-      console.log('ERROR: Invalid amount after parsing');
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
@@ -201,30 +187,11 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     const scaledAmount = amountFloat * (10 ** token.decimals);
     const bigIntAmount = BigInt(Math.floor(scaledAmount));
 
-    console.log('BigInt conversion:', {
-      decimals: token.decimals,
-      scaledAmount,
-      bigIntAmount: bigIntAmount.toString(),
-      tokenAvailable: token.available.toString(),
-      tokenFee: token.fee.toString()
-    });
-
     const willNeedSplit = token.available > token.balance;
     const feesNeeded = willNeedSplit ? 2n * BigInt(token.fee) : BigInt(token.fee);
     const maxAllowed = BigInt(token.available) - feesNeeded;
 
-    console.log('Balance validation:', {
-      bigIntAmount: bigIntAmount.toString(),
-      tokenAvailable: token.available.toString(),
-      tokenBalance: token.balance.toString(),
-      willNeedSplit,
-      feesNeeded: feesNeeded.toString(),
-      maxAllowed: maxAllowed.toString(),
-      isExceeded: bigIntAmount > maxAllowed
-    });
-
     if (bigIntAmount > maxAllowed) {
-      console.log('ERROR: Insufficient balance');
       const feeMsg = willNeedSplit ?
         "Remember that sending requires 2 transaction fees when splitting between wallets." :
         "Remember that sending requires 1 transaction fee.";
@@ -232,44 +199,37 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    console.log('All validations passed, setting up confirmation');
-
-    // Get subaccount for transfer
+    // Prepare review data
     const subaccountForTransfer = getSubaccountForTransfer(parsedAccount);
+    const hasSubaccount = parsedAccount.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved);
 
-    setConfirmAction(() => async () => {
-      console.log('=== CONFIRMATION ACTION START ===');
-      try {
-        setIsLoading(true);
-        setErrorText('');
-        console.log('About to call onSend with:', {
-          token: token.symbol,
-          principal: parsedAccount.principal.toText(),
-          amount,
-          subaccount: subaccountForTransfer.length > 0 ? bytesToHex(new Uint8Array(subaccountForTransfer[0])) : 'none'
-        });
-        await onSend(token, parsedAccount.principal.toText(), amount, subaccountForTransfer);
-        console.log('onSend completed successfully');
-        onClose();
-        console.log('Modal closed');
-      } catch (error) {
-        console.error('ERROR in confirmation action:', error);
-        setErrorText('Error sending tokens: ' + error.message);
-      } finally {
-        setIsLoading(false);
-        console.log('=== CONFIRMATION ACTION END ===');
-      }
+    setReviewData({
+      principal: parsedAccount.principal.toText(),
+      subaccount: hasSubaccount ? bytesToHex(parsedAccount.subaccount.resolved) : null,
+      amount: amount,
+      amountBigInt: bigIntAmount,
+      fee: token.fee,
+      subaccountForTransfer
     });
 
-    // Build confirmation message
-    let confirmMsg = `You are about to send ${amount} ${token.symbol} to ${parsedAccount.principal.toText()}`;
-    if (parsedAccount.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved)) {
-      confirmMsg += `\n\nWith subaccount: ${formatSubaccountForDisplay(parsedAccount.subaccount.resolved, 32)}`;
-    }
+    setShowReviewScreen(true);
+  };
 
-    setConfirmMessage(confirmMsg);
-    setShowConfirmModal(true);
-    console.log('=== SendTokenModal.handleSend END ===');
+  const handleConfirmSend = async () => {
+    if (!reviewData) return;
+
+    try {
+      setIsLoading(true);
+      setErrorText('');
+      await onSend(token, reviewData.principal, reviewData.amount, reviewData.subaccountForTransfer);
+      onClose();
+    } catch (error) {
+      console.error('Error sending tokens:', error);
+      setErrorText('Error sending tokens: ' + error.message);
+      setShowReviewScreen(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!show || !token) {
@@ -279,6 +239,299 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   // Check if token is DIP20 (doesn't support subaccounts)
   const isDIP20 = token.standard === 'DIP20' || token.standard === 'dip20';
 
+  // Copyable field component
+  const CopyableField = ({ label, value, mono = true }) => (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ 
+        color: theme.colors.mutedText, 
+        fontSize: '0.8rem', 
+        marginBottom: '6px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        fontWeight: '600'
+      }}>
+        {label}
+      </div>
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '8px',
+        background: theme.colors.tertiaryBg,
+        padding: '12px',
+        borderRadius: '8px',
+        border: `1px solid ${theme.colors.border}`
+      }}>
+        <span style={{
+          flex: 1,
+          fontFamily: mono ? 'monospace' : 'inherit',
+          fontSize: mono ? '0.85rem' : '1rem',
+          color: theme.colors.primaryText,
+          wordBreak: 'break-all',
+          overflowWrap: 'anywhere'
+        }}>
+          {value}
+        </span>
+        <button
+          onClick={() => navigator.clipboard.writeText(value)}
+          style={{
+            background: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            padding: '6px 8px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            color: theme.colors.mutedText,
+            fontSize: '12px',
+            flexShrink: 0,
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.background = theme.colors.accent;
+            e.target.style.color = theme.colors.primaryBg;
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = theme.colors.secondaryBg;
+            e.target.style.color = theme.colors.mutedText;
+          }}
+          title="Copy to clipboard"
+        >
+          Copy
+        </button>
+      </div>
+    </div>
+  );
+
+  // Review Screen
+  if (showReviewScreen && reviewData) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background: theme.colors.modalBg,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000
+      }}>
+        <div style={{
+          background: theme.colors.cardGradient,
+          border: `1px solid ${theme.colors.border}`,
+          boxShadow: theme.colors.cardShadow,
+          borderRadius: '16px',
+          padding: '32px',
+          width: '520px',
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          overflow: 'auto'
+        }}>
+          {/* Header */}
+          <div style={{ 
+            textAlign: 'center', 
+            marginBottom: '28px',
+            paddingBottom: '20px',
+            borderBottom: `1px solid ${theme.colors.border}`
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: `${theme.colors.accent}20`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              border: `2px solid ${theme.colors.accent}`
+            }}>
+              {token.logo && logoLoaded ? (
+                <img
+                  src={token.logo}
+                  alt={token.symbol}
+                  style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'contain' }}
+                />
+              ) : (
+                <span style={{ fontSize: '28px' }}>💸</span>
+              )}
+            </div>
+            <h2 style={{
+              color: theme.colors.primaryText,
+              margin: '0 0 8px 0',
+              fontSize: '1.5rem',
+              fontWeight: '600'
+            }}>
+              Review Transaction
+            </h2>
+            <p style={{
+              color: theme.colors.mutedText,
+              margin: 0,
+              fontSize: '0.9rem'
+            }}>
+              Please review the details before confirming
+            </p>
+          </div>
+
+          {/* Amount Section */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '24px',
+            padding: '20px',
+            background: `linear-gradient(135deg, ${theme.colors.accent}15 0%, ${theme.colors.accent}05 100%)`,
+            borderRadius: '12px',
+            border: `1px solid ${theme.colors.accent}30`
+          }}>
+            <div style={{ 
+              color: theme.colors.mutedText, 
+              fontSize: '0.85rem', 
+              marginBottom: '8px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              You are sending
+            </div>
+            <div style={{
+              fontSize: '2.2rem',
+              fontWeight: '700',
+              color: theme.colors.primaryText,
+              marginBottom: '4px'
+            }}>
+              {reviewData.amount} <span style={{ color: theme.colors.accent }}>{token.symbol}</span>
+            </div>
+            <div style={{
+              color: theme.colors.mutedText,
+              fontSize: '0.85rem'
+            }}>
+              + {formatAmount(reviewData.fee, token.decimals)} {token.symbol} fee
+            </div>
+          </div>
+
+          {/* Recipient Section */}
+          <div style={{ marginBottom: '24px' }}>
+            <CopyableField 
+              label="Recipient Principal" 
+              value={reviewData.principal} 
+            />
+
+            {reviewData.subaccount && (
+              <CopyableField 
+                label="Subaccount" 
+                value={reviewData.subaccount} 
+              />
+            )}
+          </div>
+
+          {/* Warning for subaccount */}
+          {reviewData.subaccount && (
+            <div style={{
+              padding: '12px 16px',
+              background: `${theme.colors.warning}15`,
+              border: `1px solid ${theme.colors.warning}40`,
+              borderRadius: '8px',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px'
+            }}>
+              <span style={{ fontSize: '18px' }}>⚠️</span>
+              <div style={{ fontSize: '0.85rem', color: theme.colors.warning }}>
+                <strong>Sending to a subaccount.</strong> Make sure the recipient controls this subaccount. 
+                Tokens sent to the wrong subaccount may be unrecoverable.
+              </div>
+            </div>
+          )}
+
+          {/* Error display */}
+          {errorText && (
+            <div style={{
+              padding: '12px',
+              background: `${theme.colors.error}15`,
+              border: `1px solid ${theme.colors.error}30`,
+              borderRadius: '8px',
+              marginBottom: '20px',
+              color: theme.colors.error,
+              fontSize: '0.9rem'
+            }}>
+              {errorText}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          {isLoading ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '20px'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: `3px solid ${theme.colors.border}`,
+                borderTop: `3px solid ${theme.colors.accent}`,
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+                marginBottom: '12px'
+              }}></div>
+              <div style={{ color: theme.colors.mutedText }}>Processing transaction...</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => setShowReviewScreen(false)}
+                style={{
+                  flex: 1,
+                  padding: '14px 24px',
+                  background: theme.colors.secondaryBg,
+                  color: theme.colors.mutedText,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = theme.colors.tertiaryBg;
+                  e.target.style.color = theme.colors.primaryText;
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = theme.colors.secondaryBg;
+                  e.target.style.color = theme.colors.mutedText;
+                }}
+              >
+                ← Back
+              </button>
+              <button
+                onClick={handleConfirmSend}
+                style={{
+                  flex: 2,
+                  padding: '14px 24px',
+                  background: theme.colors.accent,
+                  color: theme.colors.primaryBg,
+                  border: 'none',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = theme.colors.accentHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = theme.colors.accent;
+                }}
+              >
+                Confirm & Send
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Main Form Screen
   return (
     <div style={{
       position: 'fixed',
@@ -413,7 +666,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               
               {/* Subaccount with copy button */}
               {extendedAddressDetected.subaccount && (
-                <div>
+                <div style={{ marginBottom: '12px' }}>
                   <div style={{ color: theme.colors.secondaryText, marginBottom: '4px', fontWeight: '500' }}>
                     Subaccount:
                   </div>
@@ -454,6 +707,31 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                   </div>
                 </div>
               )}
+
+              {/* Convert to explicit button */}
+              <button
+                onClick={handleConvertToExplicit}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: theme.colors.tertiaryBg,
+                  color: theme.colors.accent,
+                  border: `1px solid ${theme.colors.accent}50`,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = `${theme.colors.accent}20`;
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = theme.colors.tertiaryBg;
+                }}
+              >
+                Use Explicit Principal + Subaccount
+              </button>
             </div>
           )}
 
@@ -779,7 +1057,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             marginTop: '24px'
           }}>
             <button
-              onClick={handleSend}
+              onClick={handleReview}
               disabled={isLoading}
               style={{
                 flex: '1',
@@ -800,7 +1078,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                 e.target.style.background = theme.colors.accent;
               }}
             >
-              Send
+              Review Transaction
             </button>
             <button
               onClick={onClose}
@@ -831,13 +1109,6 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           </div>
         )}
       </div>
-      <ConfirmationModal
-        show={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        onSubmit={confirmAction}
-        message={confirmMessage}
-        doAwait={false}
-      />
     </div>
   );
 }
