@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { IDL } from '@dfinity/candid';
@@ -9,11 +9,12 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import Header from '../components/Header';
+import CreateIcpNeuronWizard from '../components/CreateIcpNeuronWizard';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
-import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus } from 'react-icons/fa';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
@@ -74,8 +75,12 @@ function CreateIcpNeuron() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
+    const navigate = useNavigate();
     const [copiedDeposit, setCopiedDeposit] = useState(false);
     const [copiedAccountId, setCopiedAccountId] = useState(false);
+    
+    // Wizard state
+    const [showWizard, setShowWizard] = useState(false);
     
     // Sneed membership for beta access
     const { 
@@ -863,502 +868,67 @@ function CreateIcpNeuron() {
                     <BetaWarningBanner featureName="The ICP Neuron Manager" />
                 )}
 
-                {/* Create Manager Section with Payment Flow */}
-                {isAuthenticated && paymentConfig && hasAccess && (
-                    <div style={{ ...cardStyle, marginBottom: '30px' }}>
-                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '20px', textAlign: 'center' }}>
-                            ➕ Create New Neuron Manager
-                        </h3>
-
-                        {/* Wallet deposit info */}
-                        {myPrincipal && (
-                            <div style={{
-                                background: `${theme.colors.secondaryBg}`,
-                                borderRadius: '10px',
-                                padding: '14px',
-                                marginBottom: '16px',
-                                border: `1px solid ${theme.colors.border}`,
-                            }}>
-                                <div style={{ color: theme.colors.primaryText, fontWeight: 700, marginBottom: '6px' }}>
-                                    💰 Your ICP Deposit Address
-                                </div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', lineHeight: 1.5, marginBottom: '10px' }}>
-                                    Send ICP to your Principal ID (PID) below. This works from wallets, DEXes, and anywhere in the ICP ecosystem.
-                                </div>
-
-                                <div style={{ display: 'grid', gap: '10px' }}>
-                                    {/* Principal ID - Primary */}
-                                    <div style={{
-                                        background: `${theme.colors.accent}10`,
-                                        borderRadius: '8px',
-                                        padding: '12px',
-                                        border: `1px solid ${theme.colors.accent}30`,
-                                    }}>
-                                        <div style={{ color: theme.colors.accent, fontSize: '12px', fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span>📍</span> Principal ID (PID) — Standard
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                            <div style={{
-                                                fontFamily: 'monospace',
-                                                fontSize: '13px',
-                                                padding: '8px 12px',
-                                                borderRadius: '6px',
-                                                background: theme.colors.primaryBg,
-                                                border: `1px solid ${theme.colors.border}`,
-                                                color: theme.colors.primaryText,
-                                                wordBreak: 'break-all',
-                                                flex: 1,
-                                                minWidth: '200px'
-                                            }}>
-                                                {myPrincipal.toString()}
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={async () => {
-                                                    try {
-                                                        await navigator.clipboard.writeText(myPrincipal.toString());
-                                                        setCopiedDeposit(true);
-                                                        setTimeout(() => setCopiedDeposit(false), 1200);
-                                                    } catch (e) {
-                                                        console.warn('Copy failed', e);
-                                                    }
-                                                }}
-                                                style={{
-                                                    padding: '8px 12px',
-                                                    borderRadius: '8px',
-                                                    border: 'none',
-                                                    background: theme.colors.accent,
-                                                    color: '#fff',
-                                                    cursor: 'pointer',
-                                                    fontWeight: 700,
-                                                    fontSize: '12px'
-                                                }}
-                                            >
-                                                {copiedDeposit ? '✓ Copied!' : 'Copy PID'}
-                                            </button>
-                                        </div>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
-                                            Use this for transfers from ICP wallets, DEXes (ICPSwap, Sonic, etc.), and anywhere in the ecosystem.
-                                        </div>
-                                    </div>
-
-                                    {/* Account ID - Legacy/CEX */}
-                                    <details style={{ cursor: 'pointer' }}>
-                                        <summary style={{ 
-                                            color: theme.colors.mutedText, 
-                                            fontSize: '12px', 
-                                            padding: '8px 0',
-                                            listStyle: 'none',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}>
-                                            <span style={{ fontSize: '10px' }}>▶</span> Sending from a CEX? Show legacy Account ID
-                                        </summary>
-                                        <div style={{
-                                            background: theme.colors.primaryBg,
-                                            borderRadius: '8px',
-                                            padding: '12px',
-                                            marginTop: '8px',
-                                            border: `1px solid ${theme.colors.border}`,
-                                        }}>
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '8px' }}>
-                                                Some centralized exchanges (Coinbase, Binance, etc.) don't support Principal IDs yet. Use this legacy Account ID instead:
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                                <div style={{
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '11px',
-                                                    padding: '8px 10px',
-                                                    borderRadius: '6px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    background: theme.colors.secondaryBg,
-                                                    color: theme.colors.mutedText,
-                                                    wordBreak: 'break-all',
-                                                    flex: 1,
-                                                    minWidth: '200px'
-                                                }}>
-                                                    {myAccountId || '(unavailable)'}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    disabled={!myAccountId}
-                                                    onClick={async () => {
-                                                        if (!myAccountId) return;
-                                                        try {
-                                                            await navigator.clipboard.writeText(myAccountId);
-                                                            setCopiedAccountId(true);
-                                                            setTimeout(() => setCopiedAccountId(false), 1200);
-                                                        } catch (e) {
-                                                            console.warn('Copy failed', e);
-                                                        }
-                                                    }}
-                                                    style={{
-                                                        padding: '6px 10px',
-                                                        borderRadius: '6px',
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        background: 'transparent',
-                                                        color: theme.colors.mutedText,
-                                                        cursor: myAccountId ? 'pointer' : 'not-allowed',
-                                                        fontWeight: 600,
-                                                        fontSize: '11px',
-                                                        opacity: myAccountId ? 1 : 0.6
-                                                    }}
-                                                >
-                                                    {copiedAccountId ? '✓ Copied!' : 'Copy'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </details>
-                                </div>
+                {/* Create Manager Section - Show Wizard or Launch Button */}
+                {isAuthenticated && hasAccess && (
+                    <>
+                        {showWizard ? (
+                            <div style={{ ...cardStyle, marginBottom: '30px', padding: '30px' }}>
+                                <CreateIcpNeuronWizard 
+                                    onComplete={(canisterId) => {
+                                        setShowWizard(false);
+                                        fetchMyManagers();
+                                        fetchFactoryInfo();
+                                    }}
+                                    onCancel={() => setShowWizard(false)}
+                                />
                             </div>
-                        )}
-                        
-                        {/* Payment Required Info */}
-                        {paymentConfig.paymentRequired && (
-                            <div style={{ 
-                                background: isPremium ? 'linear-gradient(135deg, rgba(255,215,0,0.15) 0%, rgba(255,165,0,0.1) 100%)' : `${theme.colors.accent}15`,
-                                borderRadius: '8px',
-                                padding: '16px',
-                                marginBottom: '20px',
-                                border: isPremium ? '1px solid rgba(255,215,0,0.3)' : 'none'
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            Creation Fee
-                                            {isPremium && discountPercent > 0 && (
-                                                <span style={{
-                                                    background: 'linear-gradient(135deg, #FFD700, #FFA500)',
-                                                    color: '#1a1a2e',
-                                                    padding: '2px 8px',
-                                                    borderRadius: '10px',
-                                                    fontSize: '10px',
-                                                    fontWeight: '700',
-                                                }}>
-                                                    👑 {discountPercent}% OFF
-                                                </span>
-                                            )}
-                                            {loadingPremium && (
-                                                <span style={{ color: theme.colors.mutedText, fontSize: '10px' }}>
-                                                    (checking premium...)
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                                            <div style={{ color: isPremium ? '#FFD700' : theme.colors.primaryText, fontSize: '24px', fontWeight: '700' }}>
-                                                {formatIcp(effectiveFeeE8s)} ICP
-                                            </div>
-                                            {isPremium && discountPercent > 0 && (
-                                                <span style={{ 
-                                                    color: theme.colors.mutedText, 
-                                                    fontSize: '14px', 
-                                                    textDecoration: 'line-through' 
-                                                }}>
-                                                    {formatIcp(paymentConfig.creationFeeE8s)} ICP
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Your Wallet Balance</div>
-                                        <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
-                                            {formatIcp(userIcpBalance)} ICP
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {/* Premium upsell for non-premium users */}
-                                {!isPremium && !loadingPremium && premiumFeeE8s !== null && discountPercent > 0 && (
-                                    <div style={{ 
-                                        marginTop: '12px', 
-                                        paddingTop: '12px', 
-                                        borderTop: `1px solid ${theme.colors.border}`,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        fontSize: '12px',
-                                    }}>
-                                        <span style={{ color: '#FFD700' }}>👑</span>
-                                        <span style={{ color: theme.colors.mutedText }}>
-                                            Premium members pay only <strong style={{ color: '#FFD700' }}>{formatIcp(premiumFeeE8s)} ICP</strong>
-                                        </span>
-                                        <a 
-                                            href="/premium" 
-                                            style={{ 
-                                                color: '#FFD700', 
-                                                marginLeft: 'auto',
-                                                textDecoration: 'none',
-                                                fontWeight: '600',
-                                            }}
-                                        >
-                                            Get Premium →
-                                        </a>
-                                    </div>
-                                )}
-                                
-                                {/* Cycles info */}
-                                {paymentConfig.targetCyclesAmount > 0 && (
-                                    <div style={{ 
-                                        marginTop: '12px', 
-                                        paddingTop: '12px', 
-                                        borderTop: `1px solid ${theme.colors.border}`,
-                                    }}>
-                                        <div>
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Your new canister will receive</div>
-                                            <div style={{ color: theme.colors.accent, fontSize: '18px', fontWeight: '600' }}>
-                                                ⚡ ~{formatCycles(Math.max(0, paymentConfig.targetCyclesAmount - CANISTER_CREATION_OVERHEAD))} Cycles
-                                            </div>
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
-                                                ({formatCycles(paymentConfig.targetCyclesAmount)} allocated, ~{formatCycles(CANISTER_CREATION_OVERHEAD)} used for creation)
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {/* Conversion rate info */}
-                                {conversionRate && (
-                                    <div style={{ 
-                                        marginTop: '12px', 
-                                        paddingTop: '12px', 
-                                        borderTop: `1px solid ${theme.colors.border}`,
-                                        color: theme.colors.mutedText,
-                                        fontSize: '12px'
-                                    }}>
-                                        Current rate: 1 ICP ≈ {formatCycles(conversionRate.cyclesPerIcp)} cycles
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        
-                        {/* Progress Overlay */}
-                        {(creationStep === 'paying' || creationStep === 'creating') && (
-                            <div style={{
-                                background: `${theme.colors.cardBackground}f0`,
-                                borderRadius: '12px',
-                                padding: '30px',
-                                marginBottom: '20px',
-                                textAlign: 'center',
-                                border: `1px solid ${theme.colors.accent}40`,
-                            }}>
-                                <div style={{
-                                    width: '60px',
-                                    height: '60px',
-                                    margin: '0 auto 20px',
-                                    border: `3px solid ${theme.colors.border}`,
-                                    borderTopColor: theme.colors.accent,
-                                    borderRadius: '50%',
-                                    animation: 'spin 1s linear infinite',
-                                }} />
-                                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                                
-                                <div style={{ marginBottom: '15px' }}>
-                                    <div style={{ 
-                                        color: theme.colors.primaryText, 
-                                        fontSize: '18px', 
-                                        fontWeight: '600',
-                                        marginBottom: '8px'
-                                    }}>
-                                        {progressMessage}
-                                    </div>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
-                                        Please wait, this may take a moment...
-                                    </div>
-                                </div>
-                                
-                                {/* Progress steps */}
-                                <div style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'center', 
-                                    gap: '20px',
-                                    marginTop: '20px'
-                                }}>
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '6px',
-                                        color: creationStep === 'paying' ? theme.colors.accent : (creationStep === 'creating' ? (theme.colors.success || '#22c55e') : theme.colors.mutedText),
-                                    }}>
-                                        {creationStep === 'creating' ? (
-                                            <FaCheckCircle size={14} />
-                                        ) : (
-                                            <span style={{ 
-                                                width: '14px', 
-                                                height: '14px', 
-                                                borderRadius: '50%', 
-                                                background: creationStep === 'paying' ? theme.colors.accent : theme.colors.border,
-                                                display: 'inline-block'
-                                            }} />
-                                        )}
-                                        <span style={{ fontSize: '13px' }}>Payment</span>
-                                    </div>
-                                    <FaArrowRight style={{ color: theme.colors.mutedText, opacity: 0.5 }} size={12} />
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '6px',
-                                        color: creationStep === 'creating' ? theme.colors.accent : theme.colors.mutedText,
-                                    }}>
-                                        <span style={{ 
-                                            width: '14px', 
-                                            height: '14px', 
-                                            borderRadius: '50%', 
-                                            background: creationStep === 'creating' ? theme.colors.accent : theme.colors.border,
-                                            display: 'inline-block'
-                                        }} />
-                                        <span style={{ fontSize: '13px' }}>Creating</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {/* Deposited Payment Balance - Only show if there's a deposited balance (edge case) */}
-                        {paymentConfig.paymentRequired && paymentBalance > 0 && creationStep !== 'paying' && creationStep !== 'creating' && (
-                            <div style={{ 
-                                background: hasEnoughPayment 
-                                    ? `${theme.colors.success || '#22c55e'}15` 
-                                    : `${theme.colors.warning || '#f59e0b'}15`,
-                                borderRadius: '8px',
-                                padding: '16px',
-                                marginBottom: '16px',
-                                border: `1px solid ${hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b')}40`,
-                            }}>
-                                <div style={{ 
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: '12px'
-                                }}>
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
-                                        ⚠️ You have a pending deposit:
-                                    </span>
-                                    <span style={{ 
-                                        color: hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b'),
-                                        fontWeight: '600',
-                                        fontSize: '14px'
-                                    }}>
-                                        {formatIcp(paymentBalance)} ICP
-                                    </span>
-                                </div>
-                                
-                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                    {hasEnoughPayment && (
-                                        <button
-                                            style={{ 
-                                                ...buttonStyle,
-                                                flex: 1,
-                                                minWidth: '150px',
-                                                opacity: creating ? 0.7 : 1,
-                                                cursor: creating ? 'not-allowed' : 'pointer',
-                                            }}
-                                            onClick={handleCreateFromDeposit}
-                                            disabled={creating || withdrawing}
-                                        >
-                                            {creating ? '⏳ Creating...' : '🚀 Create Neuron Manager'}
-                                        </button>
-                                    )}
-                                    <button
-                                        style={{ 
-                                            ...buttonStyle,
-                                            flex: hasEnoughPayment ? 'none' : 1,
-                                            minWidth: hasEnoughPayment ? '120px' : '150px',
-                                            background: 'transparent',
-                                            border: `1px solid ${theme.colors.error || '#ef4444'}`,
-                                            color: theme.colors.error || '#ef4444',
-                                            opacity: withdrawing ? 0.7 : 1,
-                                            cursor: withdrawing ? 'not-allowed' : 'pointer',
-                                        }}
-                                        onClick={handleWithdrawDeposit}
-                                        disabled={creating || withdrawing}
-                                    >
-                                        {withdrawing ? '⏳ Withdrawing...' : '↩️ Withdraw'}
-                                    </button>
-                                </div>
-                                
-                                {!hasEnoughPayment && (
-                                    <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '10px', marginBottom: 0 }}>
-                                        This deposit is insufficient to create a manager. You can withdraw it back to your wallet.
-                                    </p>
-                                )}
-                            </div>
-                        )}
-                        
-                        {/* Main Action Button - Only show when no deposit exists and not in progress */}
-                        {creationStep !== 'paying' && creationStep !== 'creating' && creationStep !== 'done' && (
-                            <>
-                                {/* No deposited balance - show main button */}
-                                {(!paymentBalance || paymentBalance === 0) && (
-                                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                                        <button
-                                            style={{ 
-                                                ...buttonStyle,
-                                                opacity: (!canSendPayment || creating) ? 0.6 : 1,
-                                                cursor: (!canSendPayment || creating) ? 'not-allowed' : 'pointer',
-                                                padding: '14px 32px',
-                                                fontSize: '17px',
-                                            }}
-                                            onClick={handlePayAndCreate}
-                                            disabled={!canSendPayment || creating}
-                                        >
-                                            {paymentConfig.paymentRequired 
-                                                ? `🚀 Pay ${formatIcp(effectiveFeeE8s)} ICP & Create`
-                                                : '🚀 Create Neuron Manager'
-                                            }
-                                        </button>
-                                    </div>
-                                )}
-                                
-                                {/* Help text */}
-                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '15px', textAlign: 'center' }}>
-                                    {paymentConfig.paymentRequired ? (
-                                        `Click to pay and create your neuron manager in one step.${isPremium ? ' (Premium discount applied!)' : ''}`
-                                    ) : (
-                                        'Creating a neuron manager is currently free!'
-                                    )}
+                        ) : (
+                            <div style={{ ...cardStyle, marginBottom: '30px', textAlign: 'center' }}>
+                                <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>
+                                    ➕ Create New Neuron Manager
+                                </h3>
+                                <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginBottom: '20px' }}>
+                                    Create a dedicated canister to manage your ICP NNS neurons with full control.
                                 </p>
-                            </>
-                        )}
-                        
-                        {/* Access info */}
-                        <div style={{ 
-                            marginTop: '16px', 
-                            paddingTop: '16px', 
-                            borderTop: `1px solid ${theme.colors.border}`,
-                            textAlign: 'center'
-                        }}>
-                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '8px' }}>
-                                📍 Once created, your manager canister will be accessible from:
-                            </p>
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                                <Link 
-                                    to="/wallet" 
+                                <button
                                     style={{ 
-                                        color: theme.colors.accent, 
-                                        fontSize: '13px',
-                                        textDecoration: 'none',
-                                        display: 'flex',
+                                        ...buttonStyle,
+                                        padding: '16px 40px',
+                                        fontSize: '17px',
+                                        display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '4px'
+                                        gap: '10px',
                                     }}
+                                    onClick={() => setShowWizard(true)}
                                 >
-                                    <FaWallet /> Sneed Wallet
-                                </Link>
-                                <Link 
-                                    to="/canisters" 
-                                    style={{ 
-                                        color: theme.colors.accent, 
-                                        fontSize: '13px',
-                                        textDecoration: 'none',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                >
-                                    📦 Canisters Page
-                                </Link>
+                                    <FaPlus />
+                                    Create Neuron Manager
+                                </button>
+                                
+                                {/* Quick info */}
+                                {paymentConfig && (
+                                    <div style={{ marginTop: '20px', color: theme.colors.mutedText, fontSize: '13px' }}>
+                                        Creation fee: <strong style={{ color: isPremium ? '#FFD700' : theme.colors.primaryText }}>
+                                            {formatIcp(effectiveFeeE8s)} ICP
+                                        </strong>
+                                        {isPremium && discountPercent > 0 && (
+                                            <span style={{
+                                                marginLeft: '8px',
+                                                background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+                                                color: '#1a1a2e',
+                                                padding: '2px 8px',
+                                                borderRadius: '10px',
+                                                fontSize: '10px',
+                                                fontWeight: '700',
+                                            }}>
+                                                👑 {discountPercent}% OFF
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    </div>
+                        )}
+                    </>
                 )}
 
                 {/* Success message */}
