@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
+import { useNeurons } from '../contexts/NeuronsContext';
 import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
 import { getSnsById } from '../utils/SnsUtils';
@@ -13,6 +14,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from '../utils/ProposalUtils';
+import { calculateVotingPower } from '../utils/VotingPowerUtils';
 
 function Proposals() {
     const { theme } = useTheme();
@@ -50,6 +52,241 @@ function Proposals() {
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
+
+    // Quick voting state
+    const { getHotkeyNeurons, refreshNeurons } = useNeurons();
+    const [proposalEligibility, setProposalEligibility] = useState({}); // { proposalId: { loading, eligibleCount, checked } }
+    const [quickVotingStates, setQuickVotingStates] = useState({}); // { proposalId: 'idle' | 'voting' | 'success' | 'error' }
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const eligibilityCheckRef = useRef(null);
+
+    // Fetch nervous system parameters for voting power calculation
+    useEffect(() => {
+        const fetchParams = async () => {
+            if (!selectedSnsRoot || !identity) {
+                setNervousSystemParameters(null);
+                return;
+            }
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) return;
+
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setNervousSystemParameters(params);
+            } catch (error) {
+                console.error('Error fetching nervous system parameters:', error);
+                setNervousSystemParameters(null);
+            }
+        };
+
+        fetchParams();
+    }, [selectedSnsRoot, identity]);
+
+    // Progressive eligibility check for proposals
+    useEffect(() => {
+        if (!isAuthenticated || !identity || !selectedSnsRoot || filteredProposals.length === 0) {
+            return;
+        }
+
+        // Clear previous check
+        if (eligibilityCheckRef.current) {
+            clearTimeout(eligibilityCheckRef.current);
+        }
+
+        const hotkeyNeurons = getHotkeyNeurons();
+        if (!hotkeyNeurons || hotkeyNeurons.length === 0) {
+            // No hotkey neurons, mark all proposals as checked with 0 eligible
+            const emptyEligibility = {};
+            filteredProposals.forEach(p => {
+                const proposalId = p.id[0]?.id?.toString();
+                if (proposalId) {
+                    emptyEligibility[proposalId] = { loading: false, eligibleCount: 0, checked: true };
+                }
+            });
+            setProposalEligibility(emptyEligibility);
+            return;
+        }
+
+        // Check eligibility progressively (in batches with delays)
+        const checkEligibilityBatch = async (startIndex) => {
+            const batchSize = 5;
+            const batch = filteredProposals.slice(startIndex, startIndex + batchSize);
+            
+            if (batch.length === 0) return;
+
+            const updates = {};
+            
+            for (const proposal of batch) {
+                const proposalId = proposal.id[0]?.id?.toString();
+                if (!proposalId || !isProposalAcceptingVotes(proposal)) {
+                    updates[proposalId] = { loading: false, eligibleCount: 0, checked: true };
+                    continue;
+                }
+
+                // Count eligible neurons for this proposal
+                let eligibleCount = 0;
+                for (const neuron of hotkeyNeurons) {
+                    // Check voting power
+                    const votingPower = nervousSystemParameters ? 
+                        calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                    if (votingPower === 0) continue;
+
+                    // Check if already voted (using ballots from proposal)
+                    const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                    const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
+                    
+                    if (ballot && ballot[1]) {
+                        const ballotData = ballot[1];
+                        const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                        if (hasVoted) continue;
+                    }
+
+                    eligibleCount++;
+                }
+
+                updates[proposalId] = { loading: false, eligibleCount, checked: true };
+            }
+
+            setProposalEligibility(prev => ({ ...prev, ...updates }));
+
+            // Schedule next batch
+            if (startIndex + batchSize < filteredProposals.length) {
+                eligibilityCheckRef.current = setTimeout(() => {
+                    checkEligibilityBatch(startIndex + batchSize);
+                }, 50); // Small delay between batches
+            }
+        };
+
+        // Mark all as loading initially
+        const loadingState = {};
+        filteredProposals.forEach(p => {
+            const proposalId = p.id[0]?.id?.toString();
+            if (proposalId && !proposalEligibility[proposalId]?.checked) {
+                loadingState[proposalId] = { loading: true, eligibleCount: 0, checked: false };
+            }
+        });
+        if (Object.keys(loadingState).length > 0) {
+            setProposalEligibility(prev => ({ ...prev, ...loadingState }));
+        }
+
+        // Start checking
+        eligibilityCheckRef.current = setTimeout(() => {
+            checkEligibilityBatch(0);
+        }, 100);
+
+        return () => {
+            if (eligibilityCheckRef.current) {
+                clearTimeout(eligibilityCheckRef.current);
+            }
+        };
+    }, [filteredProposals, isAuthenticated, identity, selectedSnsRoot, getHotkeyNeurons, nervousSystemParameters]);
+
+    // Quick vote function - votes with all eligible neurons
+    const quickVote = useCallback(async (proposal, vote) => {
+        const proposalId = proposal.id[0]?.id?.toString();
+        if (!proposalId || !identity || !selectedSnsRoot) return;
+
+        const hotkeyNeurons = getHotkeyNeurons();
+        if (!hotkeyNeurons || hotkeyNeurons.length === 0) return;
+
+        setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'voting' }));
+
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) throw new Error('SNS not found');
+
+            const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                agentOptions: { identity }
+            });
+
+            // Filter eligible neurons
+            const eligibleNeurons = hotkeyNeurons.filter(neuron => {
+                // Check voting power
+                const votingPower = nervousSystemParameters ? 
+                    calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                if (votingPower === 0) return false;
+
+                // Check if already voted
+                const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                const ballot = proposal.ballots?.find(([id, _]) => id === neuronIdHex);
+                
+                if (ballot && ballot[1]) {
+                    const ballotData = ballot[1];
+                    const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                    if (hasVoted) return false;
+                }
+
+                return true;
+            });
+
+            if (eligibleNeurons.length === 0) {
+                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
+                return;
+            }
+
+            // Vote with all eligible neurons
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const neuron of eligibleNeurons) {
+                try {
+                    const manageNeuronRequest = {
+                        subaccount: neuron.id[0]?.id,
+                        command: [{
+                            RegisterVote: {
+                                vote: vote, // 1 for Adopt, 2 for Reject
+                                proposal: [{ id: BigInt(proposalId) }]
+                            }
+                        }]
+                    };
+                    
+                    const response = await snsGovActor.manage_neuron(manageNeuronRequest);
+                    
+                    if (response?.command?.[0]?.RegisterVote) {
+                        successCount++;
+                    } else if (response?.command?.[0]?.Error) {
+                        console.error('Vote error:', response.command[0].Error.error_message);
+                        failCount++;
+                    } else {
+                        failCount++;
+                    }
+                } catch (error) {
+                    console.error('Error voting with neuron:', error);
+                    failCount++;
+                }
+            }
+
+            if (successCount > 0) {
+                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'success' }));
+                // Update eligibility to show 0 eligible now
+                setProposalEligibility(prev => ({ 
+                    ...prev, 
+                    [proposalId]: { loading: false, eligibleCount: 0, checked: true } 
+                }));
+                // Refresh neurons data
+                await refreshNeurons(selectedSnsRoot);
+            } else {
+                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
+            }
+
+            // Reset state after a delay
+            setTimeout(() => {
+                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'idle' }));
+            }, 3000);
+
+        } catch (error) {
+            console.error('Quick vote error:', error);
+            setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'error' }));
+            setTimeout(() => {
+                setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'idle' }));
+            }, 3000);
+        }
+    }, [identity, selectedSnsRoot, getHotkeyNeurons, nervousSystemParameters, refreshNeurons]);
 
     // Helper function to get neuron display info
     const getNeuronDisplayInfo = (neuronId) => {
@@ -238,6 +475,9 @@ function Proposals() {
         setAllProposalsLoaded(false);
         setLoadingAll(false);
         setTokenSymbol('SNS'); // Reset to default until new symbol is fetched
+        // Reset quick voting state
+        setProposalEligibility({});
+        setQuickVotingStates({});
     }, [selectedSnsRoot]);
 
     // Filter proposals based on proposer and topic filters
@@ -1098,7 +1338,7 @@ function Proposals() {
                                         return null;
                                     })()}
                                     
-                                    {/* External Links - Responsive Row */}
+                                    {/* External Links and Quick Vote - Responsive Row */}
                                     <div style={{ 
                                         display: 'flex', 
                                         gap: '8px', 
@@ -1129,6 +1369,111 @@ function Proposals() {
                                         >
                                             Toolkit
                                         </a>
+                                        
+                                        {/* Quick Vote Buttons */}
+                                        {isAuthenticated && isProposalAcceptingVotes(proposal) && (() => {
+                                            const proposalId = proposal.id[0]?.id?.toString();
+                                            const eligibility = proposalEligibility[proposalId];
+                                            const votingState = quickVotingStates[proposalId];
+                                            const isLoading = eligibility?.loading !== false;
+                                            const eligibleCount = eligibility?.eligibleCount || 0;
+                                            const isEnabled = !isLoading && eligibleCount > 0;
+                                            
+                                            // Determine button style based on state
+                                            const getButtonStyle = (isAdopt) => {
+                                                const baseStyle = {
+                                                    padding: '4px 10px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '12px',
+                                                    fontWeight: 'bold',
+                                                    border: 'none',
+                                                    cursor: isEnabled ? 'pointer' : 'default',
+                                                    transition: 'all 0.2s ease',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                };
+                                                
+                                                if (votingState === 'voting') {
+                                                    return {
+                                                        ...baseStyle,
+                                                        backgroundColor: 'rgba(128, 128, 128, 0.3)',
+                                                        color: 'rgba(150, 150, 150, 0.8)'
+                                                    };
+                                                }
+                                                
+                                                if (votingState === 'success') {
+                                                    return {
+                                                        ...baseStyle,
+                                                        backgroundColor: 'rgba(46, 204, 113, 0.3)',
+                                                        color: theme.colors.success
+                                                    };
+                                                }
+                                                
+                                                if (votingState === 'error') {
+                                                    return {
+                                                        ...baseStyle,
+                                                        backgroundColor: 'rgba(231, 76, 60, 0.3)',
+                                                        color: theme.colors.error
+                                                    };
+                                                }
+                                                
+                                                if (!isEnabled) {
+                                                    // Very gray and faint when disabled
+                                                    return {
+                                                        ...baseStyle,
+                                                        backgroundColor: 'rgba(100, 100, 100, 0.15)',
+                                                        color: 'rgba(120, 120, 120, 0.5)'
+                                                    };
+                                                }
+                                                
+                                                // Enabled state
+                                                return {
+                                                    ...baseStyle,
+                                                    backgroundColor: isAdopt 
+                                                        ? 'rgba(46, 204, 113, 0.2)' 
+                                                        : 'rgba(231, 76, 60, 0.2)',
+                                                    color: isAdopt ? theme.colors.success : theme.colors.error
+                                                };
+                                            };
+                                            
+                                            return (
+                                                <>
+                                                    <div style={{ 
+                                                        width: '1px', 
+                                                        height: '20px', 
+                                                        backgroundColor: theme.colors.border,
+                                                        margin: '0 4px'
+                                                    }} />
+                                                    
+                                                    <button
+                                                        onClick={() => isEnabled && quickVote(proposal, 1)}
+                                                        disabled={!isEnabled || votingState === 'voting'}
+                                                        style={getButtonStyle(true)}
+                                                        title={isLoading ? 'Checking eligibility...' : 
+                                                               eligibleCount > 0 ? `Adopt with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''}` :
+                                                               'No eligible neurons'}
+                                                    >
+                                                        {votingState === 'voting' ? '...' : '✓'}
+                                                        <span>Adopt</span>
+                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({eligibleCount})</span>}
+                                                    </button>
+                                                    
+                                                    <button
+                                                        onClick={() => isEnabled && quickVote(proposal, 2)}
+                                                        disabled={!isEnabled || votingState === 'voting'}
+                                                        style={getButtonStyle(false)}
+                                                        title={isLoading ? 'Checking eligibility...' : 
+                                                               eligibleCount > 0 ? `Reject with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''}` :
+                                                               'No eligible neurons'}
+                                                    >
+                                                        {votingState === 'voting' ? '...' : '✗'}
+                                                        <span>Reject</span>
+                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({eligibleCount})</span>}
+                                                    </button>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                                 <div 
