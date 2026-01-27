@@ -339,7 +339,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 let body = "Congratulations! Your Sneedex offer #" # Nat.toText(offer.id) # " has been completed.\n\n" #
                            "**Winning bid:** " # formattedAmount # "\n" #
                            "**Buyer:** " # Principal.toText(winningBid.bidder) # "\n\n" #
-                           "[Claim your payment](" # offerUrl # ")";
+                           "Your payment should have been delivered automatically to your wallet.\n\n" #
+                           "[View offer details](" # offerUrl # ")";
                 await sendNotification([offer.creator], subject, body);
             });
         };
@@ -356,7 +357,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 let subject = "🏆 You Won Sneedex Auction #" # Nat.toText(offer.id) # "!";
                 let body = "Congratulations! You have won Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
                            "**Your winning bid:** " # formattedAmount # "\n\n" #
-                           "[Claim your assets](" # offerUrl # ")";
+                           "Your assets should have been delivered automatically to your wallet.\n\n" #
+                           "[View offer details](" # offerUrl # ")";
                 await sendNotification([winningBid.bidder], subject, body);
             });
         };
