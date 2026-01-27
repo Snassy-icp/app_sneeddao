@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock } from 'react-icons/fa';
 import TokenSelector from '../components/TokenSelector';
+import PrincipalInput from '../components/PrincipalInput';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { 
@@ -41,7 +42,8 @@ function SneedexOffers() {
     const [offersWithBids, setOffersWithBids] = useState({}); // Map of offerId to bid info
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchOfferId, setSearchOfferId] = useState(''); // Search by offer ID
+    const [searchSellerPrincipal, setSearchSellerPrincipal] = useState(''); // Search by seller principal
     const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token, neuron_manager
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
@@ -529,17 +531,20 @@ function SneedexOffers() {
         return totalUsd;
     }, [tokenPrices, icpPrice, neuronInfo, neuronManagerInfo, getTokenInfo, getSnsLedgerFromGovernance, getSnsInfo]);
     
-    // Check if any advanced filters are active
-    const hasActiveAdvancedFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter || minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter;
+    // Check if any filters are active (excluding sortBy and filterType as defaults)
+    const hasActiveFilters = bidTokenFilter || minPriceFilter || maxPriceFilter || assetTokenFilter || minAssetAmountFilter || maxAssetAmountFilter || minPriceUsdFilter || maxPriceUsdFilter || minEstValueUsdFilter || maxEstValueUsdFilter || valueRatioFilter || searchOfferId || searchSellerPrincipal || filterType !== 'all';
     
-    // Clear all advanced filters
-    const clearAdvancedFilters = () => {
+    // Clear all filters
+    const clearAllFilters = () => {
         setBidTokenFilter('');
         setMinPriceFilter('');
         setMaxPriceFilter('');
         setAssetTokenFilter('');
         setMinAssetAmountFilter('');
         setMaxAssetAmountFilter('');
+        setSearchOfferId('');
+        setSearchSellerPrincipal('');
+        setFilterType('all');
         setMinPriceUsdFilter('');
         setMaxPriceUsdFilter('');
         setMinEstValueUsdFilter('');
@@ -561,12 +566,16 @@ function SneedexOffers() {
             if (!hasType) return false;
         }
         
-        // Search by offer ID or creator
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            const matchId = offer.id.toString().includes(term);
-            const matchCreator = offer.creator.toString().toLowerCase().includes(term);
-            if (!matchId && !matchCreator) return false;
+        // Search by offer ID
+        if (searchOfferId) {
+            const term = searchOfferId.trim();
+            if (!offer.id.toString().includes(term)) return false;
+        }
+        
+        // Search by seller principal
+        if (searchSellerPrincipal) {
+            const term = searchSellerPrincipal.toLowerCase().trim();
+            if (!offer.creator.toString().toLowerCase().includes(term)) return false;
         }
         
         // Advanced filter: bid token
@@ -783,7 +792,7 @@ function SneedexOffers() {
     // Reset to page 1 when filters/search/tab change
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, searchTerm, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter]);
+    }, [filterType, searchOfferId, searchSellerPrincipal, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter]);
 
     const styles = {
         container: {
@@ -1323,69 +1332,47 @@ function SneedexOffers() {
                 </div>
                 
                 <div className="sneedex-controls" style={styles.controls}>
-                    <div style={styles.searchBox}>
-                        <FaSearch style={styles.searchIcon} />
-                        <input
-                            type="text"
-                            placeholder="Search by offer ID or creator..."
-                            style={styles.searchInput}
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
-                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
-                        />
-                    </div>
-                    <select
-                        style={styles.select}
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
+                    <button
+                        style={{
+                            ...styles.advancedFilterToggle,
+                            borderColor: showAdvancedFilters ? theme.colors.accent : theme.colors.border,
+                            background: hasActiveFilters ? `${theme.colors.accent}15` : theme.colors.secondaryBg,
+                        }}
+                        onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                     >
-                        <option value="all">All Assets</option>
-                        <option value="canister">Canisters</option>
-                        <option value="neuron_manager">ICP Neuron Managers</option>
-                        <option value="neuron">SNS Neurons</option>
-                        <option value="token">ICRC1 Tokens</option>
-                    </select>
+                        <FaFilter />
+                        Filters
+                        {hasActiveFilters && (
+                            <span style={styles.activeFilterBadge}>
+                                {[filterType !== 'all', bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter, minAssetAmountFilter || maxAssetAmountFilter, searchOfferId, searchSellerPrincipal].filter(Boolean).length}
+                            </span>
+                        )}
+                        {showAdvancedFilters ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                    </button>
                     <select
                         style={styles.select}
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
+                        title="Sort order"
                     >
                         <option value="newest">Newest First</option>
                         <option value="ending_soon">Ending Soon</option>
                         <option value="highest_bid">Highest Bid</option>
                         <option value="lowest_price">Lowest Price</option>
                     </select>
-                    <button
-                        style={{
-                            ...styles.advancedFilterToggle,
-                            borderColor: showAdvancedFilters ? theme.colors.accent : theme.colors.border,
-                            background: hasActiveAdvancedFilters ? `${theme.colors.accent}15` : theme.colors.secondaryBg,
-                        }}
-                        onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                    >
-                        <FaFilter />
-                        Advanced
-                        {hasActiveAdvancedFilters && (
-                            <span style={styles.activeFilterBadge}>
-                                {[bidTokenFilter, minPriceFilter || maxPriceFilter, assetTokenFilter, minAssetAmountFilter || maxAssetAmountFilter].filter(Boolean).length}
-                            </span>
-                        )}
-                        {showAdvancedFilters ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
-                    </button>
                 </div>
                 
-                {/* Advanced Filters Section */}
+                {/* Filters Section */}
                 {showAdvancedFilters && (
                     <div style={styles.advancedFilterSection}>
                         <div style={styles.advancedFilterHeader}>
                             <div style={styles.advancedFilterTitle}>
-                                <FaFilter /> Advanced Filters
+                                <FaFilter /> Search & Filter
                             </div>
-                            {hasActiveAdvancedFilters && (
+                            {hasActiveFilters && (
                                 <button
                                     style={styles.clearFiltersButton}
-                                    onClick={clearAdvancedFilters}
+                                    onClick={clearAllFilters}
                                 >
                                     <FaTimes size={12} /> Clear All
                                 </button>
@@ -1393,6 +1380,22 @@ function SneedexOffers() {
                         </div>
                         
                         <div className="sneedex-advanced-filter-grid" style={styles.advancedFilterGrid}>
+                            {/* Asset Type Filter */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Asset Type</label>
+                                <select
+                                    style={{ ...styles.filterInput, padding: '10px 12px' }}
+                                    value={filterType}
+                                    onChange={(e) => setFilterType(e.target.value)}
+                                >
+                                    <option value="all">All Assets</option>
+                                    <option value="canister">Canisters</option>
+                                    <option value="neuron_manager">ICP Neuron Managers</option>
+                                    <option value="neuron">SNS Neurons</option>
+                                    <option value="token">ICRC1 Tokens</option>
+                                </select>
+                            </div>
+                            
                             {/* Payment Token Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Payment Token <span style={styles.filterLabelHint}>(Bid Currency)</span></label>
@@ -1593,6 +1596,38 @@ function SneedexOffers() {
                                 <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '4px' }}>
                                     100% = value ≥ price, 110% = 10% better value
                                 </div>
+                            </div>
+                            
+                            {/* Search by Offer ID */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>
+                                    <FaSearch size={12} style={{ marginRight: '6px' }} />
+                                    Search by Offer ID
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Enter offer ID..."
+                                    value={searchOfferId}
+                                    onChange={(e) => setSearchOfferId(e.target.value)}
+                                    style={styles.filterInput}
+                                    onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                    onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                />
+                            </div>
+                            
+                            {/* Search by Seller */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>
+                                    <FaSearch size={12} style={{ marginRight: '6px' }} />
+                                    Search by Seller
+                                </label>
+                                <PrincipalInput
+                                    value={searchSellerPrincipal}
+                                    onChange={setSearchSellerPrincipal}
+                                    placeholder="Enter principal ID or search by name"
+                                    style={{ width: '100%' }}
+                                    isAuthenticated={isAuthenticated}
+                                />
                             </div>
                         </div>
                     </div>
