@@ -124,7 +124,7 @@ actor SneedSMS {
     };
 
     // Runtime state that directly references stable storage
-    transient private var state : SMSState = {
+    transient var state : SMSState = {
         var next_id = stable_next_id;
         var config = runtime_config;
         messages = stable_messages;
