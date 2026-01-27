@@ -9,6 +9,8 @@ import { useNaming } from '../NamingContext';
 import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { HttpAgent } from '@dfinity/agent';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { NeuronDisplay } from '../components/NeuronDisplay';
 
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
 
@@ -518,11 +520,28 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                                         <div style={{ fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>
                                             {snsInfo?.name || 'Unknown SNS'}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
-                                            Neuron: {config.neuron_id_hex.slice(0, 16)}...{config.neuron_id_hex.slice(-8)}
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span>Neuron:</span>
+                                            <NeuronDisplay
+                                                neuronId={config.neuron_id_hex}
+                                                snsRoot={config.sns_root_canister_id.toString()}
+                                                showCopyButton={false}
+                                                enableContextMenu={false}
+                                                isAuthenticated={isAuthenticated}
+                                                noLink={true}
+                                                style={{ fontSize: '0.8rem' }}
+                                            />
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
-                                            Controller: {config.target_principal.toString().slice(0, 15)}...
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span>Controller:</span>
+                                            <PrincipalDisplay
+                                                principal={config.target_principal}
+                                                showCopyButton={false}
+                                                enableContextMenu={false}
+                                                isAuthenticated={isAuthenticated}
+                                                noLink={true}
+                                                style={{ fontSize: '0.8rem' }}
+                                            />
                                         </div>
                                         <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
                                             Created: {formatDate(config.created_at)}
@@ -641,15 +660,30 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                                         <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
                                             {getSnsInfo(selectedConfig.sns_root_canister_id)?.name || 'Unknown SNS'}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
-                                            Neuron: {selectedConfig.neuron_id_hex.slice(0, 16)}...
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span>Neuron:</span>
+                                            <NeuronDisplay
+                                                neuronId={selectedConfig.neuron_id_hex}
+                                                snsRoot={selectedConfig.sns_root_canister_id.toString()}
+                                                showCopyButton={false}
+                                                enableContextMenu={false}
+                                                isAuthenticated={isAuthenticated}
+                                                noLink={true}
+                                                style={{ fontSize: '0.8rem' }}
+                                            />
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
-                                    Adding controller: <span style={{ fontFamily: 'monospace', color: theme.colors.accent }}>
-                                        {selectedConfig.target_principal.toString()}
-                                    </span>
+                                <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>Adding controller:</span>
+                                    <PrincipalDisplay
+                                        principal={selectedConfig.target_principal}
+                                        showCopyButton={true}
+                                        enableContextMenu={false}
+                                        isAuthenticated={isAuthenticated}
+                                        noLink={true}
+                                        style={{ fontSize: '0.85rem' }}
+                                    />
                                 </div>
                             </div>
                             
