@@ -23,6 +23,10 @@ export const idlFactory = ({ IDL }) => {
     'sender' : IDL.Principal,
     'recipients' : IDL.Vec(IDL.Principal),
   });
+  const Result_2 = IDL.Variant({
+    'ok' : IDL.Vec(IDL.Principal),
+    'err' : SMSError,
+  });
   const Result_1 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : SMSError });
   const CreateMessageInput = IDL.Record({
     'reply_to' : IDL.Opt(IDL.Vec(IDL.Nat)),
@@ -30,8 +34,14 @@ export const idlFactory = ({ IDL }) => {
     'body' : IDL.Text,
     'recipients' : IDL.Vec(IDL.Principal),
   });
+  const SystemNotificationInput = IDL.Record({
+    'subject' : IDL.Text,
+    'body' : IDL.Text,
+    'recipients' : IDL.Vec(IDL.Principal),
+  });
   return IDL.Service({
     'add_admin' : IDL.Func([IDL.Principal], [Result], []),
+    'add_authorized_sender' : IDL.Func([IDL.Principal], [Result], []),
     'get_admins' : IDL.Func([], [IDL.Vec(AdminInfo)], ['query']),
     'get_all_messages' : IDL.Func([], [IDL.Vec(MessageResponse)], ['query']),
     'get_all_messages_admin' : IDL.Func(
@@ -39,6 +49,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(MessageResponse)],
         ['query'],
       ),
+    'get_authorized_senders' : IDL.Func([], [Result_2], ['query']),
     'get_config' : IDL.Func(
         [],
         [
@@ -86,13 +97,29 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Record({ 'total_users' : IDL.Nat, 'total_messages' : IDL.Nat })],
         ['query'],
       ),
+    'get_system_sender_principal' : IDL.Func(
+        [],
+        [IDL.Opt(IDL.Principal)],
+        ['query'],
+      ),
     'import_admins' : IDL.Func([IDL.Vec(AdminInfo)], [Result_1], []),
     'import_messages' : IDL.Func([IDL.Vec(MessageResponse)], [Result_1], []),
     'is_admin_query' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'mark_messages_seen_up_to' : IDL.Func([IDL.Int], [], []),
     'remove_admin' : IDL.Func([IDL.Principal], [Result], []),
+    'remove_authorized_sender' : IDL.Func([IDL.Principal], [Result], []),
     'remove_self_from_message' : IDL.Func([IDL.Nat], [Result], []),
     'send_message' : IDL.Func([CreateMessageInput], [Result_1], []),
+    'send_system_notification' : IDL.Func(
+        [SystemNotificationInput],
+        [Result_1],
+        [],
+      ),
+    'set_system_sender_principal' : IDL.Func(
+        [IDL.Opt(IDL.Principal)],
+        [Result],
+        [],
+      ),
     'update_config' : IDL.Func(
         [
           IDL.Opt(IDL.Nat),

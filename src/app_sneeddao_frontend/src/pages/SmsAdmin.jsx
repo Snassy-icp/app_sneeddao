@@ -35,6 +35,14 @@ const SmsAdmin = () => {
         premium_rate_limit_minutes: 1,
         premium_max_recipients: 50
     });
+    
+    // System notification config state
+    const [authorizedSenders, setAuthorizedSenders] = useState([]);
+    const [systemSenderPrincipal, setSystemSenderPrincipal] = useState('');
+    const [newAuthorizedSender, setNewAuthorizedSender] = useState('');
+    const [savingSystem, setSavingSystem] = useState(false);
+    const [systemError, setSystemError] = useState(null);
+    const [systemSuccess, setSystemSuccess] = useState(null);
 
     // Create SMS actor
     const getSmsActor = () => {
@@ -104,6 +112,22 @@ const SmsAdmin = () => {
                     }
                 } catch (premiumErr) {
                     console.warn('Premium config not available:', premiumErr);
+                }
+                
+                // Try to fetch system notification settings
+                try {
+                    const [sendersResult, systemSenderResult] = await Promise.all([
+                        actor.get_authorized_senders(),
+                        actor.get_system_sender_principal(),
+                    ]);
+                    if (sendersResult.ok) {
+                        setAuthorizedSenders(sendersResult.ok);
+                    }
+                    if (systemSenderResult) {
+                        setSystemSenderPrincipal(systemSenderResult.toString());
+                    }
+                } catch (systemErr) {
+                    console.warn('System notification config not available:', systemErr);
                 }
 
             } catch (err) {
@@ -212,6 +236,117 @@ const SmsAdmin = () => {
             setPremiumError('Failed to update premium configuration: ' + err.message);
         } finally {
             setSavingPremium(false);
+        }
+    };
+    
+    // Handle adding an authorized sender
+    const handleAddAuthorizedSender = async () => {
+        if (!newAuthorizedSender.trim()) {
+            setSystemError('Please enter a principal ID');
+            return;
+        }
+        
+        try {
+            setSavingSystem(true);
+            setSystemError(null);
+            setSystemSuccess(null);
+            
+            const principal = Principal.fromText(newAuthorizedSender.trim());
+            
+            const actor = getSmsActor();
+            if (!actor) throw new Error('Failed to create SMS actor');
+            
+            const result = await actor.add_authorized_sender(principal);
+            
+            if ('ok' in result) {
+                setSystemSuccess('Authorized sender added successfully');
+                setNewAuthorizedSender('');
+                
+                // Refresh the list
+                const sendersResult = await actor.get_authorized_senders();
+                if (sendersResult.ok) {
+                    setAuthorizedSenders(sendersResult.ok);
+                }
+            } else {
+                const errorMsg = result.err.Unauthorized || result.err.AlreadyExists || result.err.InvalidInput || JSON.stringify(result.err);
+                setSystemError('Failed: ' + errorMsg);
+            }
+        } catch (err) {
+            console.error('Error adding authorized sender:', err);
+            setSystemError('Invalid principal ID format or error: ' + err.message);
+        } finally {
+            setSavingSystem(false);
+        }
+    };
+    
+    // Handle removing an authorized sender
+    const handleRemoveAuthorizedSender = async (principalToRemove) => {
+        if (!window.confirm(`Remove ${principalToRemove.toString()} from authorized senders?`)) {
+            return;
+        }
+        
+        try {
+            setSavingSystem(true);
+            setSystemError(null);
+            setSystemSuccess(null);
+            
+            const actor = getSmsActor();
+            if (!actor) throw new Error('Failed to create SMS actor');
+            
+            const result = await actor.remove_authorized_sender(principalToRemove);
+            
+            if ('ok' in result) {
+                setSystemSuccess('Authorized sender removed successfully');
+                
+                // Refresh the list
+                const sendersResult = await actor.get_authorized_senders();
+                if (sendersResult.ok) {
+                    setAuthorizedSenders(sendersResult.ok);
+                }
+            } else {
+                const errorMsg = result.err.Unauthorized || result.err.NotFound || JSON.stringify(result.err);
+                setSystemError('Failed: ' + errorMsg);
+            }
+        } catch (err) {
+            console.error('Error removing authorized sender:', err);
+            setSystemError('Error: ' + err.message);
+        } finally {
+            setSavingSystem(false);
+        }
+    };
+    
+    // Handle updating system sender principal
+    const handleUpdateSystemSenderPrincipal = async () => {
+        try {
+            setSavingSystem(true);
+            setSystemError(null);
+            setSystemSuccess(null);
+            
+            const actor = getSmsActor();
+            if (!actor) throw new Error('Failed to create SMS actor');
+            
+            let principal = null;
+            if (systemSenderPrincipal.trim()) {
+                principal = Principal.fromText(systemSenderPrincipal.trim());
+            }
+            
+            const result = await actor.set_system_sender_principal(principal ? [principal] : []);
+            
+            if ('ok' in result) {
+                setSystemSuccess('System sender principal updated successfully');
+                
+                // Refresh
+                const newPrincipal = await actor.get_system_sender_principal();
+                setSystemSenderPrincipal(newPrincipal ? newPrincipal.toString() : '');
+            } else {
+                const errorMsg = result.err.Unauthorized || result.err.InvalidInput || JSON.stringify(result.err);
+                setSystemError('Failed: ' + errorMsg);
+            }
+        } catch (err) {
+            console.error('Error updating system sender principal:', err);
+            setSystemError('Invalid principal ID format or error: ' + err.message);
+        } finally {
+            setSavingSystem(false);
         }
     };
 
@@ -679,6 +814,209 @@ const SmsAdmin = () => {
                             {savingPremium ? 'Saving...' : '⭐ Update Premium Configuration'}
                         </button>
                     </form>
+                </div>
+                
+                {/* System Notifications Section */}
+                <div style={{
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '12px',
+                    padding: '30px',
+                    border: '1px solid #00d4aa',
+                    marginTop: '30px'
+                }}>
+                    <h2 style={{
+                        color: '#00d4aa',
+                        fontSize: '20px',
+                        marginBottom: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                    }}>
+                        🔔 System Notifications
+                    </h2>
+                    <p style={{ color: '#888', marginBottom: '20px' }}>
+                        Configure which canisters can send system notifications to users and the principal that appears as the sender.
+                    </p>
+
+                    {systemError && (
+                        <div style={{
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            border: '1px solid #dc3545',
+                            borderRadius: '8px',
+                            padding: '12px 16px',
+                            marginBottom: '20px',
+                            color: '#dc3545'
+                        }}>
+                            {systemError}
+                        </div>
+                    )}
+
+                    {systemSuccess && (
+                        <div style={{
+                            backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                            border: '1px solid #00d4aa',
+                            borderRadius: '8px',
+                            padding: '12px 16px',
+                            marginBottom: '20px',
+                            color: '#00d4aa'
+                        }}>
+                            {systemSuccess}
+                        </div>
+                    )}
+                    
+                    {/* System Sender Principal */}
+                    <div style={{ marginBottom: '25px' }}>
+                        <label style={{
+                            display: 'block',
+                            color: '#ccc',
+                            marginBottom: '8px',
+                            fontSize: '14px'
+                        }}>
+                            System Sender Principal
+                        </label>
+                        <p style={{ color: '#888', fontSize: '12px', marginBottom: '10px' }}>
+                            The principal ID that appears as the "from" address on system notification messages.
+                        </p>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <input
+                                type="text"
+                                value={systemSenderPrincipal}
+                                onChange={(e) => setSystemSenderPrincipal(e.target.value)}
+                                placeholder="Leave empty to use canister ID"
+                                style={{
+                                    flex: 1,
+                                    backgroundColor: '#1a1a1a',
+                                    border: '1px solid #444',
+                                    borderRadius: '8px',
+                                    padding: '12px 16px',
+                                    color: '#fff',
+                                    fontFamily: 'monospace',
+                                    fontSize: '13px'
+                                }}
+                                disabled={savingSystem}
+                            />
+                            <button
+                                onClick={handleUpdateSystemSenderPrincipal}
+                                disabled={savingSystem}
+                                style={{
+                                    backgroundColor: '#00d4aa',
+                                    color: '#000',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '12px 20px',
+                                    cursor: savingSystem ? 'not-allowed' : 'pointer',
+                                    opacity: savingSystem ? 0.6 : 1,
+                                    fontWeight: '600'
+                                }}
+                            >
+                                {savingSystem ? 'Saving...' : 'Save'}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* Authorized Senders */}
+                    <div>
+                        <label style={{
+                            display: 'block',
+                            color: '#ccc',
+                            marginBottom: '8px',
+                            fontSize: '14px'
+                        }}>
+                            Authorized System Senders
+                        </label>
+                        <p style={{ color: '#888', fontSize: '12px', marginBottom: '15px' }}>
+                            Canisters authorized to send system notification messages (e.g., Sneedex for auction alerts).
+                        </p>
+                        
+                        {/* Current senders list */}
+                        <div style={{
+                            backgroundColor: '#1a1a1a',
+                            borderRadius: '8px',
+                            padding: '15px',
+                            marginBottom: '15px',
+                            minHeight: '60px'
+                        }}>
+                            {authorizedSenders.length === 0 ? (
+                                <p style={{ color: '#666', fontStyle: 'italic', margin: 0 }}>
+                                    No authorized senders configured
+                                </p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {authorizedSenders.map((sender, idx) => (
+                                        <div key={idx} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            backgroundColor: '#252525',
+                                            padding: '10px 12px',
+                                            borderRadius: '6px'
+                                        }}>
+                                            <span style={{
+                                                color: '#00d4aa',
+                                                fontFamily: 'monospace',
+                                                fontSize: '13px'
+                                            }}>
+                                                {sender.toString()}
+                                            </span>
+                                            <button
+                                                onClick={() => handleRemoveAuthorizedSender(sender)}
+                                                disabled={savingSystem}
+                                                style={{
+                                                    backgroundColor: '#dc3545',
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    padding: '6px 12px',
+                                                    cursor: savingSystem ? 'not-allowed' : 'pointer',
+                                                    fontSize: '12px',
+                                                    opacity: savingSystem ? 0.6 : 1
+                                                }}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Add new sender */}
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <input
+                                type="text"
+                                value={newAuthorizedSender}
+                                onChange={(e) => setNewAuthorizedSender(e.target.value)}
+                                placeholder="Enter canister principal ID to authorize"
+                                style={{
+                                    flex: 1,
+                                    backgroundColor: '#1a1a1a',
+                                    border: '1px solid #444',
+                                    borderRadius: '8px',
+                                    padding: '12px 16px',
+                                    color: '#fff',
+                                    fontFamily: 'monospace',
+                                    fontSize: '13px'
+                                }}
+                                disabled={savingSystem}
+                            />
+                            <button
+                                onClick={handleAddAuthorizedSender}
+                                disabled={savingSystem || !newAuthorizedSender.trim()}
+                                style={{
+                                    backgroundColor: '#00d4aa',
+                                    color: '#000',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '12px 20px',
+                                    cursor: (savingSystem || !newAuthorizedSender.trim()) ? 'not-allowed' : 'pointer',
+                                    opacity: (savingSystem || !newAuthorizedSender.trim()) ? 0.6 : 1,
+                                    fontWeight: '600'
+                                }}
+                            >
+                                {savingSystem ? 'Adding...' : 'Add Sender'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

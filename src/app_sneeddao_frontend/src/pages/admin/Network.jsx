@@ -71,6 +71,8 @@ export default function NetworkAdmin() {
         },
         sneed_sms: {
             sneed_premium_canister_id: null,
+            authorized_senders: [],
+            system_sender_principal: null,
             loading: false,
             error: null,
         },
@@ -90,6 +92,7 @@ export default function NetworkAdmin() {
             sneed_premium_canister_id: null,
             backend_canister_id: null,
             neuron_manager_factory_canister_id: null,
+            sneed_sms_canister_id: null,
             loading: false,
             error: null,
         },
@@ -204,10 +207,16 @@ export default function NetworkAdmin() {
         // Fetch from SMS
         try {
             const smsActor = createSmsActor(smsCanisterId, { agentOptions: { identity, host: getHost() } });
-            const premiumConfig = await smsActor.get_premium_config();
+            const [premiumConfig, authorizedSendersResult, systemSenderPrincipal] = await Promise.all([
+                smsActor.get_premium_config(),
+                smsActor.get_authorized_senders().catch(() => ({ ok: [] })), // May fail if not admin
+                smsActor.get_system_sender_principal().catch(() => null),
+            ]);
             newSettings.sneed_sms = {
                 ...newSettings.sneed_sms,
                 sneed_premium_canister_id: premiumConfig.sneed_premium_canister_id?.[0] || null,
+                authorized_senders: authorizedSendersResult.ok || [],
+                system_sender_principal: systemSenderPrincipal || null,
                 loading: false,
                 error: null,
             };
@@ -254,16 +263,18 @@ export default function NetworkAdmin() {
         // Fetch from Sneedex
         try {
             const sneedexActor = createSneedexActor(identity);
-            const [premiumId, backendId, factoryId] = await Promise.all([
+            const [premiumId, backendId, factoryId, smsId] = await Promise.all([
                 sneedexActor.getSneedPremiumCanisterId(),
                 sneedexActor.getBackendCanisterId(),
                 sneedexActor.getNeuronManagerFactoryCanisterId(),
+                sneedexActor.getSneedSmsCanisterId().catch(() => null),
             ]);
             newSettings.sneedex = {
                 ...newSettings.sneedex,
                 sneed_premium_canister_id: premiumId?.[0] || null,
                 backend_canister_id: backendId?.[0] || null,
                 neuron_manager_factory_canister_id: factoryId?.[0] || null,
+                sneed_sms_canister_id: smsId?.[0] || smsId || null,
                 loading: false,
                 error: null,
             };
@@ -353,24 +364,37 @@ export default function NetworkAdmin() {
                 }
                 case 'sneed_sms': {
                     const actor = createSmsActor(smsCanisterId, { agentOptions: { identity, host: getHost() } });
-                    // For SMS, we pass ??Principal format (null = no change, ?null = clear, ?(?id) = set)
-                    // In JS: [] = no change, [[]] = clear, [[principal]] = set
-                    const smsOpt = principal ? [[principal]] : [[]];
-                    const result = await actor.update_premium_config(
-                        smsOpt, // sneed_premium_canister_id
-                        [],     // premium_max_subject_length (no change)
-                        [],     // premium_max_body_length (no change)
-                        [],     // premium_rate_limit_minutes (no change)
-                        []      // premium_max_recipients (no change)
-                    );
-                    if ('ok' in result) {
-                        showInfo('Success', 'SMS premium canister ID updated', 'success');
-                        setNetworkSettings(prev => ({
-                            ...prev,
-                            sneed_sms: { ...prev.sneed_sms, sneed_premium_canister_id: principal }
-                        }));
-                    } else {
-                        showInfo('Error', 'Failed: ' + JSON.stringify(result.err), 'error');
+                    if (settingKey === 'sneed_premium_canister_id') {
+                        // For SMS, we pass ??Principal format (null = no change, ?null = clear, ?(?id) = set)
+                        // In JS: [] = no change, [[]] = clear, [[principal]] = set
+                        const smsOpt = principal ? [[principal]] : [[]];
+                        const result = await actor.update_premium_config(
+                            smsOpt, // sneed_premium_canister_id
+                            [],     // premium_max_subject_length (no change)
+                            [],     // premium_max_body_length (no change)
+                            [],     // premium_rate_limit_minutes (no change)
+                            []      // premium_max_recipients (no change)
+                        );
+                        if ('ok' in result) {
+                            showInfo('Success', 'SMS premium canister ID updated', 'success');
+                            setNetworkSettings(prev => ({
+                                ...prev,
+                                sneed_sms: { ...prev.sneed_sms, sneed_premium_canister_id: principal }
+                            }));
+                        } else {
+                            showInfo('Error', 'Failed: ' + JSON.stringify(result.err), 'error');
+                        }
+                    } else if (settingKey === 'system_sender_principal') {
+                        const result = await actor.set_system_sender_principal(principal ? [principal] : []);
+                        if ('ok' in result) {
+                            showInfo('Success', 'SMS system sender principal updated', 'success');
+                            setNetworkSettings(prev => ({
+                                ...prev,
+                                sneed_sms: { ...prev.sneed_sms, system_sender_principal: principal }
+                            }));
+                        } else {
+                            showInfo('Error', 'Failed: ' + JSON.stringify(result.err), 'error');
+                        }
                     }
                     break;
                 }
@@ -451,6 +475,17 @@ export default function NetworkAdmin() {
                             setNetworkSettings(prev => ({
                                 ...prev,
                                 sneedex: { ...prev.sneedex, neuron_manager_factory_canister_id: principal }
+                            }));
+                        } else {
+                            showInfo('Error', 'Failed: ' + JSON.stringify(result.err), 'error');
+                        }
+                    } else if (settingKey === 'sneed_sms_canister_id') {
+                        const result = await actor.setSneedSmsCanisterId(optPrincipal);
+                        if ('ok' in result) {
+                            showInfo('Success', 'Sneedex SMS canister ID updated', 'success');
+                            setNetworkSettings(prev => ({
+                                ...prev,
+                                sneedex: { ...prev.sneedex, sneed_sms_canister_id: principal }
                             }));
                         } else {
                             showInfo('Error', 'Failed: ' + JSON.stringify(result.err), 'error');
@@ -850,8 +885,10 @@ export default function NetworkAdmin() {
         total++; configured += networkSettings.sneed_lock.sneed_premium_canister_id ? 1 : 0;
         // Forum
         total++; configured += networkSettings.sneed_sns_forum.sneed_premium_canister_id ? 1 : 0;
-        // SMS
-        total++; configured += networkSettings.sneed_sms.sneed_premium_canister_id ? 1 : 0;
+        // SMS (premium + system sender)
+        total += 2;
+        configured += networkSettings.sneed_sms.sneed_premium_canister_id ? 1 : 0;
+        configured += networkSettings.sneed_sms.system_sender_principal ? 1 : 0;
         // Premium
         total += 2;
         configured += networkSettings.sneed_premium.icp_ledger_id ? 1 : 0;
@@ -861,10 +898,11 @@ export default function NetworkAdmin() {
         configured += networkSettings.sneed_icp_neuron_manager_factory.sneed_governance ? 1 : 0;
         configured += networkSettings.sneed_icp_neuron_manager_factory.sneed_premium_canister_id ? 1 : 0;
         // Sneedex
-        total += 3;
+        total += 4;
         configured += networkSettings.sneedex.sneed_premium_canister_id ? 1 : 0;
         configured += networkSettings.sneedex.backend_canister_id ? 1 : 0;
         configured += networkSettings.sneedex.neuron_manager_factory_canister_id ? 1 : 0;
+        configured += networkSettings.sneedex.sneed_sms_canister_id ? 1 : 0;
         
         return { total, configured };
     };
@@ -1006,9 +1044,60 @@ export default function NetworkAdmin() {
                         {networkSettings.sneed_sms.error ? (
                             <div style={styles.errorBox}>{networkSettings.sneed_sms.error}</div>
                         ) : (
-                            renderSetting('sneed_sms', 'sneed_premium_canister_id', 'Sneed Premium Canister ID', 
-                                networkSettings.sneed_sms.sneed_premium_canister_id,
-                                'Used for premium messaging limits')
+                            <>
+                                {renderSetting('sneed_sms', 'sneed_premium_canister_id', 'Sneed Premium Canister ID', 
+                                    networkSettings.sneed_sms.sneed_premium_canister_id,
+                                    'Used for premium messaging limits')}
+                                {renderSetting('sneed_sms', 'system_sender_principal', 'System Sender Principal', 
+                                    networkSettings.sneed_sms.system_sender_principal,
+                                    'The "from" address for system notifications')}
+                                
+                                {/* Authorized Senders List */}
+                                <div style={styles.settingRow}>
+                                    <div style={styles.settingLabel}>Authorized System Senders</div>
+                                    <div style={{ 
+                                        backgroundColor: theme === 'dark' ? '#0f0f1a' : '#f5f5f5',
+                                        borderRadius: '6px',
+                                        padding: '10px',
+                                        marginTop: '5px',
+                                    }}>
+                                        {networkSettings.sneed_sms.authorized_senders?.length > 0 ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {networkSettings.sneed_sms.authorized_senders.map((sender, idx) => {
+                                                    const name = getCanisterName(sender);
+                                                    return (
+                                                        <div key={idx} style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '8px',
+                                                            fontSize: '13px',
+                                                            fontFamily: 'monospace',
+                                                        }}>
+                                                            <span style={{ color: theme === 'dark' ? '#00d4aa' : '#00a080' }}>
+                                                                {sender.toString()}
+                                                            </span>
+                                                            {name && (
+                                                                <span style={styles.knownCanister}>{name}</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <span style={{ color: theme === 'dark' ? '#666' : '#999', fontStyle: 'italic', fontSize: '13px' }}>
+                                                No authorized senders configured
+                                            </span>
+                                        )}
+                                        <div style={{ 
+                                            marginTop: '10px', 
+                                            fontSize: '11px', 
+                                            color: theme === 'dark' ? '#888' : '#666',
+                                        }}>
+                                            💡 Manage authorized senders in the SMS Admin page
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
                         )}
                     </div>
                     
@@ -1080,6 +1169,9 @@ export default function NetworkAdmin() {
                                 {renderSetting('sneedex', 'neuron_manager_factory_canister_id', 'Neuron Manager Factory ID', 
                                     networkSettings.sneedex.neuron_manager_factory_canister_id,
                                     'For manager registrations')}
+                                {renderSetting('sneedex', 'sneed_sms_canister_id', 'Sneed SMS Canister ID', 
+                                    networkSettings.sneedex.sneed_sms_canister_id,
+                                    'For sending auction notifications')}
                             </>
                         )}
                     </div>

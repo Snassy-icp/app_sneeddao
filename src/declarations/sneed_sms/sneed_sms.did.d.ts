@@ -28,16 +28,25 @@ export type Result = { 'ok' : null } |
   { 'err' : SMSError };
 export type Result_1 = { 'ok' : bigint } |
   { 'err' : SMSError };
+export type Result_2 = { 'ok' : Array<Principal> } |
+  { 'err' : SMSError };
 export type SMSError = { 'InvalidInput' : string } |
   { 'NotFound' : string } |
   { 'Unauthorized' : string } |
   { 'AlreadyExists' : string } |
   { 'RateLimited' : string };
+export interface SystemNotificationInput {
+  'subject' : string,
+  'body' : string,
+  'recipients' : Array<Principal>,
+}
 export interface _SERVICE {
   'add_admin' : ActorMethod<[Principal], Result>,
+  'add_authorized_sender' : ActorMethod<[Principal], Result>,
   'get_admins' : ActorMethod<[], Array<AdminInfo>>,
   'get_all_messages' : ActorMethod<[], Array<MessageResponse>>,
   'get_all_messages_admin' : ActorMethod<[], Array<MessageResponse>>,
+  'get_authorized_senders' : ActorMethod<[], Result_2>,
   'get_config' : ActorMethod<
     [],
     {
@@ -66,13 +75,17 @@ export interface _SERVICE {
     [],
     { 'total_users' : bigint, 'total_messages' : bigint }
   >,
+  'get_system_sender_principal' : ActorMethod<[], [] | [Principal]>,
   'import_admins' : ActorMethod<[Array<AdminInfo>], Result_1>,
   'import_messages' : ActorMethod<[Array<MessageResponse>], Result_1>,
   'is_admin_query' : ActorMethod<[Principal], boolean>,
   'mark_messages_seen_up_to' : ActorMethod<[bigint], undefined>,
   'remove_admin' : ActorMethod<[Principal], Result>,
+  'remove_authorized_sender' : ActorMethod<[Principal], Result>,
   'remove_self_from_message' : ActorMethod<[bigint], Result>,
   'send_message' : ActorMethod<[CreateMessageInput], Result_1>,
+  'send_system_notification' : ActorMethod<[SystemNotificationInput], Result_1>,
+  'set_system_sender_principal' : ActorMethod<[[] | [Principal]], Result>,
   'update_config' : ActorMethod<
     [[] | [bigint], [] | [bigint], [] | [bigint], [] | [bigint]],
     Result

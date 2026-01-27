@@ -1,3 +1,9 @@
+type SystemNotificationInput = 
+ record {
+   body: text;
+   recipients: vec principal;
+   subject: text;
+ };
 type SMSError = 
  variant {
    AlreadyExists: text;
@@ -5,6 +11,11 @@ type SMSError =
    NotFound: text;
    RateLimited: text;
    Unauthorized: text;
+ };
+type Result_2 = 
+ variant {
+   err: SMSError;
+   ok: vec principal;
  };
 type Result_1 = 
  variant {
@@ -43,9 +54,11 @@ type AdminInfo =
  };
 service : {
   add_admin: (new_admin: principal) -> (Result);
+  add_authorized_sender: (sender: principal) -> (Result);
   get_admins: () -> (vec AdminInfo) query;
   get_all_messages: () -> (vec MessageResponse) query;
   get_all_messages_admin: () -> (vec MessageResponse) query;
+  get_authorized_senders: () -> (Result_2) query;
   get_config: () ->
    (record {
       max_body_length: nat;
@@ -71,13 +84,17 @@ service : {
                       total_messages: nat;
                       total_users: nat;
                     }) query;
+  get_system_sender_principal: () -> (opt principal) query;
   import_admins: (admins_to_import: vec AdminInfo) -> (Result_1);
   import_messages: (messages_to_import: vec MessageResponse) -> (Result_1);
   is_admin_query: ("principal": principal) -> (bool) query;
   mark_messages_seen_up_to: (timestamp: int) -> ();
   remove_admin: (admin_to_remove: principal) -> (Result);
+  remove_authorized_sender: (sender: principal) -> (Result);
   remove_self_from_message: (message_id: nat) -> (Result);
   send_message: (input: CreateMessageInput) -> (Result_1);
+  send_system_notification: (input: SystemNotificationInput) -> (Result_1);
+  set_system_sender_principal: ("principal": opt principal) -> (Result);
   update_config: (rate_limit_minutes: opt nat, max_subject_length: opt nat,
    max_body_length: opt nat, max_recipients: opt nat) -> (Result);
   update_premium_config: (sneed_premium_canister_id: opt opt principal,
