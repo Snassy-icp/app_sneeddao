@@ -14,7 +14,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
-import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
@@ -81,6 +81,11 @@ function CreateIcpNeuron() {
     
     // Wizard state
     const [showWizard, setShowWizard] = useState(false);
+    const [lastCreatedCanisterId, setLastCreatedCanisterId] = useState(null);
+    const [copiedLastCreated, setCopiedLastCreated] = useState(false);
+    
+    // Collapsible managers list
+    const [managersExpanded, setManagersExpanded] = useState(true);
     
     // Sneed membership for beta access
     const { 
@@ -875,7 +880,7 @@ function CreateIcpNeuron() {
                             <div style={{ ...cardStyle, marginBottom: '30px', padding: '30px' }}>
                                 <CreateIcpNeuronWizard 
                                     onComplete={(canisterId) => {
-                                        setShowWizard(false);
+                                        setLastCreatedCanisterId(canisterId);
                                         fetchMyManagers();
                                         fetchFactoryInfo();
                                     }}
@@ -928,6 +933,97 @@ function CreateIcpNeuron() {
                                 )}
                             </div>
                         )}
+                        
+                        {/* Last Created Canister ID - shown prominently outside the wizard */}
+                        {lastCreatedCanisterId && (
+                            <div style={{ 
+                                ...cardStyle, 
+                                marginBottom: '30px', 
+                                background: `${theme.colors.success || '#22c55e'}10`,
+                                border: `2px solid ${theme.colors.success || '#22c55e'}`,
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                                    <FaCheckCircle style={{ color: theme.colors.success || '#22c55e', fontSize: '20px' }} />
+                                    <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '16px' }}>
+                                        ✨ Neuron Manager Created
+                                    </h3>
+                                </div>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '12px' }}>
+                                    Your new canister ID (save this for reference):
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '10px',
+                                    background: theme.colors.cardBackground,
+                                    padding: '12px',
+                                    borderRadius: '8px',
+                                    flexWrap: 'wrap',
+                                }}>
+                                    <code style={{ 
+                                        flex: 1, 
+                                        fontFamily: 'monospace', 
+                                        fontSize: '14px', 
+                                        color: theme.colors.primaryText,
+                                        wordBreak: 'break-all',
+                                        minWidth: '200px',
+                                    }}>
+                                        {lastCreatedCanisterId}
+                                    </code>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(lastCreatedCanisterId);
+                                            setCopiedLastCreated(true);
+                                            setTimeout(() => setCopiedLastCreated(false), 1500);
+                                        }}
+                                        style={{
+                                            padding: '8px 14px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: theme.colors.accent,
+                                            color: '#fff',
+                                            fontWeight: '600',
+                                            fontSize: '12px',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {copiedLastCreated ? '✓ Copied!' : 'Copy'}
+                                    </button>
+                                    <Link
+                                        to={`/icp_neuron_manager/${lastCreatedCanisterId}`}
+                                        style={{
+                                            padding: '8px 14px',
+                                            borderRadius: '6px',
+                                            background: theme.colors.success || '#22c55e',
+                                            color: '#fff',
+                                            fontWeight: '600',
+                                            fontSize: '12px',
+                                            textDecoration: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                        }}
+                                    >
+                                        Open Manager <FaArrowRight size={10} />
+                                    </Link>
+                                </div>
+                                <button
+                                    onClick={() => setLastCreatedCanisterId(null)}
+                                    style={{
+                                        marginTop: '12px',
+                                        padding: '6px 12px',
+                                        borderRadius: '4px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: 'transparent',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '12px',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        )}
                     </>
                 )}
 
@@ -962,133 +1058,162 @@ function CreateIcpNeuron() {
                     </div>
                 )}
 
-                {/* My Managers List */}
+                {/* My Managers List - Collapsible */}
                 {isAuthenticated && (
-                    <>
-                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>
-                            Your Neuron Managers {managers.length > 0 && `(${managers.length})`}
-                        </h2>
+                    <div style={{ marginBottom: '30px' }}>
+                        {/* Collapsible Header */}
+                        <div 
+                            onClick={() => setManagersExpanded(!managersExpanded)}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                marginBottom: managersExpanded ? '20px' : '0',
+                                padding: '10px 0',
+                            }}
+                        >
+                            <h2 style={{ color: theme.colors.primaryText, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                🧠 Your Neuron Managers {managers.length > 0 && `(${managers.length})`}
+                            </h2>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '10px',
+                                color: theme.colors.mutedText,
+                            }}>
+                                {!managersExpanded && managers.length > 0 && (
+                                    <span style={{ fontSize: '13px' }}>Click to expand</span>
+                                )}
+                                {managersExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                            </div>
+                        </div>
 
-                        {loading ? (
-                            <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.primaryText }}>
-                                Loading your managers...
-                            </div>
-                        ) : managers.length === 0 ? (
-                            <div style={{ ...cardStyle, textAlign: 'center' }}>
-                                <p style={{ color: theme.colors.mutedText }}>
-                                    You haven't created any neuron managers yet.
-                                </p>
-                                <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginTop: '10px' }}>
-                                    Use the form above to create your first neuron manager!
-                                </p>
-                            </div>
-                        ) : (
-                            <div>
-                                {managers.map((manager) => {
-                                    const canisterIdText = manager.canisterId.toText();
-                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames);
-                                    return (
-                                        <div key={canisterIdText} style={cardStyle}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                                                <div style={{ flex: 1, minWidth: '250px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                                        <span style={{ fontSize: '20px' }}>🧠</span>
-                                                        <PrincipalDisplay
-                                                            principal={canisterIdText}
-                                                            displayInfo={displayInfo}
-                                                            showCopyButton={true}
-                                                            isAuthenticated={isAuthenticated}
-                                                            noLink={true}
-                                                        />
+                        {/* Collapsible Content */}
+                        {managersExpanded && (
+                            <>
+                                {loading ? (
+                                    <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.primaryText }}>
+                                        Loading your managers...
+                                    </div>
+                                ) : managers.length === 0 ? (
+                                    <div style={{ ...cardStyle, textAlign: 'center' }}>
+                                        <p style={{ color: theme.colors.mutedText }}>
+                                            You haven't created any neuron managers yet.
+                                        </p>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginTop: '10px' }}>
+                                            Use the form above to create your first neuron manager!
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        {managers.map((manager) => {
+                                            const canisterIdText = manager.canisterId.toText();
+                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames);
+                                            return (
+                                                <div key={canisterIdText} style={cardStyle}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                                                        <div style={{ flex: 1, minWidth: '250px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                                <span style={{ fontSize: '20px' }}>🧠</span>
+                                                                <PrincipalDisplay
+                                                                    principal={canisterIdText}
+                                                                    displayInfo={displayInfo}
+                                                                    showCopyButton={true}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                    noLink={true}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                                            <div>
+                                                                <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neurons: </span>
+                                                                {(() => {
+                                                                    const count = neuronCounts[manager.canisterId.toText()];
+                                                                    if (count === undefined || count === null) {
+                                                                        return <span style={{ color: theme.colors.mutedText }}>...</span>;
+                                                                    } else if (count === 0) {
+                                                                        return <span style={{ color: theme.colors.warning || '#f59e0b' }}>None yet</span>;
+                                                                    } else {
+                                                                        return <span style={{ color: theme.colors.success || '#22c55e' }}>{count}</span>;
+                                                                    }
+                                                                })()}
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                                {managerCycles[canisterIdText] !== undefined && managerCycles[canisterIdText] !== null && (
+                                                                    <span 
+                                                                        style={{ 
+                                                                            color: getCyclesColor(managerCycles[canisterIdText], cycleSettings), 
+                                                                            fontSize: '12px', 
+                                                                            flexShrink: 0,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                        }}
+                                                                        title={`${managerCycles[canisterIdText].toLocaleString()} cycles`}
+                                                                    >
+                                                                        ⚡ {formatCyclesCompact(managerCycles[canisterIdText])}
+                                                                    </span>
+                                                                )}
+                                                                {managerVersions[canisterIdText] && (
+                                                                    <span 
+                                                                        style={{ 
+                                                                            color: isVersionOutdated(managerVersions[canisterIdText]) ? '#f59e0b' : theme.colors.mutedText, 
+                                                                            fontSize: '12px', 
+                                                                            flexShrink: 0,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px',
+                                                                        }}
+                                                                        title={isVersionOutdated(managerVersions[canisterIdText]) 
+                                                                            ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                                            : undefined
+                                                                        }
+                                                                    >
+                                                                        {isVersionOutdated(managerVersions[canisterIdText]) && '⚠️ '}
+                                                                        Version {Number(managerVersions[canisterIdText].major)}.{Number(managerVersions[canisterIdText].minor)}.{Number(managerVersions[canisterIdText].patch)}
+                                                                    </span>
+                                                                )}
+                                                                <Link 
+                                                                    to={`/icp_neuron_manager/${canisterIdText}`}
+                                                                    style={{
+                                                                        background: theme.colors.accent,
+                                                                        color: '#fff',
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '6px',
+                                                                        textDecoration: 'none',
+                                                                        fontSize: '13px',
+                                                                        fontWeight: '600',
+                                                                    }}
+                                                                >
+                                                                    Manage →
+                                                                </Link>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            
-                                            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                                                    <div>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neurons: </span>
-                                                        {(() => {
-                                                            const count = neuronCounts[manager.canisterId.toText()];
-                                                            if (count === undefined || count === null) {
-                                                                return <span style={{ color: theme.colors.mutedText }}>...</span>;
-                                                            } else if (count === 0) {
-                                                                return <span style={{ color: theme.colors.warning || '#f59e0b' }}>None yet</span>;
-                                                            } else {
-                                                                return <span style={{ color: theme.colors.success || '#22c55e' }}>{count}</span>;
-                                                            }
-                                                        })()}
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                                        {managerCycles[canisterIdText] !== undefined && managerCycles[canisterIdText] !== null && (
-                                                            <span 
-                                                                style={{ 
-                                                                    color: getCyclesColor(managerCycles[canisterIdText], cycleSettings), 
-                                                                    fontSize: '12px', 
-                                                                    flexShrink: 0,
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '4px',
-                                                                }}
-                                                                title={`${managerCycles[canisterIdText].toLocaleString()} cycles`}
-                                                            >
-                                                                ⚡ {formatCyclesCompact(managerCycles[canisterIdText])}
-                                                            </span>
-                                                        )}
-                                                        {managerVersions[canisterIdText] && (
-                                                            <span 
-                                                                style={{ 
-                                                                    color: isVersionOutdated(managerVersions[canisterIdText]) ? '#f59e0b' : theme.colors.mutedText, 
-                                                                    fontSize: '12px', 
-                                                                    flexShrink: 0,
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '4px',
-                                                                }}
-                                                                title={isVersionOutdated(managerVersions[canisterIdText]) 
-                                                                    ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
-                                                                    : undefined
-                                                                }
-                                                            >
-                                                                {isVersionOutdated(managerVersions[canisterIdText]) && '⚠️ '}
-                                                                Version {Number(managerVersions[canisterIdText].major)}.{Number(managerVersions[canisterIdText].minor)}.{Number(managerVersions[canisterIdText].patch)}
-                                                            </span>
-                                                        )}
-                                                        <Link 
-                                                            to={`/icp_neuron_manager/${canisterIdText}`}
-                                                            style={{
-                                                                background: theme.colors.accent,
-                                                                color: '#fff',
-                                                                padding: '8px 16px',
-                                                                borderRadius: '6px',
-                                                                textDecoration: 'none',
-                                                                fontSize: '13px',
-                                                                fontWeight: '600',
-                                                            }}
-                                                        >
-                                                            Manage →
-                                                        </Link>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                            );
+                                        })}
+                                    </div>
+                                )}
 
-                        {managers.length > 0 && (
-                            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                                <button 
-                                    style={{ ...smallButtonStyle, marginLeft: 0 }}
-                                    onClick={fetchMyManagers}
-                                    disabled={loading}
-                                >
-                                    🔄 Refresh List
-                                </button>
-                            </div>
+                                {managers.length > 0 && (
+                                    <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                                        <button 
+                                            style={{ ...smallButtonStyle, marginLeft: 0 }}
+                                            onClick={fetchMyManagers}
+                                            disabled={loading}
+                                        >
+                                            🔄 Refresh List
+                                        </button>
+                                    </div>
+                                )}
+                            </>
                         )}
-                    </>
+                    </div>
                 )}
 
                 {/* Info section */}
