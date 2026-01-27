@@ -61,17 +61,12 @@ type Timestamp = nat64;
 type Result_6 = 
  variant {
    err: text;
-   ok: nat;
- };
-type Result_5 = 
- variant {
-   err: text;
    ok: vec record {
              principal;
              int;
            };
  };
-type Result_4 = 
+type Result_5 = 
  variant {
    err: text;
    ok: record {
@@ -79,15 +74,20 @@ type Result_4 =
          module_hash: opt blob;
        };
  };
-type Result_3 = 
+type Result_4 = 
  variant {
    err: text;
    ok: vec BanLogEntry;
  };
-type Result_2 = 
+type Result_3 = 
  variant {
    err: text;
    ok: vec Neuron;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: nat;
  };
 type Result_1 = 
  variant {
@@ -152,6 +152,14 @@ type Neuron =
                       vec int32;
                     };
  };
+type JailbreakConfig = 
+ record {
+   created_at: int;
+   id: nat;
+   neuron_id_hex: text;
+   sns_root_canister_id: principal;
+   target_principal: principal;
+ };
 type CanisterGroupsRoot = 
  record {
    groups: vec CanisterGroup;
@@ -179,16 +187,17 @@ type AppSneedDaoBackend =
    add_authorized_for_caller: (canister_id: principal) -> ();
    add_blacklisted_word: (word: text) -> (Result_1);
    add_partner: (name: text, logo_url: text, description: text, links:
-    vec PartnerLink, index: opt nat) -> (Result_6);
+    vec PartnerLink, index: opt nat) -> (Result_2);
    add_project: (name: text, logo_url: opt text, description: text,
     project_type: ProjectType, links: vec ProjectLink, index: opt nat) ->
-    (Result_6);
+    (Result_2);
    add_whitelisted_token: (token: WhitelistedToken) -> ();
    ban_user: (user: principal, duration_hours: nat, reason: text) ->
     (Result_1);
    caller_is_admin: () -> (bool) query;
    check_ban_status: (user: principal) -> (Result_1) query;
    delete_canister_groups: () -> ();
+   delete_jailbreak_config: (id: nat) -> (Result_1);
    get_admins: () -> (vec principal) query;
    get_all_neuron_names: () ->
     (vec record {
@@ -215,8 +224,8 @@ type AppSneedDaoBackend =
                                              text;
                                            }) query;
    get_authorized_for_callers: () -> (vec principal) query;
-   get_ban_log: () -> (Result_3) query;
-   get_banned_users: () -> (Result_5) query;
+   get_ban_log: () -> (Result_4) query;
+   get_banned_users: () -> (Result_6) query;
    get_blacklisted_words: () -> (vec text) query;
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
@@ -230,7 +239,7 @@ type AppSneedDaoBackend =
        premium_max_canisters_per_group: nat;
        premium_max_total_grouped_canisters: nat;
      }) query;
-   get_canister_info: (canister_id: principal) -> (Result_4);
+   get_canister_info: (canister_id: principal) -> (Result_5);
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->
     (record {
@@ -243,6 +252,7 @@ type AppSneedDaoBackend =
        total_limit: nat;
        ungrouped_count: nat;
      });
+   get_my_jailbreak_configs: () -> (vec JailbreakConfig) query;
    get_my_nickname_usage: () ->
     (record {
        is_premium: bool;
@@ -278,8 +288,8 @@ type AppSneedDaoBackend =
    get_projects: () -> (vec Project) query;
    get_swap_canister_ids: () -> (vec principal) query;
    get_tracked_canisters: () -> (vec principal) query;
-   get_user_ban_history: (user: principal) -> (Result_3) query;
-   get_user_neurons: () -> (Result_2);
+   get_user_ban_history: (user: principal) -> (Result_4) query;
+   get_user_neurons: () -> (Result_3);
    get_user_tokens: () -> (vec principal) query;
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
@@ -297,6 +307,8 @@ type AppSneedDaoBackend =
    remove_partner: (id: nat) -> (Result_1);
    remove_project: (id: nat) -> (Result_1);
    remove_whitelisted_token: (ledger_id: principal) -> ();
+   save_jailbreak_config: (sns_root_canister_id: principal, neuron_id_hex:
+    text, target_principal: principal) -> (Result_2);
    send_tokens: (icrc1_ledger_canister_id: principal, amount: nat, to:
     principal) -> (TransferResult);
    set_cached_token_meta: (swap_canister_id: principal, new_token_meta:

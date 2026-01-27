@@ -59,7 +59,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
-        if (['/tools/main', '/tools/escrow', '/tools/escrow/swap', '/tools/sns_jailbreak'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
+        if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list'].includes(path) || path.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
         return 'Sneed Hub';
@@ -152,13 +152,21 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         }
     }, [location.pathname]);
 
-    // Update active section if current section doesn't exist (e.g., admin section when not admin)
-    // But only if we're not on an admin page waiting for admin check
+    // Update active section based on current path and auth state
     useEffect(() => {
-        if (!menuSections[activeSection] && !(isOnAdminPage && adminLoading)) {
-            setActiveSection('Sneed Hub'); // Fall back to Sneed Hub section
+        const path = location.pathname;
+        
+        // Re-check Tools section when authentication changes
+        if (isAuthenticated && path.startsWith('/tools/')) {
+            setActiveSection('Tools');
+            return;
         }
-    }, [activeSection, isAdmin, isAuthenticated, isOnAdminPage, adminLoading]);
+        
+        // Fall back to Sneed Hub if current section doesn't exist
+        if (!menuSections[activeSection] && !(isOnAdminPage && adminLoading)) {
+            setActiveSection('Sneed Hub');
+        }
+    }, [activeSection, isAdmin, isAuthenticated, isOnAdminPage, adminLoading, location.pathname]);
 
     // Fetch nervous system parameters for voting power calculation
     useEffect(() => {
@@ -381,8 +389,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             subMenu: [
                 { name: 'Tools', path: '/tools/main' },
                 { name: 'SNS Jailbreak', path: '/tools/sns_jailbreak' },
-                { name: 'Escrow', path: '/tools/escrow' },
-                { name: 'Lookup Swap', path: '/tools/escrow/swap' }
+                { name: 'My Scripts', path: '/tools/sns_jailbreak_list' }
             ]
         };
     }

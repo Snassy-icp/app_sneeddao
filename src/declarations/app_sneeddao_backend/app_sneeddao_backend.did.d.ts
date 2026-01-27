@@ -8,7 +8,7 @@ export interface AppSneedDaoBackend {
   'add_blacklisted_word' : ActorMethod<[string], Result_1>,
   'add_partner' : ActorMethod<
     [string, string, string, Array<PartnerLink>, [] | [bigint]],
-    Result_6
+    Result_2
   >,
   'add_project' : ActorMethod<
     [
@@ -19,13 +19,14 @@ export interface AppSneedDaoBackend {
       Array<ProjectLink>,
       [] | [bigint],
     ],
-    Result_6
+    Result_2
   >,
   'add_whitelisted_token' : ActorMethod<[WhitelistedToken], undefined>,
   'ban_user' : ActorMethod<[Principal, bigint, string], Result_1>,
   'caller_is_admin' : ActorMethod<[], boolean>,
   'check_ban_status' : ActorMethod<[Principal], Result_1>,
   'delete_canister_groups' : ActorMethod<[], undefined>,
+  'delete_jailbreak_config' : ActorMethod<[bigint], Result_1>,
   'get_admins' : ActorMethod<[], Array<Principal>>,
   'get_all_neuron_names' : ActorMethod<
     [],
@@ -38,8 +39,8 @@ export interface AppSneedDaoBackend {
   >,
   'get_all_principal_nicknames' : ActorMethod<[], Array<[Principal, string]>>,
   'get_authorized_for_callers' : ActorMethod<[], Array<Principal>>,
-  'get_ban_log' : ActorMethod<[], Result_3>,
-  'get_banned_users' : ActorMethod<[], Result_5>,
+  'get_ban_log' : ActorMethod<[], Result_4>,
+  'get_banned_users' : ActorMethod<[], Result_6>,
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
   'get_cached_token_meta' : ActorMethod<[Principal], [] | [TokenMeta]>,
   'get_canister_groups' : ActorMethod<[], [] | [CanisterGroupsRoot]>,
@@ -54,7 +55,7 @@ export interface AppSneedDaoBackend {
       'max_canister_groups' : bigint,
     }
   >,
-  'get_canister_info' : ActorMethod<[Principal], Result_4>,
+  'get_canister_info' : ActorMethod<[Principal], Result_5>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_my_canister_groups_usage' : ActorMethod<
     [],
@@ -69,6 +70,7 @@ export interface AppSneedDaoBackend {
       'total_canisters' : bigint,
     }
   >,
+  'get_my_jailbreak_configs' : ActorMethod<[], Array<JailbreakConfig>>,
   'get_my_nickname_usage' : ActorMethod<
     [],
     {
@@ -102,8 +104,8 @@ export interface AppSneedDaoBackend {
   'get_projects' : ActorMethod<[], Array<Project>>,
   'get_swap_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_tracked_canisters' : ActorMethod<[], Array<Principal>>,
-  'get_user_ban_history' : ActorMethod<[Principal], Result_3>,
-  'get_user_neurons' : ActorMethod<[], Result_2>,
+  'get_user_ban_history' : ActorMethod<[Principal], Result_4>,
+  'get_user_neurons' : ActorMethod<[], Result_3>,
   'get_user_tokens' : ActorMethod<[], Array<Principal>>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
@@ -123,6 +125,10 @@ export interface AppSneedDaoBackend {
   'remove_partner' : ActorMethod<[bigint], Result_1>,
   'remove_project' : ActorMethod<[bigint], Result_1>,
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
+  'save_jailbreak_config' : ActorMethod<
+    [Principal, string, Principal],
+    Result_2
+  >,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
   'set_canister_groups' : ActorMethod<[CanisterGroupsRoot], Result_1>,
@@ -205,6 +211,13 @@ export interface CanisterGroupsRoot {
   'groups' : Array<CanisterGroup>,
   'ungrouped' : Array<Principal>,
 }
+export interface JailbreakConfig {
+  'id' : bigint,
+  'sns_root_canister_id' : Principal,
+  'target_principal' : Principal,
+  'created_at' : bigint,
+  'neuron_id_hex' : string,
+}
 export interface Neuron {
   'id' : [] | [NeuronId],
   'permissions' : Array<[Principal, Int32Array | number[]]>,
@@ -244,20 +257,20 @@ export type Result = { 'ok' : string } |
   { 'err' : string };
 export type Result_1 = { 'ok' : null } |
   { 'err' : string };
-export type Result_2 = { 'ok' : Array<Neuron> } |
+export type Result_2 = { 'ok' : bigint } |
   { 'err' : string };
-export type Result_3 = { 'ok' : Array<BanLogEntry> } |
+export type Result_3 = { 'ok' : Array<Neuron> } |
   { 'err' : string };
-export type Result_4 = {
+export type Result_4 = { 'ok' : Array<BanLogEntry> } |
+  { 'err' : string };
+export type Result_5 = {
     'ok' : {
       'controllers' : Array<Principal>,
       'module_hash' : [] | [Uint8Array | number[]],
     }
   } |
   { 'err' : string };
-export type Result_5 = { 'ok' : Array<[Principal, bigint]> } |
-  { 'err' : string };
-export type Result_6 = { 'ok' : bigint } |
+export type Result_6 = { 'ok' : Array<[Principal, bigint]> } |
   { 'err' : string };
 export type Timestamp = bigint;
 export interface TokenMeta {

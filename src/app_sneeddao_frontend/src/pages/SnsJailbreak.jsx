@@ -16,8 +16,13 @@ import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
 
-// Permission type for MANAGE_PRINCIPALS (allows adding/removing principals and their permissions)
-const PERM_MANAGE_PRINCIPALS = 2;
+// Permission types (SNS NeuronPermissionType enum)
+// 0 = Unspecified, 1 = ConfigureDissolveState, 2 = ManagePrincipals, 
+// 3 = SubmitProposal, 4 = Vote, 5 = Disburse, 6 = Split, 
+// 7 = MergeMaturity, 8 = DisburseMaturity, 9 = StakeMaturity, 10 = ManageVotingPermission
+
+// The script grants ALL permissions, so we need to verify ALL are grantable
+const REQUIRED_GRANTABLE_PERMISSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 function SnsJailbreak() {
     const navigate = useNavigate();
@@ -133,17 +138,27 @@ function SnsJailbreak() {
                 const govActor = createSnsGovernanceActor(sns.canisters.governance, { agent });
                 const params = await govActor.get_nervous_system_parameters(null);
                 
-                // Check if MANAGE_PRINCIPALS is in grantable permissions
+                // Check if ALL required permissions are grantable
                 const grantablePerms = params.neuron_grantable_permissions?.[0]?.permissions || 
                                        params.neuron_grantable_permissions?.permissions || [];
                 
-                if (grantablePerms.includes(PERM_MANAGE_PRINCIPALS)) {
+                // Find which required permissions are missing
+                const missingPerms = REQUIRED_GRANTABLE_PERMISSIONS.filter(p => !grantablePerms.includes(p));
+                
+                if (missingPerms.length === 0) {
                     return { sns, supported: true };
                 } else {
+                    // Map permission numbers to names for display
+                    const permNames = {
+                        1: 'ConfigureDissolveState', 2: 'ManagePrincipals', 3: 'SubmitProposal',
+                        4: 'Vote', 5: 'Disburse', 6: 'Split', 7: 'MergeMaturity',
+                        8: 'DisburseMaturity', 9: 'StakeMaturity', 10: 'ManageVotingPermission'
+                    };
+                    const missingNames = missingPerms.map(p => permNames[p] || `Permission ${p}`);
                     return { 
                         sns, 
                         supported: false, 
-                        reason: 'Does not allow granting ManagePrincipals permission to hotkeys' 
+                        reason: `Cannot grant: ${missingNames.join(', ')}` 
                     };
                 }
             } catch (error) {
