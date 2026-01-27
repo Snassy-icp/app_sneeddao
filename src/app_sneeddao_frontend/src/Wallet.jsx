@@ -2510,14 +2510,15 @@ function Wallet() {
         };
     };
 
-    const handleSendToken = async (token, recipient, amount) => {
+    const handleSendToken = async (token, recipient, amount, subaccount = []) => {
         console.log('=== Wallet.handleSendToken START ===');
         console.log('Parameters:', { 
             tokenSymbol: token.symbol, 
             recipient, 
             amount,
             tokenAvailable: token.available?.toString(),
-            tokenFee: token.fee?.toString()
+            tokenFee: token.fee?.toString(),
+            hasSubaccount: subaccount.length > 0
         });
 
         try {
@@ -2555,9 +2556,10 @@ function Wallet() {
                 const recipientPrincipal = Principal.fromText(recipient);
                 console.log('Backend transfer - recipient principal:', recipientPrincipal.toText());
                 
+                // Backend transfer with subaccount support
                 const result = await sneedLockActor.transfer_tokens(
                     recipientPrincipal,
-                    [],
+                    subaccount,
                     token.ledger_canister_id,
                     send_amounts.send_from_backend
                 );
@@ -2585,9 +2587,10 @@ function Wallet() {
         
                 const recipientPrincipal = Principal.fromText(recipient);
                 console.log('Frontend transfer - recipient principal:', recipientPrincipal.toText());
+                console.log('Frontend transfer - subaccount:', subaccount.length > 0 ? 'provided' : 'none');
                 
                 const result = await actor.icrc1_transfer({
-                    to: { owner: recipientPrincipal, subaccount: [] },
+                    to: { owner: recipientPrincipal, subaccount: subaccount },
                     fee: [],
                     memo: [],
                     from_subaccount: [],

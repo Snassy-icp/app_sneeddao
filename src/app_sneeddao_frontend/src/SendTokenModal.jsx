@@ -1,11 +1,21 @@
 // SendTokenModal.jsx
-import React, { useState, useEffect } from 'react';
-import './SendTokenModal.css'; // Create this CSS file for styling
+import React, { useState, useEffect, useMemo } from 'react';
+import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
-import PrincipalInput from './components/PrincipalInput';
 import { useTheme } from './contexts/ThemeContext';
+import {
+  parseAccount,
+  parseExtendedAddress,
+  resolveSubaccount,
+  encodeExtendedAddress,
+  bytesToHex,
+  formatSubaccountForDisplay,
+  looksLikeExtendedAddress,
+  isDefaultSubaccount,
+  getSubaccountForTransfer
+} from './utils/AccountParser';
 
 function SendTokenModal({ show, onClose, onSend, token }) {
   const { theme } = useTheme();
@@ -18,9 +28,15 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const [confirmMessage, setConfirmMessage] = useState('');
   const [logoLoaded, setLogoLoaded] = useState(false);
 
+  // Subaccount state
+  const [showSubaccountInput, setShowSubaccountInput] = useState(false);
+  const [subaccountType, setSubaccountType] = useState('hex'); // 'hex' | 'bytes' | 'principal'
+  const [subaccountValue, setSubaccountValue] = useState('');
+  const [extendedAddressDetected, setExtendedAddressDetected] = useState(null);
+
   useEffect(() => {
     if (show) {
-        setErrorText('');
+      setErrorText('');
     }
   }, [show]);
 
@@ -35,38 +51,131 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     }
   }, [show, token?.logo]);
 
+  // Reset state when modal is closed
+  useEffect(() => {
+    if (!show) {
+      setRecipient('');
+      setAmount('');
+      setShowSubaccountInput(false);
+      setSubaccountType('hex');
+      setSubaccountValue('');
+      setExtendedAddressDetected(null);
+      setErrorText('');
+    }
+  }, [show]);
+
+  // Auto-detect extended address format when recipient changes
+  useEffect(() => {
+    if (!recipient) {
+      setExtendedAddressDetected(null);
+      return;
+    }
+
+    if (looksLikeExtendedAddress(recipient)) {
+      const parsed = parseExtendedAddress(recipient);
+      if (parsed) {
+        setExtendedAddressDetected(parsed);
+        // Hide manual subaccount input when extended address is detected
+        setShowSubaccountInput(false);
+        setSubaccountValue('');
+      } else {
+        setExtendedAddressDetected(null);
+      }
+    } else {
+      setExtendedAddressDetected(null);
+    }
+  }, [recipient]);
+
+  // Parse and validate the current account
+  const parsedAccount = useMemo(() => {
+    if (!recipient) return null;
+
+    // If extended address was detected, use that
+    if (extendedAddressDetected) {
+      return extendedAddressDetected;
+    }
+
+    // Otherwise parse with manual subaccount if provided
+    const subaccountInput = showSubaccountInput && subaccountValue.trim()
+      ? { type: subaccountType, value: subaccountValue }
+      : null;
+
+    return parseAccount(recipient, subaccountInput);
+  }, [recipient, extendedAddressDetected, showSubaccountInput, subaccountType, subaccountValue]);
+
+  // Resolve the manual subaccount for preview
+  const resolvedManualSubaccount = useMemo(() => {
+    if (!showSubaccountInput || !subaccountValue.trim()) {
+      return null;
+    }
+    return resolveSubaccount({ type: subaccountType, value: subaccountValue });
+  }, [showSubaccountInput, subaccountType, subaccountValue]);
+
   const handleSetMax = () => {
-    // Check if we'll need to split the send between frontend and backend
     const willNeedSplit = token.available > token.balance;
     const feesNeeded = willNeedSplit ? 2n * token.fee : token.fee;
-    
+
     console.log('MAX button calculation:', {
       tokenAvailable: token.available.toString(),
-      tokenBalance: token.balance.toString(), 
+      tokenBalance: token.balance.toString(),
       willNeedSplit,
       feesNeeded: feesNeeded.toString(),
       calculation: `${token.available.toString()} - ${feesNeeded.toString()}`
     });
-    
+
     var max = token.available - feesNeeded;
     if (max < 0n) { max = 0n; }
     setAmount(formatAmount(max, token.decimals));
   };
 
+  const handleConvertToExtendedAddress = () => {
+    if (!parsedAccount || !parsedAccount.principal) {
+      setErrorText('Please enter a valid principal first');
+      return;
+    }
+
+    const extendedAddress = encodeExtendedAddress(parsedAccount);
+    if (extendedAddress) {
+      setRecipient(extendedAddress);
+      setShowSubaccountInput(false);
+      setSubaccountValue('');
+    } else {
+      setErrorText('Failed to encode extended address');
+    }
+  };
+
   const handleSend = async () => {
     console.log('=== SendTokenModal.handleSend START ===');
     console.log('Input values:', { recipient, amount, tokenSymbol: token.symbol });
-    
+
     setErrorText('');
-    
+
     if (recipient == "") {
       console.log('ERROR: Empty recipient');
       setErrorText("Please enter a recipient address first!");
       return;
     }
-    
-    // PrincipalInput component ensures recipient is valid, so no need for additional validation
-    console.log('Recipient Principal validation: SUCCESS (handled by PrincipalInput)');
+
+    // Validate the parsed account
+    if (!parsedAccount || !parsedAccount.principal) {
+      console.log('ERROR: Invalid recipient');
+      setErrorText("Invalid recipient address! Please enter a valid principal ID or extended address.");
+      return;
+    }
+
+    // Validate manual subaccount if entered
+    if (showSubaccountInput && subaccountValue.trim() && !resolvedManualSubaccount) {
+      console.log('ERROR: Invalid subaccount');
+      setErrorText("Invalid subaccount format! Please check your input.");
+      return;
+    }
+
+    console.log('Recipient validation: SUCCESS');
+    console.log('Parsed account:', {
+      principal: parsedAccount.principal.toText(),
+      hasSubaccount: !!parsedAccount.subaccount,
+      subaccountHex: parsedAccount.subaccount ? bytesToHex(parsedAccount.subaccount.resolved) : null
+    });
 
     if (amount == "") {
       console.log('ERROR: Empty amount');
@@ -74,24 +183,23 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    // Convert to BigInt safely - handle decimal inputs from formatAmount
     const amountFloat = parseFloat(amount);
-    console.log('Amount parsing:', { 
-      originalAmount: amount, 
-      amountFloat, 
+    console.log('Amount parsing:', {
+      originalAmount: amount,
+      amountFloat,
       isNaN: isNaN(amountFloat),
-      isPositive: amountFloat > 0 
+      isPositive: amountFloat > 0
     });
-    
+
     if (isNaN(amountFloat) || amountFloat <= 0) {
       console.log('ERROR: Invalid amount after parsing');
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
-    
+
     const scaledAmount = amountFloat * (10 ** token.decimals);
     const bigIntAmount = BigInt(Math.floor(scaledAmount));
-    
+
     console.log('BigInt conversion:', {
       decimals: token.decimals,
       scaledAmount,
@@ -100,11 +208,10 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       tokenFee: token.fee.toString()
     });
 
-    // Check if we'll need to split the send and adjust max allowed accordingly
     const willNeedSplit = token.available > token.balance;
     const feesNeeded = willNeedSplit ? 2n * BigInt(token.fee) : BigInt(token.fee);
     const maxAllowed = BigInt(token.available) - feesNeeded;
-    
+
     console.log('Balance validation:', {
       bigIntAmount: bigIntAmount.toString(),
       tokenAvailable: token.available.toString(),
@@ -117,7 +224,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
 
     if (bigIntAmount > maxAllowed) {
       console.log('ERROR: Insufficient balance');
-      const feeMsg = willNeedSplit ? 
+      const feeMsg = willNeedSplit ?
         "Remember that sending requires 2 transaction fees when splitting between wallets." :
         "Remember that sending requires 1 transaction fee.";
       setErrorText(`Insufficient available balance! ${feeMsg}`);
@@ -126,26 +233,40 @@ function SendTokenModal({ show, onClose, onSend, token }) {
 
     console.log('All validations passed, setting up confirmation');
 
+    // Get subaccount for transfer
+    const subaccountForTransfer = getSubaccountForTransfer(parsedAccount);
+
     setConfirmAction(() => async () => {
       console.log('=== CONFIRMATION ACTION START ===');
       try {
         setIsLoading(true);
         setErrorText('');
-        console.log('About to call onSend with:', { token: token.symbol, recipient, amount });
-        await onSend(token, recipient, amount);
+        console.log('About to call onSend with:', {
+          token: token.symbol,
+          principal: parsedAccount.principal.toText(),
+          amount,
+          subaccount: subaccountForTransfer.length > 0 ? bytesToHex(new Uint8Array(subaccountForTransfer[0])) : 'none'
+        });
+        await onSend(token, parsedAccount.principal.toText(), amount, subaccountForTransfer);
         console.log('onSend completed successfully');
         onClose();
         console.log('Modal closed');
       } catch (error) {
         console.error('ERROR in confirmation action:', error);
-        setErrorText('Error sending tokens:', error);
+        setErrorText('Error sending tokens: ' + error.message);
       } finally {
         setIsLoading(false);
         console.log('=== CONFIRMATION ACTION END ===');
       }
     });
 
-    setConfirmMessage(`You are about to send ${amount} ${token.symbol} to ${recipient}.`);
+    // Build confirmation message
+    let confirmMsg = `You are about to send ${amount} ${token.symbol} to ${parsedAccount.principal.toText()}`;
+    if (parsedAccount.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved)) {
+      confirmMsg += `\n\nWith subaccount: ${formatSubaccountForDisplay(parsedAccount.subaccount.resolved, 32)}`;
+    }
+
+    setConfirmMessage(confirmMsg);
     setShowConfirmModal(true);
     console.log('=== SendTokenModal.handleSend END ===');
   };
@@ -153,6 +274,9 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   if (!show || !token) {
     return null;
   }
+
+  // Check if token is DIP20 (doesn't support subaccounts)
+  const isDIP20 = token.standard === 'DIP20' || token.standard === 'dip20';
 
   return (
     <div style={{
@@ -173,7 +297,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         boxShadow: theme.colors.cardShadow,
         borderRadius: '16px',
         padding: '32px',
-        width: '450px',
+        width: '500px',
         maxWidth: '90vw',
         maxHeight: '90vh',
         overflow: 'auto'
@@ -206,7 +330,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             </div>
           </div>
         </div>
-        
+
         <div style={{ marginBottom: '20px' }}>
           <label style={{
             display: 'block',
@@ -216,16 +340,234 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           }}>
             Recipient Address:
           </label>
-          <PrincipalInput
+          <input
+            type="text"
             value={recipient}
-            onChange={setRecipient}
-            placeholder="Enter recipient principal"
+            onChange={(e) => setRecipient(e.target.value)}
+            placeholder="Enter principal ID or extended address"
             style={{
               width: '100%',
-              maxWidth: 'none'
+              padding: '12px',
+              background: theme.colors.secondaryBg,
+              border: `1px solid ${parsedAccount ? theme.colors.success : theme.colors.border}`,
+              borderRadius: '8px',
+              color: theme.colors.primaryText,
+              fontSize: '0.9rem',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.2s ease'
             }}
           />
+
+          {/* Extended address detection feedback */}
+          {extendedAddressDetected && (
+            <div style={{
+              marginTop: '8px',
+              padding: '10px 12px',
+              background: `${theme.colors.success}15`,
+              border: `1px solid ${theme.colors.success}40`,
+              borderRadius: '8px',
+              fontSize: '0.85rem'
+            }}>
+              <div style={{ color: theme.colors.success, fontWeight: '600', marginBottom: '6px' }}>
+                ✓ Extended address format detected
+              </div>
+              <div style={{ color: theme.colors.secondaryText }}>
+                <strong>Principal:</strong> {extendedAddressDetected.principal.toText().slice(0, 20)}...
+              </div>
+              {extendedAddressDetected.subaccount && (
+                <div style={{ color: theme.colors.secondaryText, marginTop: '4px' }}>
+                  <strong>Subaccount:</strong> {formatSubaccountForDisplay(extendedAddressDetected.subaccount.resolved, 24)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Valid principal indicator (when not extended address) */}
+          {parsedAccount && !extendedAddressDetected && (
+            <div style={{
+              marginTop: '8px',
+              fontSize: '0.85rem',
+              color: theme.colors.success
+            }}>
+              ✓ Valid principal ID
+            </div>
+          )}
         </div>
+
+        {/* Advanced subaccount section */}
+        {!extendedAddressDetected && !isDIP20 && (
+          <div style={{ marginBottom: '20px' }}>
+            <button
+              onClick={() => setShowSubaccountInput(!showSubaccountInput)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: theme.colors.accent,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span style={{ transform: showSubaccountInput ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▶</span>
+              Advanced: Send To Subaccount
+            </button>
+
+            {showSubaccountInput && (
+              <div style={{
+                marginTop: '12px',
+                padding: '16px',
+                background: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`
+              }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{
+                    display: 'block',
+                    color: theme.colors.secondaryText,
+                    marginBottom: '6px',
+                    fontSize: '0.85rem'
+                  }}>
+                    Subaccount Format:
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {[
+                      { value: 'hex', label: 'Hex String' },
+                      { value: 'bytes', label: 'Byte Array' },
+                      { value: 'principal', label: 'Principal ID' }
+                    ].map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setSubaccountType(option.value);
+                          setSubaccountValue('');
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          background: subaccountType === option.value ? theme.colors.accent : theme.colors.tertiaryBg,
+                          color: subaccountType === option.value ? theme.colors.primaryBg : theme.colors.secondaryText,
+                          border: `1px solid ${subaccountType === option.value ? theme.colors.accent : theme.colors.border}`,
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          fontWeight: subaccountType === option.value ? '600' : '400',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{
+                    display: 'block',
+                    color: theme.colors.secondaryText,
+                    marginBottom: '6px',
+                    fontSize: '0.85rem'
+                  }}>
+                    {subaccountType === 'hex' && 'Hex String (e.g., 0A1B2C3D... or 0x0A1B2C3D...):'}
+                    {subaccountType === 'bytes' && 'Byte Array (comma-separated, e.g., 1, 2, 3, 4):'}
+                    {subaccountType === 'principal' && 'Principal ID to convert to subaccount:'}
+                  </label>
+                  <input
+                    type="text"
+                    value={subaccountValue}
+                    onChange={(e) => setSubaccountValue(e.target.value)}
+                    placeholder={
+                      subaccountType === 'hex' ? '0A1B2C3D4E5F...' :
+                        subaccountType === 'bytes' ? '1, 2, 3, 4, 5...' :
+                          'aaaaa-aa'
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      background: theme.colors.tertiaryBg,
+                      border: `1px solid ${resolvedManualSubaccount ? theme.colors.success : theme.colors.border}`,
+                      borderRadius: '6px',
+                      color: theme.colors.primaryText,
+                      fontSize: '0.85rem',
+                      fontFamily: 'monospace',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                {/* Subaccount preview */}
+                {resolvedManualSubaccount && (
+                  <div style={{
+                    padding: '10px',
+                    background: `${theme.colors.success}10`,
+                    border: `1px solid ${theme.colors.success}30`,
+                    borderRadius: '6px',
+                    fontSize: '0.8rem'
+                  }}>
+                    <div style={{ color: theme.colors.success, marginBottom: '4px', fontWeight: '600' }}>
+                      ✓ Valid subaccount
+                    </div>
+                    <div style={{ color: theme.colors.secondaryText, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      <strong>Resolved (hex):</strong> {bytesToHex(resolvedManualSubaccount.resolved)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Invalid subaccount warning */}
+                {subaccountValue.trim() && !resolvedManualSubaccount && (
+                  <div style={{
+                    padding: '10px',
+                    background: `${theme.colors.error}10`,
+                    border: `1px solid ${theme.colors.error}30`,
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    color: theme.colors.error
+                  }}>
+                    ✗ Invalid subaccount format
+                  </div>
+                )}
+
+                {/* Convert to extended address button */}
+                {parsedAccount && (
+                  <button
+                    onClick={handleConvertToExtendedAddress}
+                    style={{
+                      marginTop: '12px',
+                      width: '100%',
+                      padding: '10px',
+                      background: theme.colors.tertiaryBg,
+                      color: theme.colors.accent,
+                      border: `1px solid ${theme.colors.accent}`,
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: '500'
+                    }}
+                  >
+                    Convert to Extended Address String
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DIP20 warning */}
+        {isDIP20 && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px',
+            background: `${theme.colors.warning}15`,
+            border: `1px solid ${theme.colors.warning}30`,
+            borderRadius: '8px',
+            fontSize: '0.85rem',
+            color: theme.colors.warning
+          }}>
+            ⚠️ This token uses the DIP20 standard which does not support subaccounts.
+          </div>
+        )}
 
         <div style={{ marginBottom: '20px' }}>
           <label style={{
@@ -241,8 +583,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             alignItems: 'center',
             gap: '10px'
           }}>
-            <input 
-              type="number" 
+            <input
+              type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               style={{
@@ -256,7 +598,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                 boxSizing: 'border-box'
               }}
             />
-            <button 
+            <button
               onClick={handleSetMax}
               style={{
                 background: theme.colors.accent,
@@ -326,8 +668,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             gap: '12px',
             marginTop: '24px'
           }}>
-            <button 
-              onClick={handleSend} 
+            <button
+              onClick={handleSend}
               disabled={isLoading}
               style={{
                 flex: '1',
@@ -350,8 +692,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             >
               Send
             </button>
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               disabled={isLoading}
               style={{
                 flex: '1',
@@ -380,12 +722,12 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         )}
       </div>
       <ConfirmationModal
-          show={showConfirmModal}
-          onClose={() => setShowConfirmModal(false)}
-          onSubmit={confirmAction}
-          message={confirmMessage}
-          doAwait={false}
-          />
+        show={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onSubmit={confirmAction}
+        message={confirmMessage}
+        doAwait={false}
+      />
     </div>
   );
 }
