@@ -16,17 +16,6 @@ import Int "mo:base/Int";
 import T "Types";
 import PremiumClient "../PremiumClient";
 
-// Migration expression to rename stable_jailbreak_fee_recipient to stable_jailbreak_fee_account_owner
-(with migration = func (old : { 
-    stable_jailbreak_fee_recipient : ?Principal 
-}) : { 
-    stable_jailbreak_fee_account_owner : ?Principal 
-} {
-    {
-        stable_jailbreak_fee_account_owner = old.stable_jailbreak_fee_recipient;
-    }
-})
-
 shared (deployer) actor class AppSneedDaoBackend() = this {
 
   private func this_canister_id() : Principal {
