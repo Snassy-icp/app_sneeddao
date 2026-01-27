@@ -16,14 +16,15 @@ import { useReplyNotifications } from '../hooks/useReplyNotifications';
 import { useSmsNotifications } from '../hooks/useSmsNotifications';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
-import { getSnsById } from '../utils/SnsUtils';
+import { getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
+import { HttpAgent } from '@dfinity/agent';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
     const { theme } = useTheme();
-    const { selectedSnsRoot } = useSns();
+    const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { getAllNeurons, getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();
@@ -41,6 +42,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             return true;
         }
     });
+    const [snsLogo, setSnsLogo] = useState(null);
     const lastScrollY = useRef(0);
     const lastToggleTime = useRef(0);
     const menuRef = useRef(null);
@@ -184,6 +186,47 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
 
         fetchNervousSystemParameters();
     }, [selectedSnsRoot, identity]);
+
+    // Fetch SNS logo for VP bar
+    useEffect(() => {
+        const loadSnsLogo = async () => {
+            if (!selectedSnsRoot) {
+                setSnsLogo(null);
+                return;
+            }
+            
+            // For Sneed, use the local logo file
+            if (selectedSnsRoot === SNEED_SNS_ROOT) {
+                setSnsLogo('sneed_logo.png');
+                return;
+            }
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns?.canisters?.governance) return;
+                
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({
+                    host,
+                    ...(identity && { identity })
+                });
+
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const logo = await fetchSnsLogo(selectedSns.canisters.governance, agent);
+                setSnsLogo(logo);
+            } catch (error) {
+                console.error('Error loading SNS logo:', error);
+                setSnsLogo(null);
+            }
+        };
+        
+        loadSnsLogo();
+    }, [selectedSnsRoot, identity, SNEED_SNS_ROOT]);
 
     // Scroll listener for VP bar visibility
     useEffect(() => {
@@ -947,7 +990,26 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     }}>
                         {neuronsLoading ? (
                             <div style={{ color: theme.colors.mutedText, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span>🧠</span>
+                                <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
+                                    <span>🧠</span>
+                                    {snsLogo && (
+                                        <img 
+                                            src={snsLogo} 
+                                            alt="SNS" 
+                                            style={{ 
+                                                position: 'absolute', 
+                                                left: '8px', 
+                                                top: '50%', 
+                                                transform: 'translateY(-50%)', 
+                                                width: '14px', 
+                                                height: '14px', 
+                                                borderRadius: '50%', 
+                                                objectFit: 'cover',
+                                                border: `1px solid ${theme.colors.secondaryBg}`
+                                            }} 
+                                        />
+                                    )}
+                                </span>
                                 <span>Loading...</span>
                             </div>
                         ) : (
@@ -994,7 +1056,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     
                                     return (
                                         <>
-                                            {/* Brain icon - Your neurons label (desktop only) */}
+                                            {/* Brain icon with SNS logo overlay - Your neurons label (desktop only) */}
                                             <div 
                                                 className="hide-on-narrow"
                                                 style={{ 
@@ -1005,7 +1067,26 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                     fontSize: '11px'
                                                 }}
                                             >
-                                                <span>🧠</span>
+                                                <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
+                                                    <span>🧠</span>
+                                                    {snsLogo && (
+                                                        <img 
+                                                            src={snsLogo} 
+                                                            alt="SNS" 
+                                                            style={{ 
+                                                                position: 'absolute', 
+                                                                left: '8px', 
+                                                                top: '50%', 
+                                                                transform: 'translateY(-50%)', 
+                                                                width: '14px', 
+                                                                height: '14px', 
+                                                                borderRadius: '50%', 
+                                                                objectFit: 'cover',
+                                                                border: `1px solid ${theme.colors.secondaryBg}`
+                                                            }} 
+                                                        />
+                                                    )}
+                                                </span>
                                             </div>
                                             
                                             {/* Hotkeyed neurons */}
