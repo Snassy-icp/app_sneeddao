@@ -21,6 +21,9 @@ import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from './utils/ProposalUtils';
 
+// System font stack for consistent typography
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 function Proposal() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -349,10 +352,13 @@ function Proposal() {
     const getStyles = (theme) => ({
         pageContainer: {
             backgroundColor: theme.colors.primaryBg,
-            minHeight: '100vh'
+            minHeight: '100vh',
+            fontFamily: SYSTEM_FONT
         },
         title: {
-            color: theme.colors.primaryText
+            color: theme.colors.primaryText,
+            fontSize: '24px',
+            fontWeight: 'bold'
         },
         section: {
             backgroundColor: theme.colors.secondaryBg,

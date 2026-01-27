@@ -347,11 +347,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         'Sneed Lock': {
             icon: <FaLock size={18} />,
             displayName: 'Sneed Lock',
-            defaultPath: '/sneedlock_info',
+            defaultPath: '/lock_wizard',
             subMenu: [
-                { name: 'Dashboard', path: '/sneedlock_info' },
-                { name: 'Wizard', path: '/lock_wizard' },
-                { name: 'About', path: '/sneedlock' }
+                { name: 'Create Lock', path: '/lock_wizard' },
+                { name: 'All Locks', path: '/sneedlock_info' },
+                { name: 'Overview', path: '/sneedlock' }
             ]
         },
         'Sneed DAO': {
