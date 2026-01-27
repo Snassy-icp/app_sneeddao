@@ -297,11 +297,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             ignore Timer.setTimer<system>(#seconds 0, func() : async () {
                 let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
                 let formattedAmount = formatTokenAmount(bid.amount, symbol, decimals);
+                let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
                 let subject = "🔔 New Bid on Sneedex Offer #" # Nat.toText(offer.id);
                 let body = "You have received a new bid on your Sneedex offer #" # Nat.toText(offer.id) # ".\n\n" #
-                           "Bid amount: " # formattedAmount # "\n" #
-                           "Bidder: " # Principal.toText(bid.bidder) # "\n\n" #
-                           "View your offer at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                           "**Bid amount:** " # formattedAmount # "\n" #
+                           "**Bidder:** " # Principal.toText(bid.bidder) # "\n\n" #
+                           "[View your offer](" # offerUrl # ")";
                 await sendNotification([offer.creator], subject, body);
             });
         };
@@ -315,11 +316,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
                 let formattedPrevious = formatTokenAmount(previousBid.amount, symbol, decimals);
                 let formattedNew = formatTokenAmount(newBid.amount, symbol, decimals);
+                let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
                 let subject = "⚠️ You've Been Outbid on Sneedex Offer #" # Nat.toText(offer.id);
                 let body = "Your bid on Sneedex offer #" # Nat.toText(offer.id) # " has been outbid.\n\n" #
-                           "Your bid: " # formattedPrevious # "\n" #
-                           "New highest bid: " # formattedNew # "\n\n" #
-                           "Place a higher bid at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                           "**Your bid:** " # formattedPrevious # "\n" #
+                           "**New highest bid:** " # formattedNew # "\n\n" #
+                           "[Place a higher bid](" # offerUrl # ")";
                 await sendNotification([previousBid.bidder], subject, body);
             });
         };
@@ -332,11 +334,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             ignore Timer.setTimer<system>(#seconds 0, func() : async () {
                 let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
                 let formattedAmount = formatTokenAmount(winningBid.amount, symbol, decimals);
+                let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
                 let subject = "🎉 Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Sold!";
                 let body = "Congratulations! Your Sneedex offer #" # Nat.toText(offer.id) # " has been completed.\n\n" #
-                           "Winning bid: " # formattedAmount # "\n" #
-                           "Buyer: " # Principal.toText(winningBid.bidder) # "\n\n" #
-                           "Claim your payment at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                           "**Winning bid:** " # formattedAmount # "\n" #
+                           "**Buyer:** " # Principal.toText(winningBid.bidder) # "\n\n" #
+                           "[Claim your payment](" # offerUrl # ")";
                 await sendNotification([offer.creator], subject, body);
             });
         };
@@ -349,10 +352,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             ignore Timer.setTimer<system>(#seconds 0, func() : async () {
                 let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
                 let formattedAmount = formatTokenAmount(winningBid.amount, symbol, decimals);
+                let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
                 let subject = "🏆 You Won Sneedex Auction #" # Nat.toText(offer.id) # "!";
                 let body = "Congratulations! You have won Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
-                           "Your winning bid: " # formattedAmount # "\n\n" #
-                           "Claim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                           "**Your winning bid:** " # formattedAmount # "\n\n" #
+                           "[Claim your assets](" # offerUrl # ")";
                 await sendNotification([winningBid.bidder], subject, body);
             });
         };
@@ -363,9 +367,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_expiration) {
             ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+                let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
                 let subject = "⏰ Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Expired";
                 let body = "Your Sneedex offer #" # Nat.toText(offer.id) # " has expired without receiving any bids.\n\n" #
-                           "You can reclaim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                           "[Reclaim your assets](" # offerUrl # ")";
                 await sendNotification([offer.creator], subject, body);
             });
         };
