@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey } from 'react-icons/fa';
+import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey, FaList } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
@@ -11,6 +11,7 @@ import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex, formatE8s, getDis
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
+import { app_sneeddao_backend } from 'declarations/app_sneeddao_backend';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
@@ -66,6 +67,8 @@ function SnsJailbreak() {
     const [verificationStatus, setVerificationStatus] = useState(null); // null, 'loading', 'success', 'error'
     const [verificationMessage, setVerificationMessage] = useState('');
     const [verifiedNeuronData, setVerifiedNeuronData] = useState(null);
+    const [configSaved, setConfigSaved] = useState(false);
+    const [tokenRegistered, setTokenRegistered] = useState(false);
     
     // Get selected SNS info
     const selectedSns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
@@ -293,12 +296,49 @@ function SnsJailbreak() {
         }
     }, [identity, governanceId, effectiveNeuronId, targetPrincipal]);
     
-    // Run verification when entering step 5
+    // Save the jailbreak config to backend
+    const saveJailbreakConfig = useCallback(async () => {
+        if (!selectedSnsRoot || !effectiveNeuronId || !targetPrincipal || configSaved) return;
+        
+        try {
+            const result = await app_sneeddao_backend.save_jailbreak_config(
+                Principal.fromText(selectedSnsRoot),
+                effectiveNeuronId,
+                Principal.fromText(targetPrincipal)
+            );
+            if ('ok' in result) {
+                console.log('Jailbreak config saved with ID:', result.ok);
+                setConfigSaved(true);
+            } else {
+                console.error('Failed to save jailbreak config:', result.err);
+            }
+        } catch (error) {
+            console.error('Error saving jailbreak config:', error);
+        }
+    }, [selectedSnsRoot, effectiveNeuronId, targetPrincipal, configSaved]);
+    
+    // Register the SNS token in user's wallet if not already registered
+    const registerSnsToken = useCallback(async () => {
+        if (!selectedSns?.canisters?.ledger || tokenRegistered) return;
+        
+        try {
+            const ledgerId = Principal.fromText(selectedSns.canisters.ledger);
+            await app_sneeddao_backend.register_user_token(ledgerId);
+            console.log('SNS token registered:', selectedSns.canisters.ledger);
+            setTokenRegistered(true);
+        } catch (error) {
+            console.error('Error registering SNS token:', error);
+        }
+    }, [selectedSns, tokenRegistered]);
+    
+    // Run verification, save config, and register token when entering step 5
     useEffect(() => {
         if (currentStep === 5) {
             verifyControllerAdded();
+            saveJailbreakConfig();
+            registerSnsToken();
         }
-    }, [currentStep, verifyControllerAdded]);
+    }, [currentStep, verifyControllerAdded, saveJailbreakConfig, registerSnsToken]);
     
     // Set default principal when authenticated
     useEffect(() => {
@@ -861,6 +901,21 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                 <p style={styles.subtitle}>
                     Add your Sneed Wallet as a controller to manage your SNS neuron from Sneed Hub
                 </p>
+                <Link
+                    to="/tools/sns_jailbreak_list"
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: theme.colors.accent,
+                        fontSize: '0.9rem',
+                        textDecoration: 'none',
+                        marginTop: '0.5rem',
+                    }}
+                >
+                    <FaList size={14} />
+                    View my saved jailbreak scripts
+                </Link>
             </div>
             
             {/* Collapsible Info Section */}
@@ -1887,6 +1942,8 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                     setVerificationStatus(null);
                                     setVerificationMessage('');
                                     setVerifiedNeuronData(null);
+                                    setConfigSaved(false);
+                                    setTokenRegistered(false);
                                 }}
                                 style={{
                                     display: 'flex',

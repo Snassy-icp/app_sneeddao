@@ -96,6 +96,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
   // Stable storage for projects
   stable var stable_projects : [Project] = [];
+
+  // Jailbreak configuration types and storage
+  type JailbreakConfig = {
+    id: Nat;
+    sns_root_canister_id: Principal;
+    neuron_id_hex: Text;  // Neuron ID stored as hex string
+    target_principal: Principal;
+    created_at: Int;
+  };
+
+  stable var stable_jailbreak_configs : [(Principal, [JailbreakConfig])] = [];
+  stable var stable_next_jailbreak_config_id : Nat = 1;
   
   // Stable storage for user token registrations (user -> list of ledger IDs)
   stable var stable_user_tokens : [(Principal, [Principal])] = [];
@@ -163,6 +175,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Runtime storage for projects
   private var projects = Buffer.Buffer<Project>(0);
   private var next_project_id : Nat = 1;
+
+  // Runtime storage for jailbreak configs (user -> configs)
+  private var jailbreak_configs = HashMap.HashMap<Principal, Buffer.Buffer<JailbreakConfig>>(100, Principal.equal, Principal.hash);
+  private var next_jailbreak_config_id : Nat = 1;
 
   // ephemeral state
   let state : State = object { 
@@ -2191,6 +2207,95 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     null
   };
 
+  // ============================================
+  // JAILBREAK CONFIGURATION MANAGEMENT
+  // ============================================
+
+  // Save a jailbreak configuration
+  public shared ({ caller }) func save_jailbreak_config(
+    sns_root_canister_id: Principal,
+    neuron_id_hex: Text,
+    target_principal: Principal
+  ) : async Result.Result<Nat, Text> {
+    if (Principal.isAnonymous(caller)) {
+      return #err("Anonymous users cannot save configurations");
+    };
+
+    // Check if this exact config already exists for the user
+    switch (jailbreak_configs.get(caller)) {
+      case (?user_configs) {
+        for (config in user_configs.vals()) {
+          if (Principal.equal(config.sns_root_canister_id, sns_root_canister_id) and
+              Text.equal(config.neuron_id_hex, neuron_id_hex) and
+              Principal.equal(config.target_principal, target_principal)) {
+            // Config already exists, return its ID
+            return #ok(config.id);
+          };
+        };
+      };
+      case null {};
+    };
+
+    let config : JailbreakConfig = {
+      id = next_jailbreak_config_id;
+      sns_root_canister_id = sns_root_canister_id;
+      neuron_id_hex = neuron_id_hex;
+      target_principal = target_principal;
+      created_at = Time.now();
+    };
+
+    // Get or create user's config buffer
+    let user_configs = switch (jailbreak_configs.get(caller)) {
+      case (?existing) { existing };
+      case null {
+        let new_buffer = Buffer.Buffer<JailbreakConfig>(5);
+        jailbreak_configs.put(caller, new_buffer);
+        new_buffer
+      };
+    };
+
+    user_configs.add(config);
+    next_jailbreak_config_id += 1;
+    #ok(config.id)
+  };
+
+  // Get all jailbreak configs for the caller
+  public query ({ caller }) func get_my_jailbreak_configs() : async [JailbreakConfig] {
+    switch (jailbreak_configs.get(caller)) {
+      case (?user_configs) { Buffer.toArray(user_configs) };
+      case null { [] };
+    }
+  };
+
+  // Delete a jailbreak config
+  public shared ({ caller }) func delete_jailbreak_config(id: Nat) : async Result.Result<(), Text> {
+    if (Principal.isAnonymous(caller)) {
+      return #err("Anonymous users cannot delete configurations");
+    };
+
+    switch (jailbreak_configs.get(caller)) {
+      case (?user_configs) {
+        let filtered = Buffer.Buffer<JailbreakConfig>(user_configs.size());
+        var found = false;
+        for (config in user_configs.vals()) {
+          if (config.id != id) {
+            filtered.add(config);
+          } else {
+            found := true;
+          };
+        };
+        if (not found) {
+          return #err("Configuration not found");
+        };
+        jailbreak_configs.put(caller, filtered);
+        #ok()
+      };
+      case null {
+        #err("No configurations found")
+      };
+    }
+  };
+
   // IC Management canister actor
   transient let IC = actor "aaaaa-aa" : actor {
     canister_info : shared (CanisterInfoRequest) -> async CanisterInfoResponse;
@@ -2303,6 +2408,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
     // Save projects to stable storage
     stable_projects := Buffer.toArray(projects);
+
+    // Save jailbreak configs to stable storage
+    let jailbreak_entries = Buffer.Buffer<(Principal, [JailbreakConfig])>(jailbreak_configs.size());
+    for ((user, configs) in jailbreak_configs.entries()) {
+      jailbreak_entries.add((user, Buffer.toArray(configs)));
+    };
+    stable_jailbreak_configs := Buffer.toArray(jailbreak_entries);
+    stable_next_jailbreak_config_id := next_jailbreak_config_id;
     
     // Save user tokens to stable storage
     stable_user_tokens := Iter.toArray(user_tokens.entries());
@@ -2449,6 +2562,17 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         };
       };
       next_project_id := max_project_id;
+
+      // Restore jailbreak configs from stable storage
+      for ((user, configs) in stable_jailbreak_configs.vals()) {
+        let user_buffer = Buffer.Buffer<JailbreakConfig>(configs.size());
+        for (config in configs.vals()) {
+          user_buffer.add(config);
+        };
+        jailbreak_configs.put(user, user_buffer);
+      };
+      stable_jailbreak_configs := [];
+      next_jailbreak_config_id := stable_next_jailbreak_config_id;
   };
 
 };
