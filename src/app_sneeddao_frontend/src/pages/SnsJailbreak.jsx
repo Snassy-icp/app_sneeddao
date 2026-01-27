@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain } from 'react-icons/fa';
+import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
-import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex, formatE8s, getDissolveState } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
@@ -29,6 +29,8 @@ function SnsJailbreak() {
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [selectedSnsRoot, setSelectedSnsRoot] = useState('');
     const [snsLogos, setSnsLogos] = useState(new Map());
+    const [loadingLogos, setLoadingLogos] = useState(new Set());
+    const [showStep1Info, setShowStep1Info] = useState(false);
     
     // Step 2: Neuron selection
     const [snsNeurons, setSnsNeurons] = useState([]);
@@ -36,6 +38,7 @@ function SnsJailbreak() {
     const [selectedNeuronId, setSelectedNeuronId] = useState('');
     const [manualNeuronId, setManualNeuronId] = useState('');
     const [useManualEntry, setUseManualEntry] = useState(false);
+    const [showStep2Info, setShowStep2Info] = useState(false);
     
     // Step 3: Principal selection
     const [targetPrincipal, setTargetPrincipal] = useState('');
@@ -43,6 +46,9 @@ function SnsJailbreak() {
     
     // Step 4: Script generation
     const [copied, setCopied] = useState(false);
+    const [baseScript, setBaseScript] = useState('');
+    const [loadingBaseScript, setLoadingBaseScript] = useState(false);
+    const [baseScriptError, setBaseScriptError] = useState('');
     
     // Get selected SNS info
     const selectedSns = snsList.find(s => s.rootCanisterId === selectedSnsRoot);
@@ -56,42 +62,36 @@ function SnsJailbreak() {
         const loadSnsData = async () => {
             setLoadingSnses(true);
             try {
-                // Try cached data first
-                const cachedData = getAllSnses();
-                if (cachedData && cachedData.length > 0) {
-                    const sortedData = [...cachedData].sort((a, b) => {
-                        if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
-                        if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
-                        return a.name.localeCompare(b.name);
-                    });
-                    setSnsList(sortedData);
-                    setLoadingSnses(false);
-                    return;
-                }
+                const data = await fetchAndCacheSnsData(identity);
+                const sortedData = [...data].sort((a, b) => {
+                    if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                    if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+                setSnsList(sortedData);
                 
-                // Start background fetch
-                startBackgroundSnsFetch(identity, (data) => {
-                    const sortedData = [...data].sort((a, b) => {
-                        if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
-                        if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
-                        return a.name.localeCompare(b.name);
-                    });
-                    setSnsList(sortedData);
-                    setLoadingSnses(false);
-                }).catch(() => setLoadingSnses(false));
+                // Start loading logos for all SNSes in parallel
+                sortedData.forEach(sns => {
+                    if (sns.canisters?.governance) {
+                        loadSnsLogo(sns.canisters.governance);
+                    }
+                });
             } catch (e) {
                 console.error('Failed to load SNS data:', e);
+            } finally {
                 setLoadingSnses(false);
             }
         };
         loadSnsData();
     }, [identity]);
     
-    // Load SNS logos
-    useEffect(() => {
-        const loadLogos = async () => {
-            if (!snsList.length) return;
-            
+    // Load individual SNS logo
+    const loadSnsLogo = async (governanceId) => {
+        if (snsLogos.has(governanceId) || loadingLogos.has(governanceId)) return;
+        
+        setLoadingLogos(prev => new Set([...prev, governanceId]));
+        
+        try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                 ? 'https://ic0.app' 
                 : 'http://localhost:4943';
@@ -101,26 +101,44 @@ function SnsJailbreak() {
                 await agent.fetchRootKey();
             }
             
-            const newLogos = new Map(snsLogos);
-            
-            for (const sns of snsList.slice(0, 20)) { // Load first 20 logos
-                if (!newLogos.has(sns.rootCanisterId) && sns.canisters?.governance) {
-                    try {
-                        const logo = await fetchSnsLogo(sns.canisters.governance, agent);
-                        if (logo) {
-                            newLogos.set(sns.rootCanisterId, logo);
-                        }
-                    } catch (e) {
-                        // Ignore logo loading errors
-                    }
-                }
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogos(prev => new Map(prev).set(governanceId, logo));
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${governanceId}:`, error);
+        } finally {
+            setLoadingLogos(prev => {
+                const next = new Set(prev);
+                next.delete(governanceId);
+                return next;
+            });
+        }
+    };
+    
+    // Fetch base script when entering step 4
+    useEffect(() => {
+        if (currentStep === 4 && !baseScript && !loadingBaseScript) {
+            fetchBaseScript();
+        }
+    }, [currentStep, baseScript, loadingBaseScript]);
+    
+    // Fetch the base script from GitHub
+    const fetchBaseScript = async () => {
+        setLoadingBaseScript(true);
+        setBaseScriptError('');
+        try {
+            const response = await fetch(RAW_GITHUB_BASE_URL);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
             }
-            
-            setSnsLogos(newLogos);
-        };
-        
-        loadLogos();
-    }, [snsList, identity]);
+            const script = await response.text();
+            setBaseScript(script);
+        } catch (error) {
+            console.error('Error fetching base script:', error);
+            setBaseScriptError(`Failed to load base script: ${error.message}`);
+        } finally {
+            setLoadingBaseScript(false);
+        }
+    };
     
     // Set default principal when authenticated
     useEffect(() => {
@@ -205,43 +223,46 @@ function SnsJailbreak() {
         return `${displayName} (${stake} tokens)`;
     }, [extractNeuronId, getNeuronNameInfo]);
     
-    // Generate the JavaScript code
+    // Generate the JavaScript code (combined base + custom)
     const generateScript = useCallback(() => {
-        if (!governanceId || !effectiveNeuronId || !targetPrincipal) return '';
+        if (!governanceId || !effectiveNeuronId || !targetPrincipal || !baseScript) return '';
         
-        return `// SNS Jailbreak Script - Generated by Sneed Hub
+        const customScript = `
+// ============================================================
+// SNS Jailbreak Script - Generated by Sneed Hub
+// ============================================================
 // This script adds a controller to your SNS neuron
 // GitHub Source: ${RAW_GITHUB_BASE_URL}
+// ============================================================
 
+// Custom parameters:
+const GOVERNANCE_ID = "${governanceId}";
+const NEURON_ID = "${effectiveNeuronId}";
+const NEW_CONTROLLER = "${targetPrincipal}";
+
+// Execute after base script is ready
 (async () => {
-    // Load the base script
-    const baseScript = document.createElement('script');
-    baseScript.src = '${RAW_GITHUB_BASE_URL}';
-    document.head.appendChild(baseScript);
-    
-    await new Promise((resolve, reject) => {
-        baseScript.onload = resolve;
-        baseScript.onerror = () => reject(new Error('Failed to load base script'));
-    });
-    
     console.log('🔓 Adding controller to SNS neuron...');
-    console.log('  Governance: ${governanceId}');
-    console.log('  Neuron ID: ${effectiveNeuronId}');
-    console.log('  New Controller: ${targetPrincipal}');
+    console.log('  Governance: ' + GOVERNANCE_ID);
+    console.log('  Neuron ID: ' + NEURON_ID);
+    console.log('  New Controller: ' + NEW_CONTROLLER);
     
     try {
         await yolosns.addControllerToNeuron(
-            "${governanceId}",
-            "${effectiveNeuronId}",
-            "${targetPrincipal}"
+            GOVERNANCE_ID,
+            NEURON_ID,
+            NEW_CONTROLLER
         );
         console.log('✅ Controller added successfully!');
         console.log('🎉 Your neuron is now jailbroken! You can manage it from Sneed Hub.');
     } catch (error) {
         console.error('❌ Error adding controller:', error);
     }
-})();`;
-    }, [governanceId, effectiveNeuronId, targetPrincipal]);
+})();
+`;
+        
+        return baseScript + '\n\n' + customScript;
+    }, [governanceId, effectiveNeuronId, targetPrincipal, baseScript]);
     
     // Copy to clipboard
     const handleCopy = async () => {
@@ -278,6 +299,7 @@ function SnsJailbreak() {
             case 1: return !!selectedSnsRoot;
             case 2: return useManualEntry ? isValidNeuronId(manualNeuronId) : !!selectedNeuronId;
             case 3: return principalValid && targetPrincipal;
+            case 4: return !!baseScript && !loadingBaseScript;
             default: return true;
         }
     };
@@ -379,7 +401,7 @@ function SnsJailbreak() {
             fontWeight: '600',
             color: theme.colors.primaryText,
         },
-        neuronItem: (isSelected) => ({
+        neuronCard: (isSelected) => ({
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
@@ -469,6 +491,27 @@ function SnsJailbreak() {
             gap: '12px',
             alignItems: 'flex-start',
         },
+        infoBox: {
+            background: `${theme.colors.accent}10`,
+            border: `1px solid ${theme.colors.accent}30`,
+            borderRadius: '12px',
+            marginBottom: '1.5rem',
+            overflow: 'hidden',
+        },
+        infoHeader: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            cursor: 'pointer',
+            gap: '12px',
+        },
+        infoContent: {
+            padding: '0 16px 16px 16px',
+            color: theme.colors.secondaryText,
+            fontSize: '0.9rem',
+            lineHeight: '1.6',
+        },
         successCard: {
             textAlign: 'center',
             padding: '3rem',
@@ -542,6 +585,15 @@ function SnsJailbreak() {
             fontWeight: isActive ? '600' : '400',
             transition: 'all 0.2s ease',
         }),
+        principalCode: {
+            background: theme.colors.secondaryBg,
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontFamily: 'monospace',
+            fontSize: '0.85rem',
+            wordBreak: 'break-all',
+            color: theme.colors.accent,
+        },
     };
     
     const spinnerKeyframes = `
@@ -604,6 +656,65 @@ function SnsJailbreak() {
                 </p>
             </div>
             
+            {/* Collapsible Info Section */}
+            <div style={styles.infoBox}>
+                <div 
+                    style={styles.infoHeader}
+                    onClick={() => setShowStep1Info(!showStep1Info)}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <FaInfoCircle style={{ color: theme.colors.accent }} />
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                            How does SNS Jailbreak work?
+                        </span>
+                    </div>
+                    {showStep1Info ? <FaChevronUp style={{ color: theme.colors.mutedText }} /> : <FaChevronDown style={{ color: theme.colors.mutedText }} />}
+                </div>
+                
+                {showStep1Info && (
+                    <div style={styles.infoContent}>
+                        <p style={{ marginBottom: '12px' }}>
+                            <strong>What is SNS Jailbreak?</strong><br />
+                            SNS neurons are normally controlled only through the NNS app. This wizard helps you add your Sneed Wallet 
+                            as a full controller, allowing you to manage, transfer, and even trade your neurons on Sneedex.
+                        </p>
+                        
+                        <p style={{ marginBottom: '12px' }}>
+                            <strong>The Process:</strong>
+                        </p>
+                        <ol style={{ marginLeft: '1.5rem', marginBottom: '12px' }}>
+                            <li>Select the SNS and neuron you want to jailbreak</li>
+                            <li>Choose which principal to add as controller (your Sneed Wallet by default)</li>
+                            <li>Copy the generated JavaScript code</li>
+                            <li>Open the NNS app (<a href="https://nns.ic0.app" target="_blank" rel="noopener noreferrer" style={{ color: theme.colors.accent }}>nns.ic0.app</a>) in a browser</li>
+                            <li>Open the browser console and paste the script</li>
+                            <li>Done! Your neuron can now be managed from Sneed Hub</li>
+                        </ol>
+                        
+                        <p style={{ marginBottom: '12px' }}>
+                            <strong>⚠️ Requirements:</strong><br />
+                            You need a desktop browser that supports opening a JavaScript console (Chrome, Firefox, Edge, Safari, etc.). 
+                            Press <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>Ctrl+Shift+J</code> (Windows/Linux) 
+                            or <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>Cmd+Option+J</code> (Mac) to open it.
+                        </p>
+                        
+                        <p style={{ margin: 0 }}>
+                            <strong>Is it safe?</strong><br />
+                            This script only <em>adds</em> a controller - it doesn't remove existing ones. You'll still be able to 
+                            control your neuron from the NNS app. The script is open-source and can be verified on{' '}
+                            <a 
+                                href="https://github.com/Snassy-icp/app_sneeddao/blob/main/resources/sns_jailbreak/base_script.js"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: theme.colors.accent }}
+                            >
+                                GitHub
+                            </a>.
+                        </p>
+                    </div>
+                )}
+            </div>
+            
             <div style={styles.card}>
                 <label style={styles.label}>Select an SNS</label>
                 
@@ -614,40 +725,55 @@ function SnsJailbreak() {
                     </div>
                 ) : (
                     <div style={{ maxHeight: '400px', overflow: 'auto' }}>
-                        {snsList.map(sns => (
-                            <div
-                                key={sns.rootCanisterId}
-                                style={styles.snsItem(selectedSnsRoot === sns.rootCanisterId)}
-                                onClick={() => {
-                                    setSelectedSnsRoot(sns.rootCanisterId);
-                                    setSelectedNeuronId('');
-                                    setManualNeuronId('');
-                                    fetchNeuronsForSelectedSns(sns.rootCanisterId);
-                                }}
-                            >
-                                {snsLogos.get(sns.rootCanisterId) ? (
-                                    <img 
-                                        src={snsLogos.get(sns.rootCanisterId)} 
-                                        alt={sns.name}
-                                        style={styles.snsLogo}
-                                        onError={(e) => { e.target.style.display = 'none'; }}
-                                    />
-                                ) : (
-                                    <div style={{ ...styles.snsLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <FaBrain size={20} style={{ color: theme.colors.mutedText }} />
+                        {snsList.map(sns => {
+                            const logo = snsLogos.get(sns.canisters?.governance);
+                            const isLoadingLogo = loadingLogos.has(sns.canisters?.governance);
+                            
+                            return (
+                                <div
+                                    key={sns.rootCanisterId}
+                                    style={styles.snsItem(selectedSnsRoot === sns.rootCanisterId)}
+                                    onClick={() => {
+                                        setSelectedSnsRoot(sns.rootCanisterId);
+                                        setSelectedNeuronId('');
+                                        setManualNeuronId('');
+                                        fetchNeuronsForSelectedSns(sns.rootCanisterId);
+                                    }}
+                                >
+                                    {isLoadingLogo ? (
+                                        <div style={{ 
+                                            ...styles.snsLogo, 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            background: theme.colors.border 
+                                        }}>
+                                            <FaSpinner size={16} style={{ ...styles.spinner, color: theme.colors.mutedText }} />
+                                        </div>
+                                    ) : logo ? (
+                                        <img 
+                                            src={logo} 
+                                            alt={sns.name}
+                                            style={styles.snsLogo}
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                        />
+                                    ) : (
+                                        <div style={{ ...styles.snsLogo, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <FaBrain size={20} style={{ color: theme.colors.mutedText }} />
+                                        </div>
+                                    )}
+                                    <div>
+                                        <div style={styles.snsName}>{sns.name}</div>
+                                        <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
+                                            {sns.rootCanisterId.slice(0, 10)}...
+                                        </div>
                                     </div>
-                                )}
-                                <div>
-                                    <div style={styles.snsName}>{sns.name}</div>
-                                    <div style={{ fontSize: '0.85rem', color: theme.colors.mutedText }}>
-                                        {sns.rootCanisterId.slice(0, 10)}...
-                                    </div>
+                                    {selectedSnsRoot === sns.rootCanisterId && (
+                                        <FaCheck style={{ color: theme.colors.accent, marginLeft: 'auto' }} />
+                                    )}
                                 </div>
-                                {selectedSnsRoot === sns.rootCanisterId && (
-                                    <FaCheck style={{ color: theme.colors.accent, marginLeft: 'auto' }} />
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -676,6 +802,49 @@ function SnsJailbreak() {
                 <p style={styles.subtitle}>
                     Choose the {selectedSns?.name} neuron you want to jailbreak
                 </p>
+            </div>
+            
+            {/* Collapsible Info Section about Hotkeys */}
+            <div style={styles.infoBox}>
+                <div 
+                    style={styles.infoHeader}
+                    onClick={() => setShowStep2Info(!showStep2Info)}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <FaKey style={{ color: theme.colors.accent }} />
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                            Don't see your neuron? Add a hotkey first (optional)
+                        </span>
+                    </div>
+                    {showStep2Info ? <FaChevronUp style={{ color: theme.colors.mutedText }} /> : <FaChevronDown style={{ color: theme.colors.mutedText }} />}
+                </div>
+                
+                {showStep2Info && (
+                    <div style={styles.infoContent}>
+                        <p style={{ marginBottom: '12px' }}>
+                            The "My Neurons" tab shows neurons where your current logged-in principal has hotkey access. 
+                            If you don't see your neuron here, you can either:
+                        </p>
+                        
+                        <p style={{ marginBottom: '12px' }}>
+                            <strong>Option 1: Enter manually</strong><br />
+                            Switch to the "Enter Manually" tab and paste your neuron ID directly.
+                        </p>
+                        
+                        <p style={{ marginBottom: '12px' }}>
+                            <strong>Option 2: Add your Sneed Wallet as a hotkey in NNS</strong><br />
+                            Go to the NNS app → Select your neuron → Add Hotkey → Enter this principal:
+                        </p>
+                        
+                        <div style={styles.principalCode}>
+                            {identity?.getPrincipal().toText()}
+                        </div>
+                        
+                        <p style={{ marginTop: '12px', marginBottom: 0 }}>
+                            After adding the hotkey, refresh this page and your neuron will appear in the list.
+                        </p>
+                    </div>
+                )}
             </div>
             
             <div style={styles.card}>
@@ -727,10 +896,10 @@ function SnsJailbreak() {
                                     return (
                                         <div
                                             key={neuronId}
-                                            style={styles.neuronItem(selectedNeuronId === neuronId)}
+                                            style={styles.neuronCard(selectedNeuronId === neuronId)}
                                             onClick={() => setSelectedNeuronId(neuronId)}
                                         >
-                                            <FaBrain style={{ color: theme.colors.accent, flexShrink: 0 }} />
+                                            <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {getNeuronDisplayName(neuron, selectedSnsRoot)}
@@ -766,13 +935,38 @@ function SnsJailbreak() {
                                 Invalid neuron ID. Must be a hex string of at least 32 characters.
                             </p>
                         )}
+                        
+                        {/* Show preview card when valid */}
+                        {isValidNeuronId(manualNeuronId) && (
+                            <div 
+                                style={{ 
+                                    ...styles.neuronCard(true),
+                                    marginTop: '1rem',
+                                    cursor: 'default',
+                                }}
+                            >
+                                <FaBrain style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '1.5rem' }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                        Manual Entry
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                        {manualNeuronId.slice(0, 16)}...{manualNeuronId.slice(-16)}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.success }}>
+                                        ✓ Valid neuron ID format
+                                    </div>
+                                </div>
+                                <FaCheck style={{ color: theme.colors.accent }} />
+                            </div>
+                        )}
                     </div>
                 )}
                 
                 {effectiveNeuronId && (
                     <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
                         <Link 
-                            to={`/neuron?sns=${selectedSnsRoot}&id=${effectiveNeuronId}`}
+                            to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`}
                             target="_blank"
                             style={{ 
                                 display: 'flex', 
@@ -906,28 +1100,54 @@ function SnsJailbreak() {
             </div>
             
             <div style={styles.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <label style={{ ...styles.label, margin: 0 }}>JavaScript Code</label>
-                    <button
-                        onClick={handleCopy}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            background: copied ? theme.colors.success : theme.colors.accent,
-                            color: theme.colors.primaryBg,
-                            border: 'none',
-                            padding: '8px 16px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontWeight: '500',
-                        }}
-                    >
-                        {copied ? <FaCheck /> : <FaCopy />}
-                        {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                </div>
-                <pre style={styles.codeBlock}>{generateScript()}</pre>
+                {loadingBaseScript ? (
+                    <div style={styles.loadingContainer}>
+                        <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
+                        <p style={{ color: theme.colors.mutedText }}>Loading script from GitHub...</p>
+                    </div>
+                ) : baseScriptError ? (
+                    <div style={{ textAlign: 'center', padding: '2rem' }}>
+                        <p style={{ color: theme.colors.error, marginBottom: '1rem' }}>{baseScriptError}</p>
+                        <button
+                            onClick={fetchBaseScript}
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <label style={{ ...styles.label, margin: 0 }}>JavaScript Code</label>
+                            <button
+                                onClick={handleCopy}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: copied ? theme.colors.success : theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500',
+                                }}
+                            >
+                                {copied ? <FaCheck /> : <FaCopy />}
+                                {copied ? 'Copied!' : 'Copy'}
+                            </button>
+                        </div>
+                        <pre style={styles.codeBlock}>{generateScript()}</pre>
+                    </>
+                )}
             </div>
             
             <div style={styles.card}>
@@ -1002,8 +1222,9 @@ function SnsJailbreak() {
                     Back
                 </button>
                 <button
-                    style={styles.continueButton(true)}
-                    onClick={() => setCurrentStep(5)}
+                    style={styles.continueButton(canProceed())}
+                    onClick={() => canProceed() && setCurrentStep(5)}
+                    disabled={!canProceed()}
                 >
                     I've Done It
                     <FaArrowRight />
@@ -1046,7 +1267,7 @@ function SnsJailbreak() {
             
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <Link
-                    to={`/neuron?sns=${selectedSnsRoot}&id=${effectiveNeuronId}`}
+                    to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`}
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1070,6 +1291,7 @@ function SnsJailbreak() {
                         setManualNeuronId('');
                         setUseManualEntry(false);
                         setSnsNeurons([]);
+                        setBaseScript('');
                     }}
                     style={{
                         display: 'flex',
