@@ -346,14 +346,20 @@ function SnsJailbreak() {
         }
     }, [selectedSns, tokenRegistered]);
     
-    // Run verification, save config, and register token when entering step 5
+    // Save the config when entering step 4 (when script is generated)
+    useEffect(() => {
+        if (currentStep === 4 && !configSaved) {
+            saveJailbreakConfig();
+        }
+    }, [currentStep, configSaved, saveJailbreakConfig]);
+    
+    // Run verification and register token when entering step 5
     useEffect(() => {
         if (currentStep === 5) {
             verifyControllerAdded();
-            saveJailbreakConfig();
             registerSnsToken();
         }
-    }, [currentStep, verifyControllerAdded, saveJailbreakConfig, registerSnsToken]);
+    }, [currentStep, verifyControllerAdded, registerSnsToken]);
     
     // Set default principal when authenticated
     useEffect(() => {
