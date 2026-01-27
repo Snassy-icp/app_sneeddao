@@ -704,7 +704,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'flex-start',
+                    justifyContent: 'space-between',
                     width: '100%',
                     paddingTop: '8px',
                     borderTop: '1px solid rgba(255,255,255,0.1)',
@@ -819,7 +819,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                                 title="All neurons you can access (owned + hotkeyed) - for forum voting"
                                             >
-                                                <span>💪</span>
+                                                <span>🤚</span>
                                                 {/* Desktop: full labels */}
                                                 <span className="hide-on-narrow" style={{ color: theme.colors.success, fontSize: '11px' }}>
                                                     {formatCompactVP(reachableVP)} VP
@@ -838,6 +838,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             </>
                         )}
                     </div>
+                    
+                    {/* Close button */}
+                    <button
+                        onClick={() => {
+                            localStorage.setItem('showVpBar', JSON.stringify(false));
+                            window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: false }));
+                        }}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.mutedText,
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                            fontSize: '12px',
+                            opacity: 0.5,
+                            transition: 'opacity 0.2s ease',
+                            flexShrink: 0
+                        }}
+                        onMouseEnter={(e) => e.target.style.opacity = 1}
+                        onMouseLeave={(e) => e.target.style.opacity = 0.5}
+                        title="Hide VP bar (re-enable in Settings)"
+                    >
+                        ✕
+                    </button>
                 </div>
             )}
 
