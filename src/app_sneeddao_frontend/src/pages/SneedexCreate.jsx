@@ -6,7 +6,7 @@ import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -3872,12 +3872,32 @@ function SneedexCreate() {
                                                         ) : neuronVerificationStatus?.verified === false ? (
                                                             <div style={{ 
                                                                 display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '8px',
-                                                                color: theme.colors.warning,
+                                                                flexDirection: 'column',
+                                                                gap: '10px',
                                                             }}>
-                                                                <FaExclamationTriangle />
-                                                                <span>{neuronVerificationStatus.message}</span>
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '8px',
+                                                                    color: theme.colors.warning,
+                                                                }}>
+                                                                    <FaExclamationTriangle />
+                                                                    <span>{neuronVerificationStatus.message}</span>
+                                                                </div>
+                                                                <Link 
+                                                                    to="/tools/sns_jailbreak"
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        color: theme.colors.success,
+                                                                        fontSize: '0.85rem',
+                                                                        textDecoration: 'none',
+                                                                    }}
+                                                                >
+                                                                    <FaUnlock size={12} />
+                                                                    <span>Use the <strong>Jailbreak Wizard</strong> to add Sneedex as a hotkey</span>
+                                                                </Link>
                                                             </div>
                                                         ) : (
                                                             <div style={{ 
@@ -4530,6 +4550,33 @@ function SneedexCreate() {
                                                                         }}>
                                                                             {(Number(asset.stake) / Math.pow(10, getSnsDecimals(asset.governance_id))).toFixed(2)} {asset.symbol || 'tokens'}
                                                                         </span>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Jailbreak link for failed neuron verification */}
+                                                                {verification?.verified === false && (
+                                                                    <div style={{ 
+                                                                        marginTop: '8px',
+                                                                        padding: '10px 12px',
+                                                                        background: `${theme.colors.success}10`,
+                                                                        borderRadius: '6px',
+                                                                        border: `1px solid ${theme.colors.success}30`,
+                                                                    }}>
+                                                                        <Link 
+                                                                            to="/tools/sns_jailbreak"
+                                                                            style={{
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '6px',
+                                                                                color: theme.colors.success,
+                                                                                fontSize: '0.85rem',
+                                                                                textDecoration: 'none',
+                                                                            }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        >
+                                                                            <FaUnlock size={12} />
+                                                                            <span>Use the <strong>Jailbreak Wizard</strong> to add Sneedex as a hotkey</span>
+                                                                        </Link>
                                                                     </div>
                                                                 )}
                                                             </div>
