@@ -1,6 +1,7 @@
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
 import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
 import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
 import Array "mo:base/Array";
@@ -250,23 +251,59 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    // Schedule a notification to be sent asynchronously (fire-and-forget via 0-second timer)
-    func scheduleNotification<system>(recipients : [Principal], subject : Text, body : Text) {
-        ignore Timer.setTimer<system>(#seconds 0, func() : async () {
-            await sendNotification(recipients, subject, body);
-        });
+    // Fetch token metadata (symbol, decimals) from ledger - returns defaults on error
+    func fetchTokenMetadata(ledger : Principal) : async (Text, Nat8) {
+        try {
+            let ledgerActor : T.ICRC1Actor = actor(Principal.toText(ledger));
+            let symbol = await ledgerActor.icrc1_symbol();
+            let decimals = await ledgerActor.icrc1_decimals();
+            (symbol, decimals)
+        } catch (_) {
+            // Fallback if ledger call fails
+            ("tokens", 8)
+        };
+    };
+    
+    // Format token amount with symbol and decimals
+    func formatTokenAmount(amount : Nat, symbol : Text, decimals : Nat8) : Text {
+        let divisor = Nat.pow(10, Nat8.toNat(decimals));
+        let wholePart = amount / divisor;
+        let fractionalPart = amount % divisor;
+        
+        // Format with appropriate decimal places (up to 4 for readability)
+        let displayDecimals = if (Nat8.toNat(decimals) > 4) 4 else Nat8.toNat(decimals);
+        if (displayDecimals == 0 or fractionalPart == 0) {
+            Nat.toText(wholePart) # " " # symbol
+        } else {
+            let fractionalDivisor = Nat.pow(10, Nat8.toNat(decimals) - displayDecimals);
+            let displayFractional = fractionalPart / fractionalDivisor;
+            Nat.toText(wholePart) # "." # padLeft(Nat.toText(displayFractional), displayDecimals) # " " # symbol
+        };
+    };
+    
+    // Helper to pad string with leading zeros
+    func padLeft(s : Text, len : Nat) : Text {
+        var result = s;
+        while (result.size() < len) {
+            result := "0" # result;
+        };
+        result;
     };
     
     // Notify seller about a new bid on their offer (fire-and-forget)
     func notifyNewBid<system>(offer : T.Offer, bid : T.Bid) {
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_bid) {
-            let subject = "🔔 New Bid on Sneedex Offer #" # Nat.toText(offer.id);
-            let body = "You have received a new bid on your Sneedex offer #" # Nat.toText(offer.id) # ".\n\n" #
-                       "Bid amount: " # Nat.toText(bid.amount) # " (raw units)\n" #
-                       "Bidder: " # Principal.toText(bid.bidder) # "\n\n" #
-                       "View your offer at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
-            scheduleNotification<system>([offer.creator], subject, body);
+            ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+                let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
+                let formattedAmount = formatTokenAmount(bid.amount, symbol, decimals);
+                let subject = "🔔 New Bid on Sneedex Offer #" # Nat.toText(offer.id);
+                let body = "You have received a new bid on your Sneedex offer #" # Nat.toText(offer.id) # ".\n\n" #
+                           "Bid amount: " # formattedAmount # "\n" #
+                           "Bidder: " # Principal.toText(bid.bidder) # "\n\n" #
+                           "View your offer at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                await sendNotification([offer.creator], subject, body);
+            });
         };
     };
     
@@ -274,12 +311,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func notifyOutbid<system>(offer : T.Offer, previousBid : T.Bid, newBid : T.Bid) {
         let settings = getUserNotificationSettings(previousBid.bidder);
         if (settings.notify_on_outbid) {
-            let subject = "⚠️ You've Been Outbid on Sneedex Offer #" # Nat.toText(offer.id);
-            let body = "Your bid on Sneedex offer #" # Nat.toText(offer.id) # " has been outbid.\n\n" #
-                       "Your bid: " # Nat.toText(previousBid.amount) # " (raw units)\n" #
-                       "New highest bid: " # Nat.toText(newBid.amount) # " (raw units)\n\n" #
-                       "Place a higher bid at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
-            scheduleNotification<system>([previousBid.bidder], subject, body);
+            ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+                let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
+                let formattedPrevious = formatTokenAmount(previousBid.amount, symbol, decimals);
+                let formattedNew = formatTokenAmount(newBid.amount, symbol, decimals);
+                let subject = "⚠️ You've Been Outbid on Sneedex Offer #" # Nat.toText(offer.id);
+                let body = "Your bid on Sneedex offer #" # Nat.toText(offer.id) # " has been outbid.\n\n" #
+                           "Your bid: " # formattedPrevious # "\n" #
+                           "New highest bid: " # formattedNew # "\n\n" #
+                           "Place a higher bid at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                await sendNotification([previousBid.bidder], subject, body);
+            });
         };
     };
     
@@ -287,12 +329,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func notifySale<system>(offer : T.Offer, winningBid : T.Bid) {
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_sale) {
-            let subject = "🎉 Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Sold!";
-            let body = "Congratulations! Your Sneedex offer #" # Nat.toText(offer.id) # " has been completed.\n\n" #
-                       "Winning bid: " # Nat.toText(winningBid.amount) # " (raw units)\n" #
-                       "Buyer: " # Principal.toText(winningBid.bidder) # "\n\n" #
-                       "Claim your payment at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
-            scheduleNotification<system>([offer.creator], subject, body);
+            ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+                let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
+                let formattedAmount = formatTokenAmount(winningBid.amount, symbol, decimals);
+                let subject = "🎉 Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Sold!";
+                let body = "Congratulations! Your Sneedex offer #" # Nat.toText(offer.id) # " has been completed.\n\n" #
+                           "Winning bid: " # formattedAmount # "\n" #
+                           "Buyer: " # Principal.toText(winningBid.bidder) # "\n\n" #
+                           "Claim your payment at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                await sendNotification([offer.creator], subject, body);
+            });
         };
     };
     
@@ -300,11 +346,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func notifyWin<system>(offer : T.Offer, winningBid : T.Bid) {
         let settings = getUserNotificationSettings(winningBid.bidder);
         if (settings.notify_on_win) {
-            let subject = "🏆 You Won Sneedex Auction #" # Nat.toText(offer.id) # "!";
-            let body = "Congratulations! You have won Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
-                       "Your winning bid: " # Nat.toText(winningBid.amount) # " (raw units)\n\n" #
-                       "Claim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
-            scheduleNotification<system>([winningBid.bidder], subject, body);
+            ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+                let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
+                let formattedAmount = formatTokenAmount(winningBid.amount, symbol, decimals);
+                let subject = "🏆 You Won Sneedex Auction #" # Nat.toText(offer.id) # "!";
+                let body = "Congratulations! You have won Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
+                           "Your winning bid: " # formattedAmount # "\n\n" #
+                           "Claim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                await sendNotification([winningBid.bidder], subject, body);
+            });
         };
     };
     
@@ -312,10 +362,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     func notifyExpiration<system>(offer : T.Offer) {
         let settings = getUserNotificationSettings(offer.creator);
         if (settings.notify_on_expiration) {
-            let subject = "⏰ Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Expired";
-            let body = "Your Sneedex offer #" # Nat.toText(offer.id) # " has expired without receiving any bids.\n\n" #
-                       "You can reclaim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
-            scheduleNotification<system>([offer.creator], subject, body);
+            ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+                let subject = "⏰ Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Expired";
+                let body = "Your Sneedex offer #" # Nat.toText(offer.id) # " has expired without receiving any bids.\n\n" #
+                           "You can reclaim your assets at: https://app.sneeddao.com/sneedex_offer/" # Nat.toText(offer.id);
+                await sendNotification([offer.creator], subject, body);
+            });
         };
     };
     
