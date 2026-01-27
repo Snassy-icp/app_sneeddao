@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -29,6 +29,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { newReplyCount } = useReplyNotifications();
     const { newMessageCount } = useSmsNotifications();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isQuickLinksOpen, setIsQuickLinksOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [isVpBarVisible, setIsVpBarVisible] = useState(true);
@@ -44,6 +45,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const lastToggleTime = useRef(0);
     const menuRef = useRef(null);
     const menuToggleRef = useRef(null);
+    const quickLinksRef = useRef(null);
+    const quickLinksToggleRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
@@ -76,12 +79,20 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // Add click outside handler
     useEffect(() => {
         const handleClickOutside = (event) => {
-            // Don't close if clicking on the menu toggle area or the dropdown itself
+            // Don't close main menu if clicking on the menu toggle area or the dropdown itself
             const isClickOnToggle = menuToggleRef.current && menuToggleRef.current.contains(event.target);
             const isClickOnMenu = menuRef.current && menuRef.current.contains(event.target);
             
             if (!isClickOnToggle && !isClickOnMenu) {
                 setIsMenuOpen(false);
+            }
+            
+            // Don't close quick links if clicking on the quick links toggle or dropdown
+            const isClickOnQuickLinksToggle = quickLinksToggleRef.current && quickLinksToggleRef.current.contains(event.target);
+            const isClickOnQuickLinks = quickLinksRef.current && quickLinksRef.current.contains(event.target);
+            
+            if (!isClickOnQuickLinksToggle && !isClickOnQuickLinks) {
+                setIsQuickLinksOpen(false);
             }
         };
 
@@ -514,89 +525,205 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <SnsDropdown onSnsChange={onSnsChange} />
                 )}
 
-                {/* Theme Toggle - hidden on narrow screens */}
-                <div className="hide-on-narrow">
+                {/* Quick links - shown on wide screens */}
+                <div className="hide-on-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <ThemeToggle size="medium" />
+                    
+                    <button
+                        onClick={() => navigate('/feed')}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.primaryText,
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px',
+                            transition: 'background-color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        title="Go to Feed"
+                    >
+                        <FaRss size={16} />
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/sneedex_offers')}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.primaryText,
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px',
+                            transition: 'background-color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        title="Go to Sneedex Marketplace"
+                    >
+                        <FaExchangeAlt size={16} />
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/wallet')}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.primaryText,
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px',
+                            marginRight: '8px',
+                            transition: 'background-color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        title="Go to Wallet"
+                    >
+                        <FaWallet size={16} />
+                    </button>
                 </div>
 
-                {/* Icon-only theme toggle for non-logged-in users on narrow screens */}
-                {!isAuthenticated && (
-                    <div className="show-on-narrow">
-                        <ThemeToggle iconOnly />
-                    </div>
-                )}
-
-                {/* Feed Link - hidden on narrow screens */}
-                <button
-                    className="hide-on-narrow"
-                    onClick={() => navigate('/feed')}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        color: theme.colors.primaryText,
-                        cursor: 'pointer',
-                        padding: '4px',
-                        borderRadius: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        fontSize: '18px',
-                        marginRight: '0px',
-                        transition: 'background-color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                    title="Go to Feed"
-                >
-                    <FaRss size={16} />
-                </button>
-
-                {/* Sneedex Link - hidden on narrow screens */}
-                <button
-                    className="hide-on-narrow"
-                    onClick={() => navigate('/sneedex_offers')}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        color: theme.colors.primaryText,
-                        cursor: 'pointer',
-                        padding: '4px',
-                        borderRadius: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        fontSize: '18px',
-                        marginRight: '0px',
-                        transition: 'background-color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                    title="Go to Sneedex Marketplace"
-                >
-                    <FaExchangeAlt size={16} />
-                </button>
-
-                {/* Wallet Link - hidden on narrow screens */}
-                <button
-                    className="hide-on-narrow"
-                    onClick={() => navigate('/wallet')}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        color: theme.colors.primaryText,
-                        cursor: 'pointer',
-                        padding: '4px',
-                        borderRadius: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        fontSize: '18px',
-                        marginRight: '8px',
-                        transition: 'background-color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                    title="Go to Wallet"
-                >
-                    <FaWallet size={16} />
-                </button>
+                {/* Quick links hamburger menu - shown on narrow screens */}
+                <div className="show-on-narrow" style={{ position: 'relative' }}>
+                    <button
+                        ref={quickLinksToggleRef}
+                        onClick={() => setIsQuickLinksOpen(!isQuickLinksOpen)}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.primaryText,
+                            cursor: 'pointer',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px',
+                            transition: 'background-color 0.2s ease'
+                        }}
+                        title="Quick Links"
+                    >
+                        <FaBars size={16} />
+                    </button>
+                    
+                    {isQuickLinksOpen && (
+                        <div
+                            ref={quickLinksRef}
+                            style={{
+                                position: 'absolute',
+                                top: '100%',
+                                right: 0,
+                                marginTop: '8px',
+                                background: theme.colors.cardGradient,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '8px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                minWidth: '160px',
+                                zIndex: 1001,
+                                overflow: 'hidden'
+                            }}
+                        >
+                            <button
+                                onClick={() => {
+                                    navigate('/feed');
+                                    setIsQuickLinksOpen(false);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: theme.colors.primaryText,
+                                    cursor: 'pointer',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '14px',
+                                    textAlign: 'left',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaRss size={14} />
+                                Feed
+                            </button>
+                            
+                            <button
+                                onClick={() => {
+                                    navigate('/sneedex_offers');
+                                    setIsQuickLinksOpen(false);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: theme.colors.primaryText,
+                                    cursor: 'pointer',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '14px',
+                                    textAlign: 'left',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaExchangeAlt size={14} />
+                                Sneedex
+                            </button>
+                            
+                            <button
+                                onClick={() => {
+                                    navigate('/wallet');
+                                    setIsQuickLinksOpen(false);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: theme.colors.primaryText,
+                                    cursor: 'pointer',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '14px',
+                                    textAlign: 'left',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaWallet size={14} />
+                                Wallet
+                            </button>
+                            
+                            <div style={{ 
+                                borderTop: `1px solid ${theme.colors.border}`,
+                                padding: '12px 16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                            }}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '14px' }}>Theme</span>
+                                <ThemeToggle size="small" />
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 {isAuthenticated ? (
                     <PrincipalBox 
