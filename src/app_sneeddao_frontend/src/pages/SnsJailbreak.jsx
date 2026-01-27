@@ -1248,6 +1248,126 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                 </p>
             </div>
             
+            {/* Summary Card */}
+            <div style={styles.card}>
+                <label style={styles.label}>Summary</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* SNS */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px',
+                        padding: '12px',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '8px',
+                    }}>
+                        {snsLogos.get(governanceId) ? (
+                            <img 
+                                src={snsLogos.get(governanceId)} 
+                                alt={selectedSns?.name}
+                                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
+                            />
+                        ) : (
+                            <div style={{ 
+                                width: '32px', 
+                                height: '32px', 
+                                borderRadius: '50%', 
+                                background: theme.colors.border,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}>
+                                <FaBrain size={16} style={{ color: theme.colors.mutedText }} />
+                            </div>
+                        )}
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>SNS</div>
+                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>{selectedSns?.name}</div>
+                        </div>
+                    </div>
+                    
+                    {/* Neuron */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px',
+                        padding: '12px',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '8px',
+                    }}>
+                        <div style={{ 
+                            width: '32px', 
+                            height: '32px', 
+                            borderRadius: '50%', 
+                            background: `${theme.colors.accent}20`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaBrain size={16} style={{ color: theme.colors.accent }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>Neuron</div>
+                            <div style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                                {useManualEntry && manualNeuronData ? getNeuronDisplayName(manualNeuronData, selectedSnsRoot) :
+                                 !useManualEntry && selectedNeuronId ? 
+                                    getNeuronDisplayName(snsNeurons.find(n => extractNeuronId(n) === selectedNeuronId), selectedSnsRoot) :
+                                    'Manual Entry'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, wordBreak: 'break-all' }}>
+                                {effectiveNeuronId.slice(0, 20)}...{effectiveNeuronId.slice(-20)}
+                            </div>
+                        </div>
+                        <Link
+                            to={`/neuron?sns=${selectedSnsRoot}&neuronid=${effectiveNeuronId}`}
+                            target="_blank"
+                            style={{ color: theme.colors.accent, flexShrink: 0 }}
+                            title="View neuron"
+                        >
+                            <FaExternalLinkAlt size={14} />
+                        </Link>
+                    </div>
+                    
+                    {/* Principal to Add */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px',
+                        padding: '12px',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '8px',
+                    }}>
+                        <div style={{ 
+                            width: '32px', 
+                            height: '32px', 
+                            borderRadius: '50%', 
+                            background: `${theme.colors.success}20`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaKey size={16} style={{ color: theme.colors.success }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, textTransform: 'uppercase' }}>Adding Controller</div>
+                            <div style={{ 
+                                fontFamily: 'monospace', 
+                                fontSize: '0.85rem', 
+                                color: theme.colors.primaryText,
+                                wordBreak: 'break-all',
+                            }}>
+                                {targetPrincipal}
+                            </div>
+                            {identity && targetPrincipal === identity.getPrincipal().toText() && (
+                                <div style={{ fontSize: '0.75rem', color: theme.colors.success }}>
+                                    (Your logged-in principal)
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div style={styles.warningBox}>
                 <FaExclamationTriangle size={24} style={{ color: theme.colors.warning, flexShrink: 0 }} />
                 <div>
