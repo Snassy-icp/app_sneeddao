@@ -823,7 +823,69 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             >
               <span style={{ transform: showSubaccountInput ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>▶</span>
               Advanced: Send To Subaccount
+              {!showSubaccountInput && resolvedManualSubaccount && (
+                <span style={{
+                  background: `${theme.colors.warning}20`,
+                  color: theme.colors.warning,
+                  fontSize: '0.7rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontWeight: '600',
+                  marginLeft: '4px'
+                }}>
+                  SET
+                </span>
+              )}
             </button>
+
+            {/* Collapsed subaccount indicator */}
+            {!showSubaccountInput && resolvedManualSubaccount && (
+              <div style={{
+                marginTop: '8px',
+                padding: '10px 12px',
+                background: `${theme.colors.warning}10`,
+                border: `1px solid ${theme.colors.warning}30`,
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '14px' }}>📍</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ 
+                    color: theme.colors.warning, 
+                    fontSize: '0.75rem', 
+                    fontWeight: '600',
+                    marginBottom: '4px'
+                  }}>
+                    Sending to subaccount:
+                  </div>
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.7rem',
+                    color: theme.colors.secondaryText,
+                    wordBreak: 'break-all',
+                    overflowWrap: 'anywhere'
+                  }}>
+                    {bytesToHex(resolvedManualSubaccount.resolved).slice(0, 32)}...
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSubaccountInput(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: theme.colors.accent,
+                    cursor: 'pointer',
+                    fontSize: '0.7rem',
+                    padding: '2px 4px',
+                    flexShrink: 0
+                  }}
+                >
+                  Edit
+                </button>
+              </div>
+            )}
 
             {showSubaccountInput && (
               <div style={{
