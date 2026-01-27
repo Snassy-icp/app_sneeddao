@@ -5,6 +5,7 @@ import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
+import PrincipalInput from './components/PrincipalInput';
 import {
   parseAccount,
   parseExtendedAddress,
@@ -340,21 +341,17 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           }}>
             Recipient Address:
           </label>
-          <input
-            type="text"
+          <PrincipalInput
             value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            placeholder="Enter principal ID or extended address"
+            onChange={setRecipient}
+            placeholder="Enter principal ID, name, or extended address"
             style={{
               width: '100%',
+              maxWidth: 'none'
+            }}
+            inputStyle={{
               padding: '12px',
-              background: theme.colors.secondaryBg,
-              border: `1px solid ${parsedAccount ? theme.colors.success : theme.colors.border}`,
-              borderRadius: '8px',
-              color: theme.colors.primaryText,
-              fontSize: '0.9rem',
-              boxSizing: 'border-box',
-              transition: 'border-color 0.2s ease'
+              fontSize: '0.9rem'
             }}
           />
 
@@ -362,21 +359,99 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           {extendedAddressDetected && (
             <div style={{
               marginTop: '8px',
-              padding: '10px 12px',
+              padding: '12px',
               background: `${theme.colors.success}15`,
               border: `1px solid ${theme.colors.success}40`,
               borderRadius: '8px',
               fontSize: '0.85rem'
             }}>
-              <div style={{ color: theme.colors.success, fontWeight: '600', marginBottom: '6px' }}>
+              <div style={{ color: theme.colors.success, fontWeight: '600', marginBottom: '10px' }}>
                 ✓ Extended address format detected
               </div>
-              <div style={{ color: theme.colors.secondaryText }}>
-                <strong>Principal:</strong> {extendedAddressDetected.principal.toText().slice(0, 20)}...
+              
+              {/* Principal with copy button */}
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ color: theme.colors.secondaryText, marginBottom: '4px', fontWeight: '500' }}>
+                  Principal:
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  background: theme.colors.tertiaryBg,
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  border: `1px solid ${theme.colors.border}`
+                }}>
+                  <span style={{
+                    flex: 1,
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    color: theme.colors.primaryText,
+                    wordBreak: 'break-all',
+                    overflowWrap: 'anywhere'
+                  }}>
+                    {extendedAddressDetected.principal.toText()}
+                  </span>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(extendedAddressDetected.principal.toText())}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      cursor: 'pointer',
+                      color: theme.colors.mutedText,
+                      fontSize: '14px',
+                      flexShrink: 0
+                    }}
+                    title="Copy principal"
+                  >
+                    📋
+                  </button>
+                </div>
               </div>
+              
+              {/* Subaccount with copy button */}
               {extendedAddressDetected.subaccount && (
-                <div style={{ color: theme.colors.secondaryText, marginTop: '4px' }}>
-                  <strong>Subaccount:</strong> {formatSubaccountForDisplay(extendedAddressDetected.subaccount.resolved, 24)}
+                <div>
+                  <div style={{ color: theme.colors.secondaryText, marginBottom: '4px', fontWeight: '500' }}>
+                    Subaccount:
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    background: theme.colors.tertiaryBg,
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme.colors.border}`
+                  }}>
+                    <span style={{
+                      flex: 1,
+                      fontFamily: 'monospace',
+                      fontSize: '0.8rem',
+                      color: theme.colors.primaryText,
+                      wordBreak: 'break-all',
+                      overflowWrap: 'anywhere'
+                    }}>
+                      {bytesToHex(extendedAddressDetected.subaccount.resolved)}
+                    </span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(bytesToHex(extendedAddressDetected.subaccount.resolved))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: '2px',
+                        cursor: 'pointer',
+                        color: theme.colors.mutedText,
+                        fontSize: '14px',
+                        flexShrink: 0
+                      }}
+                      title="Copy subaccount"
+                    >
+                      📋
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -506,11 +581,46 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                     borderRadius: '6px',
                     fontSize: '0.8rem'
                   }}>
-                    <div style={{ color: theme.colors.success, marginBottom: '4px', fontWeight: '600' }}>
+                    <div style={{ color: theme.colors.success, marginBottom: '6px', fontWeight: '600' }}>
                       ✓ Valid subaccount
                     </div>
-                    <div style={{ color: theme.colors.secondaryText, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                      <strong>Resolved (hex):</strong> {bytesToHex(resolvedManualSubaccount.resolved)}
+                    <div style={{ color: theme.colors.secondaryText, marginBottom: '4px', fontWeight: '500' }}>
+                      Resolved (hex):
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      background: theme.colors.tertiaryBg,
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme.colors.border}`
+                    }}>
+                      <span style={{
+                        flex: 1,
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem',
+                        color: theme.colors.primaryText,
+                        wordBreak: 'break-all',
+                        overflowWrap: 'anywhere'
+                      }}>
+                        {bytesToHex(resolvedManualSubaccount.resolved)}
+                      </span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(bytesToHex(resolvedManualSubaccount.resolved))}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: '2px',
+                          cursor: 'pointer',
+                          color: theme.colors.mutedText,
+                          fontSize: '14px',
+                          flexShrink: 0
+                        }}
+                        title="Copy subaccount hex"
+                      >
+                        📋
+                      </button>
                     </div>
                   </div>
                 )}
