@@ -13,7 +13,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
-import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet } from 'react-icons/fa';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
@@ -898,11 +898,20 @@ function CreateIcpNeuron() {
                                             <span>📍</span> Principal ID (PID) — Standard
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                            <PrincipalDisplay
-                                                principal={myPrincipal}
-                                                displayInfo={getPrincipalDisplayInfoFromContext(myPrincipal, principalNames, principalNicknames)}
-                                                showCopyButton={true}
-                                            />
+                                            <div style={{
+                                                fontFamily: 'monospace',
+                                                fontSize: '13px',
+                                                padding: '8px 12px',
+                                                borderRadius: '6px',
+                                                background: theme.colors.primaryBg,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                color: theme.colors.primaryText,
+                                                wordBreak: 'break-all',
+                                                flex: 1,
+                                                minWidth: '200px'
+                                            }}>
+                                                {myPrincipal.toString()}
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={async () => {
@@ -1095,15 +1104,13 @@ function CreateIcpNeuron() {
                                         paddingTop: '12px', 
                                         borderTop: `1px solid ${theme.colors.border}`,
                                     }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Your new canister will receive</div>
-                                                <div style={{ color: theme.colors.accent, fontSize: '18px', fontWeight: '600', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                                                    <span>⚡ ~{formatCycles(Math.max(0, paymentConfig.targetCyclesAmount - CANISTER_CREATION_OVERHEAD))}</span>
-                                                    <span style={{ color: theme.colors.mutedText, fontSize: '11px', fontWeight: '400' }}>
-                                                        ({formatCycles(paymentConfig.targetCyclesAmount)} allocated, ~{formatCycles(CANISTER_CREATION_OVERHEAD)} used for creation)
-                                                    </span>
-                                                </div>
+                                        <div>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Your new canister will receive</div>
+                                            <div style={{ color: theme.colors.accent, fontSize: '18px', fontWeight: '600' }}>
+                                                ⚡ ~{formatCycles(Math.max(0, paymentConfig.targetCyclesAmount - CANISTER_CREATION_OVERHEAD))} Cycles
+                                            </div>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
+                                                ({formatCycles(paymentConfig.targetCyclesAmount)} allocated, ~{formatCycles(CANISTER_CREATION_OVERHEAD)} used for creation)
                                             </div>
                                         </div>
                                     </div>
@@ -1334,7 +1341,7 @@ function CreateIcpNeuron() {
                                         gap: '4px'
                                     }}
                                 >
-                                    👛 Sneed Wallet
+                                    <FaWallet /> Sneed Wallet
                                 </Link>
                                 <Link 
                                     to="/canisters" 

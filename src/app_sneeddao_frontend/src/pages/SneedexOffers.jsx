@@ -24,6 +24,7 @@ import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/SnsUtils';
 import priceService from '../services/PriceService';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -1926,6 +1927,28 @@ function SneedexOffers() {
                                             Min increment: {formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenInfo.fee, tokenInfo.decimals)} {tokenInfo.symbol}
                                         </div>
                                     )}
+                                    
+                                    {/* Offer Creator */}
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        fontSize: '0.75rem',
+                                        color: theme.colors.mutedText,
+                                        marginBottom: '0.5rem',
+                                        paddingBottom: '0.5rem',
+                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <span>Seller:</span>
+                                        <PrincipalDisplay 
+                                            principal={offer.creator}
+                                            short={true}
+                                            showCopyButton={false}
+                                            enableContextMenu={false}
+                                            noLink={true}
+                                            style={{ fontSize: '0.75rem' }}
+                                        />
+                                    </div>
                                     
                                     <div style={styles.cardFooter}>
                                         <div style={{
