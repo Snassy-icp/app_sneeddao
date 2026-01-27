@@ -133,6 +133,16 @@ function Help() {
                                 Sneedex Marketplace
                             </Link>
                         </li>
+                        <li style={styles.linkItem}>
+                            <Link 
+                                to="/help/sns_jailbreak" 
+                                style={styles.link}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                SNS Jailbreak
+                            </Link>
+                        </li>
                     </ul>
                 </div>
             </main>
