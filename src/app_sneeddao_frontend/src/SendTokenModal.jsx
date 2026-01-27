@@ -1,9 +1,11 @@
 // SendTokenModal.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import './SendTokenModal.css';
+import { Principal } from "@dfinity/principal";
 import { formatAmount } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
+import { PrincipalDisplay } from './utils/PrincipalUtils';
 import {
   parseAccount,
   parseExtendedAddress,
@@ -418,41 +420,19 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               )}
             </div>
             
-            {/* Principal - always show truncated with copy */}
+            {/* Principal with PrincipalDisplay */}
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
               background: theme.colors.tertiaryBg,
-              padding: '8px 10px',
+              padding: '10px 12px',
               borderRadius: '6px',
               marginBottom: '8px'
             }}>
-              <span style={{
-                flex: 1,
-                fontFamily: 'monospace',
-                fontSize: '0.8rem',
-                color: theme.colors.primaryText,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
-                {reviewData.principal.slice(0, 12)}...{reviewData.principal.slice(-8)}
-              </span>
-              <button
-                onClick={() => navigator.clipboard.writeText(reviewData.principal)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px 6px',
-                  cursor: 'pointer',
-                  color: theme.colors.accent,
-                  fontSize: '0.7rem',
-                  flexShrink: 0
-                }}
-              >
-                Copy
-              </button>
+              <PrincipalDisplay
+                principal={Principal.fromText(reviewData.principal)}
+                showCopyButton={true}
+                noLink={true}
+                style={{ fontSize: '0.85rem' }}
+              />
             </div>
 
             {/* Expandable Details */}
