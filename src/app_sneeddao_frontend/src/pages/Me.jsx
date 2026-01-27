@@ -44,6 +44,7 @@ import {
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
 import { Principal } from '@dfinity/principal';
+import { createSneedexActor } from '../utils/SneedexUtils';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -98,6 +99,16 @@ export default function Me() {
     const [cycleThresholdRed, setCycleThresholdRed] = useState('');
     const [cycleThresholdOrange, setCycleThresholdOrange] = useState('');
     const [settingsSaved, setSettingsSaved] = useState(false);
+    
+    // Sneedex notification settings
+    const [sneedexNotificationsExpanded, setSneedexNotificationsExpanded] = useState(false);
+    const [notifyOnBid, setNotifyOnBid] = useState(true);
+    const [notifyOnOutbid, setNotifyOnOutbid] = useState(true);
+    const [notifyOnSale, setNotifyOnSale] = useState(true);
+    const [notifyOnExpiration, setNotifyOnExpiration] = useState(true);
+    const [notifyOnWin, setNotifyOnWin] = useState(true);
+    const [loadingNotificationSettings, setLoadingNotificationSettings] = useState(false);
+    const [notificationSettingsSaved, setNotificationSettingsSaved] = useState(false);
 
     // Color coding settings
     const [principalColorCoding, setPrincipalColorCoding] = useState(() => {
@@ -143,6 +154,61 @@ export default function Me() {
         setCanisterCycleThresholdRed(formatCyclesCompact(settings.cycleThresholdRed));
         setCanisterCycleThresholdOrange(formatCyclesCompact(settings.cycleThresholdOrange));
     }, []);
+    
+    // Load Sneedex notification settings when identity is available
+    useEffect(() => {
+        const loadNotificationSettings = async () => {
+            if (!identity) return;
+            
+            setLoadingNotificationSettings(true);
+            try {
+                const actor = await createSneedexActor(identity);
+                const settings = await actor.getMyNotificationSettings();
+                setNotifyOnBid(settings.notify_on_bid);
+                setNotifyOnOutbid(settings.notify_on_outbid);
+                setNotifyOnSale(settings.notify_on_sale);
+                setNotifyOnExpiration(settings.notify_on_expiration);
+                setNotifyOnWin(settings.notify_on_win);
+            } catch (err) {
+                console.error('Failed to load notification settings:', err);
+                // Use defaults on error
+            } finally {
+                setLoadingNotificationSettings(false);
+            }
+        };
+        
+        loadNotificationSettings();
+    }, [identity]);
+    
+    // Save Sneedex notification settings
+    const saveNotificationSettings = async () => {
+        if (!identity) return;
+        
+        setLoadingNotificationSettings(true);
+        try {
+            const actor = await createSneedexActor(identity);
+            const result = await actor.setMyNotificationSettings({
+                notify_on_bid: notifyOnBid,
+                notify_on_outbid: notifyOnOutbid,
+                notify_on_sale: notifyOnSale,
+                notify_on_expiration: notifyOnExpiration,
+                notify_on_win: notifyOnWin,
+            });
+            
+            if ('ok' in result) {
+                setNotificationSettingsSaved(true);
+                setTimeout(() => setNotificationSettingsSaved(false), 3000);
+            } else {
+                console.error('Failed to save notification settings:', result.err);
+                alert('Failed to save notification settings');
+            }
+        } catch (err) {
+            console.error('Failed to save notification settings:', err);
+            alert('Failed to save notification settings');
+        } finally {
+            setLoadingNotificationSettings(false);
+        }
+    };
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
@@ -1594,6 +1660,327 @@ export default function Me() {
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Sneedex Notification Settings Child Section */}
+                            <div style={{
+                                backgroundColor: theme.colors.tertiaryBg,
+                                borderRadius: '8px',
+                                border: `1px solid ${theme.colors.border}`,
+                                marginBottom: '15px',
+                                overflow: 'hidden',
+                            }}>
+                                <div 
+                                    onClick={() => setSneedexNotificationsExpanded(!sneedexNotificationsExpanded)}
+                                    style={{
+                                        padding: '12px 15px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        borderBottom: sneedexNotificationsExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <span style={{ 
+                                            fontSize: '14px',
+                                            color: theme.colors.mutedText,
+                                            transition: 'transform 0.2s',
+                                            transform: sneedexNotificationsExpanded ? 'none' : 'rotate(-90deg)'
+                                        }}>▼</span>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                            🔔 Sneedex Notifications
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                {sneedexNotificationsExpanded && (
+                                    <div style={{ padding: '15px' }}>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
+                                            Choose which Sneedex events you want to receive notifications for via direct message. 
+                                            These notifications will appear in your <Link to="/sms" style={{ color: theme.colors.accent }}>Messages</Link>.
+                                        </p>
+                                        
+                                        {loadingNotificationSettings ? (
+                                            <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
+                                                Loading notification settings...
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                {/* Toggle for each notification type */}
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            🔔 New Bids
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when someone bids on my offers
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnBid}
+                                                            onChange={(e) => setNotifyOnBid(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnBid ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnBid ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            ⚠️ Outbid
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when I've been outbid on an auction
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnOutbid}
+                                                            onChange={(e) => setNotifyOnOutbid(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnOutbid ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnOutbid ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            🎉 Offer Sold
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when my offer is completed (sold)
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnSale}
+                                                            onChange={(e) => setNotifyOnSale(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnSale ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnSale ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            🏆 Auction Won
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when I win an auction
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnWin}
+                                                            onChange={(e) => setNotifyOnWin(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnWin ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnWin ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            ⏰ Offer Expired
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when my offer expires without bids
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnExpiration}
+                                                            onChange={(e) => setNotifyOnExpiration(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnExpiration ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnExpiration ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px' }}>
+                                                    <button
+                                                        onClick={saveNotificationSettings}
+                                                        disabled={loadingNotificationSettings}
+                                                        style={{
+                                                            backgroundColor: theme.colors.accent,
+                                                            color: theme.colors.primaryText,
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '10px 20px',
+                                                            cursor: loadingNotificationSettings ? 'not-allowed' : 'pointer',
+                                                            fontWeight: '500',
+                                                            opacity: loadingNotificationSettings ? 0.6 : 1,
+                                                        }}
+                                                    >
+                                                        {loadingNotificationSettings ? 'Saving...' : 'Save Settings'}
+                                                    </button>
+                                                    
+                                                    {notificationSettingsSaved && (
+                                                        <span style={{ color: theme.colors.success || '#22c55e', fontSize: '13px' }}>
+                                                            ✓ Settings saved!
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

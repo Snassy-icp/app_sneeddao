@@ -103,6 +103,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     var totalCreationFeesCollectedE8s : Nat = 0;
     var totalCutsCollectedByLedger : [(Principal, Nat)] = []; // ledger -> total amount
     
+    // Notification settings storage
+    var userNotificationSettings : [(Principal, T.NotificationSettings)] = [];
+    var sneedSmsCanisterId : ?Principal = null;
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -207,6 +211,104 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 try { await backend.register_user_token_for(user, ledgerId); } catch (_) {};
             };
             case null {};
+        };
+    };
+    
+    // ============================================
+    // NOTIFICATION HELPERS
+    // ============================================
+    
+    // Get notification settings for a user (returns defaults if not set)
+    func getUserNotificationSettings(user : Principal) : T.NotificationSettings {
+        for ((p, settings) in userNotificationSettings.vals()) {
+            if (Principal.equal(p, user)) {
+                return settings;
+            };
+        };
+        T.DEFAULT_NOTIFICATION_SETTINGS
+    };
+    
+    // Send a notification via sneed_sms (best effort, non-blocking)
+    func sendNotification(recipients : [Principal], subject : Text, body : Text) : async () {
+        switch (sneedSmsCanisterId) {
+            case (?id) {
+                let sms : T.SneedSMSActor = actor(Principal.toText(id));
+                try {
+                    ignore await sms.send_system_notification({
+                        recipients = recipients;
+                        subject = subject;
+                        body = body;
+                    });
+                } catch (_) {
+                    // Notification failed - log but don't fail the main operation
+                    Debug.print("Failed to send notification: " # subject);
+                };
+            };
+            case null {
+                // SMS canister not configured - skip notification
+            };
+        };
+    };
+    
+    // Notify seller about a new bid on their offer
+    func notifyNewBid(offer : T.Offer, bid : T.Bid) : async () {
+        let settings = getUserNotificationSettings(offer.creator);
+        if (settings.notify_on_bid) {
+            let subject = "🔔 New Bid on Sneedex Offer #" # Nat.toText(offer.id);
+            let body = "You have received a new bid on your Sneedex offer #" # Nat.toText(offer.id) # ".\n\n" #
+                       "Bid amount: " # Nat.toText(bid.amount) # " (raw units)\n" #
+                       "Bidder: " # Principal.toText(bid.bidder) # "\n\n" #
+                       "View your offer at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
+            await sendNotification([offer.creator], subject, body);
+        };
+    };
+    
+    // Notify a bidder that they've been outbid
+    func notifyOutbid(offer : T.Offer, previousBid : T.Bid, newBid : T.Bid) : async () {
+        let settings = getUserNotificationSettings(previousBid.bidder);
+        if (settings.notify_on_outbid) {
+            let subject = "⚠️ You've Been Outbid on Sneedex Offer #" # Nat.toText(offer.id);
+            let body = "Your bid on Sneedex offer #" # Nat.toText(offer.id) # " has been outbid.\n\n" #
+                       "Your bid: " # Nat.toText(previousBid.amount) # " (raw units)\n" #
+                       "New highest bid: " # Nat.toText(newBid.amount) # " (raw units)\n\n" #
+                       "Place a higher bid at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
+            await sendNotification([previousBid.bidder], subject, body);
+        };
+    };
+    
+    // Notify seller that their offer has sold
+    func notifySale(offer : T.Offer, winningBid : T.Bid) : async () {
+        let settings = getUserNotificationSettings(offer.creator);
+        if (settings.notify_on_sale) {
+            let subject = "🎉 Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Sold!";
+            let body = "Congratulations! Your Sneedex offer #" # Nat.toText(offer.id) # " has been completed.\n\n" #
+                       "Winning bid: " # Nat.toText(winningBid.amount) # " (raw units)\n" #
+                       "Buyer: " # Principal.toText(winningBid.bidder) # "\n\n" #
+                       "Claim your payment at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
+            await sendNotification([offer.creator], subject, body);
+        };
+    };
+    
+    // Notify winner that they won the auction
+    func notifyWin(offer : T.Offer, winningBid : T.Bid) : async () {
+        let settings = getUserNotificationSettings(winningBid.bidder);
+        if (settings.notify_on_win) {
+            let subject = "🏆 You Won Sneedex Auction #" # Nat.toText(offer.id) # "!";
+            let body = "Congratulations! You have won Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
+                       "Your winning bid: " # Nat.toText(winningBid.amount) # " (raw units)\n\n" #
+                       "Claim your assets at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
+            await sendNotification([winningBid.bidder], subject, body);
+        };
+    };
+    
+    // Notify seller that their offer has expired without bids
+    func notifyExpiration(offer : T.Offer) : async () {
+        let settings = getUserNotificationSettings(offer.creator);
+        if (settings.notify_on_expiration) {
+            let subject = "⏰ Your Sneedex Offer #" # Nat.toText(offer.id) # " Has Expired";
+            let body = "Your Sneedex offer #" # Nat.toText(offer.id) # " has expired without receiving any bids.\n\n" #
+                       "You can reclaim your assets at: https://sneed.fi/sneedex_offer/" # Nat.toText(offer.id);
+            await sendNotification([offer.creator], subject, body);
         };
     };
     
@@ -846,6 +948,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                     activated_at = offer.activated_at;
                                 };
                                 updateOffer(offer.id, updatedOffer);
+                                
+                                // Notify seller of expiration (best effort, non-blocking)
+                                ignore notifyExpiration(offer);
                                 
                                 // Schedule auto-reclaim of assets
                                 scheduleAutoReclaimAssets<system>(offer.id);
@@ -1923,8 +2028,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                         
                                         // Schedule auto-refund via Timer (best effort)
                                         scheduleAutoRefund<system>(otherBid.id);
+                                        
+                                        // Notify outbid user (best effort, non-blocking)
+                                        ignore notifyOutbid(offer, otherBid, updatedBid);
                                     };
                                 };
+                                
+                                // Notify seller of new bid (best effort, non-blocking)
+                                ignore notifyNewBid(offer, updatedBid);
                                 
                                 // Check for buyout (using effective amount which is capped at buyout)
                                 switch (offer.buyout_price) {
@@ -1992,6 +2103,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                             tokens_escrowed = bid.tokens_escrowed;
                         };
                         updateBid(winningBidId, updatedBid);
+                        
+                        // Notify seller of sale and winner of win (best effort, non-blocking)
+                        ignore notifySale(offer, updatedBid);
+                        ignore notifyWin(offer, updatedBid);
                     };
                     case null {};
                 };
@@ -2096,6 +2211,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                                 
                                 updateOffer(offerId, updatedOffer);
+                                
+                                // Notify seller of expiration (best effort, non-blocking)
+                                ignore notifyExpiration(offer);
                                 
                                 // Schedule auto-reclaim of assets back to seller (best effort)
                                 scheduleAutoReclaimAssets<system>(offerId);
@@ -3358,6 +3476,52 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     /// Get the neuron manager factory canister ID
     public query func getNeuronManagerFactoryCanisterId() : async ?Principal {
         neuronManagerFactoryCanisterId;
+    };
+    
+    /// Set the Sneed SMS canister ID for notifications (admin only)
+    public shared ({ caller }) func setSneedSmsCanisterId(canisterId : ?Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        sneedSmsCanisterId := canisterId;
+        #ok();
+    };
+    
+    /// Get the Sneed SMS canister ID
+    public query func getSneedSmsCanisterId() : async ?Principal {
+        sneedSmsCanisterId;
+    };
+    
+    // ============================================
+    // USER NOTIFICATION SETTINGS
+    // ============================================
+    
+    /// Get notification settings for the caller
+    public query ({ caller }) func getMyNotificationSettings() : async T.NotificationSettings {
+        getUserNotificationSettings(caller);
+    };
+    
+    /// Update notification settings for the caller
+    public shared ({ caller }) func setMyNotificationSettings(settings : T.NotificationSettings) : async T.Result<()> {
+        // Update or add settings for this user
+        var found = false;
+        userNotificationSettings := Array.map<(Principal, T.NotificationSettings), (Principal, T.NotificationSettings)>(
+            userNotificationSettings,
+            func ((p, s) : (Principal, T.NotificationSettings)) : (Principal, T.NotificationSettings) {
+                if (Principal.equal(p, caller)) {
+                    found := true;
+                    (p, settings)
+                } else {
+                    (p, s)
+                }
+            }
+        );
+        
+        if (not found) {
+            userNotificationSettings := Array.append(userNotificationSettings, [(caller, settings)]);
+        };
+        
+        #ok();
     };
     
     // ============================================

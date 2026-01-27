@@ -111,8 +111,12 @@ actor SneedSMS {
     stable var stable_premium_rate_limit_minutes: Nat = 1;
     stable var stable_premium_max_recipients: Nat = 50;
     
+    // System notification config - authorized canisters that can send system notifications
+    stable var stable_authorized_senders : [Principal] = [];
+    stable var stable_system_sender_principal : ?Principal = null; // Principal shown as "sender" for system messages
+    
     // Runtime config (mutable wrapper around stable values)
-    var runtime_config : SMSConfig = {
+    transient var runtime_config : SMSConfig = {
         var rate_limit_minutes = stable_rate_limit_minutes;
         var max_subject_length = stable_max_subject_length;
         var max_body_length = stable_max_body_length;
@@ -120,7 +124,7 @@ actor SneedSMS {
     };
 
     // Runtime state that directly references stable storage
-    private var state : SMSState = {
+    transient private var state : SMSState = {
         var next_id = stable_next_id;
         var config = runtime_config;
         messages = stable_messages;
@@ -485,6 +489,140 @@ actor SneedSMS {
         };
 
         #ok()
+    };
+
+    // ============================================
+    // SYSTEM NOTIFICATION MANAGEMENT (for canister-to-user notifications)
+    // ============================================
+    
+    // Check if a principal is an authorized system sender
+    private func is_authorized_sender(principal : Principal) : Bool {
+        for (p in stable_authorized_senders.vals()) {
+            if (Principal.equal(p, principal)) return true;
+        };
+        false
+    };
+    
+    // Get list of authorized senders (admin only)
+    public query ({ caller }) func get_authorized_senders() : async Result<[Principal], SMSError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Only admins can view authorized senders"));
+        };
+        #ok(stable_authorized_senders)
+    };
+    
+    // Add an authorized sender (admin only)
+    public shared ({ caller }) func add_authorized_sender(sender : Principal) : async Result<(), SMSError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Only admins can add authorized senders"));
+        };
+        
+        // Check if already authorized
+        if (is_authorized_sender(sender)) {
+            return #err(#AlreadyExists("Sender is already authorized"));
+        };
+        
+        let buffer = Buffer.Buffer<Principal>(stable_authorized_senders.size() + 1);
+        for (p in stable_authorized_senders.vals()) {
+            buffer.add(p);
+        };
+        buffer.add(sender);
+        stable_authorized_senders := Buffer.toArray(buffer);
+        
+        #ok()
+    };
+    
+    // Remove an authorized sender (admin only)
+    public shared ({ caller }) func remove_authorized_sender(sender : Principal) : async Result<(), SMSError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Only admins can remove authorized senders"));
+        };
+        
+        if (not is_authorized_sender(sender)) {
+            return #err(#NotFound("Sender is not in authorized list"));
+        };
+        
+        stable_authorized_senders := Array.filter<Principal>(stable_authorized_senders, func(p) = not Principal.equal(p, sender));
+        #ok()
+    };
+    
+    // Get/set system sender principal (the "from" address shown on system messages)
+    public query func get_system_sender_principal() : async ?Principal {
+        stable_system_sender_principal
+    };
+    
+    public shared ({ caller }) func set_system_sender_principal(principal : ?Principal) : async Result<(), SMSError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Only admins can set system sender principal"));
+        };
+        stable_system_sender_principal := principal;
+        #ok()
+    };
+    
+    // System notification input type
+    public type SystemNotificationInput = {
+        recipients: [Principal];
+        subject: Text;
+        body: Text;
+    };
+    
+    // Send a system notification (only authorized canisters can call this)
+    // This bypasses rate limits and sends from the system sender principal
+    public shared ({ caller }) func send_system_notification(input: SystemNotificationInput) : async Result<Nat, SMSError> {
+        // Check if caller is authorized
+        if (not is_authorized_sender(caller)) {
+            return #err(#Unauthorized("Caller is not authorized to send system notifications"));
+        };
+        
+        // Get system sender principal (fall back to caller if not set)
+        let sender_principal = switch (stable_system_sender_principal) {
+            case (?p) p;
+            case null caller;
+        };
+        
+        // Validate input (use premium limits for system messages)
+        if (Text.size(input.subject) > stable_premium_max_subject_length) {
+            return #err(#InvalidInput("Subject too long. Maximum is " # Nat.toText(stable_premium_max_subject_length)));
+        };
+        if (Text.size(input.body) > stable_premium_max_body_length) {
+            return #err(#InvalidInput("Body too long. Maximum is " # Nat.toText(stable_premium_max_body_length)));
+        };
+        
+        if (input.recipients.size() == 0) {
+            return #err(#InvalidInput("At least one recipient is required"));
+        };
+        if (input.recipients.size() > stable_premium_max_recipients) {
+            return #err(#InvalidInput("Too many recipients. Maximum is " # Nat.toText(stable_premium_max_recipients)));
+        };
+        
+        let message_id = get_next_id();
+        let current_time = Time.now();
+        let sender_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, sender_principal);
+        
+        // Convert recipient principals to indices
+        let recipient_indices_buffer = Buffer.Buffer<Nat32>(input.recipients.size());
+        for (recipient in input.recipients.vals()) {
+            let recipient_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, recipient);
+            recipient_indices_buffer.add(recipient_index);
+        };
+        let recipient_indices = Buffer.toArray(recipient_indices_buffer);
+        
+        let message : Message = {
+            id = message_id;
+            sender = sender_index;
+            recipients = recipient_indices;
+            subject = input.subject;
+            body = input.body;
+            reply_to = null;
+            created_at = current_time;
+            updated_at = current_time;
+        };
+        
+        Map.set(state.messages, Map.nhash, message_id, message);
+        add_to_indexes(message_id, sender_index, recipient_indices);
+        // Note: No rate limit update for system notifications
+        
+        #ok(message_id)
     };
 
     // Message management endpoints

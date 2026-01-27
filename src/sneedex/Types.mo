@@ -629,5 +629,45 @@ module {
         bid_amount : Nat;                  // Total bid amount before cut
         fee_rate_bps : Nat;                // Fee rate in basis points used
     };
+    
+    // ============================================
+    // NOTIFICATION SETTINGS
+    // ============================================
+    
+    // User notification preferences for Sneedex events
+    public type NotificationSettings = {
+        // Notify when someone bids on your offer
+        notify_on_bid : Bool;
+        // Notify when you've been outbid
+        notify_on_outbid : Bool;
+        // Notify when your offer is completed (sold)
+        notify_on_sale : Bool;
+        // Notify when your offer expires without bids
+        notify_on_expiration : Bool;
+        // Notify when you win an auction
+        notify_on_win : Bool;
+    };
+    
+    // Default notification settings (all enabled)
+    public let DEFAULT_NOTIFICATION_SETTINGS : NotificationSettings = {
+        notify_on_bid = true;
+        notify_on_outbid = true;
+        notify_on_sale = true;
+        notify_on_expiration = true;
+        notify_on_win = true;
+    };
+    
+    // ============================================
+    // SNEED SMS ACTOR TYPE
+    // ============================================
+    
+    // Actor interface for sneed_sms canister (for sending notifications)
+    public type SneedSMSActor = actor {
+        send_system_notification : shared ({
+            recipients : [Principal];
+            subject : Text;
+            body : Text;
+        }) -> async { #ok : Nat; #err : { #Unauthorized : Text; #NotFound : Text; #InvalidInput : Text; #RateLimited : Text; #AlreadyExists : Text } };
+    };
 };
 
