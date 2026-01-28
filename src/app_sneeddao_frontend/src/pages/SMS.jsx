@@ -639,65 +639,76 @@ const SMS = () => {
                                     }}
                                     style={{
                                         backgroundColor: isNew ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
-                                        borderRadius: '8px',
-                                        padding: '20px',
+                                        borderRadius: '12px',
+                                        padding: '1.5rem',
                                         border: isNew ? `1px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
                                         cursor: 'pointer',
-                                        transition: 'all 0.2s ease'
+                                        transition: 'all 0.3s ease',
+                                        transform: 'translateY(0)'
                                     }}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}30` : theme.colors.tertiaryBg;
+                                    e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}30` : theme.colors.accentHover;
                                     e.currentTarget.style.borderColor = theme.colors.accent;
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.15)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}20` : theme.colors.secondaryBg;
                                     e.currentTarget.style.borderColor = isNew ? theme.colors.accent : theme.colors.border;
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = 'none';
                                 }}
                             >
                                 <div style={{ 
                                     display: 'flex', 
                                     justifyContent: 'space-between', 
                                     alignItems: 'flex-start',
-                                    marginBottom: '10px'
+                                    marginBottom: '1rem',
+                                    flexWrap: 'wrap',
+                                    gap: '1rem'
                                 }}>
-                                    <div style={{ flex: 1 }}>
+                                    <div style={{ 
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.5rem',
+                                        flex: 1
+                                    }}>
                                         <div style={{ 
                                             color: theme.colors.primaryText, 
-                                            fontSize: '15px', 
-                                            fontWeight: '500',
+                                            fontSize: '1.1rem', 
+                                            fontWeight: '600',
                                             fontFamily: SYSTEM_FONT,
-                                            marginBottom: '5px'
+                                            lineHeight: '1.4'
                                         }}>
                                             {message.subject}
                                         </div>
                                         <div style={{ 
                                             color: theme.colors.mutedText, 
-                                            fontSize: '12px',
+                                            fontSize: '0.85rem',
                                             fontFamily: SYSTEM_FONT,
-                                            marginBottom: '4px',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '6px'
                                         }}>
-                                            <span>From:</span>
+                                            <span style={{ fontWeight: '500' }}>From:</span>
                                             <PrincipalDisplay 
                                                 principal={message.sender}
                                                 displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                                 showCopyButton={false}
                                                 short={true}
-                                                style={{ color: theme.colors.mutedText, fontSize: '12px' }}
+                                                style={{ color: theme.colors.accent, fontSize: '0.85rem' }}
                                             />
                                         </div>
                                         <div style={{ 
                                             color: theme.colors.mutedText, 
-                                            fontSize: '12px',
+                                            fontSize: '0.85rem',
                                             fontFamily: SYSTEM_FONT,
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '6px',
                                             flexWrap: 'wrap'
                                         }}>
-                                            <span>To:</span>
+                                            <span style={{ fontWeight: '500' }}>To:</span>
                                             {message.recipients.map((recipient, index) => (
                                                 <React.Fragment key={recipient.toString()}>
                                                     <PrincipalDisplay 
@@ -705,7 +716,7 @@ const SMS = () => {
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                         showCopyButton={false}
                                                         short={true}
-                                                        style={{ color: theme.colors.mutedText, fontSize: '12px' }}
+                                                        style={{ color: theme.colors.accent, fontSize: '0.85rem' }}
                                                     />
                                                     {index < message.recipients.length - 1 && <span>,</span>}
                                                 </React.Fragment>
@@ -714,32 +725,36 @@ const SMS = () => {
                                     </div>
                                     <div style={{ 
                                         color: theme.colors.mutedText, 
-                                        fontSize: '11px',
+                                        fontSize: '0.85rem',
                                         fontFamily: SYSTEM_FONT,
-                                        textAlign: 'right'
+                                        textAlign: 'right',
+                                        whiteSpace: 'nowrap'
                                     }}>
                                         {formatDate(message.created_at)}
                                     </div>
                                 </div>
                                 <div style={{ 
                                     color: theme.colors.secondaryText, 
-                                    fontSize: '13px',
+                                    fontSize: '0.95rem',
                                     fontFamily: SYSTEM_FONT,
                                     overflow: 'hidden',
-                                    maxHeight: '40px'
+                                    maxHeight: '60px',
+                                    lineHeight: '1.6',
+                                    marginBottom: '1rem'
                                 }}>
                                     <MarkdownBody 
                                         text={message.body.length > 150 ? message.body.substring(0, 150) + '...' : message.body}
-                                        style={{ fontSize: '13px' }}
+                                        style={{ fontSize: '0.95rem', lineHeight: '1.6' }}
                                     />
                                 </div>
                                 
                                 {/* Action buttons */}
                                 <div style={{ 
-                                    marginTop: '15px', 
                                     display: 'flex', 
                                     gap: '10px',
-                                    alignItems: 'center'
+                                    alignItems: 'center',
+                                    borderTop: `1px solid ${theme.colors.border}`,
+                                    paddingTop: '1rem'
                                 }}>
                                     <button
                                         onClick={(e) => {
@@ -747,14 +762,24 @@ const SMS = () => {
                                             navigate(`/msg/${message.id}`);
                                         }}
                                         style={{
-                                            backgroundColor: theme.colors.success,
-                                            color: theme.colors.primaryText,
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '5px 10px',
+                                            backgroundColor: `${theme.colors.accent}20`,
+                                            color: theme.colors.accent,
+                                            border: `1px solid ${theme.colors.accent}40`,
+                                            borderRadius: '6px',
+                                            padding: '6px 12px',
                                             cursor: 'pointer',
-                                            fontSize: '12px',
-                                            fontFamily: SYSTEM_FONT
+                                            fontSize: '0.85rem',
+                                            fontFamily: SYSTEM_FONT,
+                                            fontWeight: '500',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor = `${theme.colors.accent}30`;
+                                            e.currentTarget.style.borderColor = theme.colors.accent;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`;
+                                            e.currentTarget.style.borderColor = `${theme.colors.accent}40`;
                                         }}
                                     >
                                         🔗 View Thread
@@ -767,14 +792,24 @@ const SMS = () => {
                                                 replyToMessage(message);
                                             }}
                                             style={{
-                                                backgroundColor: theme.colors.accent,
-                                                color: theme.colors.primaryText,
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '5px 10px',
+                                                backgroundColor: `${theme.colors.success}20`,
+                                                color: theme.colors.success,
+                                                border: `1px solid ${theme.colors.success}40`,
+                                                borderRadius: '6px',
+                                                padding: '6px 12px',
                                                 cursor: 'pointer',
-                                                fontSize: '12px',
-                                                fontFamily: SYSTEM_FONT
+                                                fontSize: '0.85rem',
+                                                fontFamily: SYSTEM_FONT,
+                                                fontWeight: '500',
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = `${theme.colors.success}30`;
+                                                e.currentTarget.style.borderColor = theme.colors.success;
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = `${theme.colors.success}20`;
+                                                e.currentTarget.style.borderColor = `${theme.colors.success}40`;
                                             }}
                                         >
                                             ↩️ Reply
