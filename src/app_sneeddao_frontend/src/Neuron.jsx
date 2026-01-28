@@ -66,7 +66,7 @@ const customStyles = `
 function Neuron() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, snsLogo } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [neuronIdInput, setNeuronIdInput] = useState(searchParams.get('neuronid') || '');
@@ -1139,7 +1139,11 @@ function Neuron() {
                                 {/* Stake */}
                                 <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.25s', marginBottom: 0 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        <FaCoins size={14} style={{ color: neuronGold }} />
+                                        {snsLogo ? (
+                                            <img src={snsLogo} alt="" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
+                                        ) : (
+                                            <FaCoins size={14} style={{ color: neuronGold }} />
+                                        )}
                                         <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stake</span>
                                     </div>
                                     <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>

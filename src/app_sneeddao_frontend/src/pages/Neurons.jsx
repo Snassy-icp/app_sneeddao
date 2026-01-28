@@ -943,9 +943,14 @@ function Neurons() {
                                     width: '40px', height: '40px', borderRadius: '10px',
                                     background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: neuronPrimary
+                                    color: neuronPrimary,
+                                    overflow: 'hidden'
                                 }}>
-                                    <FaCoins size={18} />
+                                    {snsLogo ? (
+                                        <img src={snsLogo} alt="" style={{ width: '24px', height: '24px', borderRadius: '6px' }} />
+                                    ) : (
+                                        <FaCoins size={18} />
+                                    )}
                                 </div>
                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Active Stake</span>
                             </div>
