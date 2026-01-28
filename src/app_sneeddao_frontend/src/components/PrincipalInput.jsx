@@ -305,9 +305,9 @@ const PrincipalInput = ({
                         borderRadius: '4px',
                         maxHeight: '300px',
                         overflowY: 'auto',
-                        zIndex: 1000,
+                        zIndex: 9999,
                         marginTop: '2px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
                     {/* Tabs */}

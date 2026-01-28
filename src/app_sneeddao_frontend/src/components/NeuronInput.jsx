@@ -345,12 +345,12 @@ const NeuronInput = ({
                         right: 0,
                         backgroundColor: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '4px',
+                        borderRadius: '8px',
                         maxHeight: '300px',
                         overflowY: 'auto',
-                        zIndex: 1000,
+                        zIndex: 9999,
                         marginTop: '2px',
-                        boxShadow: theme.colors.cardShadow
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
                     {/* Tabs */}
