@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
@@ -13,11 +13,12 @@ import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import NeuronInput from '../components/NeuronInput';
 import NeuronDisplay from '../components/NeuronDisplay';
+import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt } from 'react-icons/fa';
 
 function Neurons() {
     const { theme } = useTheme();
     const { identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, snsLogo } = useSns();
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
@@ -34,6 +35,11 @@ function Neurons() {
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    
+    // Accent colors for this page
+    const neuronPrimary = '#6366f1'; // Indigo
+    const neuronSecondary = '#8b5cf6'; // Violet
+    const neuronAccent = '#a78bfa'; // Light violet
     
     // Helper function to get display name (similar to Neuron.jsx)
     const getDisplayName = (neuronId) => {
@@ -602,8 +608,8 @@ function Neurons() {
 
     // Render sort indicator
     const renderSortIndicator = (key) => {
-        if (sortConfig.key !== key) return '↕';
-        return sortConfig.direction === 'asc' ? '↑' : '↓';
+        if (sortConfig.key !== key) return <FaSort size={10} style={{ opacity: 0.4 }} />;
+        return sortConfig.direction === 'asc' ? <FaArrowUp size={10} /> : <FaArrowDown size={10} />;
     };
 
     // Update the effect that filters neurons
@@ -802,187 +808,413 @@ function Neurons() {
         URL.revokeObjectURL(url);
     };
 
+    // Get dissolve state color and icon
+    const getDissolveStateStyle = (neuron) => {
+        const state = getDissolveStateDetails(neuron);
+        switch (state.category) {
+            case 'not_dissolving':
+                return { color: '#10b981', icon: <FaLock size={12} />, label: 'Locked' };
+            case 'dissolving':
+                return { color: '#f59e0b', icon: <FaClock size={12} />, label: 'Dissolving' };
+            case 'dissolved':
+                return { color: '#ef4444', icon: <FaUnlock size={12} />, label: 'Dissolved' };
+            default:
+                return { color: theme.colors.mutedText, icon: null, label: 'Unknown' };
+        }
+    };
+
+    // Custom styles
+    const customStyles = `
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .neuron-card-animate {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+        .neuron-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+    `;
+
     return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className='page-container'>
+            <style>{customStyles}</style>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-            <main className="wallet-container">
-                {/* Stats boxes at the top */}
-                <div style={{ 
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '20px'
-                }}>
-                    <div style={{ 
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                        gap: '20px',
-                        textAlign: 'center'
-                    }}>
-                        <div>
-                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Total Active Stake</div>
-                            <div style={{ color: theme.colors.primaryText, fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8sAsInteger(totalStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        ({calculatePercentage(totalStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
-                                {totalCount} neurons total
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
-                                ({totalWithStakeCount} with stake)
-                            </div>
-                        </div>
-                        <div>
-                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Not Dissolving</div>
-                            <div style={{ color: theme.colors.success, fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8sAsInteger(stakes.notDissolvingStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.notDissolvingStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.notDissolvingCount} neurons
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.notDissolvingWithStakeCount} with stake)
-                            </div>
-                        </div>
-                        <div>
-                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Dissolving</div>
-                            <div style={{ color: theme.colors.warning, fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8sAsInteger(stakes.dissolvingStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.dissolvingStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.dissolvingCount} neurons
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.dissolvingWithStakeCount} with stake)
-                            </div>
-                        </div>
-                        <div>
-                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Dissolved</div>
-                            <div style={{ color: theme.colors.error, fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8sAsInteger(stakes.dissolvedStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.dissolvedStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.dissolvedCount} neurons
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.dissolvedWithStakeCount} with stake)
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Did you know - Liquid Staking plug */}
+            
+            <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                {/* Hero Section */}
                 <div style={{
-                    background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.success}10)`,
-                    border: `1px solid ${theme.colors.accent}30`,
-                    borderRadius: '12px',
-                    padding: '16px 20px',
-                    marginBottom: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    flexWrap: 'wrap',
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${neuronPrimary}15 50%, ${neuronSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                        <div style={{ color: theme.colors.accent, fontWeight: '700', marginBottom: '4px', fontSize: '0.95rem' }}>
-                            💡 Did you know?
+                    {/* Background decorations */}
+                    <div style={{
+                        position: 'absolute', top: '-50%', right: '-10%', width: '400px', height: '400px',
+                        background: `radial-gradient(circle, ${neuronPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%', pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute', bottom: '-30%', left: '-5%', width: '300px', height: '300px',
+                        background: `radial-gradient(circle, ${neuronSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%', pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                            {snsLogo ? (
+                                <img src={snsLogo} alt="SNS" style={{ width: '56px', height: '56px', borderRadius: '14px' }} />
+                            ) : (
+                                <div style={{
+                                    width: '56px', height: '56px', borderRadius: '14px',
+                                    background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: `0 4px 20px ${neuronPrimary}40`
+                                }}>
+                                    <FaUsers size={24} color="white" />
+                                </div>
+                            )}
+                            <div>
+                                <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
+                                    Neuron Explorer
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
+                                    Browse and analyze all neurons in the SNS governance
+                                </p>
+                            </div>
                         </div>
-                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.5' }}>
-                            With <strong>Liquid Staking</strong>, you can create SNS neurons that remain <strong>transferable</strong> and <strong>tradable on Sneedex</strong>! 
-                            For ICP neurons, deploy a <strong>Neuron Manager canister</strong> to make your staking position liquid.
+                        
+                        {/* Quick Stats Row */}
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <span style={{ color: neuronPrimary, fontWeight: '600' }}>{neurons.length.toLocaleString()}</span> neurons loaded
+                            </div>
+                            {totalNeuronCount && (
+                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                    <span style={{ color: neuronPrimary, fontWeight: '600' }}>{totalNeuronCount.toLocaleString()}</span> total on-chain
+                                </div>
+                            )}
+                            {filteredNeurons.length !== neurons.length && (
+                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                    <span style={{ color: neuronAccent, fontWeight: '600' }}>{filteredNeurons.length.toLocaleString()}</span> matching filters
+                                </div>
+                            )}
                         </div>
                     </div>
-                    <a 
-                        href="/liquid_staking" 
-                        style={{
-                            background: theme.colors.accent,
-                            color: '#fff',
-                            padding: '10px 20px',
-                            borderRadius: '8px',
-                            textDecoration: 'none',
-                            fontWeight: '600',
-                            fontSize: '0.9rem',
-                            whiteSpace: 'nowrap',
-                        }}
-                    >
-                        Learn More →
-                    </a>
                 </div>
 
-                <div style={{ marginBottom: '20px' }}>
-                    <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        marginBottom: '15px',
-                        flexWrap: 'wrap',
-                        gap: '15px'
+                <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
+                    {/* Statistics Cards */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                        gap: '1rem',
+                        marginBottom: '1.5rem'
                     }}>
-                        <h1 style={{ color: theme.colors.primaryText, margin: '0' }}>Neurons</h1>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                            <button
-                                onClick={handleRefresh}
+                        {/* Total Active Stake */}
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: neuronPrimary
+                                }}>
+                                    <FaCoins size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Active Stake</span>
+                            </div>
+                            <div style={{ color: theme.colors.primaryText, fontSize: '1.5rem', fontWeight: '700' }}>
+                                {formatE8sAsInteger(totalStake)} <span style={{ fontSize: '0.9rem', fontWeight: '500', color: theme.colors.secondaryText }}>{tokenSymbol}</span>
+                            </div>
+                            {totalSupply && (
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                    {calculatePercentage(totalStake)}% of total supply
+                                </div>
+                            )}
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                                {totalCount.toLocaleString()} neurons ({totalWithStakeCount.toLocaleString()} with stake)
+                            </div>
+                        </div>
+
+                        {/* Not Dissolving */}
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #10b98130, #10b98120)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#10b981'
+                                }}>
+                                    <FaLock size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Not Dissolving</span>
+                            </div>
+                            <div style={{ color: '#10b981', fontSize: '1.5rem', fontWeight: '700' }}>
+                                {formatE8sAsInteger(stakes.notDissolvingStake)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{tokenSymbol}</span>
+                            </div>
+                            {totalSupply && (
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                    {calculatePercentage(stakes.notDissolvingStake)}% of total supply
+                                </div>
+                            )}
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                                {stakes.notDissolvingCount.toLocaleString()} neurons ({stakes.notDissolvingWithStakeCount.toLocaleString()} with stake)
+                            </div>
+                        </div>
+
+                        {/* Dissolving */}
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #f59e0b30, #f59e0b20)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#f59e0b'
+                                }}>
+                                    <FaClock size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Dissolving</span>
+                            </div>
+                            <div style={{ color: '#f59e0b', fontSize: '1.5rem', fontWeight: '700' }}>
+                                {formatE8sAsInteger(stakes.dissolvingStake)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{tokenSymbol}</span>
+                            </div>
+                            {totalSupply && (
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                    {calculatePercentage(stakes.dissolvingStake)}% of total supply
+                                </div>
+                            )}
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                                {stakes.dissolvingCount.toLocaleString()} neurons ({stakes.dissolvingWithStakeCount.toLocaleString()} with stake)
+                            </div>
+                        </div>
+
+                        {/* Dissolved */}
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #ef444430, #ef444420)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#ef4444'
+                                }}>
+                                    <FaUnlock size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Dissolved</span>
+                            </div>
+                            <div style={{ color: '#ef4444', fontSize: '1.5rem', fontWeight: '700' }}>
+                                {formatE8sAsInteger(stakes.dissolvedStake)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{tokenSymbol}</span>
+                            </div>
+                            {totalSupply && (
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                    {calculatePercentage(stakes.dissolvedStake)}% of total supply
+                                </div>
+                            )}
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                                {stakes.dissolvedCount.toLocaleString()} neurons ({stakes.dissolvedWithStakeCount.toLocaleString()} with stake)
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Did you know - Liquid Staking */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${neuronPrimary}12, ${neuronSecondary}08)`,
+                        border: `1px solid ${neuronPrimary}25`,
+                        borderRadius: '14px',
+                        padding: '1rem 1.25rem',
+                        marginBottom: '1.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        flexWrap: 'wrap',
+                    }}>
+                        <div style={{
+                            width: '40px', height: '40px', borderRadius: '10px',
+                            background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: neuronPrimary, flexShrink: 0
+                        }}>
+                            <FaLightbulb size={18} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{ color: neuronPrimary, fontWeight: '600', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
+                                Did you know?
+                            </div>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                With <strong>Liquid Staking</strong>, you can create SNS neurons that remain <strong>transferable</strong> and <strong>tradable on Sneedex</strong>!
+                            </div>
+                        </div>
+                        <Link 
+                            to="/liquid_staking" 
+                            style={{
+                                background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                color: '#fff',
+                                padding: '0.6rem 1.25rem',
+                                borderRadius: '8px',
+                                textDecoration: 'none',
+                                fontWeight: '600',
+                                fontSize: '0.85rem',
+                                whiteSpace: 'nowrap',
+                                boxShadow: `0 4px 12px ${neuronPrimary}30`
+                            }}
+                        >
+                            Learn More →
+                        </Link>
+                    </div>
+
+                    {/* Controls Section */}
+                    <div style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '16px',
+                        padding: '1.25rem',
+                        marginBottom: '1.5rem',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        {/* Top row: Title and action buttons */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem',
+                            flexWrap: 'wrap',
+                            gap: '1rem'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <FaFilter size={14} color={neuronPrimary} />
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1rem' }}>
+                                    Filters & Controls
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <button
+                                    onClick={handleRefresh}
+                                    disabled={loading}
+                                    style={{
+                                        background: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 1rem',
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        opacity: loading ? 0.6 : 1,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaSync size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                                    Refresh
+                                </button>
+                                <button
+                                    onClick={exportToCSV}
+                                    disabled={loading || filteredNeurons.length === 0}
+                                    style={{
+                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 1rem',
+                                        cursor: (loading || filteredNeurons.length === 0) ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        opacity: (loading || filteredNeurons.length === 0) ? 0.6 : 1,
+                                        boxShadow: `0 2px 8px ${neuronPrimary}30`
+                                    }}
+                                    title={`Export ${filteredNeurons.length} neurons to CSV`}
+                                >
+                                    <FaDownload size={12} />
+                                    Export CSV
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Search and filters row */}
+                        <div style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                            alignItems: 'flex-start',
+                            marginBottom: '1rem'
+                        }}>
+                            <div style={{ flex: '1 1 300px', minWidth: '200px' }}>
+                                <NeuronInput
+                                    value={searchTerm}
+                                    onChange={setSearchTerm}
+                                    placeholder="Search by neuron ID, name, or nickname..."
+                                    snsRoot={selectedSnsRoot}
+                                    defaultTab="all"
+                                />
+                            </div>
+                            <select
+                                value={dissolveFilter}
+                                onChange={(e) => setDissolveFilter(e.target.value)}
                                 style={{
                                     backgroundColor: theme.colors.tertiaryBg,
                                     color: theme.colors.primaryText,
                                     border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 1rem',
+                                    minWidth: '150px',
+                                    fontSize: '0.9rem',
+                                    cursor: 'pointer'
                                 }}
-                                disabled={loading}
                             >
-                                <span style={{ 
-                                    display: 'inline-block',
-                                    transform: loading ? 'rotate(360deg)' : 'none',
-                                    transition: 'transform 1s linear',
-                                    fontSize: '14px'
-                                }}>⟳</span>
-                                Refresh
-                            </button>
-                            <button
-                                onClick={exportToCSV}
-                                style={{
-                                    backgroundColor: theme.colors.accent,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}
-                                disabled={loading || filteredNeurons.length === 0}
-                                title={`Export ${filteredNeurons.length} neurons to CSV`}
-                            >
-                                <span style={{ fontSize: '14px' }}>📄</span>
-                                Export CSV
-                            </button>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <label style={{ color: theme.colors.primaryText, fontSize: '14px' }}>Items per page:</label>
+                                <option value="all">All States</option>
+                                <option value="not_dissolving">🔒 Not Dissolving</option>
+                                <option value="dissolving">⏳ Dissolving</option>
+                                <option value="dissolved">🔓 Dissolved</option>
+                            </select>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Per page:</span>
                                 <select
                                     value={itemsPerPage}
                                     onChange={handleItemsPerPageChange}
@@ -990,8 +1222,10 @@ function Neurons() {
                                         backgroundColor: theme.colors.tertiaryBg,
                                         color: theme.colors.primaryText,
                                         border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '4px',
-                                        padding: '4px 8px'
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 0.75rem',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer'
                                     }}
                                 >
                                     <option value={10}>10</option>
@@ -1001,326 +1235,355 @@ function Neurons() {
                                 </select>
                             </div>
                         </div>
-                    </div>
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '15px',
-                        flexWrap: 'wrap',
-                        marginBottom: '15px'
-                    }}>
-                        <div style={{ flex: '1 1 250px', minWidth: '200px' }}>
-                            <NeuronInput
-                                value={searchTerm}
-                                onChange={setSearchTerm}
-                                placeholder="Search by neuron ID, name, or nickname..."
-                                snsRoot={selectedSnsRoot}
-                                defaultTab="all"
-                            />
-                        </div>
-                        <select
-                            value={dissolveFilter}
-                            onChange={(e) => setDissolveFilter(e.target.value)}
-                            style={{
-                                backgroundColor: theme.colors.tertiaryBg,
-                                color: theme.colors.primaryText,
-                                border: `1px solid ${theme.colors.border}`,
-                                borderRadius: '4px',
-                                padding: '8px 12px',
-                                minWidth: '150px'
-                            }}
-                        >
-                            <option value="all">All States</option>
-                            <option value="not_dissolving">Not Dissolving</option>
-                            <option value="dissolving">Dissolving</option>
-                            <option value="dissolved">Dissolved</option>
-                        </select>
-                    </div>
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '15px',
-                        flexWrap: 'wrap'
-                    }}>
-                        <label style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '6px',
-                            color: theme.colors.primaryText,
-                            fontSize: '14px',
-                            cursor: 'pointer'
-                        }}>
-                            <input
-                                type="checkbox"
-                                checked={hideUnnamed}
-                                onChange={(e) => setHideUnnamed(e.target.checked)}
-                                style={{
-                                    accentColor: theme.colors.accent
-                                }}
-                            />
-                            Hide Unnamed
-                        </label>
-                        <label style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '6px',
-                            color: theme.colors.primaryText,
-                            fontSize: '14px',
-                            cursor: 'pointer'
-                        }}>
-                            <input
-                                type="checkbox"
-                                checked={hideUnverified}
-                                onChange={(e) => setHideUnverified(e.target.checked)}
-                                style={{
-                                    accentColor: theme.colors.accent
-                                }}
-                            />
-                            Hide Unverified
-                        </label>
-                    </div>
-                </div>
 
-                {error && <div style={{ color: theme.colors.error, marginBottom: '20px' }}>{error}</div>}
-
-                {/* Stakes Display */}
-
-
-                {/* Sortable Headers */}
-                <div style={{ 
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
-                    padding: '15px 20px',
-                    marginBottom: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '15px',
-                    flexWrap: 'wrap'
-                }}>
-                    <div style={{ color: theme.colors.mutedText, fontSize: '14px', fontWeight: 'bold' }}>Sort by:</div>
-                    <div 
-                        onClick={() => handleSort('stake')}
-                        style={{
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: sortConfig.key === 'stake' ? theme.colors.accent : theme.colors.primaryText,
-                            fontWeight: sortConfig.key === 'stake' ? 'bold' : 'normal',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'stake' ? theme.colors.accentHover : 'transparent',
-                            border: sortConfig.key === 'stake' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
-                        }}
-                    >
-                        Stake
-                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('stake')}</span>
-                    </div>
-                    <div 
-                        onClick={() => handleSort('name')}
-                        style={{
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: sortConfig.key === 'name' ? theme.colors.accent : theme.colors.primaryText,
-                            fontWeight: sortConfig.key === 'name' ? 'bold' : 'normal',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'name' ? theme.colors.accentHover : 'transparent',
-                            border: sortConfig.key === 'name' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
-                        }}
-                    >
-                        Name
-                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('name')}</span>
-                    </div>
-                    <div 
-                        onClick={() => handleSort('lock')}
-                        style={{
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: sortConfig.key === 'lock' ? theme.colors.accent : theme.colors.primaryText,
-                            fontWeight: sortConfig.key === 'lock' ? 'bold' : 'normal',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'lock' ? theme.colors.accentHover : 'transparent',
-                            border: sortConfig.key === 'lock' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
-                        }}
-                    >
-                        Lock
-                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('lock')}</span>
-                    </div>
-                    <div 
-                        onClick={() => handleSort('votingPower')}
-                        style={{
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: sortConfig.key === 'votingPower' ? theme.colors.accent : theme.colors.primaryText,
-                            fontWeight: sortConfig.key === 'votingPower' ? 'bold' : 'normal',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'votingPower' ? theme.colors.accentHover : 'transparent',
-                            border: sortConfig.key === 'votingPower' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
-                        }}
-                    >
-                        Voting Power
-                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('votingPower')}</span>
-                    </div>
-                </div>
-
-                {loading ? (
-                    <div style={{ 
-                        color: theme.colors.primaryText, 
-                        textAlign: 'center', 
-                        padding: '20px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '10px'
-                    }}>
-                        <div className="spinner" style={{ 
-                            width: '32px', 
-                            height: '32px',
-                            border: `3px solid ${theme.colors.accent}`,
-                            borderTop: '3px solid transparent',
-                            borderRadius: '50%',
-                            animation: 'spin 1s linear infinite'
-                        }} />
-                        <div style={{ marginTop: '10px' }}>
-                            {loadingProgress.message}
-                        </div>
-                        {/* Progress bar */}
+                        {/* Checkbox filters */}
                         <div style={{
-                            width: '100%',
-                            maxWidth: '400px',
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '4px',
-                            overflow: 'hidden',
-                            height: '8px',
-                            margin: '10px 0'
+                            display: 'flex',
+                            gap: '1.5rem',
+                            flexWrap: 'wrap',
+                            paddingTop: '0.75rem',
+                            borderTop: `1px solid ${theme.colors.border}`
+                        }}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.85rem',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={hideUnnamed}
+                                    onChange={(e) => setHideUnnamed(e.target.checked)}
+                                    style={{ accentColor: neuronPrimary, width: '16px', height: '16px' }}
+                                />
+                                Show only named neurons
+                            </label>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.85rem',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={hideUnverified}
+                                    onChange={(e) => setHideUnverified(e.target.checked)}
+                                    style={{ accentColor: neuronPrimary, width: '16px', height: '16px' }}
+                                />
+                                Show only verified names
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Sort Controls */}
+                    <div style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '12px',
+                        padding: '0.75rem 1rem',
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        flexWrap: 'wrap',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500', marginRight: '0.5rem' }}>
+                            Sort by:
+                        </span>
+                        {[
+                            { key: 'stake', label: 'Stake', icon: <FaCoins size={12} /> },
+                            { key: 'name', label: 'Name', icon: <FaUsers size={12} /> },
+                            { key: 'lock', label: 'Lock Status', icon: <FaLock size={12} /> },
+                            { key: 'votingPower', label: 'Voting Power', icon: <FaVoteYea size={12} /> }
+                        ].map(sort => (
+                            <button
+                                key={sort.key}
+                                onClick={() => handleSort(sort.key)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.75rem',
+                                    borderRadius: '6px',
+                                    border: sortConfig.key === sort.key ? `1px solid ${neuronPrimary}` : `1px solid transparent`,
+                                    background: sortConfig.key === sort.key ? `${neuronPrimary}15` : 'transparent',
+                                    color: sortConfig.key === sort.key ? neuronPrimary : theme.colors.secondaryText,
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: sortConfig.key === sort.key ? '600' : '500',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                {sort.icon}
+                                {sort.label}
+                                {renderSortIndicator(sort.key)}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Error display */}
+                    {error && (
+                        <div style={{
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            marginBottom: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem'
+                        }}>
+                            <FaTimesCircle color={theme.colors.error} />
+                            <span style={{ color: theme.colors.error }}>{error}</span>
+                        </div>
+                    )}
+
+                    {/* Loading State */}
+                    {loading ? (
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '3rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             <div style={{
-                                width: `${loadingProgress.percent}%`,
-                                backgroundColor: theme.colors.accent,
-                                height: '100%',
-                                transition: 'width 0.3s ease'
+                                width: '48px', height: '48px',
+                                border: `3px solid ${neuronPrimary}30`,
+                                borderTop: `3px solid ${neuronPrimary}`,
+                                borderRadius: '50%',
+                                animation: 'spin 1s linear infinite',
+                                margin: '0 auto 1.5rem'
                             }} />
+                            <div style={{ color: theme.colors.primaryText, fontSize: '1rem', marginBottom: '0.5rem' }}>
+                                {loadingProgress.message}
+                            </div>
+                            {/* Progress bar */}
+                            <div style={{
+                                width: '100%',
+                                maxWidth: '400px',
+                                margin: '1rem auto',
+                                backgroundColor: theme.colors.tertiaryBg,
+                                borderRadius: '8px',
+                                overflow: 'hidden',
+                                height: '8px'
+                            }}>
+                                <div style={{
+                                    width: `${loadingProgress.percent}%`,
+                                    background: `linear-gradient(90deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                    height: '100%',
+                                    transition: 'width 0.3s ease',
+                                    borderRadius: '8px'
+                                }} />
+                            </div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                {loadingProgress.count > 0 && `Found ${loadingProgress.count.toLocaleString()} neurons`}
+                                {totalNeuronCount && loadingProgress.count > 0 && ` (Total: ${totalNeuronCount.toLocaleString()})`}
+                            </div>
                         </div>
-                        <div style={{ color: theme.colors.mutedText, fontSize: '14px' }}>
-                            {loadingProgress.count > 0 && (
-                                <>Found {loadingProgress.count} neurons</>
-                            )}
-                            {totalNeuronCount !== null && loadingProgress.count > 0 && (
-                                <> (Total: {totalNeuronCount})</>
-                            )}
-                        </div>
-                    </div>
-                ) : (
-                    <div>
-                        {paginatedNeurons.map((neuron, index) => (
-                            <div
-                                key={index}
-                                style={{
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    borderRadius: '8px',
-                                    padding: '20px',
-                                    marginBottom: '15px'
-                                }}
-                            >
-                                <div style={{ 
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                                    gap: '20px'
+                    ) : (
+                        <>
+                            {/* Neuron Cards */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {paginatedNeurons.map((neuron, index) => {
+                                    const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                    const dissolveStyle = getDissolveStateStyle(neuron);
+                                    const displayInfo = getDisplayName(neuronId);
+                                    
+                                    return (
+                                        <div
+                                            key={index}
+                                            className="neuron-card neuron-card-animate"
+                                            style={{
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                borderRadius: '14px',
+                                                padding: '1.25rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                opacity: 0,
+                                                animationDelay: `${index * 0.03}s`,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.3s ease'
+                                            }}
+                                            onClick={() => navigate(`/neuron?sns=${selectedSnsRoot}&neuronid=${neuronId}`)}
+                                        >
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                                gap: '1.25rem',
+                                                alignItems: 'center'
+                                            }}>
+                                                {/* Neuron ID */}
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Neuron
+                                                    </div>
+                                                    <div onClick={(e) => e.stopPropagation()}>
+                                                        <NeuronDisplay
+                                                            neuronId={neuronId}
+                                                            snsRoot={selectedSnsRoot}
+                                                            displayInfo={displayInfo}
+                                                            showCopyButton={true}
+                                                            enableContextMenu={true}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Stake */}
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Stake
+                                                    </div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
+                                                        {formatE8s(neuron.cached_neuron_stake_e8s)}
+                                                        <span style={{ fontSize: '0.8rem', fontWeight: '400', color: theme.colors.secondaryText, marginLeft: '0.35rem' }}>
+                                                            {tokenSymbol}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Dissolve State */}
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Status
+                                                    </div>
+                                                    <div style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.4rem',
+                                                        padding: '0.35rem 0.7rem',
+                                                        borderRadius: '6px',
+                                                        background: `${dissolveStyle.color}15`,
+                                                        color: dissolveStyle.color,
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: '500'
+                                                    }}>
+                                                        {dissolveStyle.icon}
+                                                        {getDissolveState(neuron)}
+                                                    </div>
+                                                </div>
+
+                                                {/* Voting Power */}
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Voting Power
+                                                    </div>
+                                                    <div style={{ color: neuronPrimary, fontSize: '1rem', fontWeight: '600' }}>
+                                                        {nervousSystemParameters ?
+                                                            formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
+                                                            `${(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x`
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                {/* View button */}
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.35rem',
+                                                        color: neuronPrimary,
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '500'
+                                                    }}>
+                                                        View Details
+                                                        <FaExternalLinkAlt size={10} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Empty State */}
+                            {filteredNeurons.length === 0 && !loading && (
+                                <div style={{
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '16px',
+                                    padding: '3rem',
+                                    textAlign: 'center',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Neuron ID</div>
-                                        <div>
-                                            <NeuronDisplay
-                                                neuronId={uint8ArrayToHex(neuron.id[0].id)}
-                                                snsRoot={selectedSnsRoot}
-                                                displayInfo={getDisplayName(uint8ArrayToHex(neuron.id[0].id))}
-                                                showCopyButton={true}
-                                                enableContextMenu={true}
-                                            />
-                                        </div>
+                                    <FaUsers size={48} color={theme.colors.mutedText} style={{ opacity: 0.3, marginBottom: '1rem' }} />
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '1rem' }}>
+                                        {neurons.length === 0 ? 'No neurons loaded yet' : 'No neurons match your filters'}
                                     </div>
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Stake</div>
-                                        <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: 'bold' }}>
-                                            {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Dissolve State</div>
-                                        <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Voting Power</div>
-                                        <div style={{ color: theme.colors.primaryText }}>
-                                            {nervousSystemParameters ? 
-                                                formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
-                                                `${(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x`
-                                            }
-                                        </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                        {neurons.length === 0 ? 'Click Refresh to load neurons' : 'Try adjusting your search or filter criteria'}
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            )}
 
-                        {/* Pagination Controls */}
-                        <div style={{ 
-                            display: 'flex',
-                            justifyContent: 'center',
-                            gap: '10px',
-                            marginTop: '20px'
-                        }}>
-                            <button
-                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                disabled={currentPage === 1}
-                                style={{
-                                    backgroundColor: theme.colors.accent,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 16px',
-                                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                                    opacity: currentPage === 1 ? 0.7 : 1
-                                }}
-                            >
-                                Previous
-                            </button>
-                            <span style={{ color: theme.colors.primaryText, alignSelf: 'center' }}>
-                                Page {currentPage} of {Math.ceil(filteredNeurons.length / itemsPerPage)}
-                            </span>
-                            <button
-                                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredNeurons.length / itemsPerPage), prev + 1))}
-                                disabled={currentPage === Math.ceil(filteredNeurons.length / itemsPerPage)}
-                                style={{
-                                    backgroundColor: theme.colors.accent,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 16px',
-                                    cursor: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? 'not-allowed' : 'pointer',
-                                    opacity: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? 0.7 : 1
-                                }}
-                            >
-                                Next
-                            </button>
-                        </div>
-                    </div>
-                )}
+                            {/* Pagination */}
+                            {filteredNeurons.length > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    gap: '1rem',
+                                    marginTop: '1.5rem',
+                                    padding: '1rem',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                        disabled={currentPage === 1}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem',
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: currentPage === 1 ? theme.colors.tertiaryBg : `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                            color: currentPage === 1 ? theme.colors.mutedText : 'white',
+                                            cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            opacity: currentPage === 1 ? 0.5 : 1
+                                        }}
+                                    >
+                                        <FaChevronLeft size={10} />
+                                        Previous
+                                    </button>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                        Page <strong style={{ color: theme.colors.primaryText }}>{currentPage}</strong> of <strong style={{ color: theme.colors.primaryText }}>{Math.ceil(filteredNeurons.length / itemsPerPage)}</strong>
+                                    </span>
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredNeurons.length / itemsPerPage), prev + 1))}
+                                        disabled={currentPage === Math.ceil(filteredNeurons.length / itemsPerPage)}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem',
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? theme.colors.tertiaryBg : `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                            color: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? theme.colors.mutedText : 'white',
+                                            cursor: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            opacity: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? 0.5 : 1
+                                        }}
+                                    >
+                                        Next
+                                        <FaChevronRight size={10} />
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
             </main>
         </div>
     );
 }
 
-export default Neurons; 
+export default Neurons;
