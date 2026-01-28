@@ -7,7 +7,7 @@ import { useSns } from '../contexts/SnsContext';
 import { useNeurons } from '../contexts/NeuronsContext';
 import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
-import { getSnsById } from '../utils/SnsUtils';
+import { getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { useOptimizedSnsLoading } from '../hooks/useOptimizedSnsLoading';
 import { formatProposalIdLink, formatNeuronDisplayWithContext, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -15,9 +15,63 @@ import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from '../utils/ProposalUtils';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
+import { getRelativeTime, getFullDate } from '../utils/DateUtils';
+import { HttpAgent } from '@dfinity/agent';
+import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea } from 'react-icons/fa';
 
-// System font stack for consistent typography
-const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+// Custom CSS for animations
+const customStyles = `
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 2000px;
+    }
+}
+
+.proposals-card-animate {
+    animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.proposals-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+}
+
+.proposals-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+`;
+
+// Accent colors
+const proposalPrimary = '#6366f1'; // Indigo
+const proposalSecondary = '#8b5cf6'; // Purple
+const proposalAccent = '#06b6d4'; // Cyan
 
 function Proposals() {
     const { theme } = useTheme();
@@ -55,6 +109,14 @@ function Proposals() {
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
+    
+    // Hover states for cards
+    const [hoveredCard, setHoveredCard] = useState(null);
+
+    // SNS logo state
+    const [snsLogo, setSnsLogo] = useState(null);
+    const [loadingLogo, setLoadingLogo] = useState(false);
+    const [snsInfo, setSnsInfo] = useState(null);
 
     // Quick voting state
     const { getHotkeyNeurons, refreshNeurons } = useNeurons();
@@ -63,6 +125,62 @@ function Proposals() {
     const [votedProposals, setVotedProposals] = useState(new Set()); // Track proposals we've voted on this session
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const eligibilityCheckRef = useRef(null);
+
+    // Load SNS information and logo
+    const loadSnsInfo = async () => {
+        if (!selectedSnsRoot) return;
+
+        setSnsLogo(null);
+        setLoadingLogo(false);
+        setSnsInfo(null);
+
+        try {
+            const allSnses = getAllSnses();
+            const currentSnsInfo = allSnses.find(sns => sns.rootCanisterId === selectedSnsRoot);
+            
+            if (currentSnsInfo) {
+                setSnsInfo(currentSnsInfo);
+                
+                if (currentSnsInfo.canisters.governance) {
+                    await loadSnsLogo(currentSnsInfo.canisters.governance, currentSnsInfo.name);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading SNS info:', error);
+        }
+    };
+
+    const loadSnsLogo = async (governanceId, snsName) => {
+        if (loadingLogo) return;
+        
+        setLoadingLogo(true);
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogo(logo);
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${snsName}:`, error);
+        } finally {
+            setLoadingLogo(false);
+        }
+    };
+
+    // Load SNS info when selected SNS changes
+    useEffect(() => {
+        if (selectedSnsRoot) {
+            loadSnsInfo();
+        }
+    }, [selectedSnsRoot, identity]);
 
     // Format VP in compact form (K, M suffixes)
     const formatCompactVP = (vp) => {
@@ -976,227 +1094,290 @@ function Proposals() {
         URL.revokeObjectURL(url);
     };
 
-    // Theme-aware styles
-    const getStyles = (theme) => ({
-        pageContainer: {
-            backgroundColor: theme.colors.primaryBg,
-            minHeight: '100vh',
-            fontFamily: SYSTEM_FONT
-        },
-        title: {
-            color: theme.colors.primaryText,
-            margin: '0 0 8px 0',
-            fontSize: '24px',
-            fontWeight: 'bold'
-        },
-        subtitle: {
-            color: theme.colors.mutedText,
-            margin: '0',
-            fontSize: '14px',
-            fontStyle: 'italic'
-        },
-        link: {
-            color: theme.colors.accent,
-            textDecoration: 'none'
-        },
-        label: {
-            color: theme.colors.primaryText,
-            fontSize: '14px'
-        },
-        select: {
-            backgroundColor: theme.colors.secondaryBg,
-            color: theme.colors.primaryText,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '4px 8px'
-        },
-        input: {
-            backgroundColor: theme.colors.secondaryBg,
-            color: theme.colors.primaryText,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '8px 12px'
-        },
-        error: {
-            color: theme.colors.error,
-            marginBottom: '20px'
-        },
-        filterInfo: {
-            color: theme.colors.accent,
-            marginBottom: '15px',
-            fontSize: '14px',
-            backgroundColor: theme.colors.secondaryBg,
-            padding: '10px',
-            borderRadius: '4px'
-        },
-        clearButton: {
-            backgroundColor: 'transparent',
-            border: `1px solid ${theme.colors.accent}`,
-            color: theme.colors.accent,
-            borderRadius: '3px',
-            padding: '2px 6px',
-            cursor: 'pointer'
-        },
-        loading: {
-            color: theme.colors.primaryText,
-            textAlign: 'center',
-            padding: '20px'
-        },
-        proposalCard: {
-            backgroundColor: theme.colors.secondaryBg,
-            borderRadius: '8px',
-            padding: '20px',
-            marginBottom: '15px'
-        },
-        proposalTitle: {
-            color: theme.colors.primaryText,
-            margin: '0'
-        },
-        proposalLink: {
-            color: theme.colors.primaryText,
-            textDecoration: 'none',
-            cursor: 'pointer'
-        },
-        status: {
-            padding: '4px 8px',
-            borderRadius: '4px',
-            backgroundColor: theme.colors.border,
-            color: theme.colors.primaryText,
-            fontSize: '12px'
-        },
-        metaText: {
-            color: theme.colors.mutedText,
-            fontSize: '14px'
-        },
-        actionButton: {
-            padding: '5px 10px',
-            borderRadius: '4px',
-            backgroundColor: theme.colors.accent,
-            color: theme.colors.primaryText,
-            textDecoration: 'none',
-            fontSize: '14px'
-        },
-        summaryToggle: {
-            backgroundColor: theme.colors.border,
-            borderRadius: '6px',
-            padding: '10px',
-            color: theme.colors.mutedText
+    // Get status color and icon
+    const getStatusStyle = (status) => {
+        const statusLower = status.toLowerCase();
+        if (statusLower.includes('executed') || statusLower.includes('adopted')) {
+            return { color: theme.colors.success, bg: `${theme.colors.success}20`, icon: <FaCheck size={10} /> };
         }
-    });
+        if (statusLower.includes('rejected') || statusLower.includes('failed')) {
+            return { color: theme.colors.error, bg: `${theme.colors.error}20`, icon: <FaTimes size={10} /> };
+        }
+        if (statusLower.includes('open') || statusLower.includes('voting')) {
+            return { color: proposalAccent, bg: `${proposalAccent}20`, icon: <FaClock size={10} /> };
+        }
+        return { color: theme.colors.mutedText, bg: theme.colors.tertiaryBg, icon: null };
+    };
+
+    // Loading state
+    if (loading && proposals.length === 0) {
+        return (
+            <div className='page-container'>
+                <style>{customStyles}</style>
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
+                <main style={{
+                    background: theme.colors.primaryGradient,
+            minHeight: '100vh',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}>
+                    <div style={{
+            textAlign: 'center',
+            color: theme.colors.mutedText
+                    }}>
+                        <div className="proposals-pulse" style={{
+                            width: '60px',
+                            height: '60px',
+                            borderRadius: '50%',
+                            background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                            margin: '0 auto 1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <FaGavel size={28} color="white" />
+                        </div>
+                        <p style={{ fontSize: '1.1rem' }}>Loading proposals...</p>
+                    </div>
+                </main>
+            </div>
+        );
+    }
 
     return (
-        <div className='page-container' style={getStyles(theme).pageContainer}>
+        <div className='page-container'>
+            <style>{customStyles}</style>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-            <main className="wallet-container">
-                <div style={{ marginBottom: '20px' }}>
+            
+            <main style={{
+                background: theme.colors.primaryGradient,
+                minHeight: '100vh'
+            }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${proposalPrimary}15 50%, ${proposalSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2.5rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Background decoration */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${proposalPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${proposalSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{
+                        maxWidth: '900px',
+                        margin: '0 auto',
+                        position: 'relative',
+                        zIndex: 1
+                    }}>
+                        {/* SNS Logo and Title */}
                     <div style={{ 
                         display: 'flex', 
-                        justifyContent: 'space-between', 
                         alignItems: 'center', 
-                        marginBottom: '15px',
-                        flexWrap: 'wrap',
-                        gap: '15px'
-                    }}>
-                        <div>
-                            <h1 style={getStyles(theme).title}>Proposals</h1>
-                            <p style={getStyles(theme).subtitle}>
-                                Want to create a proposal? Sneed DAO recommends{' '}
-                                <a 
+                            gap: '1.25rem',
+                            marginBottom: '1.25rem'
+                        }}>
+                            {loadingLogo ? (
+                                <div style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    borderRadius: '50%',
+                                    background: theme.colors.tertiaryBg,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <span className="proposals-pulse" style={{ color: theme.colors.mutedText }}>...</span>
+                                </div>
+                            ) : snsLogo ? (
+                                <img
+                                    src={snsLogo}
+                                    alt={snsInfo?.name || 'SNS Logo'}
+                                    style={{
+                                        width: '64px',
+                                        height: '64px',
+                                        borderRadius: '50%',
+                                        objectFit: 'cover',
+                                        border: `3px solid ${proposalPrimary}40`,
+                                        boxShadow: `0 4px 20px ${proposalPrimary}30`
+                                    }}
+                                />
+                            ) : (
+                                <div style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    borderRadius: '50%',
+                                    background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <FaGavel size={28} color="white" />
+                                </div>
+                            )}
+                            
+                            <div style={{ flex: 1 }}>
+                                <h1 style={{
+                                    color: theme.colors.primaryText,
+                                    fontSize: '2rem',
+                                    fontWeight: '700',
+                                    margin: 0,
+                                    lineHeight: '1.2'
+                                }}>
+                                    {snsInfo?.name ? `${snsInfo.name} Proposals` : 'Governance Proposals'}
+                                </h1>
+                                <p style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '1rem',
+                                    margin: '0.35rem 0 0 0'
+                                }}>
+                                    Review and vote on governance proposals • <a 
                                     href="https://ic-toolkit.app" 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    style={getStyles(theme).link}
-                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                        style={{ color: proposalPrimary, textDecoration: 'none' }}
                                 >
-                                    ic-toolkit.app
+                                        Create proposal →
                                 </a>
                             </p>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                            <button
-                                onClick={loadAllProposals}
-                                style={{
-                                    backgroundColor: allProposalsLoaded ? theme.colors.success : theme.colors.tertiaryBg,
-                                    color: theme.colors.primaryText,
-                                    border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: (loadingAll || allProposalsLoaded) ? 'not-allowed' : 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    opacity: (loadingAll || allProposalsLoaded) ? 0.7 : 1
-                                }}
-                                disabled={loadingAll || allProposalsLoaded}
-                                title={allProposalsLoaded ? 'All proposals loaded' : 'Load all proposals at once'}
-                            >
-                                <span style={{ 
-                                    fontSize: '14px',
-                                    display: 'inline-block',
-                                    transform: loadingAll ? 'rotate(360deg)' : 'none',
-                                    transition: 'transform 1s linear'
-                                }}>
-                                    {allProposalsLoaded ? '✓' : loadingAll ? '⟳' : '⬇'}
-                                </span>
-                                {loadingAll ? 'Loading All...' : allProposalsLoaded ? 'All Loaded' : 'Load All'}
-                            </button>
-                            <button
-                                onClick={exportProposalsToCSV}
-                                style={{
-                                    backgroundColor: theme.colors.accent,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}
-                                disabled={loading || loadingAll || proposals.length === 0}
-                                title={`Export proposals to CSV${!allProposalsLoaded && hasMoreProposals ? ' (will auto-load all first)' : ''}`}
-                            >
-                                <span style={{ fontSize: '14px' }}>📄</span>
-                                Export CSV
-                            </button>
-                            <label style={getStyles(theme).label}>Items per page:</label>
-                            <select
-                                value={itemsPerPage}
-                                onChange={handleItemsPerPageChange}
-                                style={getStyles(theme).select}
-                            >
-                                <option value={10}>10</option>
-                                <option value={20}>20</option>
-                                <option value={50}>50</option>
-                                <option value={100}>100</option>
-                            </select>
                         </div>
+                        
+                        {/* Quick Stats */}
+                        <div style={{
+                            display: 'flex',
+                            gap: '1.5rem',
+                            flexWrap: 'wrap',
+                            alignItems: 'center'
+                        }}>
+                            <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                gap: '0.5rem',
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.9rem'
+                            }}>
+                                <FaLayerGroup size={14} style={{ color: proposalPrimary }} />
+                                <span>{proposals.length} proposal{proposals.length !== 1 ? 's' : ''} loaded</span>
+                            </div>
+                            {filteredProposals.filter(p => isProposalAcceptingVotes(p)).length > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    color: proposalAccent,
+                                    background: `${proposalAccent}15`,
+                                    padding: '0.4rem 0.75rem',
+                                    borderRadius: '20px',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500'
+                                }}>
+                                    <FaVoteYea size={14} />
+                                    <span>{filteredProposals.filter(p => isProposalAcceptingVotes(p)).length} open for voting</span>
+                        </div>
+                            )}
                     </div>
+                    </div>
+                </div>
+
+                {/* Main Content */}
+                <div style={{
+                    maxWidth: '900px',
+                    margin: '0 auto',
+                    padding: '1.5rem'
+                }}>
+                    {/* Controls Section */}
+                    <div style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '16px',
+                        border: `1px solid ${theme.colors.border}`,
+                        padding: '1.25rem',
+                        marginBottom: '1.5rem'
+                    }}>
+                        {/* Filters Row */}
                     <div style={{ 
                         display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '15px',
+                            gap: '0.75rem',
+                            marginBottom: '1rem',
                         flexWrap: 'wrap'
                     }}>
+                            {/* Search Input */}
+                            <div style={{
+                                flex: '1 1 250px',
+                                position: 'relative'
+                            }}>
+                                <FaSearch size={14} style={{
+                                    position: 'absolute',
+                                    left: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: theme.colors.mutedText
+                                }} />
                         <input
                             type="text"
                             value={proposerFilter}
                             onChange={(e) => setProposerFilter(e.target.value)}
-                            placeholder="Filter by proposer (name, nickname, or neuron ID)..."
+                                    placeholder="Filter by proposer..."
                             style={{
-                                ...getStyles(theme).input,
-                                flex: '1 1 250px',
-                                minWidth: '200px'
-                            }}
-                        />
+                                        width: '100%',
+                                        padding: '0.65rem 0.75rem 0.65rem 2.25rem',
+                                        borderRadius: '10px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.primaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.9rem',
+                                        outline: 'none',
+                                        transition: 'border-color 0.2s ease',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+                            
+                            {/* Topic Filter */}
+                            <div style={{
+                                flex: '0 0 auto',
+                                position: 'relative'
+                            }}>
+                                <FaFilter size={12} style={{
+                                    position: 'absolute',
+                                    left: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: theme.colors.mutedText
+                                }} />
                         <select
                             value={topicFilter}
                             onChange={(e) => setTopicFilter(e.target.value)}
                             style={{
-                                ...getStyles(theme).select,
-                                padding: '8px 12px',
-                                minWidth: '180px'
+                                        padding: '0.65rem 2rem 0.65rem 2rem',
+                                        borderRadius: '10px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.primaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.9rem',
+                                        outline: 'none',
+                                        cursor: 'pointer',
+                                        appearance: 'none'
                             }}
                         >
                             {topicOptions.map(option => (
@@ -1205,91 +1386,296 @@ function Proposals() {
                                 </option>
                             ))}
                         </select>
+                                <FaChevronDown size={10} style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: theme.colors.mutedText,
+                                    pointerEvents: 'none'
+                                }} />
                     </div>
                 </div>
 
-                {error && <div style={getStyles(theme).error}>{error}</div>}
-
+                        {/* Actions Row */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '0.75rem'
+                        }}>
+                            {/* Left side - Action buttons */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '0.5rem',
+                                flexWrap: 'wrap'
+                            }}>
+                                <button
+                                    onClick={loadAllProposals}
+                                    disabled={loadingAll || allProposalsLoaded}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.5rem 1rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${allProposalsLoaded ? theme.colors.success : theme.colors.border}`,
+                                        background: allProposalsLoaded ? `${theme.colors.success}15` : 'transparent',
+                                        color: allProposalsLoaded ? theme.colors.success : theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        cursor: (loadingAll || allProposalsLoaded) ? 'not-allowed' : 'pointer',
+                                        opacity: loadingAll ? 0.7 : 1,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    {allProposalsLoaded ? <FaCheck size={12} /> : loadingAll ? (
+                                        <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+                                    ) : (
+                                        <FaLayerGroup size={12} />
+                                    )}
+                                    {loadingAll ? 'Loading...' : allProposalsLoaded ? 'All Loaded' : 'Load All'}
+                                </button>
+                                
+                                <button
+                                    onClick={exportProposalsToCSV}
+                                    disabled={loading || loadingAll || proposals.length === 0}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.5rem 1rem',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                        color: 'white',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        cursor: (loading || loadingAll || proposals.length === 0) ? 'not-allowed' : 'pointer',
+                                        opacity: (loading || loadingAll || proposals.length === 0) ? 0.6 : 1,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaDownload size={12} />
+                                    Export CSV
+                                </button>
+                            </div>
+                            
+                            {/* Right side - Items per page */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                color: theme.colors.secondaryText
+                            }}>
+                                <span>Show</span>
+                                <select
+                                    value={itemsPerPage}
+                                    onChange={handleItemsPerPageChange}
+                                    style={{
+                                        padding: '0.35rem 0.5rem',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.primaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        outline: 'none',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                                <span>per page</span>
+                            </div>
+                        </div>
+                        
+                        {/* Filter info */}
                 {(proposerFilter.trim() || topicFilter.trim()) && (
-                    <div style={getStyles(theme).filterInfo}>
-                        Showing {filteredProposals.length} of {proposals.length} proposals
-                        {proposerFilter.trim() && (
-                            <span> matching proposer: "{proposerFilter}"</span>
-                        )}
-                        {topicFilter.trim() && (
-                            <span> with topic: "{topicOptions.find(opt => opt.value === topicFilter)?.label || topicFilter}"</span>
-                        )}
+                            <div style={{
+                                marginTop: '1rem',
+                                padding: '0.75rem 1rem',
+                                background: `${proposalPrimary}10`,
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '0.5rem'
+                            }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                    Showing <strong style={{ color: proposalPrimary }}>{filteredProposals.length}</strong> of {proposals.length} proposals
+                                    {proposerFilter.trim() && <span> matching "{proposerFilter}"</span>}
+                                    {topicFilter.trim() && <span> in {topicOptions.find(opt => opt.value === topicFilter)?.label || topicFilter}</span>}
+                                </span>
                         <button 
                             onClick={() => {
                                 setProposerFilter('');
                                 setTopicFilter('');
                             }}
                             style={{
-                                marginLeft: '10px',
-                                ...getStyles(theme).clearButton,
-                                fontSize: '12px'
-                            }}
-                        >
-                            Clear All
+                                        background: 'transparent',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        color: theme.colors.secondaryText,
+                                        padding: '0.25rem 0.75rem',
+                                        borderRadius: '6px',
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    Clear Filters
                         </button>
                     </div>
                 )}
-
-                {loading && proposals.length === 0 ? (
-                    <div style={getStyles(theme).loading}>
-                        Loading...
                     </div>
-                ) : (
-                    <div>
-                        {filteredProposals.map((proposal, index) => (
-                            <div
-                                key={index}
-                                style={getStyles(theme).proposalCard}
-                            >
-                                <div style={{ marginBottom: '15px' }}>
-                                    {/* Title and Status Row - Full Width */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px', flexWrap: 'wrap' }}>
-                                        <h3 style={getStyles(theme).proposalTitle}>
-                                            {formatProposalIdLink(proposal.id[0].id.toString(), selectedSnsRoot)}
-                                        </h3>
-                                        <div style={getStyles(theme).status}>
-                                            {getProposalStatus(proposal)}
-                                        </div>
-                                        {isProposalAcceptingVotes(proposal) && (
+
+                    {/* Error Message */}
+                    {error && (
+                        <div style={{
+                            background: `${theme.colors.error}15`,
+                            border: `1px solid ${theme.colors.error}40`,
+                            borderRadius: '12px',
+                            padding: '1rem 1.25rem',
+                            marginBottom: '1.5rem',
+                            color: theme.colors.error
+                        }}>
+                            {error}
+                    </div>
+                    )}
+
+                    {/* Proposals List */}
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem'
+                    }}>
+                        {filteredProposals.map((proposal, index) => {
+                            const proposalId = proposal.id[0]?.id?.toString();
+                            const status = getProposalStatus(proposal);
+                            const statusStyle = getStatusStyle(status);
+                            const isHovered = hoveredCard === proposalId;
+                            const isExpanded = expandedSummaries.has(proposalId);
+                            const acceptingVotes = isProposalAcceptingVotes(proposal);
+                            const actionType = getProposalActionType(proposal);
+                            const topicOption = topicOptions.find(opt => opt.value === actionType);
+                            
+                            return (
+                                <div
+                                    key={proposalId}
+                                    className="proposals-card-animate"
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '16px',
+                                        border: `1px solid ${isHovered ? proposalPrimary : theme.colors.border}`,
+                                        overflow: 'hidden',
+                                        transition: 'all 0.3s ease',
+                                        transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+                                        boxShadow: isHovered 
+                                            ? `0 8px 30px ${proposalPrimary}20`
+                                            : '0 2px 10px rgba(0,0,0,0.08)',
+                                        animationDelay: `${index * 0.05}s`,
+                                        opacity: 0
+                                    }}
+                                    onMouseEnter={() => setHoveredCard(proposalId)}
+                                    onMouseLeave={() => setHoveredCard(null)}
+                                >
+                                    {/* Card Header */}
                                             <div style={{ 
-                                                fontSize: '12px', 
-                                                color: theme.colors.success,
-                                                backgroundColor: theme.colors.successBg || 'rgba(46, 204, 113, 0.1)',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px'
+                                        padding: '1.25rem 1.5rem',
+                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                        background: acceptingVotes 
+                                            ? `linear-gradient(135deg, ${proposalAccent}08 0%, transparent 100%)`
+                                            : 'transparent'
+                                    }}>
+                                        {/* Top Row: ID, Status, Time */}
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem',
+                                            marginBottom: '0.75rem',
+                                            flexWrap: 'wrap'
+                                        }}>
+                                            <span style={{
+                                                color: proposalPrimary,
+                                                fontWeight: '600',
+                                                fontSize: '0.9rem'
                                             }}>
-                                                ⏱️ {getVotingTimeRemaining(proposal)}
-                                            </div>
-                                        )}
+                                                {formatProposalIdLink(proposalId, selectedSnsRoot)}
+                                            </span>
+                                            
+                                            <span style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                padding: '3px 10px',
+                                                borderRadius: '20px',
+                                                background: statusStyle.bg,
+                                                color: statusStyle.color,
+                                                fontSize: '0.8rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                {statusStyle.icon}
+                                                {status}
+                                            </span>
+                                            
+                                            {acceptingVotes && (
+                                                <span style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '3px 10px',
+                                                    borderRadius: '20px',
+                                                    background: `${proposalAccent}15`,
+                                                    color: proposalAccent,
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: '500'
+                                                }}>
+                                                    <FaClock size={10} />
+                                                    {getVotingTimeRemaining(proposal)}
+                                                </span>
+                                            )}
+                                            
+                                            <span style={{
+                                                padding: '3px 10px',
+                                                borderRadius: '20px',
+                                                background: theme.colors.tertiaryBg,
+                                                color: theme.colors.secondaryText,
+                                                fontSize: '0.75rem'
+                                            }}>
+                                                {topicOption ? topicOption.label : actionType}
+                                            </span>
                                     </div>
                                     
-                                    {/* Proposal Title - Full Width */}
-                                    <h4 style={{ ...getStyles(theme).proposalTitle, margin: '0 0 8px 0', lineHeight: '1.3' }}>
+                                        {/* Title */}
                                         <Link 
-                                            to={`/proposal?proposalid=${proposal.id[0].id.toString()}&sns=${selectedSnsRoot}`}
-                                            style={getStyles(theme).proposalLink}
-                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                            to={`/proposal?proposalid=${proposalId}&sns=${selectedSnsRoot}`}
+                                            style={{
+                                                color: theme.colors.primaryText,
+                                                textDecoration: 'none',
+                                                fontSize: '1.15rem',
+                                                fontWeight: '600',
+                                                lineHeight: '1.4',
+                                                display: 'block',
+                                                marginBottom: '0.75rem',
+                                                transition: 'color 0.2s ease'
+                                            }}
                                         >
-                                            {proposal.proposal[0]?.title || 'No title'}
+                                            {proposal.proposal[0]?.title || 'Untitled Proposal'}
                                         </Link>
-                                    </h4>
-                                    
-                                    {/* Topic and Proposer - Full Width */}
-                                    <div style={{ marginBottom: '10px' }}>
-                                        <div style={{ ...getStyles(theme).metaText, marginBottom: '4px' }}>
-                                            Topic: {(() => {
-                                                const actionType = getProposalActionType(proposal);
-                                                const topicOption = topicOptions.find(opt => opt.value === actionType);
-                                                return topicOption ? topicOption.label : actionType;
-                                            })()}
-                                        </div>
-                                        <div style={{ ...getStyles(theme).metaText, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        
+                                        {/* Proposer */}
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            fontSize: '0.85rem',
+                                            color: theme.colors.secondaryText
+                                        }}>
                                             <span>Proposed by:</span>
                                             {proposal.proposer?.[0]?.id ? 
                                                 formatNeuronDisplayWithContext(
@@ -1306,40 +1692,50 @@ function Proposals() {
                                         </div>
                                     </div>
                                     
-                                    {/* Treasury Transfer Details - Only for treasury proposals */}
-                                    {getProposalActionType(proposal) === 'TransferSnsTreasuryFunds' && (() => {
+                                    {/* Treasury Transfer Details */}
+                                    {actionType === 'TransferSnsTreasuryFunds' && (() => {
                                         const treasuryDetails = parseTreasuryTransferDetails(proposal);
                                         if (treasuryDetails.amount || treasuryDetails.targetPrincipal) {
                                             return (
                                                 <div style={{ 
-                                                    marginBottom: '10px', 
-                                                    padding: '10px', 
-                                                    backgroundColor: theme.colors.tertiaryBg, 
-                                                    borderRadius: '6px',
-                                                    border: `1px solid ${theme.colors.border}`
+                                                    padding: '1rem 1.5rem',
+                                                    borderBottom: `1px solid ${theme.colors.border}`,
+                                                    background: `linear-gradient(135deg, #f59e0b10 0%, transparent 100%)`
                                                 }}>
-                                                    <div style={{ ...getStyles(theme).metaText, marginBottom: '6px', fontWeight: 'bold' }}>
-                                                        💰 Treasury Transfer Details:
+                                                    <div style={{ 
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        marginBottom: '0.75rem',
+                                                        color: '#f59e0b',
+                                                        fontSize: '0.9rem',
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        💰 Treasury Transfer
                                                     </div>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: '0.5rem',
+                                                        fontSize: '0.9rem'
+                                                    }}>
                                                     {treasuryDetails.amount && (
-                                                        <div style={{ ...getStyles(theme).metaText, marginBottom: '4px' }}>
-                                                            <span style={{ color: theme.colors.accent, fontWeight: 'bold' }}>
-                                                                {treasuryDetails.amount}
-                                                            </span>
-                                                            {treasuryDetails.tokenType && (
-                                                                <span style={{ color: theme.colors.accent, fontWeight: 'bold', marginLeft: '4px' }}>
-                                                                    {treasuryDetails.tokenType}
-                                                                </span>
-                                                            )}
-                                                            {treasuryDetails.amountE8s && (
-                                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
+                                                            <div style={{ color: theme.colors.primaryText }}>
+                                                                <strong style={{ color: '#f59e0b' }}>
+                                                                    {treasuryDetails.amount} {treasuryDetails.tokenType}
+                                                                </strong>
+                                                                <span style={{ color: theme.colors.mutedText, marginLeft: '0.5rem' }}>
                                                                     ({treasuryDetails.amountE8s} e8s)
                                                                 </span>
-                                                            )}
                                                         </div>
                                                     )}
                                                     {treasuryDetails.targetPrincipal && (
-                                                        <div style={{ ...getStyles(theme).metaText, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '0.5rem',
+                                                                color: theme.colors.secondaryText
+                                                            }}>
                                                             <span>To:</span>
                                                             <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                                                                 <PrincipalDisplay
@@ -1357,52 +1753,150 @@ function Proposals() {
                                                             </div>
                                                         </div>
                                                     )}
-                                                    {treasuryDetails.memo && treasuryDetails.memo !== '0' && (
-                                                        <div style={{ ...getStyles(theme).metaText, marginTop: '4px' }}>
-                                                            Memo: <span style={{ color: theme.colors.mutedText }}>{treasuryDetails.memo}</span>
                                                         </div>
-                                                    )}
                                                 </div>
                                             );
                                         }
                                         return null;
                                     })()}
                                     
-                                    {/* External Links and Quick Vote - Responsive Row */}
+                                    {/* Summary Toggle */}
+                                    <div 
+                                        onClick={() => toggleSummary(proposalId)}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            borderBottom: isExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            color: theme.colors.secondaryText,
+                                            fontSize: '0.9rem',
+                                            transition: 'background 0.2s ease',
+                                            background: isExpanded ? theme.colors.tertiaryBg : 'transparent'
+                                        }}
+                                    >
+                                        <FaChevronRight 
+                                            size={12} 
+                                            style={{
+                                                transition: 'transform 0.3s ease',
+                                                transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                                            }}
+                                        />
+                                        <span>Summary</span>
+                                    </div>
+                                    
+                                    {/* Summary Content */}
+                                    {isExpanded && (
                                     <div style={{ 
+                                            padding: '1rem 1.5rem',
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.primaryBg,
+                                            color: theme.colors.secondaryText,
+                                            fontSize: '0.9rem',
+                                            lineHeight: '1.6',
+                                            maxHeight: '400px',
+                                            overflow: 'auto'
+                                        }}>
+                                            <ReactMarkdown>
+                                                {convertHtmlToMarkdown(proposal.proposal[0]?.summary || 'No summary available')}
+                                            </ReactMarkdown>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Card Footer */}
+                                    <div style={{
+                                        padding: '1rem 1.5rem',
                                         display: 'flex', 
-                                        gap: '8px', 
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
                                         flexWrap: 'wrap',
-                                        alignItems: 'center'
+                                        gap: '0.75rem'
                                     }}>
-                                        <a 
-                                            href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposal.id[0].id.toString()}`}
+                                        {/* Left: Meta info */}
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '1rem',
+                                            fontSize: '0.8rem',
+                                            color: theme.colors.mutedText
+                                        }}>
+                                            <span title={getFullDate(BigInt(Number(proposal.proposal_creation_timestamp_seconds) * 1_000_000_000))}>
+                                                Created {getRelativeTime(BigInt(Number(proposal.proposal_creation_timestamp_seconds) * 1_000_000_000))}
+                                            </span>
+                                            <span>
+                                                {Math.floor(Number(proposal.initial_voting_period_seconds) / (24 * 60 * 60))} day voting
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Right: Actions */}
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            flexWrap: 'wrap'
+                                        }}>
+                                            {/* External Links */}
+                                            <a 
+                                                href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposalId}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            style={getStyles(theme).actionButton}
-                                        >
-                                            NNS
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '0.4rem 0.75rem',
+                                                    borderRadius: '6px',
+                                                    background: theme.colors.tertiaryBg,
+                                                    color: theme.colors.secondaryText,
+                                                    textDecoration: 'none',
+                                                    fontSize: '0.8rem',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                NNS <FaExternalLinkAlt size={10} />
                                         </a>
                                         <a 
-                                            href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${proposal.id[0].id.toString()}`}
+                                                href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${proposalId}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            style={getStyles(theme).actionButton}
-                                        >
-                                            Dashboard
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '0.4rem 0.75rem',
+                                                    borderRadius: '6px',
+                                                    background: theme.colors.tertiaryBg,
+                                                    color: theme.colors.secondaryText,
+                                                    textDecoration: 'none',
+                                                    fontSize: '0.8rem',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                Dashboard <FaExternalLinkAlt size={10} />
                                         </a>
                                         <a 
-                                            href={`https://ic-toolkit.app/sns-management/${selectedSnsRoot}/proposals/view/${proposal.id[0].id.toString()}`}
+                                                href={`https://ic-toolkit.app/sns-management/${selectedSnsRoot}/proposals/view/${proposalId}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            style={getStyles(theme).actionButton}
-                                        >
-                                            Toolkit
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '0.4rem 0.75rem',
+                                                    borderRadius: '6px',
+                                                    background: theme.colors.tertiaryBg,
+                                                    color: theme.colors.secondaryText,
+                                                    textDecoration: 'none',
+                                                    fontSize: '0.8rem',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                Toolkit <FaExternalLinkAlt size={10} />
                                         </a>
                                         
                                         {/* Quick Vote Buttons */}
-                                        {isAuthenticated && isProposalAcceptingVotes(proposal) && (() => {
-                                            const proposalId = proposal.id[0]?.id?.toString();
+                                            {isAuthenticated && acceptingVotes && (() => {
                                             const eligibility = proposalEligibility[proposalId];
                                             const votingState = quickVotingStates[proposalId];
                                             const isLoading = eligibility?.loading !== false;
@@ -1410,33 +1904,32 @@ function Proposals() {
                                             const totalVP = eligibility?.totalVP || 0;
                                             const isEnabled = !isLoading && eligibleCount > 0;
                                             
-                                            // Determine button style based on state
                                             const getButtonStyle = (isAdopt) => {
                                                 const baseStyle = {
-                                                    padding: '4px 10px',
-                                                    borderRadius: '4px',
-                                                    fontSize: '12px',
-                                                    fontWeight: 'bold',
-                                                    border: 'none',
-                                                    cursor: isEnabled ? 'pointer' : 'default',
-                                                    transition: 'all 0.2s ease',
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    gap: '4px'
+                                                        gap: '4px',
+                                                        padding: '0.4rem 0.75rem',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: '500',
+                                                        border: 'none',
+                                                        cursor: isEnabled ? 'pointer' : 'default',
+                                                        transition: 'all 0.2s ease'
                                                 };
                                                 
                                                 if (votingState === 'voting') {
                                                     return {
                                                         ...baseStyle,
-                                                        backgroundColor: 'rgba(128, 128, 128, 0.3)',
-                                                        color: 'rgba(150, 150, 150, 0.8)'
+                                                            backgroundColor: theme.colors.tertiaryBg,
+                                                            color: theme.colors.mutedText
                                                     };
                                                 }
                                                 
                                                 if (votingState === 'success') {
                                                     return {
                                                         ...baseStyle,
-                                                        backgroundColor: 'rgba(46, 204, 113, 0.3)',
+                                                            backgroundColor: `${theme.colors.success}20`,
                                                         color: theme.colors.success
                                                     };
                                                 }
@@ -1444,26 +1937,25 @@ function Proposals() {
                                                 if (votingState === 'error') {
                                                     return {
                                                         ...baseStyle,
-                                                        backgroundColor: 'rgba(231, 76, 60, 0.3)',
+                                                            backgroundColor: `${theme.colors.error}20`,
                                                         color: theme.colors.error
                                                     };
                                                 }
                                                 
                                                 if (!isEnabled) {
-                                                    // Very gray and faint when disabled
                                                     return {
                                                         ...baseStyle,
-                                                        backgroundColor: 'rgba(100, 100, 100, 0.15)',
-                                                        color: 'rgba(120, 120, 120, 0.5)'
+                                                            backgroundColor: theme.colors.tertiaryBg,
+                                                            color: theme.colors.mutedText,
+                                                            opacity: 0.5
                                                     };
                                                 }
                                                 
-                                                // Enabled state
                                                 return {
                                                     ...baseStyle,
                                                     backgroundColor: isAdopt 
-                                                        ? 'rgba(46, 204, 113, 0.2)' 
-                                                        : 'rgba(231, 76, 60, 0.2)',
+                                                            ? `${theme.colors.success}15` 
+                                                            : `${theme.colors.error}15`,
                                                     color: isAdopt ? theme.colors.success : theme.colors.error
                                                 };
                                             };
@@ -1474,7 +1966,7 @@ function Proposals() {
                                                         width: '1px', 
                                                         height: '20px', 
                                                         backgroundColor: theme.colors.border,
-                                                        margin: '0 4px'
+                                                            margin: '0 0.25rem'
                                                     }} />
                                                     
                                                     <button
@@ -1485,9 +1977,8 @@ function Proposals() {
                                                                eligibleCount > 0 ? `Adopt with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''} (${formatCompactVP(totalVP)} VP)` :
                                                                'No eligible neurons'}
                                                     >
-                                                        {votingState === 'voting' ? '...' : '✓'}
-                                                        <span>Adopt</span>
-                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({formatCompactVP(totalVP)})</span>}
+                                                            <FaCheck size={10} />
+                                                            {isEnabled && <span>({formatCompactVP(totalVP)})</span>}
                                                     </button>
                                                     
                                                     <button
@@ -1498,80 +1989,117 @@ function Proposals() {
                                                                eligibleCount > 0 ? `Reject with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''} (${formatCompactVP(totalVP)} VP)` :
                                                                'No eligible neurons'}
                                                     >
-                                                        {votingState === 'voting' ? '...' : '✗'}
-                                                        <span>Reject</span>
-                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({formatCompactVP(totalVP)})</span>}
+                                                            <FaTimes size={10} />
+                                                            {isEnabled && <span>({formatCompactVP(totalVP)})</span>}
                                                     </button>
                                                 </>
                                             );
                                         })()}
                                     </div>
                                 </div>
-                                <div 
-                                    onClick={() => toggleSummary(proposal.id[0].id.toString())}
-                                    style={{
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                        ...getStyles(theme).summaryToggle,
-                                        marginBottom: expandedSummaries.has(proposal.id[0].id.toString()) ? '10px' : '0'
-                                    }}
-                                >
-                                    <span style={{ 
-                                        transform: expandedSummaries.has(proposal.id[0].id.toString()) ? 'rotate(90deg)' : 'none',
-                                        transition: 'transform 0.3s ease',
-                                        display: 'inline-block'
-                                    }}>▶</span>
-                                    <span>Summary</span>
                                 </div>
-                                {expandedSummaries.has(proposal.id[0].id.toString()) && (
-                                    <div style={{ 
-                                        backgroundColor: theme.colors.border, 
-                                        padding: '15px', 
-                                        borderRadius: '6px',
-                                        color: theme.colors.mutedText, 
-                                        margin: '0 0 10px 0'
-                                    }}>
-                                        <ReactMarkdown>
-                                            {convertHtmlToMarkdown(proposal.proposal[0]?.summary || 'No summary')}
-                                        </ReactMarkdown>
+                            );
+                        })}
                                     </div>
-                                )}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '14px' }}>
-                                    <span>Created: {new Date(Number(proposal.proposal_creation_timestamp_seconds) * 1000).toLocaleString()}</span>
-                                    <span>Voting Period: {Math.floor(Number(proposal.initial_voting_period_seconds) / (24 * 60 * 60))} days</span>
-                                </div>
-                            </div>
-                        ))}
 
-                        {hasMoreProposals && !allProposalsLoaded && (
-                            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                    {/* Load More / All Loaded */}
+                    {filteredProposals.length > 0 && (
+                        <div style={{
+                            textAlign: 'center',
+                            marginTop: '2rem',
+                            padding: '1rem'
+                        }}>
+                            {hasMoreProposals && !allProposalsLoaded ? (
                                 <button
                                     onClick={loadMore}
                                     disabled={loading || loadingAll}
                                     style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.75rem 2rem',
+                                        borderRadius: '12px',
                                         border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '10px 20px',
+                                        background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                        color: 'white',
+                                        fontSize: '0.95rem',
+                                        fontWeight: '600',
                                         cursor: (loading || loadingAll) ? 'not-allowed' : 'pointer',
-                                        opacity: (loading || loadingAll) ? 0.7 : 1
+                                        opacity: (loading || loadingAll) ? 0.7 : 1,
+                                        transition: 'all 0.3s ease',
+                                        boxShadow: `0 4px 15px ${proposalPrimary}40`
                                     }}
                                 >
-                                    {(loading || loadingAll) ? 'Loading...' : 'Load More'}
+                                    {(loading || loadingAll) ? (
+                                        <>
+                                            <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+                                            Loading...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FaChevronDown size={14} />
+                                            Load More Proposals
+                                        </>
+                                    )}
                                 </button>
+                            ) : (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    color: theme.colors.success,
+                                    fontSize: '0.95rem',
+                                    fontWeight: '500'
+                                }}>
+                                    <FaCheck size={14} />
+                                    All {proposals.length} proposals loaded
                             </div>
                         )}
-                        
-                        {allProposalsLoaded && (
-                            <div style={{ textAlign: 'center', marginTop: '20px', color: theme.colors.success }}>
-                                ✓ All proposals loaded ({proposals.length} total)
                             </div>
                         )}
+                    
+                    {/* Empty State */}
+                    {filteredProposals.length === 0 && !loading && (
+                        <div style={{
+                            textAlign: 'center',
+                            padding: '4rem 2rem',
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div style={{
+                                width: '70px',
+                                height: '70px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${proposalPrimary}30, ${proposalSecondary}20)`,
+                                margin: '0 auto 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: proposalPrimary
+                            }}>
+                                <FaGavel size={30} />
+                            </div>
+                            <h3 style={{
+                                color: theme.colors.primaryText,
+                                fontSize: '1.25rem',
+                                fontWeight: '600',
+                                marginBottom: '0.5rem'
+                            }}>
+                                No proposals found
+                            </h3>
+                            <p style={{
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.95rem'
+                            }}>
+                                {proposerFilter || topicFilter 
+                                    ? 'Try adjusting your filters to see more results.'
+                                    : 'There are no proposals for this SNS yet.'}
+                            </p>
                     </div>
                 )}
+                </div>
             </main>
         </div>
     );
