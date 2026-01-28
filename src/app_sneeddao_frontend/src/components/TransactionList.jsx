@@ -71,11 +71,14 @@ function TransactionList({
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
     const [totalTransactions, setTotalTransactions] = useState(0);
+    // Only read from URL params if not embedded - embedded components shouldn't use URL state
     const [startTxIndex, setStartTxIndex] = useState(() => {
+        if (embedded) return 0;
         const urlStart = searchParams.get('start');
         return urlStart ? parseInt(urlStart) : 0;
     });
     const [txIndexInput, setTxIndexInput] = useState(() => {
+        if (embedded) return '';
         const urlStart = searchParams.get('start');
         return urlStart ? urlStart : '';
     });
@@ -117,8 +120,11 @@ function TransactionList({
         };
     }, []);
 
-    // URL sync effects
+    // URL sync effects - only when not embedded
     useEffect(() => {
+        // Skip URL sync when embedded - embedded components manage their own state
+        if (embedded) return;
+        
         const urlStart = searchParams.get('start');
         if (urlStart) {
             const startIndex = parseInt(urlStart);
@@ -131,9 +137,12 @@ function TransactionList({
         } else if (startTxIndex === 0) {
             setTxIndexInput('');
         }
-    }, [searchParams, pageSize]);
+    }, [searchParams, pageSize, embedded]);
 
     useEffect(() => {
+        // Skip URL sync when embedded - embedded components shouldn't modify URL
+        if (embedded) return;
+        
         if (!principalId) {
             const newStart = page * pageSize;
             const currentUrlStart = searchParams.get('start');
@@ -151,7 +160,7 @@ function TransactionList({
                 setStartTxIndex(newStart);
             }
         }
-    }, [page, pageSize, startTxIndex, principalId, searchParams, setSearchParams]);
+    }, [page, pageSize, startTxIndex, principalId, searchParams, setSearchParams, embedded]);
 
     const handleTxIndexSubmit = (e) => {
         e.preventDefault();
@@ -163,13 +172,16 @@ function TransactionList({
             setPage(newPage);
             setStartTxIndex(index);
             
-            const currentStart = searchParams.get('start');
-            if (currentStart !== index.toString()) {
-                setSearchParams(prev => {
-                    const newParams = new URLSearchParams(prev);
-                    newParams.set('start', index.toString());
-                    return newParams;
-                }, { replace: true });
+            // Only update URL params if not embedded
+            if (!embedded) {
+                const currentStart = searchParams.get('start');
+                if (currentStart !== index.toString()) {
+                    setSearchParams(prev => {
+                        const newParams = new URLSearchParams(prev);
+                        newParams.set('start', index.toString());
+                        return newParams;
+                    }, { replace: true });
+                }
             }
         }
     };
