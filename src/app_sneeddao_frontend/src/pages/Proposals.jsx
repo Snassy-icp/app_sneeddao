@@ -60,6 +60,7 @@ function Proposals() {
     const { getHotkeyNeurons, refreshNeurons } = useNeurons();
     const [proposalEligibility, setProposalEligibility] = useState({}); // { proposalId: { loading, eligibleCount, totalVP, checked } }
     const [quickVotingStates, setQuickVotingStates] = useState({}); // { proposalId: 'idle' | 'voting' | 'success' | 'error' }
+    const [votedProposals, setVotedProposals] = useState(new Set()); // Track proposals we've voted on this session
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const eligibilityCheckRef = useRef(null);
 
@@ -143,6 +144,12 @@ function Proposals() {
                     continue;
                 }
 
+                // Skip proposals we've already voted on this session (prevents stale ballot data issues)
+                if (votedProposals.has(proposalId)) {
+                    updates[proposalId] = { loading: false, eligibleCount: 0, totalVP: 0, checked: true };
+                    continue;
+                }
+
                 // Count eligible neurons and total VP for this proposal
                 let eligibleCount = 0;
                 let totalVP = 0;
@@ -201,7 +208,7 @@ function Proposals() {
                 clearTimeout(eligibilityCheckRef.current);
             }
         };
-    }, [filteredProposals, isAuthenticated, identity, selectedSnsRoot, getHotkeyNeurons, nervousSystemParameters]);
+    }, [filteredProposals, isAuthenticated, identity, selectedSnsRoot, getHotkeyNeurons, nervousSystemParameters, votedProposals]);
 
     // Quick vote function - votes with all eligible neurons
     const quickVote = useCallback(async (proposal, vote) => {
@@ -280,6 +287,8 @@ function Proposals() {
 
             if (successCount > 0) {
                 setQuickVotingStates(prev => ({ ...prev, [proposalId]: 'success' }));
+                // Track that we've voted on this proposal (prevents stale ballot data issues)
+                setVotedProposals(prev => new Set([...prev, proposalId]));
                 // Update eligibility to show 0 eligible now
                 setProposalEligibility(prev => ({ 
                     ...prev, 
@@ -495,6 +504,7 @@ function Proposals() {
         // Reset quick voting state
         setProposalEligibility({});
         setQuickVotingStates({});
+        setVotedProposals(new Set());
     }, [selectedSnsRoot]);
 
     // Filter proposals based on proposer and topic filters

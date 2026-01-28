@@ -20,6 +20,7 @@ import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from './utils/ProposalUtils';
+import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
 
 // System font stack for consistent typography
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -28,7 +29,7 @@ function Proposal() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
-    const { fetchNeuronsForSns, refreshNeurons } = useNeurons();
+    const { fetchNeuronsForSns, refreshNeurons, getHotkeyNeurons } = useNeurons();
     const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -62,6 +63,11 @@ function Proposal() {
     const [threadLinkLoading, setThreadLinkLoading] = useState(false);
     const [discussionThread, setDiscussionThread] = useState(null);
     const [loadingThread, setLoadingThread] = useState(false);
+    
+    // Quick vote state
+    const [quickVoteState, setQuickVoteState] = useState('idle'); // 'idle' | 'voting' | 'success' | 'error'
+    const [eligibleNeuronsInfo, setEligibleNeuronsInfo] = useState({ count: 0, totalVP: 0 });
+    const [nervousSystemParams, setNervousSystemParams] = useState(null);
 
     // Get naming context
     const { getNeuronDisplayName, neuronNames, neuronNicknames, verifiedNames } = useNaming();
@@ -275,6 +281,171 @@ function Proposal() {
     const fetchNeuronsFromSns = async () => {
         if (!selectedSnsRoot) return [];
         return await fetchNeuronsForSns(selectedSnsRoot);
+    };
+
+    // Fetch nervous system parameters for voting power calculation
+    useEffect(() => {
+        const fetchParams = async () => {
+            if (!selectedSnsRoot || !identity) {
+                setNervousSystemParams(null);
+                return;
+            }
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) return;
+
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setNervousSystemParams(params);
+            } catch (error) {
+                console.error('Error fetching nervous system parameters:', error);
+                setNervousSystemParams(null);
+            }
+        };
+
+        fetchParams();
+    }, [selectedSnsRoot, identity]);
+
+    // Calculate eligible neurons when proposal data changes
+    useEffect(() => {
+        if (!proposalData || !isAuthenticated || !identity || !isProposalAcceptingVotes(proposalData)) {
+            setEligibleNeuronsInfo({ count: 0, totalVP: 0 });
+            return;
+        }
+
+        const hotkeyNeurons = getHotkeyNeurons();
+        if (!hotkeyNeurons || hotkeyNeurons.length === 0) {
+            setEligibleNeuronsInfo({ count: 0, totalVP: 0 });
+            return;
+        }
+
+        let eligibleCount = 0;
+        let totalVP = 0;
+
+        for (const neuron of hotkeyNeurons) {
+            // Check voting power
+            const votingPower = nervousSystemParams ? 
+                calculateVotingPower(neuron, nervousSystemParams) : 0;
+            if (votingPower === 0) continue;
+
+            // Check if already voted
+            const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+            const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
+            
+            if (ballot && ballot[1]) {
+                const ballotData = ballot[1];
+                const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                if (hasVoted) continue;
+            }
+
+            eligibleCount++;
+            totalVP += votingPower;
+        }
+
+        setEligibleNeuronsInfo({ count: eligibleCount, totalVP });
+    }, [proposalData, isAuthenticated, identity, getHotkeyNeurons, nervousSystemParams]);
+
+    // Quick vote function - votes with all eligible neurons
+    const quickVoteAll = async (vote) => {
+        if (!identity || !selectedSnsRoot || !currentProposalId || !proposalData) return;
+
+        const hotkeyNeurons = getHotkeyNeurons();
+        if (!hotkeyNeurons || hotkeyNeurons.length === 0) return;
+
+        setQuickVoteState('voting');
+
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) throw new Error('SNS not found');
+
+            const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                agentOptions: { identity }
+            });
+
+            // Filter eligible neurons
+            const eligibleNeurons = hotkeyNeurons.filter(neuron => {
+                // Check voting power
+                const votingPower = nervousSystemParams ? 
+                    calculateVotingPower(neuron, nervousSystemParams) : 0;
+                if (votingPower === 0) return false;
+
+                // Check if already voted
+                const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
+                const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
+                
+                if (ballot && ballot[1]) {
+                    const ballotData = ballot[1];
+                    const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                    if (hasVoted) return false;
+                }
+
+                return true;
+            });
+
+            if (eligibleNeurons.length === 0) {
+                setQuickVoteState('error');
+                setTimeout(() => setQuickVoteState('idle'), 3000);
+                return;
+            }
+
+            // Vote with all eligible neurons
+            let successCount = 0;
+
+            for (const neuron of eligibleNeurons) {
+                try {
+                    const manageNeuronRequest = {
+                        subaccount: neuron.id[0]?.id,
+                        command: [{
+                            RegisterVote: {
+                                vote: vote, // 1 for Adopt, 2 for Reject
+                                proposal: [{ id: BigInt(currentProposalId) }]
+                            }
+                        }]
+                    };
+                    
+                    const response = await snsGovActor.manage_neuron(manageNeuronRequest);
+                    
+                    if (response?.command?.[0]?.RegisterVote) {
+                        successCount++;
+                    }
+                } catch (error) {
+                    console.error('Error voting with neuron:', error);
+                }
+            }
+
+            if (successCount > 0) {
+                setQuickVoteState('success');
+                setEligibleNeuronsInfo({ count: 0, totalVP: 0 });
+                // Refresh data
+                await refreshNeurons(selectedSnsRoot);
+                fetchProposalData();
+            } else {
+                setQuickVoteState('error');
+            }
+
+            setTimeout(() => setQuickVoteState('idle'), 3000);
+
+        } catch (error) {
+            console.error('Quick vote error:', error);
+            setQuickVoteState('error');
+            setTimeout(() => setQuickVoteState('idle'), 3000);
+        }
+    };
+
+    // Format VP in compact form
+    const formatCompactVP = (vp) => {
+        if (!vp || vp === 0) return '0';
+        const displayValue = vp / 100_000_000;
+        if (displayValue >= 1_000_000) {
+            return (displayValue / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+        } else if (displayValue >= 1_000) {
+            return (displayValue / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+        }
+        return displayValue.toFixed(displayValue < 10 ? 1 : 0).replace(/\.0$/, '');
     };
 
     // getProposalStatus is now imported from ProposalUtils
@@ -975,6 +1146,115 @@ function Proposal() {
                                     )}
                                     
                                     {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
+                                    
+                                    {/* Quick Vote Buttons */}
+                                    {isAuthenticated && isProposalAcceptingVotes(proposalData) && (
+                                        <div style={{
+                                            marginTop: '20px',
+                                            padding: '15px',
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '15px',
+                                                flexWrap: 'wrap'
+                                            }}>
+                                                <span style={{ 
+                                                    color: theme.colors.primaryText, 
+                                                    fontWeight: 'bold',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    Vote with all eligible neurons:
+                                                </span>
+                                                
+                                                <button
+                                                    onClick={() => quickVoteAll(1)}
+                                                    disabled={eligibleNeuronsInfo.count === 0 || quickVoteState === 'voting'}
+                                                    style={{
+                                                        padding: '8px 16px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        cursor: eligibleNeuronsInfo.count > 0 && quickVoteState !== 'voting' ? 'pointer' : 'not-allowed',
+                                                        fontWeight: 'bold',
+                                                        fontSize: '14px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        backgroundColor: eligibleNeuronsInfo.count > 0 
+                                                            ? quickVoteState === 'success' ? theme.colors.success : 'rgba(46, 204, 113, 0.2)'
+                                                            : 'rgba(100, 100, 100, 0.2)',
+                                                        color: eligibleNeuronsInfo.count > 0 
+                                                            ? theme.colors.success 
+                                                            : 'rgba(120, 120, 120, 0.6)',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                >
+                                                    {quickVoteState === 'voting' ? '...' : '✓'}
+                                                    <span>Adopt</span>
+                                                    {eligibleNeuronsInfo.count > 0 && (
+                                                        <span style={{ opacity: 0.7 }}>
+                                                            ({eligibleNeuronsInfo.count} neuron{eligibleNeuronsInfo.count !== 1 ? 's' : ''}, {formatCompactVP(eligibleNeuronsInfo.totalVP)} VP)
+                                                        </span>
+                                                    )}
+                                                </button>
+                                                
+                                                <button
+                                                    onClick={() => quickVoteAll(2)}
+                                                    disabled={eligibleNeuronsInfo.count === 0 || quickVoteState === 'voting'}
+                                                    style={{
+                                                        padding: '8px 16px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        cursor: eligibleNeuronsInfo.count > 0 && quickVoteState !== 'voting' ? 'pointer' : 'not-allowed',
+                                                        fontWeight: 'bold',
+                                                        fontSize: '14px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        backgroundColor: eligibleNeuronsInfo.count > 0 
+                                                            ? quickVoteState === 'success' ? theme.colors.success : 'rgba(231, 76, 60, 0.2)'
+                                                            : 'rgba(100, 100, 100, 0.2)',
+                                                        color: eligibleNeuronsInfo.count > 0 
+                                                            ? theme.colors.error 
+                                                            : 'rgba(120, 120, 120, 0.6)',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                >
+                                                    {quickVoteState === 'voting' ? '...' : '✗'}
+                                                    <span>Reject</span>
+                                                    {eligibleNeuronsInfo.count > 0 && (
+                                                        <span style={{ opacity: 0.7 }}>
+                                                            ({eligibleNeuronsInfo.count} neuron{eligibleNeuronsInfo.count !== 1 ? 's' : ''}, {formatCompactVP(eligibleNeuronsInfo.totalVP)} VP)
+                                                        </span>
+                                                    )}
+                                                </button>
+                                                
+                                                {quickVoteState === 'success' && (
+                                                    <span style={{ color: theme.colors.success, fontSize: '14px' }}>
+                                                        ✓ Vote submitted!
+                                                    </span>
+                                                )}
+                                                {quickVoteState === 'error' && (
+                                                    <span style={{ color: theme.colors.error, fontSize: '14px' }}>
+                                                        ✗ Voting failed
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            {eligibleNeuronsInfo.count === 0 && (
+                                                <div style={{ 
+                                                    marginTop: '10px', 
+                                                    fontSize: '12px', 
+                                                    color: theme.colors.mutedText 
+                                                }}>
+                                                    No eligible neurons available. Either you've already voted or your neurons have no voting power.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     
                                     {/* Modified voting history section to show for any SNS with ballots */}
                                     {votingHistory && votingHistory.length > 0 && (
