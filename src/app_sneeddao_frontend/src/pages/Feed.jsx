@@ -1063,9 +1063,18 @@ function Feed() {
                     console.log('Set hasNewer=false for top-of-feed loading');
                     
                     // If loading from the top (no specific start item), save the highest ID as last seen
+                    // IMPORTANT: Only update if the new ID is higher - applying filters can return
+                    // older items first, and we don't want to reset lastSeenId to a lower value
+                    // which would cause false "new items" notifications
                     if (filteredItems.length > 0) {
-                        saveLastSeenId(filteredItems[0].id);
-                        console.log('Saved last seen ID:', filteredItems[0].id);
+                        const newHighestId = filteredItems[0].id;
+                        const existingLastSeen = getLastSeenId();
+                        if (!existingLastSeen || newHighestId > existingLastSeen) {
+                            saveLastSeenId(newHighestId);
+                            console.log('Saved last seen ID:', newHighestId);
+                        } else {
+                            console.log('Not updating lastSeenId - existing value is higher:', existingLastSeen, 'vs new:', newHighestId);
+                        }
                     }
                 }
             } else if (direction === 'older') {
