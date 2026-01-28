@@ -2723,7 +2723,7 @@ function SneedexOffer() {
                                                                     )}
                                                                 </div>
                                                                 {snsRoot && (
-                                                                    <div style={{...styles.assetDetail}}>
+                                                                    <div style={{...styles.assetDetail, display: 'flex', gap: '12px', flexWrap: 'wrap'}}>
                                                                         <Link 
                                                                             to={`/hub?sns=${snsRoot}`}
                                                                             style={{ 
@@ -2734,6 +2734,18 @@ function SneedexOffer() {
                                                                         >
                                                                             SNS Hub →
                                                                         </Link>
+                                                                        <a 
+                                                                            href={`https://dashboard.internetcomputer.org/sns/${snsRoot}/neuron/${details.neuron_id}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            style={{ 
+                                                                                color: theme.colors.accent,
+                                                                                fontSize: '0.75rem',
+                                                                                textDecoration: 'none',
+                                                                            }}
+                                                                        >
+                                                                            Dashboard ↗
+                                                                        </a>
                                                                     </div>
                                                                 )}
                                                             </>
@@ -3734,16 +3746,30 @@ function SneedexOffer() {
                                                                                 </span>
                                                                             )}
                                                                             {snsRoot && (
-                                                                                <Link 
-                                                                                    to={`/hub?sns=${snsRoot}`}
-                                                                                    style={{ 
-                                                                                        color: theme.colors.success,
-                                                                                        fontSize: '0.75rem',
-                                                                                        textDecoration: 'none',
-                                                                                    }}
-                                                                                >
-                                                                                    SNS Hub →
-                                                                                </Link>
+                                                                                <>
+                                                                                    <Link 
+                                                                                        to={`/hub?sns=${snsRoot}`}
+                                                                                        style={{ 
+                                                                                            color: theme.colors.success,
+                                                                                            fontSize: '0.75rem',
+                                                                                            textDecoration: 'none',
+                                                                                        }}
+                                                                                    >
+                                                                                        SNS Hub →
+                                                                                    </Link>
+                                                                                    <a 
+                                                                                        href={`https://dashboard.internetcomputer.org/sns/${snsRoot}/neuron/${details.neuron_id}`}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        style={{ 
+                                                                                            color: theme.colors.accent,
+                                                                                            fontSize: '0.75rem',
+                                                                                            textDecoration: 'none',
+                                                                                        }}
+                                                                                    >
+                                                                                        Dashboard ↗
+                                                                                    </a>
+                                                                                </>
                                                                             )}
                                                                         </div>
                                                                     );
