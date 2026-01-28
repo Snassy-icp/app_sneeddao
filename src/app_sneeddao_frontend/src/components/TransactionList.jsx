@@ -85,6 +85,11 @@ function TransactionList({
     React.useEffect(() => {
         const mediaQueryCSS = `
             <style id="transaction-responsive-css">
+                /* Default: show table, hide cards (desktop-first) */
+                .transaction-table-container { display: block; }
+                .transaction-cards-container { display: none; }
+                
+                /* Mobile: show cards, hide table */
                 @media (max-width: 640px) {
                     .transaction-table-container { display: none !important; }
                     .transaction-cards-container { display: block !important; }
@@ -98,10 +103,6 @@ function TransactionList({
                         flex: 1 1 100% !important;
                         max-width: none !important;
                     }
-                }
-                @media (min-width: 641px) {
-                    .transaction-table-container { display: block !important; }
-                    .transaction-cards-container { display: none !important; }
                 }
             </style>
         `;
@@ -185,6 +186,7 @@ function TransactionList({
                         setIndexCanisterId(response.index[0]);
                     } catch (err) {
                         console.warn('Failed to fetch index canister:', err);
+                        // Still have ledger, so continue without index
                     }
                 }
                 return;
@@ -196,6 +198,7 @@ function TransactionList({
             setIndexCanisterId(response.index[0]);
         } catch (err) {
             setError('Failed to fetch canister IDs');
+            setLoading(false);
             console.error('Error fetching canister IDs:', err);
         }
     };
@@ -253,6 +256,9 @@ function TransactionList({
     };
 
     const fetchAllFromIndex = async () => {
+        setLoading(true);
+        setError(null);
+        
         try {
             const indexActor = createSnsIndexActor(indexCanisterId);
             const account = {
@@ -511,11 +517,19 @@ function TransactionList({
 
     useEffect(() => {
         if (!ledgerCanisterId) return;
-        if (principalId && indexCanisterId) {
-            fetchAllFromIndex();
-        } else {
-            fetchLedgerTransactions();
+        
+        // If principalId is provided, we need the index canister to fetch principal-specific transactions
+        if (principalId) {
+            // Wait for indexCanisterId to be available
+            if (indexCanisterId) {
+                fetchAllFromIndex();
+            }
+            // If indexCanisterId is not ready yet, don't fetch anything - wait for it
+            return;
         }
+        
+        // No principalId - fetch all transactions from ledger
+        fetchLedgerTransactions();
     }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize]);
 
     useEffect(() => {
@@ -1301,7 +1315,7 @@ function TransactionList({
                     </div>
 
                     {/* Cards view for mobile */}
-                    <div className="transaction-cards-container" style={{ display: 'none' }}>
+                    <div className="transaction-cards-container">
                         {displayedTransactions.map((tx, index) => renderTransactionCard(tx, index))}
                     </div>
 
