@@ -17,6 +17,7 @@ import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtil
 import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
 import PrincipalInput from './components/PrincipalInput';
+import ConfirmDialog from './components/ConfirmDialog';
 import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion } from 'react-icons/fa';
 
 // Accent colors
@@ -126,6 +127,37 @@ function Neuron() {
     const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
     const [showDissolveDelayDialog, setShowDissolveDelayDialog] = useState(false);
     const [dissolveDelayInput, setDissolveDelayInput] = useState('');
+    
+    // Dialog state for confirmations and alerts
+    const [dialogConfig, setDialogConfig] = useState({
+        isOpen: false,
+        type: 'warning',
+        title: '',
+        message: '',
+        confirmText: 'OK',
+        cancelText: 'Cancel',
+        confirmVariant: 'primary',
+        showCancel: true,
+        onConfirm: null
+    });
+    
+    const showDialog = (config) => {
+        setDialogConfig({
+            isOpen: true,
+            type: config.type || 'warning',
+            title: config.title || 'Notice',
+            message: config.message || '',
+            confirmText: config.confirmText || 'OK',
+            cancelText: config.cancelText || 'Cancel',
+            confirmVariant: config.confirmVariant || 'primary',
+            showCancel: config.showCancel !== undefined ? config.showCancel : !!config.onConfirm,
+            onConfirm: config.onConfirm || null
+        });
+    };
+    
+    const closeDialog = () => {
+        setDialogConfig(prev => ({ ...prev, isOpen: false }));
+    };
     
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
 
@@ -634,7 +666,17 @@ function Neuron() {
             });
             
             if (!result.ok) { setError(result.err); }
-            else { await fetchNeuronData(); setBulkFolloweeInput(''); alert(`Successfully added ${newFollowees.length} followee(s) to ${topicInput}`); }
+            else { 
+                await fetchNeuronData(); 
+                setBulkFolloweeInput(''); 
+                showDialog({
+                    type: 'success',
+                    title: 'Followees Added',
+                    message: `Successfully added ${newFollowees.length} followee(s) to ${topicInput}`,
+                    confirmText: 'OK',
+                    showCancel: false
+                });
+            }
         } catch (e) { setError(e.message || String(e)); }
         finally { setActionBusy(false); setActionMsg(''); }
     };
@@ -686,7 +728,13 @@ function Neuron() {
                 await fetchNeuronData();
                 setBulkTopicsNeuronId(''); setBulkTopicsAlias('');
                 const message = `Successfully added neuron to ${addedCount} topic(s)` + (skippedCount > 0 ? ` (skipped ${skippedCount} where already following)` : '');
-                alert(message);
+                showDialog({
+                    type: 'success',
+                    title: 'Followees Added',
+                    message: message,
+                    confirmText: 'OK',
+                    showCancel: false
+                });
             }
         } catch (e) { setError(e.message || String(e)); }
         finally { setActionBusy(false); setActionMsg(''); }
@@ -738,7 +786,13 @@ function Neuron() {
             else {
                 await fetchNeuronData();
                 setNeuronsToAdd([]);
-                alert(`Successfully added ${totalAdded} followee(s) across ${topicFollowingArray.length} topic(s)`);
+                showDialog({
+                    type: 'success',
+                    title: 'Followees Added',
+                    message: `Successfully added ${totalAdded} followee(s) across ${topicFollowingArray.length} topic(s)`,
+                    confirmText: 'OK',
+                    showCancel: false
+                });
             }
         } catch (e) { setError(e.message || String(e)); }
         finally { setActionBusy(false); setActionMsg(''); }
@@ -1255,21 +1309,47 @@ function Neuron() {
                                                                         <button 
                                                                             onClick={() => {
                                                                                 if (isLastPrincipal) {
-                                                                                    alert('⚠️ Cannot remove the last principal!\n\nThis would permanently lock you out of the neuron with no way to recover access.');
+                                                                                    showDialog({
+                                                                                        type: 'error',
+                                                                                        title: 'Cannot Remove Principal',
+                                                                                        message: 'This is the last principal on this neuron. Removing it would permanently lock you out with no way to recover access.',
+                                                                                        confirmText: 'I Understand',
+                                                                                        showCancel: false
+                                                                                    });
                                                                                     return;
                                                                                 }
                                                                                 if (isLastWithManagePermission) {
-                                                                                    alert('⚠️ Cannot remove the last principal with management permissions!\n\nYou would lose the ability to manage this neuron\'s permissions.');
+                                                                                    showDialog({
+                                                                                        type: 'error',
+                                                                                        title: 'Cannot Remove Principal',
+                                                                                        message: 'This is the last principal with management permissions. Removing it would prevent you from managing this neuron\'s permissions in the future.',
+                                                                                        confirmText: 'I Understand',
+                                                                                        showCancel: false
+                                                                                    });
                                                                                     return;
                                                                                 }
                                                                                 if (isCurrentUser) {
-                                                                                    const confirmed = window.confirm(
-                                                                                        '⚠️ Warning: You are about to remove YOURSELF from this neuron!\n\n' +
-                                                                                        'This will revoke your access. Are you absolutely sure you want to proceed?'
-                                                                                    );
-                                                                                    if (!confirmed) return;
+                                                                                    showDialog({
+                                                                                        type: 'warning',
+                                                                                        title: 'Remove Yourself?',
+                                                                                        message: 'You are about to remove YOURSELF from this neuron. This will revoke your access and cannot be easily undone. Are you absolutely sure?',
+                                                                                        confirmText: 'Yes, Remove Me',
+                                                                                        cancelText: 'Cancel',
+                                                                                        confirmVariant: 'danger',
+                                                                                        onConfirm: () => removePrincipal(principalStr, perm.permission_type)
+                                                                                    });
+                                                                                    return;
                                                                                 }
-                                                                                removePrincipal(principalStr, perm.permission_type);
+                                                                                // Normal removal - still confirm
+                                                                                showDialog({
+                                                                                    type: 'warning',
+                                                                                    title: 'Remove Principal?',
+                                                                                    message: 'Are you sure you want to remove this principal from the neuron? This action cannot be easily undone.',
+                                                                                    confirmText: 'Remove',
+                                                                                    cancelText: 'Cancel',
+                                                                                    confirmVariant: 'danger',
+                                                                                    onConfirm: () => removePrincipal(principalStr, perm.permission_type)
+                                                                                });
                                                                             }}
                                                                             disabled={isLastPrincipal}
                                                                             style={{
@@ -1822,9 +1902,24 @@ function Neuron() {
                                 <button
                                     onClick={() => {
                                         const days = parseInt(dissolveDelayInput);
-                                        if (isNaN(days) || days < 0) { alert('Please enter a valid number of days'); return; }
+                                        if (isNaN(days) || days < 0) { 
+                                            showDialog({
+                                                type: 'error',
+                                                title: 'Invalid Input',
+                                                message: 'Please enter a valid number of days (0 or greater).',
+                                                confirmText: 'OK',
+                                                showCancel: false
+                                            });
+                                            return; 
+                                        }
                                         if (maxAdditionalDays > 0 && days > maxAdditionalDays) {
-                                            alert(`Maximum ${isIncreasing ? 'additional ' : ''}dissolve delay is ${maxAdditionalDays} days`);
+                                            showDialog({
+                                                type: 'error',
+                                                title: 'Value Too High',
+                                                message: `Maximum ${isIncreasing ? 'additional ' : ''}dissolve delay is ${maxAdditionalDays} days.`,
+                                                confirmText: 'OK',
+                                                showCancel: false
+                                            });
                                             return;
                                         }
                                         increaseDissolveDelay(days * 24 * 60 * 60);
@@ -1846,6 +1941,20 @@ function Neuron() {
                     </div>
                 );
             })()}
+            
+            {/* Confirmation/Alert Dialog */}
+            <ConfirmDialog
+                isOpen={dialogConfig.isOpen}
+                onClose={closeDialog}
+                onConfirm={dialogConfig.onConfirm}
+                title={dialogConfig.title}
+                message={dialogConfig.message}
+                type={dialogConfig.type}
+                confirmText={dialogConfig.confirmText}
+                cancelText={dialogConfig.cancelText}
+                confirmVariant={dialogConfig.confirmVariant}
+                showCancel={dialogConfig.showCancel}
+            />
         </div>
     );
 }
