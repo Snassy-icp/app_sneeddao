@@ -42,6 +42,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             return true;
         }
     });
+    const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
+        try {
+            const saved = localStorage.getItem('expandQuickLinksOnDesktop');
+            return saved !== null ? JSON.parse(saved) : false; // Default to false (show hamburger everywhere)
+        } catch (error) {
+            return false;
+        }
+    });
     const [snsLogo, setSnsLogo] = useState(null);
     const lastScrollY = useRef(0);
     const lastToggleTime = useRef(0);
@@ -119,11 +127,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setShowVpBarSetting(e.detail);
         };
         
+        const handleExpandQuickLinksChanged = (e) => {
+            setExpandQuickLinksOnDesktop(e.detail);
+        };
+        
         window.addEventListener('storage', handleStorageChange);
         window.addEventListener('showVpBarChanged', handleVpBarChanged);
+        window.addEventListener('expandQuickLinksOnDesktopChanged', handleExpandQuickLinksChanged);
         return () => {
             window.removeEventListener('storage', handleStorageChange);
             window.removeEventListener('showVpBarChanged', handleVpBarChanged);
+            window.removeEventListener('expandQuickLinksOnDesktopChanged', handleExpandQuickLinksChanged);
         };
     }, []);
 
@@ -577,7 +591,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <SnsDropdown onSnsChange={onSnsChange} />
                 )}
 
-                {/* Quick links - shown on wide screens */}
+                {/* Quick links - shown on wide screens (only if expandQuickLinksOnDesktop is enabled) */}
+                {expandQuickLinksOnDesktop && (
                 <div className="hide-on-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <ThemeToggle size="medium" />
                     
@@ -729,9 +744,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         <FaCrown size={16} />
                     </button>
                 </div>
+                )}
 
-                {/* Quick links hamburger menu - shown on narrow screens */}
-                <div className="show-on-narrow" style={{ position: 'relative' }}>
+                {/* Quick links hamburger menu - shown on narrow screens (or always if expandQuickLinksOnDesktop is disabled) */}
+                <div className={expandQuickLinksOnDesktop ? "show-on-narrow" : ""} style={{ position: 'relative' }}>
                     <button
                         ref={quickLinksToggleRef}
                         onClick={() => setIsQuickLinksOpen(!isQuickLinksOpen)}

@@ -136,6 +136,14 @@ export default function Me() {
             return true;
         }
     });
+    const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
+        try {
+            const saved = localStorage.getItem('expandQuickLinksOnDesktop');
+            return saved !== null ? JSON.parse(saved) : false; // Default to false (show hamburger everywhere)
+        } catch (error) {
+            return false;
+        }
+    });
 
     const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
     const [canisterCycleThresholdRed, setCanisterCycleThresholdRed] = useState('');
@@ -1168,6 +1176,49 @@ export default function Me() {
                                                 />
                                                 <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
                                                     {showVpBar ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </label>
+                                        </div>
+                                        
+                                        {/* Expand Quick Links on Desktop Setting */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            padding: '10px 0',
+                                        }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
+                                                    Expand Quick Links on Desktop
+                                                </div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                    Show individual quick link buttons on desktop instead of hamburger menu
+                                                </div>
+                                            </div>
+                                            <label style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                cursor: 'pointer',
+                                                gap: '8px'
+                                            }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={expandQuickLinksOnDesktop}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.checked;
+                                                        setExpandQuickLinksOnDesktop(newValue);
+                                                        localStorage.setItem('expandQuickLinksOnDesktop', JSON.stringify(newValue));
+                                                        // Dispatch custom event for same-page updates
+                                                        window.dispatchEvent(new CustomEvent('expandQuickLinksOnDesktopChanged', { detail: newValue }));
+                                                    }}
+                                                    style={{ 
+                                                        width: '18px', 
+                                                        height: '18px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                />
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
+                                                    {expandQuickLinksOnDesktop ? 'Expanded' : 'Hamburger'}
                                                 </span>
                                             </label>
                                         </div>
