@@ -3759,56 +3759,62 @@ function SneedexOffer() {
                                                                          `State ${nInfo.state}`}
                                                                     </span>
                                                                 )}
-                                                                {/* Neuron ID and links */}
+                                                                {/* Links */}
                                                                 {(() => {
                                                                     const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
                                                                     const snsRoot = sns?.canisters?.root;
-                                                                    return (
-                                                                        <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                                            {snsRoot ? (
-                                                                                <NeuronDisplay
-                                                                                    neuronId={details.neuron_id}
-                                                                                    snsRoot={snsRoot}
-                                                                                    showCopyButton={true}
-                                                                                    enableContextMenu={true}
-                                                                                    isAuthenticated={isAuthenticated}
-                                                                                    style={{ fontSize: '0.8rem' }}
-                                                                                />
-                                                                            ) : (
-                                                                                <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                                                                                    {details.neuron_id?.slice(0, 12)}...
-                                                                                </span>
-                                                                            )}
-                                                                            {snsRoot && (
-                                                                                <>
-                                                                                    <Link 
-                                                                                        to={`/hub?sns=${snsRoot}`}
-                                                                                        style={{ 
-                                                                                            color: theme.colors.success,
-                                                                                            fontSize: '0.75rem',
-                                                                                            textDecoration: 'none',
-                                                                                        }}
-                                                                                    >
-                                                                                        SNS Hub →
-                                                                                    </Link>
-                                                                                    <a 
-                                                                                        href={`https://dashboard.internetcomputer.org/sns/${snsRoot}/neuron/${details.neuron_id}`}
-                                                                                        target="_blank"
-                                                                                        rel="noopener noreferrer"
-                                                                                        style={{ 
-                                                                                            color: theme.colors.accent,
-                                                                                            fontSize: '0.75rem',
-                                                                                            textDecoration: 'none',
-                                                                                        }}
-                                                                                    >
-                                                                                        Dashboard ↗
-                                                                                    </a>
-                                                                                </>
-                                                                            )}
+                                                                    return snsRoot && (
+                                                                        <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto', alignItems: 'center' }}>
+                                                                            <Link 
+                                                                                to={`/hub?sns=${snsRoot}`}
+                                                                                style={{ 
+                                                                                    color: theme.colors.success,
+                                                                                    fontSize: '0.75rem',
+                                                                                    textDecoration: 'none',
+                                                                                }}
+                                                                            >
+                                                                                SNS Hub →
+                                                                            </Link>
+                                                                            <a 
+                                                                                href={`https://dashboard.internetcomputer.org/sns/${snsRoot}/neuron/${details.neuron_id}`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                style={{ 
+                                                                                    color: theme.colors.accent,
+                                                                                    fontSize: '0.75rem',
+                                                                                    textDecoration: 'none',
+                                                                                }}
+                                                                            >
+                                                                                Dashboard ↗
+                                                                            </a>
                                                                         </div>
                                                                     );
                                                                 })()}
                                                             </div>
+                                                            
+                                                            {/* Neuron ID on its own row */}
+                                                            {(() => {
+                                                                const sns = snsData.find(s => s.canisters?.governance === details.governance_id);
+                                                                const snsRoot = sns?.canisters?.root;
+                                                                return (
+                                                                    <div style={{ marginBottom: '0.75rem' }}>
+                                                                        {snsRoot ? (
+                                                                            <NeuronDisplay
+                                                                                neuronId={details.neuron_id}
+                                                                                snsRoot={snsRoot}
+                                                                                showCopyButton={true}
+                                                                                enableContextMenu={true}
+                                                                                isAuthenticated={isAuthenticated}
+                                                                                style={{ fontSize: '0.85rem' }}
+                                                                            />
+                                                                        ) : (
+                                                                            <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: theme.colors.secondaryText }}>
+                                                                                {details.neuron_id}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                             
                                                             {/* Stats Grid */}
                                                             {(() => {
