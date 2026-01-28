@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey, FaList, FaWallet, FaSync, FaArrowDown } from 'react-icons/fa';
+import { FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaExclamationTriangle, FaBrain, FaChevronDown, FaChevronUp, FaInfoCircle, FaKey, FaList, FaWallet, FaSync, FaArrowDown, FaCrown } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
@@ -13,6 +13,7 @@ import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
@@ -97,7 +98,9 @@ function SnsJailbreak() {
     const [scriptFetchAttempted, setScriptFetchAttempted] = useState(false);
     
     // Payment state
-    const [jailbreakFee, setJailbreakFee] = useState(null); // Fee in e8s
+    const [jailbreakFee, setJailbreakFee] = useState(null); // Fee in e8s (user's actual fee)
+    const [regularFee, setRegularFee] = useState(null); // Regular (non-premium) fee in e8s
+    const [premiumFee, setPremiumFee] = useState(null); // Premium fee in e8s
     const [paymentSubaccount, setPaymentSubaccount] = useState(null); // User's payment subaccount (Uint8Array)
     const [paymentBalance, setPaymentBalance] = useState(null); // Balance on subaccount in e8s
     const [walletIcpBalance, setWalletIcpBalance] = useState(null); // User's wallet ICP balance in e8s
@@ -106,6 +109,9 @@ function SnsJailbreak() {
     const [configError, setConfigError] = useState('');
     const [withdrawing, setWithdrawing] = useState(false);
     const [paymentStep, setPaymentStep] = useState(''); // '', 'depositing', 'processing', 'done'
+    
+    // Premium status
+    const { isPremium, loading: premiumLoading } = usePremiumStatus(identity);
     
     // Step 5: Verification
     const [verificationStatus, setVerificationStatus] = useState(null); // null, 'loading', 'success', 'error'
@@ -395,9 +401,14 @@ function SnsJailbreak() {
                 }
             }
             
-            // Get the fee for this user
-            const fee = await backendActor.get_my_jailbreak_fee();
+            // Get the fee for this user and fee settings for comparison
+            const [fee, feeSettings] = await Promise.all([
+                backendActor.get_my_jailbreak_fee(),
+                backendActor.get_jailbreak_fee_settings()
+            ]);
             setJailbreakFee(Number(fee));
+            setRegularFee(Number(feeSettings.fee_regular_e8s));
+            setPremiumFee(Number(feeSettings.fee_premium_e8s));
             
             // Get the payment subaccount
             const subaccount = await backendActor.get_jailbreak_payment_subaccount();
@@ -1837,15 +1848,126 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                                 <p style={{ color: theme.colors.success, fontWeight: '600', margin: 0 }}>
                                     Free! No payment required.
                                 </p>
+                                {/* Premium member savings info */}
+                                {isPremium && regularFee !== null && regularFee > 0 && (
+                                    <div style={{ 
+                                        marginTop: '12px', 
+                                        padding: '10px', 
+                                        background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%)',
+                                        borderRadius: '6px',
+                                        border: '1px solid rgba(255, 215, 0, 0.3)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#FFD700' }}>
+                                            <FaCrown size={14} />
+                                            <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>Premium Savings</span>
+                                        </div>
+                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', margin: '6px 0 0 0' }}>
+                                            Regular price: <span style={{ textDecoration: 'line-through', color: theme.colors.mutedText }}>{formatIcp(regularFee)} ICP</span>
+                                            <br />
+                                            <span style={{ color: theme.colors.success, fontWeight: '500' }}>You saved {formatIcp(regularFee)} ICP!</span>
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <>
-                                {/* Fee Amount */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: theme.colors.secondaryBg, borderRadius: '8px', marginBottom: '1rem' }}>
-                                    <span style={{ color: theme.colors.mutedText }}>Script Fee:</span>
-                                    <span style={{ fontWeight: '600', color: theme.colors.primaryText, fontSize: '1.1rem' }}>
-                                        {formatIcp(jailbreakFee)} ICP
-                                    </span>
+                                {/* Fee Amount with Premium Info */}
+                                <div style={{ 
+                                    padding: '12px', 
+                                    background: theme.colors.secondaryBg, 
+                                    borderRadius: '8px', 
+                                    marginBottom: '1rem' 
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: theme.colors.mutedText }}>Script Fee:</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {/* Show original price crossed out if premium user saved money */}
+                                            {isPremium && regularFee !== null && regularFee > jailbreakFee && (
+                                                <span style={{ 
+                                                    textDecoration: 'line-through', 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '0.9rem' 
+                                                }}>
+                                                    {formatIcp(regularFee)} ICP
+                                                </span>
+                                            )}
+                                            <span style={{ fontWeight: '600', color: theme.colors.primaryText, fontSize: '1.1rem' }}>
+                                                {formatIcp(jailbreakFee)} ICP
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Premium member savings info */}
+                                    {isPremium && regularFee !== null && regularFee > jailbreakFee && (
+                                        <div style={{ 
+                                            marginTop: '10px', 
+                                            padding: '8px 10px', 
+                                            background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%)',
+                                            borderRadius: '6px',
+                                            border: '1px solid rgba(255, 215, 0, 0.3)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '8px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#FFD700' }}>
+                                                <FaCrown size={12} />
+                                                <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>Premium Discount</span>
+                                            </div>
+                                            <span style={{ color: theme.colors.success, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                Saving {formatIcp(regularFee - jailbreakFee)} ICP!
+                                            </span>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Non-premium upgrade prompt */}
+                                    {!isPremium && !premiumLoading && premiumFee !== null && premiumFee < jailbreakFee && (
+                                        <div style={{ 
+                                            marginTop: '10px', 
+                                            padding: '10px', 
+                                            background: `${theme.colors.accent}10`,
+                                            borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.accent}30`
+                                        }}>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between',
+                                                flexWrap: 'wrap',
+                                                gap: '8px'
+                                            }}>
+                                                <div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#FFD700', marginBottom: '4px' }}>
+                                                        <FaCrown size={12} />
+                                                        <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>Go Premium & Save!</span>
+                                                    </div>
+                                                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', margin: 0 }}>
+                                                        Premium price: <strong style={{ color: theme.colors.success }}>{premiumFee === 0 ? 'FREE' : `${formatIcp(premiumFee)} ICP`}</strong>
+                                                        {' '}— Save {formatIcp(jailbreakFee - premiumFee)} ICP!
+                                                    </p>
+                                                </div>
+                                                <Link 
+                                                    to="/premium" 
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        padding: '6px 12px',
+                                                        background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+                                                        borderRadius: '6px',
+                                                        color: '#1a1a2e',
+                                                        textDecoration: 'none',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.8rem',
+                                                        whiteSpace: 'nowrap'
+                                                    }}
+                                                >
+                                                    <FaCrown size={10} />
+                                                    Learn More
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 
                                 {/* Wallet Balance */}
