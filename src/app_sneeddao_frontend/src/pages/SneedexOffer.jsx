@@ -36,6 +36,7 @@ import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { VotingPowerCalculator } from '../utils/VotingPowerUtils';
 import InfoModal from '../components/InfoModal';
 import ConfirmationModal from '../ConfirmationModal';
 
@@ -168,6 +169,7 @@ function SneedexOffer() {
     const [managerWasmVerification, setManagerWasmVerification] = useState({}); // {assetIndex: {verified, officialVersion}}
     const [neuronInfo, setNeuronInfo] = useState({}); // {assetIndex: neuronInfo}
     const [loadingNeuronInfo, setLoadingNeuronInfo] = useState({}); // {assetIndex: boolean}
+    const [snsNervousSystemParams, setSnsNervousSystemParams] = useState({}); // {governanceId: params}
     const [tokenMetadata, setTokenMetadata] = useState({}); // {ledgerId: metadata}
     const [loadingTokenMetadata, setLoadingTokenMetadata] = useState({}); // {assetIndex: boolean}
     const [escrowSubaccount, setEscrowSubaccount] = useState(null); // Blob for ICRC1 token escrow
@@ -655,19 +657,27 @@ function SneedexOffer() {
             const governanceActor = createGovernanceActor(governanceId, { agent });
             const neuronIdBlob = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
             
-            const result = await governanceActor.get_neuron({
-                neuron_id: [{ id: neuronIdBlob }]
-            });
+            // Fetch neuron info and nervous system parameters in parallel
+            const [neuronResult, nsParamsResult] = await Promise.all([
+                governanceActor.get_neuron({ neuron_id: [{ id: neuronIdBlob }] }),
+                !snsNervousSystemParams[governanceId] 
+                    ? governanceActor.get_nervous_system_parameters(null)
+                    : Promise.resolve(null)
+            ]);
             
-            if (result.result && result.result[0] && 'Neuron' in result.result[0]) {
-                setNeuronInfo(prev => ({ ...prev, [assetIndex]: result.result[0].Neuron }));
+            if (neuronResult.result && neuronResult.result[0] && 'Neuron' in neuronResult.result[0]) {
+                setNeuronInfo(prev => ({ ...prev, [assetIndex]: neuronResult.result[0].Neuron }));
+            }
+            
+            if (nsParamsResult) {
+                setSnsNervousSystemParams(prev => ({ ...prev, [governanceId]: nsParamsResult }));
             }
         } catch (e) {
             console.error('Failed to fetch neuron info:', e);
         } finally {
             setLoadingNeuronInfo(prev => ({ ...prev, [assetIndex]: false }));
         }
-    }, [identity]);
+    }, [identity, snsNervousSystemParams]);
     
     // Fetch token metadata from ledger
     const fetchTokenMetadata = useCallback(async (assetIndex, ledgerId) => {
@@ -2563,29 +2573,53 @@ function SneedexOffer() {
                                                         const rawUsd = assetUsdEstimates[idx];
                                                         const usdValue = typeof rawUsd === 'object' ? rawUsd?.value : rawUsd;
                                                         const isCachedUsd = typeof rawUsd === 'object' && rawUsd?.cached;
+                                                        const nsParams = snsNervousSystemParams[details.governance_id];
                                                         
                                                         if (nInfo?.cached_neuron_stake_e8s) {
-                                                            const staked = Number(nInfo.cached_neuron_stake_e8s) / 1e8;
-                                                            const maturityE8s = Number(nInfo.maturity_e8s_equivalent || 0);
+                                                            const stakedE8s = Number(nInfo.cached_neuron_stake_e8s);
+                                                            const normalMaturity = Number(nInfo.maturity_e8s_equivalent || 0);
+                                                            const stakedMaturity = nInfo.staked_maturity_e8s_equivalent?.[0] ? Number(nInfo.staked_maturity_e8s_equivalent[0]) : 0;
+                                                            const totalMaturity = normalMaturity + stakedMaturity;
+                                                            const totalValue = stakedE8s + totalMaturity;
+                                                            
+                                                            // Calculate VP if we have params
+                                                            let calculatedVP = nInfo.voting_power ? Number(nInfo.voting_power) : 0;
+                                                            if (nsParams) {
+                                                                const vpCalc = new VotingPowerCalculator();
+                                                                vpCalc.setParams(nsParams);
+                                                                calculatedVP = vpCalc.getVotingPower(nInfo);
+                                                            }
+                                                            
                                                             return (
+                                                                <>
                                                                 <div style={{
                                                                     fontSize: '0.9rem',
                                                                     fontWeight: '600',
                                                                     color: theme.colors.accent,
                                                                     marginTop: '4px',
                                                                 }}>
-                                                                    {formatAmount(nInfo.cached_neuron_stake_e8s, 8)} {symbol} staked
-                                                                    {maturityE8s > 0 && (
-                                                                        <span style={{ color: theme.colors.mutedText, fontWeight: '400' }}>
-                                                                            {' '}+ {formatAmount(maturityE8s, 8)} maturity
+                                                                    {formatAmount(stakedE8s, 8)} {symbol} staked
+                                                                    {totalMaturity > 0 && (
+                                                                        <span style={{ color: theme.colors.success, fontWeight: '500' }}>
+                                                                            {' '}+ {formatAmount(totalMaturity, 8)} maturity
                                                                         </span>
                                                                     )}
                                                                     {usdValue > 0 && (
-                                                                        <span style={{ color: theme.colors.success, marginLeft: '8px', fontSize: '0.85rem', fontWeight: '500' }}>
+                                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem', fontWeight: '500' }}>
                                                                             (~{formatUsd(usdValue)})
                                                                         </span>
                                                                     )}
                                                                 </div>
+                                                                {calculatedVP > 0 && (
+                                                                    <div style={{
+                                                                        fontSize: '0.8rem',
+                                                                        color: theme.colors.secondaryText,
+                                                                        marginTop: '2px',
+                                                                    }}>
+                                                                        VP: {formatAmount(calculatedVP, 8)}
+                                                                    </div>
+                                                                )}
+                                                                </>
                                                             );
                                                         } else if (details.cached_stake_e8s !== null) {
                                                             // Show cached stake while loading live data
@@ -3777,107 +3811,267 @@ function SneedexOffer() {
                                                             </div>
                                                             
                                                             {/* Stats Grid */}
-                                                            <div style={{
-                                                                display: 'grid',
-                                                                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                                                                gap: '0.75rem',
-                                                            }}>
-                                                                {/* Staked Tokens */}
-                                                                {nInfo.cached_neuron_stake_e8s !== undefined && (
-                                                                    <div style={{
-                                                                        background: theme.colors.tertiaryBg,
-                                                                        borderRadius: '8px',
-                                                                        padding: '0.75rem',
-                                                                    }}>
-                                                                        <div style={{ 
-                                                                            fontSize: '0.7rem', 
-                                                                            color: theme.colors.mutedText,
-                                                                            marginBottom: '4px',
-                                                                        }}>
-                                                                            Staked Amount
-                                                                        </div>
-                                                                        <div style={{ 
-                                                                            fontSize: '1rem', 
-                                                                            fontWeight: '700',
-                                                                            color: theme.colors.accent,
-                                                                        }}>
-                                                                            {(Number(nInfo.cached_neuron_stake_e8s) / 1e8).toFixed(4)}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                            {(() => {
+                                                                const symbol = snsSymbols[details.governance_id] || 'tokens';
+                                                                const nsParams = snsNervousSystemParams[details.governance_id];
                                                                 
-                                                                {/* Voting Power */}
-                                                                {nInfo.voting_power !== undefined && (
-                                                                    <div style={{
-                                                                        background: theme.colors.tertiaryBg,
-                                                                        borderRadius: '8px',
-                                                                        padding: '0.75rem',
-                                                                    }}>
-                                                                        <div style={{ 
-                                                                            fontSize: '0.7rem', 
-                                                                            color: theme.colors.mutedText,
-                                                                            marginBottom: '4px',
-                                                                        }}>
-                                                                            Voting Power
-                                                                        </div>
-                                                                        <div style={{ 
-                                                                            fontSize: '1rem', 
-                                                                            fontWeight: '700',
-                                                                            color: theme.colors.primaryText,
-                                                                        }}>
-                                                                            {(Number(nInfo.voting_power) / 1e8).toFixed(4)}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                                // Calculate age from aging_since_timestamp_seconds
+                                                                const now = Math.floor(Date.now() / 1000);
+                                                                const agingSince = Number(nInfo.aging_since_timestamp_seconds || 0);
+                                                                const ageSeconds = agingSince > 0 && agingSince < now ? now - agingSince : 0;
                                                                 
-                                                                {/* Maturity */}
-                                                                {nInfo.maturity_e8s_equivalent !== undefined && (
-                                                                    <div style={{
-                                                                        background: theme.colors.tertiaryBg,
-                                                                        borderRadius: '8px',
-                                                                        padding: '0.75rem',
-                                                                    }}>
-                                                                        <div style={{ 
-                                                                            fontSize: '0.7rem', 
-                                                                            color: theme.colors.mutedText,
-                                                                            marginBottom: '4px',
-                                                                        }}>
-                                                                            Maturity
-                                                                        </div>
-                                                                        <div style={{ 
-                                                                            fontSize: '1rem', 
-                                                                            fontWeight: '700',
-                                                                            color: theme.colors.success,
-                                                                        }}>
-                                                                            {(Number(nInfo.maturity_e8s_equivalent) / 1e8).toFixed(4)}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                                // Calculate dissolve delay
+                                                                let dissolveDelay = 0;
+                                                                let isDissolving = false;
+                                                                if (nInfo.dissolve_state?.[0]) {
+                                                                    const ds = nInfo.dissolve_state[0];
+                                                                    if (ds.DissolveDelaySeconds !== undefined) {
+                                                                        dissolveDelay = Number(ds.DissolveDelaySeconds);
+                                                                    } else if (ds.WhenDissolvedTimestampSeconds !== undefined) {
+                                                                        const dissolveTs = Number(ds.WhenDissolvedTimestampSeconds);
+                                                                        dissolveDelay = dissolveTs > now ? dissolveTs - now : 0;
+                                                                        isDissolving = dissolveTs > now;
+                                                                    }
+                                                                }
                                                                 
-                                                                {/* Age (Seconds) */}
-                                                                {nInfo.age_seconds !== undefined && Number(nInfo.age_seconds) > 0 && (
+                                                                // Calculate voting power and bonuses using VotingPowerCalculator
+                                                                let calculatedVP = 0;
+                                                                let dissolveBonusPct = 0;
+                                                                let ageBonusPct = 0;
+                                                                let maxDissolveDelay = 0;
+                                                                let maxAge = 0;
+                                                                let maxDissolveBonusPct = 0;
+                                                                let maxAgeBonusPct = 0;
+                                                                
+                                                                if (nsParams) {
+                                                                    const vpCalc = new VotingPowerCalculator();
+                                                                    vpCalc.setParams(nsParams);
+                                                                    calculatedVP = vpCalc.getVotingPower(nInfo);
+                                                                    
+                                                                    maxDissolveDelay = nsParams.max_dissolve_delay_seconds?.[0] ? Number(nsParams.max_dissolve_delay_seconds[0]) : 0;
+                                                                    maxAge = nsParams.max_neuron_age_for_age_bonus?.[0] ? Number(nsParams.max_neuron_age_for_age_bonus[0]) : 0;
+                                                                    maxDissolveBonusPct = nsParams.max_dissolve_delay_bonus_percentage?.[0] ? Number(nsParams.max_dissolve_delay_bonus_percentage[0]) : 0;
+                                                                    maxAgeBonusPct = nsParams.max_age_bonus_percentage?.[0] ? Number(nsParams.max_age_bonus_percentage[0]) : 0;
+                                                                    
+                                                                    // Calculate actual bonus percentages
+                                                                    if (maxDissolveDelay > 0) {
+                                                                        const cappedDissolve = Math.min(dissolveDelay, maxDissolveDelay);
+                                                                        dissolveBonusPct = (cappedDissolve / maxDissolveDelay) * maxDissolveBonusPct;
+                                                                    }
+                                                                    if (maxAge > 0) {
+                                                                        const cappedAge = Math.min(ageSeconds, maxAge);
+                                                                        ageBonusPct = (cappedAge / maxAge) * maxAgeBonusPct;
+                                                                    }
+                                                                }
+                                                                
+                                                                // Maturity breakdown
+                                                                const normalMaturity = Number(nInfo.maturity_e8s_equivalent || 0);
+                                                                const stakedMaturity = nInfo.staked_maturity_e8s_equivalent?.[0] ? Number(nInfo.staked_maturity_e8s_equivalent[0]) : 0;
+                                                                const disbursingMaturity = (nInfo.disburse_maturity_in_progress || [])
+                                                                    .reduce((sum, d) => sum + Number(d.amount_e8s || 0), 0);
+                                                                const totalMaturity = normalMaturity + stakedMaturity + disbursingMaturity;
+                                                                
+                                                                // Total value
+                                                                const stakedE8s = Number(nInfo.cached_neuron_stake_e8s || 0);
+                                                                const totalValue = stakedE8s + totalMaturity;
+                                                                
+                                                                const formatDuration = (seconds) => {
+                                                                    const days = Math.floor(seconds / 86400);
+                                                                    const months = Math.floor(days / 30);
+                                                                    const years = Math.floor(days / 365);
+                                                                    if (years > 0) return `${years}y ${Math.floor((days % 365) / 30)}m`;
+                                                                    if (months > 0) return `${months}m ${days % 30}d`;
+                                                                    return `${days}d`;
+                                                                };
+                                                                
+                                                                return (
+                                                                    <>
                                                                     <div style={{
-                                                                        background: theme.colors.tertiaryBg,
-                                                                        borderRadius: '8px',
-                                                                        padding: '0.75rem',
+                                                                        display: 'grid',
+                                                                        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                                                        gap: '0.75rem',
                                                                     }}>
-                                                                        <div style={{ 
-                                                                            fontSize: '0.7rem', 
-                                                                            color: theme.colors.mutedText,
-                                                                            marginBottom: '4px',
+                                                                        {/* Staked Amount */}
+                                                                        <div style={{
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
                                                                         }}>
-                                                                            Age
+                                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
+                                                                                Staked Amount
+                                                                            </div>
+                                                                            <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.accent }}>
+                                                                                {formatAmount(stakedE8s, 8)} {symbol}
+                                                                            </div>
                                                                         </div>
-                                                                        <div style={{ 
-                                                                            fontSize: '1rem', 
-                                                                            fontWeight: '700',
-                                                                            color: theme.colors.primaryText,
+                                                                        
+                                                                        {/* Voting Power */}
+                                                                        <div style={{
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
                                                                         }}>
-                                                                            {Math.floor(Number(nInfo.age_seconds) / 86400)}d
+                                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
+                                                                                Voting Power
+                                                                            </div>
+                                                                            <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText }}>
+                                                                                {formatAmount(calculatedVP || nInfo.voting_power || 0, 8)}
+                                                                            </div>
+                                                                            {nsParams && (
+                                                                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                                                    Multiplier: {Number(nInfo.voting_power_percentage_multiplier || 100)}%
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        
+                                                                        {/* Total Maturity */}
+                                                                        <div style={{
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
+                                                                        }}>
+                                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
+                                                                                Total Maturity
+                                                                            </div>
+                                                                            <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success }}>
+                                                                                {formatAmount(totalMaturity, 8)} {symbol}
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        {/* Total Value */}
+                                                                        <div style={{
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
+                                                                        }}>
+                                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
+                                                                                Total Value
+                                                                            </div>
+                                                                            <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.warning }}>
+                                                                                {formatAmount(totalValue, 8)} {symbol}
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        {/* Age */}
+                                                                        <div style={{
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
+                                                                        }}>
+                                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
+                                                                                Neuron Age
+                                                                            </div>
+                                                                            <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText }}>
+                                                                                {formatDuration(ageSeconds)}
+                                                                            </div>
+                                                                            {nsParams && maxAge > 0 && (
+                                                                                <div style={{ fontSize: '0.65rem', color: ageBonusPct > 0 ? theme.colors.success : theme.colors.mutedText, marginTop: '2px' }}>
+                                                                                    Age Bonus: +{ageBonusPct.toFixed(1)}%
+                                                                                    {ageSeconds < maxAge && <span style={{ color: theme.colors.mutedText }}> (max {maxAgeBonusPct}%)</span>}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        
+                                                                        {/* Dissolve Delay */}
+                                                                        <div style={{
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
+                                                                        }}>
+                                                                            <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px' }}>
+                                                                                {isDissolving ? 'Time Until Dissolved' : 'Dissolve Delay'}
+                                                                            </div>
+                                                                            <div style={{ fontSize: '1rem', fontWeight: '700', color: isDissolving ? theme.colors.warning : theme.colors.primaryText }}>
+                                                                                {formatDuration(dissolveDelay)}
+                                                                            </div>
+                                                                            {nsParams && maxDissolveDelay > 0 && (
+                                                                                <div style={{ fontSize: '0.65rem', color: dissolveBonusPct > 0 ? theme.colors.success : theme.colors.mutedText, marginTop: '2px' }}>
+                                                                                    Dissolve Bonus: +{dissolveBonusPct.toFixed(1)}%
+                                                                                    {dissolveDelay < maxDissolveDelay && <span style={{ color: theme.colors.mutedText }}> (max {maxDissolveBonusPct}%)</span>}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     </div>
-                                                                )}
-                                                            </div>
+                                                                    
+                                                                    {/* Maturity Breakdown */}
+                                                                    {totalMaturity > 0 && (
+                                                                        <div style={{
+                                                                            marginTop: '0.75rem',
+                                                                            background: theme.colors.tertiaryBg,
+                                                                            borderRadius: '8px',
+                                                                            padding: '0.75rem',
+                                                                        }}>
+                                                                            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                                                                                Maturity Breakdown
+                                                                            </div>
+                                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', fontSize: '0.8rem' }}>
+                                                                                {normalMaturity > 0 && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.secondaryText }}>
+                                                                                        <span>Available:</span>
+                                                                                        <span style={{ color: theme.colors.success, fontWeight: '600' }}>{formatAmount(normalMaturity, 8)}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {stakedMaturity > 0 && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.secondaryText }}>
+                                                                                        <span>Staked:</span>
+                                                                                        <span style={{ color: theme.colors.accent, fontWeight: '600' }}>{formatAmount(stakedMaturity, 8)}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {disbursingMaturity > 0 && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.secondaryText }}>
+                                                                                        <span>Disbursing:</span>
+                                                                                        <span style={{ color: theme.colors.warning, fontWeight: '600' }}>{formatAmount(disbursingMaturity, 8)}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    
+                                                                    {/* Additional Info */}
+                                                                    <div style={{
+                                                                        marginTop: '0.75rem',
+                                                                        display: 'grid',
+                                                                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                                                        gap: '8px',
+                                                                        fontSize: '0.8rem',
+                                                                        color: theme.colors.secondaryText,
+                                                                    }}>
+                                                                        {nInfo.created_timestamp_seconds && Number(nInfo.created_timestamp_seconds) > 0 && (
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                <span>Created:</span>
+                                                                                <span style={{ color: theme.colors.primaryText }}>
+                                                                                    {new Date(Number(nInfo.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                        {nInfo.auto_stake_maturity !== undefined && (
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                <span>Auto-stake Maturity:</span>
+                                                                                <span style={{ color: nInfo.auto_stake_maturity?.[0] ? theme.colors.success : theme.colors.mutedText }}>
+                                                                                    {nInfo.auto_stake_maturity?.[0] ? 'Yes' : 'No'}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                        {nInfo.neuron_fees_e8s !== undefined && Number(nInfo.neuron_fees_e8s) > 0 && (
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                <span>Accumulated Fees:</span>
+                                                                                <span style={{ color: theme.colors.warning }}>
+                                                                                    {formatAmount(nInfo.neuron_fees_e8s, 8)} {symbol}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                        {nInfo.source_nns_neuron_id?.[0] && (
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                <span>Source NNS Neuron:</span>
+                                                                                <span style={{ color: theme.colors.accent, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                                                                    {nInfo.source_nns_neuron_id[0].id?.toString().slice(0, 12)}...
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    </>
+                                                                );
+                                                            })()}
                                                             
                                                             {/* Permissions/Hotkeys */}
                                                             {nInfo.permissions && nInfo.permissions.length > 0 && (
