@@ -12,27 +12,11 @@ import PrincipalInput from './PrincipalInput';
 import { Link } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { subaccountToHex } from '../utils/StringUtils';
-
-const validateNameInput = (input) => {
-    if (!input.trim()) return 'Name cannot be empty';
-    if (input.length > 32) return 'Name cannot be longer than 32 characters';
-    // Only allow letters, numbers, spaces, hyphens, underscores, dots, and apostrophes
-    const validPattern = /^[a-zA-Z0-9\s\-_.']+$/;
-    if (!validPattern.test(input)) {
-        return 'Name can only contain letters, numbers, spaces, hyphens (-), underscores (_), dots (.), and apostrophes (\')';
-    }
-    return '';
-};
+import { getRelativeTime, getFullDate } from '../utils/DateUtils';
+import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort } from 'react-icons/fa';
 
 const PAGE_SIZES = [10, 20, 50, 100];
-const FETCH_SIZE = 100; // How many transactions to fetch per request
-
-const TRANSACTION_TYPES = {
-    TRANSFER: 'transfer',
-    MINT: 'mint',
-    BURN: 'burn',
-    APPROVE: 'approve'
-};
+const FETCH_SIZE = 100;
 
 const TransactionType = {
     ALL: 'all',
@@ -42,7 +26,21 @@ const TransactionType = {
     APPROVE: 'approve'
 };
 
-const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+// Accent colors
+const txPrimary = '#6366f1';
+const txSecondary = '#8b5cf6';
+const txAccent = '#06b6d4';
+
+// Transaction type colors and icons
+const getTypeInfo = (type) => {
+    const types = {
+        transfer: { color: txPrimary, bg: `${txPrimary}20`, icon: <FaExchangeAlt size={12} />, label: 'Transfer' },
+        mint: { color: '#10b981', bg: 'rgba(16, 185, 129, 0.2)', icon: <FaCoins size={12} />, label: 'Mint' },
+        burn: { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.2)', icon: <FaFire size={12} />, label: 'Burn' },
+        approve: { color: txAccent, bg: `${txAccent}20`, icon: <FaCheckCircle size={12} />, label: 'Approve' }
+    };
+    return types[type?.toLowerCase()] || { color: '#6b7280', bg: 'rgba(107, 114, 128, 0.2)', icon: null, label: type || 'Unknown' };
+};
 
 function TransactionList({ 
     snsRootCanisterId, 
@@ -54,268 +52,12 @@ function TransactionList({
     embedded = false
 }) {
     const { theme } = useTheme();
-    
-    const styles = {
-        container: {
-            backgroundColor: theme.colors.secondaryBg,
-            borderRadius: '8px',
-            padding: '20px',
-            marginTop: '20px',
-            fontFamily: SYSTEM_FONT,
-            fontSize: '14px'
-        },
-        header: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '20px'
-        },
-        filters: {
-            display: 'flex',
-            gap: '10px',
-            marginBottom: '20px'
-        },
-        filterButton: {
-            backgroundColor: theme.colors.tertiaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '8px 16px',
-            color: theme.colors.primaryText,
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontFamily: SYSTEM_FONT
-        },
-        filterButtonActive: {
-            backgroundColor: theme.colors.accent,
-            border: `1px solid ${theme.colors.accent}`
-        },
-        table: {
-            width: '100%',
-            borderCollapse: 'collapse'
-        },
-        th: {
-            textAlign: 'left',
-            padding: '10px 12px',
-            borderBottom: `1px solid ${theme.colors.border}`,
-            color: theme.colors.mutedText,
-            fontSize: '12px',
-            fontWeight: '500',
-            fontFamily: SYSTEM_FONT
-        },
-        td: {
-            padding: '10px 12px',
-            borderBottom: `1px solid ${theme.colors.border}`,
-            color: theme.colors.primaryText,
-            fontSize: '13px',
-            fontFamily: SYSTEM_FONT
-        },
-        pagination: {
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '10px',
-            marginTop: '20px'
-        },
-        pageButton: {
-            backgroundColor: theme.colors.tertiaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '8px 16px',
-            color: theme.colors.primaryText,
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontFamily: SYSTEM_FONT
-        },
-        pageButtonDisabled: {
-            opacity: 0.5,
-            cursor: 'not-allowed'
-        },
-        loadingSpinner: {
-            display: 'flex',
-            justifyContent: 'center',
-            padding: '20px',
-            color: theme.colors.mutedText,
-            fontSize: '13px',
-            fontFamily: SYSTEM_FONT
-        },
-        filtersContainer: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            marginBottom: '20px'
-        },
-        filtersRow: {
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '16px',
-            alignItems: 'center'
-        },
-        filterGroup: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            minWidth: '180px',
-            flex: '1 1 180px',
-            maxWidth: '250px'
-        },
-        compactFilterGroup: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            minWidth: '120px',
-            flex: '0 0 auto'
-        },
-        filterLabel: {
-            color: theme.colors.mutedText,
-            fontSize: '12px',
-            fontFamily: SYSTEM_FONT
-        },
-        filterInput: {
-            backgroundColor: theme.colors.tertiaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '8px 12px',
-            color: theme.colors.primaryText,
-            width: '200px',
-            fontSize: '13px',
-            fontFamily: SYSTEM_FONT
-        },
-        filterSelect: {
-            backgroundColor: theme.colors.tertiaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '8px',
-            color: theme.colors.primaryText,
-            cursor: 'pointer',
-            fontSize: '13px',
-            minWidth: '80px',
-            fontFamily: SYSTEM_FONT
-        },
-        headerTitle: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            cursor: 'pointer',
-            userSelect: 'none'
-        },
-        collapseIcon: {
-            fontSize: '18px',
-            color: theme.colors.mutedText,
-            transition: 'transform 0.2s'
-        },
-        collapsedIcon: {
-            transform: 'rotate(-90deg)'
-        },
-        tableContainer: {
-            display: 'block'
-        },
-        cardsContainer: {
-            display: 'none'
-        },
-        transactionCard: {
-            backgroundColor: theme.colors.secondaryBg,
-            borderRadius: '8px',
-            padding: '12px',
-            marginBottom: '8px',
-            border: `1px solid ${theme.colors.border}`,
-            fontFamily: SYSTEM_FONT
-        },
-        cardHeader: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '8px'
-        },
-        cardType: {
-            padding: '3px 6px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontWeight: '600',
-            textTransform: 'uppercase',
-            fontFamily: SYSTEM_FONT
-        },
-        cardField: {
-            marginBottom: '6px'
-        },
-        cardLabel: {
-            color: theme.colors.mutedText,
-            fontSize: '11px',
-            marginBottom: '2px',
-            fontFamily: SYSTEM_FONT
-        },
-        cardValue: {
-            color: theme.colors.primaryText,
-            fontSize: '13px',
-            wordBreak: 'break-all',
-            fontFamily: SYSTEM_FONT
-        },
-        paginationControls: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-        },
-        select: {
-            backgroundColor: theme.colors.tertiaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            padding: '8px',
-            color: theme.colors.primaryText,
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontFamily: SYSTEM_FONT
-        },
-        sortableHeader: {
-            cursor: 'pointer',
-            userSelect: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px'
-        },
-        sortIcon: {
-            fontSize: '12px',
-            opacity: 0.7
-        },
-        sortableHeaderGroup: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px'
-        },
-        sortableSubHeader: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            cursor: 'pointer'
-        },
-        headerDivider: {
-            color: theme.colors.mutedText,
-            userSelect: 'none'
-        },
-        principalCell: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px'
-        },
-        subaccount: {
-            fontSize: '11px',
-            color: theme.colors.mutedText,
-            wordBreak: 'break-all',
-            fontFamily: SYSTEM_FONT
-        }
-    };
-
-    const containerStyle = embedded ? {
-        backgroundColor: 'transparent',
-        borderRadius: 0,
-        padding: 0,
-        marginTop: 0
-    } : styles.container;
-
-
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [rawTransactions, setRawTransactions] = useState([]); // Raw transactions from server (ledger mode)
-    const [allTransactions, setAllTransactions] = useState([]); // All transactions for specific principal (index mode)
-    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Filtered and sorted transactions
+    const [rawTransactions, setRawTransactions] = useState([]);
+    const [allTransactions, setAllTransactions] = useState([]);
+    const [displayedTransactions, setDisplayedTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
@@ -324,10 +66,7 @@ function TransactionList({
     const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [sortConfig, setSortConfig] = useState({
-        key: 'index',
-        direction: 'asc'
-    });
+    const [sortConfig, setSortConfig] = useState({ key: 'index', direction: 'asc' });
     const [fromFilter, setFromFilter] = useState('');
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
@@ -340,7 +79,9 @@ function TransactionList({
         const urlStart = searchParams.get('start');
         return urlStart ? urlStart : '';
     });
-    // Add responsive CSS for table/cards switching and filter layout
+    const [hoveredRow, setHoveredRow] = useState(null);
+
+    // Responsive CSS
     React.useEffect(() => {
         const mediaQueryCSS = `
             <style id="transaction-responsive-css">
@@ -355,20 +96,7 @@ function TransactionList({
                     .transaction-compact-filter-group {
                         min-width: 100% !important;
                         flex: 1 1 100% !important;
-                    }
-                }
-                @media (min-width: 769px) and (max-width: 1024px) {
-                    .transaction-filters-row {
-                        flex-wrap: wrap !important;
-                    }
-                    .transaction-filter-group {
-                        flex: 1 1 40% !important;
-                        min-width: 180px !important;
-                        max-width: 220px !important;
-                    }
-                    .transaction-compact-filter-group {
-                        flex: 1 1 20% !important;
-                        min-width: 120px !important;
+                        max-width: none !important;
                     }
                 }
                 @media (min-width: 769px) {
@@ -378,118 +106,92 @@ function TransactionList({
             </style>
         `;
         
-        // Remove existing style if it exists
         const existingStyle = document.getElementById('transaction-responsive-css');
-        if (existingStyle) {
-            existingStyle.remove();
-        }
-        
-        // Add new style
+        if (existingStyle) existingStyle.remove();
         document.head.insertAdjacentHTML('beforeend', mediaQueryCSS);
         
-        // Cleanup on unmount
         return () => {
             const style = document.getElementById('transaction-responsive-css');
             if (style) style.remove();
         };
     }, []);
 
-    // Effect to sync page with URL start parameter and input field
+    // URL sync effects
     useEffect(() => {
         const urlStart = searchParams.get('start');
         if (urlStart) {
             const startIndex = parseInt(urlStart);
             setStartTxIndex(startIndex);
             setPage(Math.floor(startIndex / pageSize));
-            // Always sync input field with URL parameter on page load/refresh
-            // but don't override if user is actively typing (input has focus)
-            const inputElement = document.querySelector('input[placeholder="Go to tx index"]');
+            const inputElement = document.querySelector('input[placeholder="Jump to index..."]');
             if (!inputElement || inputElement !== document.activeElement) {
                 setTxIndexInput(startIndex.toString());
             }
         } else if (startTxIndex === 0) {
-            // Only reset input if we're at the beginning
             setTxIndexInput('');
         }
     }, [searchParams, pageSize]);
 
-    // Update URL when page changes (but only for pagination, not direct tx input)
     useEffect(() => {
-        if (!principalId) {  // Only update URL in ledger mode
+        if (!principalId) {
             const newStart = page * pageSize;
             const currentUrlStart = searchParams.get('start');
             const currentUrlStartNum = currentUrlStart ? parseInt(currentUrlStart) : 0;
             
-            // Only update URL if:
-            // 1. The calculated start differs from current URL start
-            // 2. The difference is due to page navigation, not direct tx input
-            // 3. We're not in the middle of processing a direct tx input
             if (newStart !== currentUrlStartNum && newStart === startTxIndex) {
                 setSearchParams(prev => {
                     const newParams = new URLSearchParams(prev);
                     newParams.set('start', newStart.toString());
                     return newParams;
-                }, { replace: true }); // Use replace to prevent history buildup
+                }, { replace: true });
             }
             
-            // Always keep startTxIndex in sync with the calculated page start
             if (newStart !== startTxIndex) {
                 setStartTxIndex(newStart);
             }
         }
     }, [page, pageSize, startTxIndex, principalId, searchParams, setSearchParams]);
 
-    // Handle direct transaction index input
     const handleTxIndexSubmit = (e) => {
         e.preventDefault();
-        e.stopPropagation(); // Prevent event bubbling that might cause issues on mobile
+        e.stopPropagation();
         
         const index = parseInt(txIndexInput);
         if (!isNaN(index) && index >= 0) {
             const newPage = Math.floor(index / pageSize);
-            
-            // Update state first
             setPage(newPage);
             setStartTxIndex(index);
-            // Don't clear the input - keep the value that matches the URL param
             
-            // Update URL parameters only if they would actually change
             const currentStart = searchParams.get('start');
             if (currentStart !== index.toString()) {
                 setSearchParams(prev => {
                     const newParams = new URLSearchParams(prev);
                     newParams.set('start', index.toString());
                     return newParams;
-                }, { replace: true }); // Use replace instead of push to prevent history buildup
+                }, { replace: true });
             }
         }
     };
 
-    // Fetch canister IDs from SNS root
+    // Fetch functions
     const fetchCanisterIds = async () => {
         try {
-            // If ledger canister ID is provided directly, use it
             if (providedLedgerCanisterId) {
                 setLedgerCanisterId(providedLedgerCanisterId);
-                // Try to fetch index canister if we have SNS root
                 if (snsRootCanisterId) {
                     try {
                         const snsRootActor = createSnsRootActor(snsRootCanisterId);
                         const response = await snsRootActor.list_sns_canisters({});
                         setIndexCanisterId(response.index[0]);
                     } catch (err) {
-                        console.warn('Failed to fetch index canister, will work without it:', err);
+                        console.warn('Failed to fetch index canister:', err);
                     }
                 }
                 return;
             }
 
-            // Otherwise, fetch from SNS root
             const snsRootActor = createSnsRootActor(snsRootCanisterId);
             const response = await snsRootActor.list_sns_canisters({});
-            console.log("list_sns_canisters", response);
-
-            // Set both ledger and index canister IDs
             setLedgerCanisterId(response.ledger[0]);
             setIndexCanisterId(response.index[0]);
         } catch (err) {
@@ -498,7 +200,6 @@ function TransactionList({
         }
     };
 
-    // Fetch transactions from ledger and archives if needed
     const fetchLedgerTransactions = async () => {
         if (!ledgerCanisterId) return;
 
@@ -509,33 +210,21 @@ function TransactionList({
             const ledgerActor = createSnsLedgerActor(ledgerCanisterId, { agentOptions: { identity } });
             const startIndex = page * pageSize;
 
-            // First try to get transactions from the ledger
             const response = await ledgerActor.get_transactions({
                 start: BigInt(startIndex),
                 length: BigInt(pageSize)
             });
 
-            console.log("Ledger response:", response);
-
-            // Add the actual transaction index to each transaction
             let txs = response.transactions.map((tx, idx) => ({
                 ...tx,
                 txIndex: startIndex + idx
             }));
             setTotalTransactions(Number(response.log_length));
 
-            // If we have archived transactions to fetch, get them
             if (response.archived_transactions.length > 0) {
                 for (const archive of response.archived_transactions) {
                     try {
                         const archiveCanisterId = archive.callback[0].toText();
-                        console.log("Archive info:", {
-                            callback: archive.callback,
-                            archiveCanisterId,
-                            start: archive.start,
-                            length: archive.length
-                        });
-                        
                         const archiveActor = createSnsArchiveActor(archiveCanisterId, { agentOptions: { identity } });
                         
                         const archiveResponse = await archiveActor.get_transactions({
@@ -543,7 +232,6 @@ function TransactionList({
                             length: archive.length
                         });
 
-                        // Add transaction index to archived transactions
                         const archivedTxsWithIndex = archiveResponse.transactions.map((tx, idx) => ({
                             ...tx,
                             txIndex: Number(archive.start) + idx
@@ -555,9 +243,7 @@ function TransactionList({
                 }
             }
 
-            // Store raw transactions - filtering will be done separately
             setRawTransactions(txs);
-
         } catch (err) {
             setError('Failed to fetch transactions');
             console.error('Error fetching transactions:', err);
@@ -566,7 +252,6 @@ function TransactionList({
         }
     };
 
-    // Fetch all transactions from index canister
     const fetchAllFromIndex = async () => {
         try {
             const indexActor = createSnsIndexActor(indexCanisterId);
@@ -580,7 +265,6 @@ function TransactionList({
             let hasMore = true;
 
             while (hasMore) {
-                console.log("Fetching transactions from index", startIndex);
                 const response = await indexActor.get_account_transactions({
                     account,
                     max_results: FETCH_SIZE,
@@ -594,7 +278,6 @@ function TransactionList({
                 const transactions = response.Ok.transactions;
                 allTxs = [...allTxs, ...transactions];
                 
-                // If we got less than the fetch size, we're done
                 if (transactions.length < FETCH_SIZE) {
                     hasMore = false;
                 } else {
@@ -602,10 +285,8 @@ function TransactionList({
                 }
             }
 
-            console.log("Total transactions fetched:", allTxs.length);
             setAllTransactions(allTxs);
             setTotalTransactions(allTxs.length);
-            // Filtering will be handled by the separate useEffect
         } catch (err) {
             setError('Failed to fetch transactions from index');
             console.error('Error fetching from index:', err);
@@ -614,265 +295,7 @@ function TransactionList({
         }
     };
 
-    // Update displayed transactions based on page and filter
-    const updateDisplayedTransactions = (transactions, pageNum, type, size) => {
-        const filtered = type === TransactionType.ALL 
-            ? transactions 
-            : transactions.filter(tx => tx.transaction?.kind === type);
-        
-        // Apply from/to filters
-        const filteredByAddress = filtered.filter(tx => {
-            const fromPrincipal = getFromPrincipal(tx);
-            const toPrincipal = getToPrincipal(tx);
-
-            const fromMatches = matchesPrincipalFilter(
-                fromPrincipal,
-                fromFilter,
-                fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
-            );
-
-            const toMatches = matchesPrincipalFilter(
-                toPrincipal,
-                toFilter,
-                toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
-            );
-
-            return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
-        });
-
-        const sorted = sortTransactions(filteredByAddress);
-        const start = pageNum * size;
-        const end = start + size;
-        setDisplayedTransactions(sorted.slice(start, end));
-        setTotalTransactions(sorted.length);
-    };
-
-    // Effect to fetch canister IDs
-    useEffect(() => {
-        fetchCanisterIds();
-    }, [snsRootCanisterId, providedLedgerCanisterId]);
-
-    // Effect to fetch transactions when dependencies change
-    useEffect(() => {
-        if (!ledgerCanisterId) return;
-
-        if (principalId && indexCanisterId) {
-            // Use index canister for principal-specific queries
-            fetchAllFromIndex();
-        } else {
-            // Use ledger for general transaction list
-            fetchLedgerTransactions();
-        }
-    }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize]);
-
-    // Effect to filter and sort transactions client-side
-    useEffect(() => {
-        if (principalId && allTransactions.length > 0) {
-            // For index transactions (specific principal)
-            updateDisplayedTransactions(allTransactions, page, selectedType, pageSize);
-        } else if (!principalId && rawTransactions.length > 0) {
-            // For ledger transactions (all transactions) - filter client-side
-            let filteredTxs = rawTransactions;
-
-            // Apply type filter
-            if (selectedType !== TransactionType.ALL) {
-                filteredTxs = filteredTxs.filter(tx => tx?.kind === selectedType);
-            }
-
-            // Apply from/to filters
-            if (fromFilter || toFilter) {
-                filteredTxs = filteredTxs.filter(tx => {
-                    const fromPrincipal = getFromPrincipal(tx);
-                    const toPrincipal = getToPrincipal(tx);
-
-                    const fromMatches = matchesPrincipalFilter(
-                        fromPrincipal,
-                        fromFilter,
-                        fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
-                    );
-
-                    const toMatches = matchesPrincipalFilter(
-                        toPrincipal,
-                        toFilter,
-                        toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
-                    );
-
-                    return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
-                });
-            }
-
-            // Sort transactions
-            const sortedTxs = sortTransactions(filteredTxs);
-            setDisplayedTransactions(sortedTxs);
-        }
-    }, [rawTransactions, allTransactions, principalId, page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator]);
-
-    // Separate effect to re-sort when principal display info changes (only for principal-based sorting)
-    useEffect(() => {
-        if (displayedTransactions.length > 0 && (sortConfig.key === 'fromAddress' || sortConfig.key === 'toAddress')) {
-            const sortedTxs = sortTransactions(displayedTransactions);
-            setDisplayedTransactions(sortedTxs);
-        }
-    }, [principalDisplayInfo, sortConfig.key, sortConfig.direction]);
-
-    // Add effect to fetch principal display info
-    useEffect(() => {
-        const fetchPrincipalInfo = async () => {
-            if (!displayedTransactions.length || !principalNames || !principalNicknames) return;
-
-            const uniquePrincipals = new Set();
-            displayedTransactions.forEach(tx => {
-                const fromPrincipal = getFromPrincipal(tx);
-                const toPrincipal = getToPrincipal(tx);
-
-                if (fromPrincipal) {
-                    try {
-                        uniquePrincipals.add(fromPrincipal.toString());
-                    } catch (error) {
-                        console.error('Error converting fromPrincipal to string:', fromPrincipal, error);
-                    }
-                }
-
-                if (toPrincipal) {
-                    try {
-                        uniquePrincipals.add(toPrincipal.toString());
-                    } catch (error) {
-                        console.error('Error converting toPrincipal to string:', toPrincipal, error);
-                    }
-                }
-            });
-
-            console.log('Unique principals to fetch:', Array.from(uniquePrincipals));
-
-            const displayInfoMap = new Map();
-            Array.from(uniquePrincipals).forEach(principal => {
-                try {
-                    console.log('Fetching display info for principal:', principal);
-                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
-                    console.log('Got display info for principal:', { principal, displayInfo });
-                    displayInfoMap.set(principal, displayInfo);
-                } catch (error) {
-                    console.error('Error processing principal:', principal, error);
-                }
-            });
-
-            setPrincipalDisplayInfo(displayInfoMap);
-        };
-
-        fetchPrincipalInfo();
-    }, [displayedTransactions, identity, principalNames, principalNicknames]);
-
-    const formatAmount = (amount, decimals = 8) => {
-        const value = Number(amount) / Math.pow(10, decimals);
-        return value.toLocaleString(undefined, {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 8
-        });
-    };
-
-    const formatTimestamp = (timestamp) => {
-        return new Date(Number(timestamp) / 1_000_000).toLocaleString();
-    };
-
-    // Update handlePageSizeChange
-    const handlePageSizeChange = (event) => {
-        const newSize = Number(event.target.value);
-        setPageSize(newSize);
-        setPage(0); // Reset to first page when changing page size
-    };
-
-    // Get display value for principal sorting
-    const getPrincipalSortValue = (principal) => {
-        console.log('getPrincipalSortValue input:', principal);
-        if (!principal || typeof principal.toString !== 'function') {
-            console.log('Invalid principal in getPrincipalSortValue:', principal);
-            return '';
-        }
-        try {
-            console.log('Converting principal to string:', principal);
-            const principalStr = principal.toString();
-            console.log('Got principal string:', principalStr);
-            const displayInfo = principalDisplayInfo.get(principalStr);
-            if (!displayInfo) return principalStr;
-            
-            // Prioritize name > nickname > principal ID
-            if (displayInfo.name) return displayInfo.name;
-            if (displayInfo.nickname) return displayInfo.nickname;
-            return principalStr;
-        } catch (error) {
-            console.error('Error in getPrincipalSortValue:', error);
-            return '';
-        }
-    };
-
-    // Add sorting function
-    const sortTransactions = useCallback((transactions) => {
-        if (!sortConfig.key) return transactions;
-
-        console.log('Sorting transactions with config:', sortConfig);
-        return [...transactions].sort((a, b) => {
-            if (!a || !b) {
-                console.warn('Invalid transaction in sort:', { a, b });
-                return 0;
-            }
-
-            let aValue, bValue;
-
-            try {
-                switch (sortConfig.key) {
-                    case 'index':
-                        aValue = a.txIndex ?? a.id ?? 0n;
-                        bValue = b.txIndex ?? b.id ?? 0n;
-                        return sortConfig.direction === 'asc' 
-                            ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
-                            : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
-                    case 'type':
-                        aValue = a.kind || '';
-                        bValue = b.kind || '';
-                        break;
-                    case 'fromAddress':
-                        const aFromPrincipal = getFromPrincipal(a);
-                        const bFromPrincipal = getFromPrincipal(b);
-                        console.log('Sorting fromAddress:', { aFromPrincipal, bFromPrincipal });
-                        aValue = aFromPrincipal ? getPrincipalSortValue(aFromPrincipal) : '';
-                        bValue = bFromPrincipal ? getPrincipalSortValue(bFromPrincipal) : '';
-                        break;
-                    case 'toAddress':
-                        const aToPrincipal = getToPrincipal(a);
-                        const bToPrincipal = getToPrincipal(b);
-                        console.log('Sorting toAddress:', { aToPrincipal, bToPrincipal });
-                        aValue = aToPrincipal ? getPrincipalSortValue(aToPrincipal) : '';
-                        bValue = bToPrincipal ? getPrincipalSortValue(bToPrincipal) : '';
-                        break;
-                    case 'amount':
-                        aValue = getTransactionAmount(a) || 0n;
-                        bValue = getTransactionAmount(b) || 0n;
-                        return sortConfig.direction === 'asc' 
-                            ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
-                            : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
-                    case 'timestamp':
-                        aValue = Number(a.timestamp || 0);
-                        bValue = Number(b.timestamp || 0);
-                        return sortConfig.direction === 'asc' 
-                            ? aValue - bValue 
-                            : bValue - aValue;
-                    default:
-                        return 0;
-                }
-
-                console.log('Sort values:', { aValue, bValue });
-
-                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
-            } catch (error) {
-                console.error('Error during sort:', error, { a, b });
-                return 0;
-            }
-        });
-    }, [sortConfig, principalDisplayInfo]);
-
-    // Update helper functions to handle both formats
+    // Helper functions
     const getFromPrincipal = (tx) => {
         const transaction = tx.transaction || tx;
         if (transaction.transfer?.[0]?.from?.owner) return transaction.transfer[0].from.owner;
@@ -898,7 +321,103 @@ function TransactionList({
         return 0n;
     };
 
-    // Add sort handler
+    const formatAmount = (amount, decimals = 8) => {
+        const value = Number(amount) / Math.pow(10, decimals);
+        return value.toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 8
+        });
+    };
+
+    const formatTimestamp = (timestamp) => {
+        return new Date(Number(timestamp) / 1_000_000).toLocaleString();
+    };
+
+    const matchesPrincipalFilter = (principal, filter, displayInfo) => {
+        if (!filter) return true;
+        if (!principal) return false;
+
+        const filterLower = filter.toLowerCase();
+        const principalStr = principal.toString().toLowerCase();
+
+        if (principalStr.includes(filterLower)) return true;
+
+        if (displayInfo) {
+            const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
+            if (name && typeof name === 'string' && name.toLowerCase().includes(filterLower)) return true;
+
+            const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
+            if (nickname && typeof nickname === 'string' && nickname.toLowerCase().includes(filterLower)) return true;
+        }
+
+        return false;
+    };
+
+    const getPrincipalSortValue = (principal) => {
+        if (!principal || typeof principal.toString !== 'function') return '';
+        try {
+            const principalStr = principal.toString();
+            const displayInfo = principalDisplayInfo.get(principalStr);
+            if (!displayInfo) return principalStr;
+            if (displayInfo.name) return displayInfo.name;
+            if (displayInfo.nickname) return displayInfo.nickname;
+            return principalStr;
+        } catch (error) {
+            return '';
+        }
+    };
+
+    const sortTransactions = useCallback((transactions) => {
+        if (!sortConfig.key) return transactions;
+
+        return [...transactions].sort((a, b) => {
+            if (!a || !b) return 0;
+
+            let aValue, bValue;
+
+            try {
+                switch (sortConfig.key) {
+                    case 'index':
+                        aValue = a.txIndex ?? a.id ?? 0n;
+                        bValue = b.txIndex ?? b.id ?? 0n;
+                        return sortConfig.direction === 'asc' 
+                            ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
+                            : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
+                    case 'type':
+                        aValue = a.kind || '';
+                        bValue = b.kind || '';
+                        break;
+                    case 'fromAddress':
+                        aValue = getFromPrincipal(a) ? getPrincipalSortValue(getFromPrincipal(a)) : '';
+                        bValue = getFromPrincipal(b) ? getPrincipalSortValue(getFromPrincipal(b)) : '';
+                        break;
+                    case 'toAddress':
+                        aValue = getToPrincipal(a) ? getPrincipalSortValue(getToPrincipal(a)) : '';
+                        bValue = getToPrincipal(b) ? getPrincipalSortValue(getToPrincipal(b)) : '';
+                        break;
+                    case 'amount':
+                        aValue = getTransactionAmount(a) || 0n;
+                        bValue = getTransactionAmount(b) || 0n;
+                        return sortConfig.direction === 'asc' 
+                            ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
+                            : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
+                    case 'timestamp':
+                        aValue = Number(a.timestamp || 0);
+                        bValue = Number(b.timestamp || 0);
+                        return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+                    default:
+                        return 0;
+                }
+
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            } catch (error) {
+                return 0;
+            }
+        });
+    }, [sortConfig, principalDisplayInfo]);
+
     const handleSort = (key) => {
         setSortConfig(prevConfig => ({
             key,
@@ -906,35 +425,24 @@ function TransactionList({
         }));
     };
 
-    // CSV export function for transactions
+    const renderSortIcon = (key) => {
+        if (sortConfig.key !== key) return <FaSort size={10} style={{ opacity: 0.4 }} />;
+        return sortConfig.direction === 'asc' ? <FaArrowUp size={10} /> : <FaArrowDown size={10} />;
+    };
+
+    // CSV Export
     const exportTransactionsToCSV = () => {
         if (displayedTransactions.length === 0) {
             alert('No transactions to export');
             return;
         }
 
-        // Define CSV headers
         const headers = [
-            'Transaction Index',
-            'Type',
-            'From Principal',
-            'From Name',
-            'From Nickname',
-            'From Subaccount',
-            'To Principal', 
-            'To Name',
-            'To Nickname',
-            'To Subaccount',
-            'Amount (E8s)',
-            'Amount (Tokens)',
-            'Fee (E8s)',
-            'Fee (Tokens)',
-            'Timestamp',
-            'Memo',
-            'Created At Timestamp'
+            'Transaction Index', 'Type', 'From Principal', 'From Name', 'From Nickname', 'From Subaccount',
+            'To Principal', 'To Name', 'To Nickname', 'To Subaccount', 'Amount (E8s)', 'Amount (Tokens)',
+            'Fee (E8s)', 'Fee (Tokens)', 'Timestamp', 'Memo', 'Created At Timestamp'
         ];
 
-        // Convert transactions to CSV rows
         const csvRows = displayedTransactions.map(tx => {
             const transaction = tx.transaction || tx;
             const txType = transaction.kind || 'unknown';
@@ -942,11 +450,9 @@ function TransactionList({
             const toPrincipal = getToPrincipal(tx);
             const amount = getTransactionAmount(tx);
             
-            // Get display info for principals
             const fromDisplayInfo = fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null;
             const toDisplayInfo = toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null;
             
-            // Get subaccounts
             const fromSubaccount = transaction.transfer?.[0]?.from?.subaccount?.[0] || 
                                  transaction.burn?.[0]?.from?.subaccount?.[0] || 
                                  transaction.approve?.[0]?.from?.subaccount?.[0];
@@ -954,72 +460,41 @@ function TransactionList({
                                transaction.mint?.[0]?.to?.subaccount?.[0] || 
                                transaction.approve?.[0]?.spender?.subaccount?.[0];
             
-            // Get fee
-            const fee = transaction.transfer?.[0]?.fee?.[0] || 
-                       transaction.approve?.[0]?.fee?.[0] || 0n;
-            
-            // Get memo
-            const memo = transaction.transfer?.[0]?.memo?.[0] || 
-                        transaction.mint?.[0]?.memo?.[0] || 
-                        transaction.burn?.[0]?.memo?.[0] || 
-                        transaction.approve?.[0]?.memo?.[0] || '';
-            
-            // Get timestamp
+            const fee = transaction.transfer?.[0]?.fee?.[0] || transaction.approve?.[0]?.fee?.[0] || 0n;
+            const memo = transaction.transfer?.[0]?.memo?.[0] || transaction.mint?.[0]?.memo?.[0] || 
+                        transaction.burn?.[0]?.memo?.[0] || transaction.approve?.[0]?.memo?.[0] || '';
             const timestamp = tx.timestamp || transaction.timestamp || '';
             const createdAtTime = transaction.created_at_time?.[0] || '';
             
-            // Format timestamps
-            const formattedTimestamp = timestamp ? formatTimestamp(timestamp) : '';
-            const formattedCreatedAt = createdAtTime ? formatTimestamp(createdAtTime) : '';
-            
             return [
-                tx.id || '',
-                txType,
-                fromPrincipal ? fromPrincipal.toString() : '',
-                fromDisplayInfo?.name || '',
-                fromDisplayInfo?.nickname || '',
+                tx.id || '', txType, fromPrincipal ? fromPrincipal.toString() : '',
+                fromDisplayInfo?.name || '', fromDisplayInfo?.nickname || '',
                 fromSubaccount ? subaccountToHex(fromSubaccount) : '',
-                toPrincipal ? toPrincipal.toString() : '',
-                toDisplayInfo?.name || '',
-                toDisplayInfo?.nickname || '',
-                toSubaccount ? subaccountToHex(toSubaccount) : '',
-                amount.toString(),
-                formatAmount(amount),
-                fee.toString(),
-                formatAmount(fee),
-                formattedTimestamp,
-                Array.isArray(memo) ? memo.join('') : memo,
-                formattedCreatedAt
+                toPrincipal ? toPrincipal.toString() : '', toDisplayInfo?.name || '', toDisplayInfo?.nickname || '',
+                toSubaccount ? subaccountToHex(toSubaccount) : '', amount.toString(), formatAmount(amount),
+                fee.toString(), formatAmount(fee), timestamp ? formatTimestamp(timestamp) : '',
+                Array.isArray(memo) ? memo.join('') : memo, createdAtTime ? formatTimestamp(createdAtTime) : ''
             ];
         });
 
-        // Create CSV content
         const csvContent = [
             headers.join(','),
-            ...csvRows.map(row => 
-                row.map(cell => {
-                    // Escape cells that contain commas, quotes, or newlines
-                    const cellStr = String(cell);
-                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-                        return `"${cellStr.replace(/"/g, '""')}"`;
-                    }
-                    return cellStr;
-                }).join(',')
-            )
+            ...csvRows.map(row => row.map(cell => {
+                const cellStr = String(cell);
+                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(','))
         ].join('\n');
 
-        // Create and download file
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
         
-        // Create filename with timestamp and filter info
         const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
-        const typeFilter = selectedType !== TransactionType.ALL ? `_${selectedType}` : '';
-        const principalFilter = (fromFilter || toFilter) ? '_filtered' : '';
-        const principalSuffix = principalId ? `_${principalId.slice(0, 8)}` : '';
-        const filename = `transactions_${snsRootCanisterId}_${timestamp}${typeFilter}${principalFilter}${principalSuffix}.csv`;
+        const filename = `transactions_${timestamp}.csv`;
         
         link.setAttribute('download', filename);
         link.style.visibility = 'hidden';
@@ -1029,107 +504,147 @@ function TransactionList({
         URL.revokeObjectURL(url);
     };
 
-    // Add debug logging to the filter function
-    const matchesPrincipalFilter = (principal, filter, displayInfo) => {
-        if (!filter) return true;
-        if (!principal) return false;
+    // Effects
+    useEffect(() => {
+        fetchCanisterIds();
+    }, [snsRootCanisterId, providedLedgerCanisterId]);
 
-        const filterLower = filter.toLowerCase();
-        const principalStr = principal.toString().toLowerCase();
-
-        // Debug log
-        console.log('Matching principal:', {
-            principal: principalStr,
-            filter: filterLower,
-            displayInfo
-        });
-
-        // Check principal ID
-        if (principalStr.includes(filterLower)) return true;
-
-        // Check name and nickname if available
-        if (displayInfo) {
-            // Handle name which might be an array or string
-            const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
-            if (name && typeof name === 'string' && name.toLowerCase().includes(filterLower)) return true;
-
-            // Handle nickname which might be an array or string
-            const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
-            if (nickname && typeof nickname === 'string' && nickname.toLowerCase().includes(filterLower)) return true;
-        }
-
-        return false;
-    };
-
-    // Render sort indicator
-    const renderSortIndicator = (key) => {
-        if (sortConfig.key !== key) return '↕';
-        return sortConfig.direction === 'asc' ? '↑' : '↓';
-    };
-
-    // Add helper function to get transaction sequence number
-    const getTransactionSequence = (tx, index) => {
-        console.log('Getting sequence number for transaction:', tx, 'at index:', index);
-        let sequence = null;
-
-        if (tx?.transfer?.[0]?.sequence_number) {
-            sequence = tx.transfer[0].sequence_number;
-        } else if (tx?.mint?.[0]?.sequence_number) {
-            sequence = tx.mint[0].sequence_number;
-        } else if (tx?.burn?.[0]?.sequence_number) {
-            sequence = tx.burn[0].sequence_number;
-        } else if (tx?.approve?.[0]?.sequence_number) {
-            sequence = tx.approve[0].sequence_number;
+    useEffect(() => {
+        if (!ledgerCanisterId) return;
+        if (principalId && indexCanisterId) {
+            fetchAllFromIndex();
         } else {
-            // Calculate sequence based on page, pageSize and index
-            sequence = (page * pageSize) + index;
+            fetchLedgerTransactions();
         }
+    }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize]);
 
-        console.log('Found sequence number:', sequence);
-        return sequence;
+    useEffect(() => {
+        if (principalId && allTransactions.length > 0) {
+            let filtered = selectedType === TransactionType.ALL 
+                ? allTransactions 
+                : allTransactions.filter(tx => tx.transaction?.kind === selectedType);
+            
+            filtered = filtered.filter(tx => {
+                const fromPrincipal = getFromPrincipal(tx);
+                const toPrincipal = getToPrincipal(tx);
+                const fromMatches = matchesPrincipalFilter(fromPrincipal, fromFilter, fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null);
+                const toMatches = matchesPrincipalFilter(toPrincipal, toFilter, toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null);
+                return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
+            });
+
+            const sorted = sortTransactions(filtered);
+            const start = page * pageSize;
+            setDisplayedTransactions(sorted.slice(start, start + pageSize));
+            setTotalTransactions(sorted.length);
+        } else if (!principalId && rawTransactions.length > 0) {
+            let filteredTxs = rawTransactions;
+
+            if (selectedType !== TransactionType.ALL) {
+                filteredTxs = filteredTxs.filter(tx => tx?.kind === selectedType);
+            }
+
+            if (fromFilter || toFilter) {
+                filteredTxs = filteredTxs.filter(tx => {
+                    const fromPrincipal = getFromPrincipal(tx);
+                    const toPrincipal = getToPrincipal(tx);
+                    const fromMatches = matchesPrincipalFilter(fromPrincipal, fromFilter, fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null);
+                    const toMatches = matchesPrincipalFilter(toPrincipal, toFilter, toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null);
+                    return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
+                });
+            }
+
+            const sortedTxs = sortTransactions(filteredTxs);
+            setDisplayedTransactions(sortedTxs);
+        }
+    }, [rawTransactions, allTransactions, principalId, page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator]);
+
+    useEffect(() => {
+        if (displayedTransactions.length > 0 && (sortConfig.key === 'fromAddress' || sortConfig.key === 'toAddress')) {
+            const sortedTxs = sortTransactions(displayedTransactions);
+            setDisplayedTransactions(sortedTxs);
+        }
+    }, [principalDisplayInfo, sortConfig.key, sortConfig.direction]);
+
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!displayedTransactions.length || !principalNames || !principalNicknames) return;
+
+            const uniquePrincipals = new Set();
+            displayedTransactions.forEach(tx => {
+                const fromPrincipal = getFromPrincipal(tx);
+                const toPrincipal = getToPrincipal(tx);
+                if (fromPrincipal) try { uniquePrincipals.add(fromPrincipal.toString()); } catch {}
+                if (toPrincipal) try { uniquePrincipals.add(toPrincipal.toString()); } catch {}
+            });
+
+            const displayInfoMap = new Map();
+            Array.from(uniquePrincipals).forEach(principal => {
+                try {
+                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
+                    displayInfoMap.set(principal, displayInfo);
+                } catch {}
+            });
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [displayedTransactions, identity, principalNames, principalNicknames]);
+
+    const handlePageSizeChange = (event) => {
+        setPageSize(Number(event.target.value));
+        setPage(0);
     };
 
+    // Render transaction card for mobile
     const renderTransactionCard = (tx, index) => {
         const transaction = tx.transaction || tx;
         const txType = transaction.kind;
         const fromPrincipal = getFromPrincipal(tx);
         const toPrincipal = getToPrincipal(tx);
         const amount = getTransactionAmount(tx);
-        
-        const getTypeColor = (type) => {
-            switch (type?.toLowerCase()) {
-                case 'transfer': return '#3498db';
-                case 'mint': return '#2ecc71';
-                case 'burn': return '#e74c3c';
-                case 'approve': return '#f39c12';
-                default: return '#95a5a6';
-            }
-        };
-
-        // Calculate correct transaction ID (same logic as table view)
+        const typeInfo = getTypeInfo(txType);
         const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index);
         
         return (
-            <div key={index} style={styles.transactionCard}>
-                <div style={styles.cardHeader}>
-                    <div 
-                        style={{
-                            ...styles.cardType,
-                            backgroundColor: getTypeColor(txType),
-                            color: '#fff'
-                        }}
-                    >
-                        {txType}
-                    </div>
+            <div 
+                key={index} 
+                style={{
+                    background: theme.colors.primaryBg,
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    marginBottom: '0.75rem',
+                    border: `1px solid ${theme.colors.border}`,
+                    transition: 'all 0.2s ease'
+                }}
+            >
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.75rem'
+                }}>
+                    <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        background: typeInfo.bg,
+                        color: typeInfo.color,
+                        fontSize: '0.8rem',
+                        fontWeight: '600'
+                    }}>
+                        {typeInfo.icon}
+                        {typeInfo.label}
+                    </span>
                     <Link 
                         to={`/transaction?sns=${snsRootCanisterId}&id=${txId}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
                         style={{
-                            color: '#3498db',
+                            color: txPrimary,
                             textDecoration: 'none',
-                            fontSize: '12px',
-                            ':hover': {
-                                textDecoration: 'underline'
-                            }
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
                         }}
                     >
                         #{txId}
@@ -1137,414 +652,718 @@ function TransactionList({
                 </div>
                 
                 {fromPrincipal && (
-                    <div style={styles.cardField}>
-                        <div style={styles.cardLabel}>From</div>
-                        <div style={styles.cardValue}>
-                            <PrincipalDisplay 
-                                principal={fromPrincipal}
-                                displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
-                                showCopyButton={false}
-                                short={true}
-                                isAuthenticated={isAuthenticated}
-                            />
-                        </div>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '2px' }}>From</div>
+                        <PrincipalDisplay 
+                            principal={fromPrincipal}
+                            displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
+                            showCopyButton={false}
+                            short={true}
+                            isAuthenticated={isAuthenticated}
+                        />
                     </div>
                 )}
                 
                 {toPrincipal && (
-                    <div style={styles.cardField}>
-                        <div style={styles.cardLabel}>To</div>
-                        <div style={styles.cardValue}>
-                            <PrincipalDisplay 
-                                principal={toPrincipal}
-                                displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
-                                showCopyButton={false}
-                                short={true}
-                                isAuthenticated={isAuthenticated}
-                            />
-                        </div>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '2px' }}>To</div>
+                        <PrincipalDisplay 
+                            principal={toPrincipal}
+                            displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
+                            showCopyButton={false}
+                            short={true}
+                            isAuthenticated={isAuthenticated}
+                        />
                     </div>
                 )}
                 
-                {amount !== null && amount !== undefined && (
-                    <div style={styles.cardField}>
-                        <div style={styles.cardLabel}>Amount</div>
-                        <div style={styles.cardValue}>
-                            {formatAmount(amount)}
-                        </div>
-                    </div>
-                )}
-                
-                <div style={styles.cardField}>
-                    <div style={styles.cardLabel}>Time</div>
-                    <div style={styles.cardValue}>
-                        {new Date(Number(transaction.timestamp / 1000000n)).toLocaleString()}
-                    </div>
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingTop: '0.5rem',
+                    borderTop: `1px solid ${theme.colors.border}`
+                }}>
+                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                        {amount ? formatAmount(amount) : '-'}
+                    </span>
+                    <span 
+                        style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}
+                        title={formatTimestamp(transaction.timestamp)}
+                    >
+                        {getRelativeTime(transaction.timestamp)}
+                    </span>
                 </div>
             </div>
         );
     };
 
+    const containerStyle = embedded ? {
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        padding: '1.5rem',
+        marginTop: 0
+    } : {
+        backgroundColor: theme.colors.secondaryBg,
+        borderRadius: '16px',
+        padding: '1.5rem',
+        marginTop: '1rem'
+    };
+
+    // Loading state
+    if (loading) {
+        return (
+            <div style={containerStyle}>
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '3rem',
+                    color: theme.colors.mutedText
+                }}>
+                    <div style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '50%',
+                        background: `linear-gradient(135deg, ${txPrimary}30, ${txSecondary}20)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: '1rem',
+                        animation: 'pulse 2s ease-in-out infinite'
+                    }}>
+                        <FaExchangeAlt size={20} style={{ color: txPrimary }} />
+                    </div>
+                    <p style={{ margin: 0 }}>Loading transactions...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div style={containerStyle}>
             {showHeader && (
-                <div style={styles.header}>
-                    <div 
-                        style={styles.headerTitle}
-                        onClick={onToggleCollapse}
-                    >
-                        <span 
-                            style={{
-                                ...styles.collapseIcon,
-                                ...(isCollapsed ? styles.collapsedIcon : {})
-                            }}
-                        >
-                            ▼
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1.5rem',
+                    cursor: 'pointer'
+                }}
+                onClick={onToggleCollapse}
+                >
+                    <h2 style={{
+                        margin: 0,
+                        color: theme.colors.primaryText,
+                        fontSize: '1.25rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem'
+                    }}>
+                        <span style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: `linear-gradient(135deg, ${txPrimary}, ${txSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <FaExchangeAlt size={14} color="white" />
                         </span>
-                        <h2 style={{ margin: 0 }}>Transactions</h2>
-                    </div>
+                        Transactions
+                    </h2>
+                    <span style={{
+                        color: theme.colors.mutedText,
+                        transition: 'transform 0.2s',
+                        transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)'
+                    }}>
+                        ▼
+                    </span>
                 </div>
             )}
             
-            {/* Filters - Only when expanded */}
-            {!isCollapsed && !loading && !error && (
-                <div style={styles.filtersContainer}>
-                    {/* First Row: Go to TX Index (if in ledger mode) */}
-                    {!principalId && (
-                        <div style={styles.filtersRow}>
-                            <form 
-                                onSubmit={handleTxIndexSubmit}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                }}
-                            >
-                                <input
-                                    type="text"
-                                    value={txIndexInput}
-                                    onChange={(e) => setTxIndexInput(e.target.value)}
-                                    placeholder="Go to tx index"
-                                    style={{
-                                        ...styles.filterInput,
-                                        width: '120px'
-                                    }}
-                                />
+            {!isCollapsed && !error && (
+                <>
+                    {/* Filters */}
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem',
+                        marginBottom: '1.5rem',
+                        padding: '1rem',
+                        background: theme.colors.primaryBg,
+                        borderRadius: '12px',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        {/* Go to index (ledger mode only) */}
+                        {!principalId && (
+                            <form onSubmit={handleTxIndexSubmit} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <div style={{ position: 'relative', flex: '0 0 150px' }}>
+                                    <FaSearch size={12} style={{
+                                        position: 'absolute',
+                                        left: '10px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        color: theme.colors.mutedText
+                                    }} />
+                                    <input
+                                        type="text"
+                                        value={txIndexInput}
+                                        onChange={(e) => setTxIndexInput(e.target.value)}
+                                        placeholder="Jump to index..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.5rem 0.75rem 0.5rem 2rem',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.secondaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '0.85rem',
+                                            outline: 'none',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
                                 <button
                                     type="submit"
                                     style={{
-                                        backgroundColor: theme.colors.accent,
-                                        color: theme.colors.primaryText,
+                                        padding: '0.5rem 1rem',
+                                        borderRadius: '8px',
                                         border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 12px',
+                                        background: txPrimary,
+                                        color: 'white',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
                                         cursor: 'pointer'
                                     }}
                                 >
                                     Go
                                 </button>
                             </form>
-                        </div>
-                    )}
-                    
-                    {/* Second Row: Principal Filters */}
-                    <div style={styles.filtersRow} className="transaction-filters-row">
-                        <div style={styles.filterGroup} className="transaction-filter-group">
-                            <span style={styles.filterLabel}>From:</span>
-                            <PrincipalInput
-                                value={fromFilter}
-                                onChange={(value) => {
-                                    setFromFilter(value);
-                                }}
-                                placeholder="Filter by sender"
-                            />
-                        </div>
+                        )}
                         
-                        <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
-                            <span style={styles.filterLabel}>Operator:</span>
-                            <select
-                                value={filterOperator}
-                                onChange={(e) => {
-                                    setFilterOperator(e.target.value);
-                                }}
-                                style={styles.filterSelect}
-                            >
-                                <option value="and">AND</option>
-                                <option value="or">OR</option>
-                            </select>
-                        </div>
-                        
-                        <div style={styles.filterGroup} className="transaction-filter-group">
-                            <span style={styles.filterLabel}>To:</span>
-                            <PrincipalInput
-                                value={toFilter}
-                                onChange={(value) => {
-                                    setToFilter(value);
-                                }}
-                                placeholder="Filter by recipient"
-                            />
-                        </div>
-                        
-                        <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
-                            <span style={styles.filterLabel}>Type:</span>
-                            <select
-                                value={selectedType}
-                                onChange={(e) => {
-                                    setSelectedType(e.target.value);
-                                }}
-                                style={styles.filterSelect}
-                            >
-                                {Object.values(TransactionType).map(type => (
-                                    <option key={type} value={type}>
-                                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        
-                        <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
-                            <span style={styles.filterLabel}>Export:</span>
-                            <button
-                                onClick={exportTransactionsToCSV}
-                                style={{
-                                    backgroundColor: theme.colors.accent,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    fontSize: '14px'
-                                }}
-                                disabled={loading || displayedTransactions.length === 0}
-                                title={`Export ${displayedTransactions.length} transactions to CSV`}
-                            >
-                                <span style={{ fontSize: '14px' }}>📄</span>
-                                Export CSV
-                            </button>
+                        {/* Filter controls */}
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.75rem',
+                            alignItems: 'flex-end'
+                        }} className="transaction-filters-row">
+                            <div style={{ flex: '1 1 180px', maxWidth: '220px' }} className="transaction-filter-group">
+                                <label style={{
+                                    display: 'block',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.75rem',
+                                    marginBottom: '4px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    From
+                                </label>
+                                <PrincipalInput
+                                    value={fromFilter}
+                                    onChange={setFromFilter}
+                                    placeholder="Filter sender..."
+                                />
+                            </div>
+                            
+                            <div style={{ flex: '0 0 80px' }} className="transaction-compact-filter-group">
+                                <label style={{
+                                    display: 'block',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.75rem',
+                                    marginBottom: '4px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    Logic
+                                </label>
+                                <select
+                                    value={filterOperator}
+                                    onChange={(e) => setFilterOperator(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.5rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    <option value="and">AND</option>
+                                    <option value="or">OR</option>
+                                </select>
+                            </div>
+                            
+                            <div style={{ flex: '1 1 180px', maxWidth: '220px' }} className="transaction-filter-group">
+                                <label style={{
+                                    display: 'block',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.75rem',
+                                    marginBottom: '4px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    To
+                                </label>
+                                <PrincipalInput
+                                    value={toFilter}
+                                    onChange={setToFilter}
+                                    placeholder="Filter recipient..."
+                                />
+                            </div>
+                            
+                            <div style={{ flex: '0 0 110px' }} className="transaction-compact-filter-group">
+                                <label style={{
+                                    display: 'block',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.75rem',
+                                    marginBottom: '4px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    Type
+                                </label>
+                                <select
+                                    value={selectedType}
+                                    onChange={(e) => setSelectedType(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.5rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    {Object.values(TransactionType).map(type => (
+                                        <option key={type} value={type}>
+                                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div style={{ flex: '0 0 auto' }} className="transaction-compact-filter-group">
+                                <label style={{
+                                    display: 'block',
+                                    color: 'transparent',
+                                    fontSize: '0.75rem',
+                                    marginBottom: '4px'
+                                }}>
+                                    Export
+                                </label>
+                                <button
+                                    onClick={exportTransactionsToCSV}
+                                    disabled={displayedTransactions.length === 0}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.5rem 1rem',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: `linear-gradient(135deg, ${txPrimary}, ${txSecondary})`,
+                                        color: 'white',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        cursor: displayedTransactions.length === 0 ? 'not-allowed' : 'pointer',
+                                        opacity: displayedTransactions.length === 0 ? 0.5 : 1
+                                    }}
+                                >
+                                    <FaDownload size={12} />
+                                    CSV
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
 
-            {!isCollapsed && (
-                <>
-                    {error && <div style={{ color: theme.colors.error }}>Error: {error}</div>}
-                    {loading && <div style={styles.loadingSpinner}>Loading transactions...</div>}
+                    {error && (
+                        <div style={{
+                            padding: '1rem',
+                            background: `${theme.colors.error}15`,
+                            border: `1px solid ${theme.colors.error}40`,
+                            borderRadius: '8px',
+                            color: theme.colors.error,
+                            marginBottom: '1rem'
+                        }}>
+                            Error: {error}
+                        </div>
+                    )}
 
-                    {/* Table view for wide screens */}
-                    {!loading && !error && (
-                        <div style={styles.tableContainer} className="transaction-table-container">
-                        <table style={styles.table}>
-                        <thead>
-                            <tr>
-                                <th 
-                                    style={{...styles.th, width: '10%'}}
-                                    onClick={() => handleSort('type')}
-                                >
-                                    <div style={styles.sortableHeader}>
-                                        Type
-                                        <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
-                                    </div>
-                                </th>
-                                <th 
-                                    style={{...styles.th, width: '10%'}}
-                                    onClick={() => handleSort('index')}
-                                >
-                                    <div style={styles.sortableHeader}>
-                                        ID
-                                        <span style={styles.sortIcon}>{renderSortIndicator('index')}</span>
-                                    </div>
-                                </th>
-                                <th style={{...styles.th, width: '35%'}}>
-                                    <div style={styles.sortableHeaderGroup}>
-                                        <div 
-                                            style={styles.sortableSubHeader}
-                                            onClick={() => handleSort('fromAddress')}
-                                        >
-                                            From
-                                            <span style={styles.sortIcon}>{renderSortIndicator('fromAddress')}</span>
+                    {/* Table view */}
+                    <div className="transaction-table-container" style={{ overflowX: 'auto' }}>
+                        <table style={{
+                            width: '100%',
+                            borderCollapse: 'separate',
+                            borderSpacing: 0
+                        }}>
+                            <thead>
+                                <tr>
+                                    <th 
+                                        onClick={() => handleSort('type')}
+                                        style={{
+                                            textAlign: 'left',
+                                            padding: '0.75rem 1rem',
+                                            background: theme.colors.primaryBg,
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                            cursor: 'pointer',
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '8px 0 0 0'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            Type {renderSortIcon('type')}
                                         </div>
-                                        <span style={styles.headerDivider}>/</span>
-                                        <div 
-                                            style={styles.sortableSubHeader}
-                                            onClick={() => handleSort('toAddress')}
-                                        >
-                                            To
-                                            <span style={styles.sortIcon}>{renderSortIndicator('toAddress')}</span>
+                                    </th>
+                                    <th 
+                                        onClick={() => handleSort('index')}
+                                        style={{
+                                            textAlign: 'left',
+                                            padding: '0.75rem 1rem',
+                                            background: theme.colors.primaryBg,
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                            cursor: 'pointer',
+                                            borderBottom: `1px solid ${theme.colors.border}`
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            ID {renderSortIcon('index')}
                                         </div>
-                                    </div>
-                                </th>
-                                <th 
-                                    style={{...styles.th, width: '15%'}}
-                                    onClick={() => handleSort('amount')}
-                                >
-                                    <div style={styles.sortableHeader}>
-                                        Amount
-                                        <span style={styles.sortIcon}>{renderSortIndicator('amount')}</span>
-                                    </div>
-                                </th>
-                                <th 
-                                    style={{...styles.th, width: '20%'}}
-                                    onClick={() => handleSort('timestamp')}
-                                >
-                                    <div style={styles.sortableHeader}>
-                                        Time
-                                        <span style={styles.sortIcon}>{renderSortIndicator('timestamp')}</span>
-                                    </div>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {displayedTransactions.map((tx, index) => {
-                                const transaction = tx.transaction || tx;
-                                const txType = transaction.kind;
-                                const fromPrincipal = getFromPrincipal(tx);
-                                const toPrincipal = getToPrincipal(tx);
-                                const amount = getTransactionAmount(tx);
+                                    </th>
+                                    <th style={{
+                                        textAlign: 'left',
+                                        padding: '0.75rem 1rem',
+                                        background: theme.colors.primaryBg,
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        borderBottom: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <span onClick={() => handleSort('fromAddress')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                From {renderSortIcon('fromAddress')}
+                                            </span>
+                                            <span style={{ color: theme.colors.border }}>/</span>
+                                            <span onClick={() => handleSort('toAddress')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                To {renderSortIcon('toAddress')}
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <th 
+                                        onClick={() => handleSort('amount')}
+                                        style={{
+                                            textAlign: 'right',
+                                            padding: '0.75rem 1rem',
+                                            background: theme.colors.primaryBg,
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                            cursor: 'pointer',
+                                            borderBottom: `1px solid ${theme.colors.border}`
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                            Amount {renderSortIcon('amount')}
+                                        </div>
+                                    </th>
+                                    <th 
+                                        onClick={() => handleSort('timestamp')}
+                                        style={{
+                                            textAlign: 'right',
+                                            padding: '0.75rem 1rem',
+                                            background: theme.colors.primaryBg,
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                            cursor: 'pointer',
+                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '0 8px 0 0'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                            Time {renderSortIcon('timestamp')}
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {displayedTransactions.map((tx, index) => {
+                                    const transaction = tx.transaction || tx;
+                                    const txType = transaction.kind;
+                                    const fromPrincipal = getFromPrincipal(tx);
+                                    const toPrincipal = getToPrincipal(tx);
+                                    const amount = getTransactionAmount(tx);
+                                    const typeInfo = getTypeInfo(txType);
+                                    const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index);
+                                    const isHovered = hoveredRow === index;
 
-                                return (
-                                    <tr key={index}>
-                                        <td style={styles.td}>{txType}</td>
-                                        <td style={styles.td}>
-                                            <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${!principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index)}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
-                                                style={{
-                                                    color: '#3498db',
-                                                    textDecoration: 'none',
-                                                    ':hover': {
-                                                        textDecoration: 'underline'
-                                                    }
-                                                }}
-                                            >
-                                                #{!principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id.toString() || index)}
-                                            </Link>
-                                        </td>
-                                        <td style={{...styles.td, ...styles.principalCell}}>
-                                            <div>
-                                                <span style={{color: '#888'}}>From: </span>
-                                                {fromPrincipal ? (
-                                                    <>
-                                                        <PrincipalDisplay 
-                                                            principal={fromPrincipal}
-                                                            displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
-                                                            showCopyButton={false}
-                                                            short={true}
-                                                            isAuthenticated={isAuthenticated}
-                                                        />
-                                                        {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (
-                                                            <div style={styles.subaccount}>
-                                                                Subaccount: {subaccountToHex(transaction.transfer[0].from.subaccount[0])}
-                                                            </div>
-                                                        )}
-                                                        {(txType === 'burn' && transaction.burn?.[0]?.from?.subaccount?.length > 0) && (
-                                                            <div style={styles.subaccount}>
-                                                                Subaccount: {subaccountToHex(transaction.burn[0].from.subaccount[0])}
-                                                            </div>
-                                                        )}
-                                                        {(txType === 'approve' && transaction.approve?.[0]?.from?.subaccount?.length > 0) && (
-                                                            <div style={styles.subaccount}>
-                                                                Subaccount: {subaccountToHex(transaction.approve[0].from.subaccount[0])}
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <span style={{color: '#888'}}>-</span>
-                                                )}
-                                            </div>
-                                            <div style={{marginTop: '8px'}}>
-                                                <span style={{color: '#888'}}>To: </span>
-                                                {toPrincipal ? (
-                                                    <>
-                                                        <PrincipalDisplay 
-                                                            principal={toPrincipal}
-                                                            displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
-                                                            showCopyButton={false}
-                                                            short={true}
-                                                            isAuthenticated={isAuthenticated}
-                                                        />
-                                                        {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (
-                                                            <div style={styles.subaccount}>
-                                                                Subaccount: {subaccountToHex(transaction.transfer[0].to.subaccount[0])}
-                                                            </div>
-                                                        )}
-                                                        {(txType === 'mint' && transaction.mint?.[0]?.to?.subaccount?.length > 0) && (
-                                                            <div style={styles.subaccount}>
-                                                                Subaccount: {subaccountToHex(transaction.mint[0].to.subaccount[0])}
-                                                            </div>
-                                                        )}
-                                                        {(txType === 'approve' && transaction.approve?.[0]?.spender?.subaccount?.length > 0) && (
-                                                            <div style={styles.subaccount}>
-                                                                Subaccount: {subaccountToHex(transaction.approve[0].spender.subaccount[0])}
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <span style={{color: '#888'}}>-</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td style={styles.td}>
-                                            {amount ? formatAmount(amount) : '-'}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {formatTimestamp(transaction.timestamp)}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
+                                    return (
+                                        <tr 
+                                            key={index}
+                                            onMouseEnter={() => setHoveredRow(index)}
+                                            onMouseLeave={() => setHoveredRow(null)}
+                                            style={{
+                                                background: isHovered ? theme.colors.primaryBg : 'transparent',
+                                                transition: 'background 0.15s ease'
+                                            }}
+                                        >
+                                            <td style={{
+                                                padding: '0.875rem 1rem',
+                                                borderBottom: `1px solid ${theme.colors.border}`,
+                                                verticalAlign: 'middle'
+                                            }}>
+                                                <span style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '4px 10px',
+                                                    borderRadius: '20px',
+                                                    background: typeInfo.bg,
+                                                    color: typeInfo.color,
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: '500'
+                                                }}>
+                                                    {typeInfo.icon}
+                                                    {typeInfo.label}
+                                                </span>
+                                            </td>
+                                            <td style={{
+                                                padding: '0.875rem 1rem',
+                                                borderBottom: `1px solid ${theme.colors.border}`,
+                                                verticalAlign: 'middle'
+                                            }}>
+                                                <Link 
+                                                    to={`/transaction?sns=${snsRootCanisterId}&id=${txId}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
+                                                    style={{
+                                                        color: txPrimary,
+                                                        textDecoration: 'none',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.9rem'
+                                                    }}
+                                                >
+                                                    #{txId}
+                                                </Link>
+                                            </td>
+                                            <td style={{
+                                                padding: '0.875rem 1rem',
+                                                borderBottom: `1px solid ${theme.colors.border}`,
+                                                verticalAlign: 'top'
+                                            }}>
+                                                <div style={{ marginBottom: '0.5rem' }}>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>From: </span>
+                                                    {fromPrincipal ? (
+                                                        <>
+                                                            <PrincipalDisplay 
+                                                                principal={fromPrincipal}
+                                                                displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
+                                                                showCopyButton={false}
+                                                                short={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                            {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (
+                                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px', fontFamily: 'monospace' }}>
+                                                                    Sub: {subaccountToHex(transaction.transfer[0].from.subaccount[0]).substring(0, 16)}...
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <span style={{ color: theme.colors.mutedText }}>-</span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>To: </span>
+                                                    {toPrincipal ? (
+                                                        <>
+                                                            <PrincipalDisplay 
+                                                                principal={toPrincipal}
+                                                                displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
+                                                                showCopyButton={false}
+                                                                short={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                            {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (
+                                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px', fontFamily: 'monospace' }}>
+                                                                    Sub: {subaccountToHex(transaction.transfer[0].to.subaccount[0]).substring(0, 16)}...
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <span style={{ color: theme.colors.mutedText }}>-</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td style={{
+                                                padding: '0.875rem 1rem',
+                                                borderBottom: `1px solid ${theme.colors.border}`,
+                                                textAlign: 'right',
+                                                verticalAlign: 'middle',
+                                                fontWeight: '600',
+                                                color: theme.colors.primaryText
+                                            }}>
+                                                {amount ? formatAmount(amount) : '-'}
+                                            </td>
+                                            <td style={{
+                                                padding: '0.875rem 1rem',
+                                                borderBottom: `1px solid ${theme.colors.border}`,
+                                                textAlign: 'right',
+                                                verticalAlign: 'middle',
+                                                color: theme.colors.secondaryText,
+                                                fontSize: '0.85rem'
+                                            }}>
+                                                <span title={formatTimestamp(transaction.timestamp)}>
+                                                    {getRelativeTime(transaction.timestamp)}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
                         </table>
+                    </div>
+
+                    {/* Cards view for mobile */}
+                    <div className="transaction-cards-container" style={{ display: 'none' }}>
+                        {displayedTransactions.map((tx, index) => renderTransactionCard(tx, index))}
+                    </div>
+
+                    {/* Empty state */}
+                    {displayedTransactions.length === 0 && !loading && (
+                        <div style={{
+                            textAlign: 'center',
+                            padding: '3rem',
+                            color: theme.colors.mutedText
+                        }}>
+                            <FaExchangeAlt size={32} style={{ opacity: 0.3, marginBottom: '1rem' }} />
+                            <p style={{ margin: 0 }}>No transactions found</p>
                         </div>
                     )}
 
-                    {/* Cards view for narrow screens */}
-                    {!loading && !error && (
-                        <div style={styles.cardsContainer} className="transaction-cards-container">
-                            {displayedTransactions.map((tx, index) => renderTransactionCard(tx, index))}
-                        </div>
-                    )}
-
-                    {!loading && !error && (
-                        <div style={styles.pagination}>
-                        <div style={styles.paginationControls}>
-                            <button
-                                style={{
-                                    ...styles.pageButton,
-                                    ...(page === 0 ? styles.pageButtonDisabled : {})
-                                }}
-                                onClick={() => setPage(p => Math.max(0, p - 1))}
-                                disabled={page === 0}
-                            >
-                                Previous
-                            </button>
-                            <span style={{ color: '#fff', alignSelf: 'center' }}>
-                                Page {page + 1} of {Math.ceil(totalTransactions / pageSize)}
-                            </span>
-                            <button
-                                style={{
-                                    ...styles.pageButton,
-                                    ...((page + 1) * pageSize >= totalTransactions ? styles.pageButtonDisabled : {})
-                                }}
-                                onClick={() => setPage(p => p + 1)}
-                                disabled={(page + 1) * pageSize >= totalTransactions}
-                            >
-                                Next
-                            </button>
-                        </div>
-                        <select 
-                            value={pageSize} 
-                            onChange={handlePageSizeChange}
-                            style={styles.select}
-                        >
-                            {PAGE_SIZES.map(size => (
-                                <option key={size} value={size}>
-                                    {size} per page
-                                </option>
-                            ))}
-                        </select>
+                    {/* Pagination */}
+                    {displayedTransactions.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginTop: '1.5rem',
+                            padding: '1rem',
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            border: `1px solid ${theme.colors.border}`,
+                            flexWrap: 'wrap',
+                            gap: '1rem'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <button
+                                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                                    disabled={page === 0}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.5rem 1rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: page === 0 ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                                        color: page === 0 ? theme.colors.mutedText : theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        cursor: page === 0 ? 'not-allowed' : 'pointer',
+                                        opacity: page === 0 ? 0.5 : 1
+                                    }}
+                                >
+                                    <FaChevronLeft size={12} />
+                                    Prev
+                                </button>
+                                
+                                <span style={{
+                                    padding: '0.5rem 1rem',
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '0.9rem'
+                                }}>
+                                    Page {page + 1} of {Math.max(1, Math.ceil(totalTransactions / pageSize))}
+                                </span>
+                                
+                                <button
+                                    onClick={() => setPage(p => p + 1)}
+                                    disabled={(page + 1) * pageSize >= totalTransactions}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.5rem 1rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: (page + 1) * pageSize >= totalTransactions ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                                        color: (page + 1) * pageSize >= totalTransactions ? theme.colors.mutedText : theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        cursor: (page + 1) * pageSize >= totalTransactions ? 'not-allowed' : 'pointer',
+                                        opacity: (page + 1) * pageSize >= totalTransactions ? 0.5 : 1
+                                    }}
+                                >
+                                    Next
+                                    <FaChevronRight size={12} />
+                                </button>
+                            </div>
+                            
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.85rem'
+                            }}>
+                                <span>Show</span>
+                                <select 
+                                    value={pageSize} 
+                                    onChange={handlePageSizeChange}
+                                    style={{
+                                        padding: '0.4rem 0.5rem',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    {PAGE_SIZES.map(size => (
+                                        <option key={size} value={size}>{size}</option>
+                                    ))}
+                                </select>
+                                <span>per page</span>
+                            </div>
                         </div>
                     )}
                 </>
@@ -1553,4 +1372,4 @@ function TransactionList({
     );
 }
 
-export default TransactionList; 
+export default TransactionList;
