@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { Principal } from '@dfinity/principal';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -23,8 +24,22 @@ const PrincipalInput = ({
     const [isValid, setIsValid] = useState(false);
     const [resolvedInfo, setResolvedInfo] = useState(null);
     const [activeTab, setActiveTab] = useState(defaultTab);
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
+    const containerRef = useRef(null);
+
+    // Update dropdown position when showing
+    useEffect(() => {
+        if (showDropdown && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + window.scrollY + 2,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            });
+        }
+    }, [showDropdown, inputValue]);
 
     // Keep tab in sync when component instance requests a different default
     useEffect(() => {
@@ -224,12 +239,15 @@ const PrincipalInput = ({
     }, []);
 
     return (
-        <div style={{ 
-            position: 'relative', 
-            width: '100%',
-            maxWidth: '300px',
-            ...style 
-        }}>
+        <div 
+            ref={containerRef}
+            style={{ 
+                position: 'relative', 
+                width: '100%',
+                maxWidth: '300px',
+                ...style 
+            }}
+        >
             <input
                 ref={inputRef}
                 type="text"
@@ -291,22 +309,21 @@ const PrincipalInput = ({
                 </div>
             )}
             
-            {/* Dropdown */}
-            {showDropdown && searchResults.length > 0 && (
+            {/* Dropdown - rendered via portal to ensure it's above everything */}
+            {showDropdown && searchResults.length > 0 && ReactDOM.createPortal(
                 <div
                     ref={dropdownRef}
                     style={{
                         position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
+                        top: dropdownPosition.top,
+                        left: dropdownPosition.left,
+                        width: dropdownPosition.width,
                         backgroundColor: theme.colors.tertiaryBg,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '4px',
+                        borderRadius: '8px',
                         maxHeight: '300px',
                         overflowY: 'auto',
-                        zIndex: 9999,
-                        marginTop: '2px',
+                        zIndex: 99999,
                         boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
@@ -373,7 +390,8 @@ const PrincipalInput = ({
                             />
                         </div>
                     ))}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

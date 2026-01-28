@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
@@ -23,6 +24,20 @@ const NeuronInput = ({
     const [activeTab, setActiveTab] = useState(defaultTab);
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
+    const containerRef = useRef(null);
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+
+    // Update dropdown position when showing
+    useEffect(() => {
+        if (showDropdown && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + window.scrollY + 2,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            });
+        }
+    }, [showDropdown, inputValue]);
 
     // Keep tab in sync when component instance requests a different default
     useEffect(() => {
@@ -266,7 +281,7 @@ const NeuronInput = ({
     };
 
     return (
-        <div style={{ position: 'relative', width: '100%', minWidth: 0, ...style }}>
+        <div ref={containerRef} style={{ position: 'relative', width: '100%', minWidth: 0, ...style }}>
             <input
                 ref={inputRef}
                 type="text"
@@ -334,22 +349,21 @@ const NeuronInput = ({
                 </div>
             )}
             
-            {/* Dropdown */}
-            {showDropdown && inputValue.trim() && snsRoot && (
+            {/* Dropdown - rendered via portal to ensure it's above everything */}
+            {showDropdown && inputValue.trim() && snsRoot && ReactDOM.createPortal(
                 <div
                     ref={dropdownRef}
                     style={{
                         position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
+                        top: dropdownPosition.top,
+                        left: dropdownPosition.left,
+                        width: dropdownPosition.width,
                         backgroundColor: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '8px',
                         maxHeight: '300px',
                         overflowY: 'auto',
-                        zIndex: 9999,
-                        marginTop: '2px',
+                        zIndex: 99999,
                         boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
@@ -444,7 +458,8 @@ const NeuronInput = ({
                             </div>
                         ))
                     )}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
