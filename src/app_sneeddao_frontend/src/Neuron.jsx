@@ -1213,6 +1213,11 @@ function Neuron() {
                                 {/* Maturity */}
                                 <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.4s', marginBottom: 0 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                        {snsLogo ? (
+                                            <img src={snsLogo} alt="" style={{ width: '14px', height: '14px', borderRadius: '3px' }} />
+                                        ) : (
+                                            <FaCoins size={12} style={{ color: neuronGold }} />
+                                        )}
                                         <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Maturity</span>
                                     </div>
                                     <div style={{ color: theme.colors.primaryText, fontSize: '1rem', fontWeight: '600' }}>

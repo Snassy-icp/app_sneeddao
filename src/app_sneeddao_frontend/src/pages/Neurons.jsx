@@ -1300,7 +1300,7 @@ function Neurons() {
                             Sort by:
                         </span>
                         {[
-                            { key: 'stake', label: 'Stake', icon: <FaCoins size={12} /> },
+                            { key: 'stake', label: 'Stake', icon: snsLogo ? <img src={snsLogo} alt="" style={{ width: '14px', height: '14px', borderRadius: '3px' }} /> : <FaCoins size={12} /> },
                             { key: 'name', label: 'Name', icon: <FaUsers size={12} /> },
                             { key: 'lock', label: 'Lock Status', icon: <FaLock size={12} /> },
                             { key: 'votingPower', label: 'Voting Power', icon: <FaVoteYea size={12} /> }
@@ -1439,7 +1439,8 @@ function Neurons() {
 
                                                 {/* Stake */}
                                                 <div>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                        {snsLogo && <img src={snsLogo} alt="" style={{ width: '12px', height: '12px', borderRadius: '2px' }} />}
                                                         Stake
                                                     </div>
                                                     <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
