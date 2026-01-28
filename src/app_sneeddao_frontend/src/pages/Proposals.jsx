@@ -58,10 +58,22 @@ function Proposals() {
 
     // Quick voting state
     const { getHotkeyNeurons, refreshNeurons } = useNeurons();
-    const [proposalEligibility, setProposalEligibility] = useState({}); // { proposalId: { loading, eligibleCount, checked } }
+    const [proposalEligibility, setProposalEligibility] = useState({}); // { proposalId: { loading, eligibleCount, totalVP, checked } }
     const [quickVotingStates, setQuickVotingStates] = useState({}); // { proposalId: 'idle' | 'voting' | 'success' | 'error' }
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const eligibilityCheckRef = useRef(null);
+
+    // Format VP in compact form (K, M suffixes)
+    const formatCompactVP = (vp) => {
+        if (!vp || vp === 0) return '0';
+        const displayValue = vp / 100_000_000; // Convert from e8s
+        if (displayValue >= 1_000_000) {
+            return (displayValue / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+        } else if (displayValue >= 1_000) {
+            return (displayValue / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+        }
+        return displayValue.toFixed(displayValue < 10 ? 1 : 0).replace(/\.0$/, '');
+    };
 
     // Fetch nervous system parameters for voting power calculation
     useEffect(() => {
@@ -108,7 +120,7 @@ function Proposals() {
             filteredProposals.forEach(p => {
                 const proposalId = p.id[0]?.id?.toString();
                 if (proposalId) {
-                    emptyEligibility[proposalId] = { loading: false, eligibleCount: 0, checked: true };
+                    emptyEligibility[proposalId] = { loading: false, eligibleCount: 0, totalVP: 0, checked: true };
                 }
             });
             setProposalEligibility(emptyEligibility);
@@ -127,12 +139,13 @@ function Proposals() {
             for (const proposal of batch) {
                 const proposalId = proposal.id[0]?.id?.toString();
                 if (!proposalId || !isProposalAcceptingVotes(proposal)) {
-                    updates[proposalId] = { loading: false, eligibleCount: 0, checked: true };
+                    updates[proposalId] = { loading: false, eligibleCount: 0, totalVP: 0, checked: true };
                     continue;
                 }
 
-                // Count eligible neurons for this proposal
+                // Count eligible neurons and total VP for this proposal
                 let eligibleCount = 0;
+                let totalVP = 0;
                 for (const neuron of hotkeyNeurons) {
                     // Check voting power
                     const votingPower = nervousSystemParameters ? 
@@ -150,9 +163,10 @@ function Proposals() {
                     }
 
                     eligibleCount++;
+                    totalVP += votingPower;
                 }
 
-                updates[proposalId] = { loading: false, eligibleCount, checked: true };
+                updates[proposalId] = { loading: false, eligibleCount, totalVP, checked: true };
             }
 
             setProposalEligibility(prev => ({ ...prev, ...updates }));
@@ -170,7 +184,7 @@ function Proposals() {
         filteredProposals.forEach(p => {
             const proposalId = p.id[0]?.id?.toString();
             if (proposalId && !proposalEligibility[proposalId]?.checked) {
-                loadingState[proposalId] = { loading: true, eligibleCount: 0, checked: false };
+                loadingState[proposalId] = { loading: true, eligibleCount: 0, totalVP: 0, checked: false };
             }
         });
         if (Object.keys(loadingState).length > 0) {
@@ -269,7 +283,7 @@ function Proposals() {
                 // Update eligibility to show 0 eligible now
                 setProposalEligibility(prev => ({ 
                     ...prev, 
-                    [proposalId]: { loading: false, eligibleCount: 0, checked: true } 
+                    [proposalId]: { loading: false, eligibleCount: 0, totalVP: 0, checked: true } 
                 }));
                 // Refresh neurons data
                 await refreshNeurons(selectedSnsRoot);
@@ -1383,6 +1397,7 @@ function Proposals() {
                                             const votingState = quickVotingStates[proposalId];
                                             const isLoading = eligibility?.loading !== false;
                                             const eligibleCount = eligibility?.eligibleCount || 0;
+                                            const totalVP = eligibility?.totalVP || 0;
                                             const isEnabled = !isLoading && eligibleCount > 0;
                                             
                                             // Determine button style based on state
@@ -1457,12 +1472,12 @@ function Proposals() {
                                                         disabled={!isEnabled || votingState === 'voting'}
                                                         style={getButtonStyle(true)}
                                                         title={isLoading ? 'Checking eligibility...' : 
-                                                               eligibleCount > 0 ? `Adopt with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''}` :
+                                                               eligibleCount > 0 ? `Adopt with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''} (${formatCompactVP(totalVP)} VP)` :
                                                                'No eligible neurons'}
                                                     >
                                                         {votingState === 'voting' ? '...' : '✓'}
                                                         <span>Adopt</span>
-                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({eligibleCount})</span>}
+                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({formatCompactVP(totalVP)})</span>}
                                                     </button>
                                                     
                                                     <button
@@ -1470,12 +1485,12 @@ function Proposals() {
                                                         disabled={!isEnabled || votingState === 'voting'}
                                                         style={getButtonStyle(false)}
                                                         title={isLoading ? 'Checking eligibility...' : 
-                                                               eligibleCount > 0 ? `Reject with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''}` :
+                                                               eligibleCount > 0 ? `Reject with ${eligibleCount} neuron${eligibleCount !== 1 ? 's' : ''} (${formatCompactVP(totalVP)} VP)` :
                                                                'No eligible neurons'}
                                                     >
                                                         {votingState === 'voting' ? '...' : '✗'}
                                                         <span>Reject</span>
-                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({eligibleCount})</span>}
+                                                        {isEnabled && <span style={{ opacity: 0.7 }}>({formatCompactVP(totalVP)})</span>}
                                                     </button>
                                                 </>
                                             );
