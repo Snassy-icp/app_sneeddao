@@ -801,12 +801,16 @@ function TransactionList({
                             {/* Transaction type pills */}
                             <div style={{
                                 display: 'flex',
-                                gap: '0.375rem',
-                                flexWrap: 'wrap'
+                                gap: '0.5rem',
+                                flexWrap: 'wrap',
+                                padding: '0.25rem',
+                                background: theme.colors.primaryBg,
+                                borderRadius: '24px',
+                                border: `1px solid ${theme.colors.border}`
                             }}>
                                 {Object.values(TransactionType).map(type => {
                                     const typeInfo = type === 'all' 
-                                        ? { color: theme.colors.primaryText, bg: theme.colors.tertiaryBg, icon: null, label: 'All' }
+                                        ? { color: theme.colors.primaryText, bg: theme.colors.secondaryBg, icon: null, label: 'All' }
                                         : getTypeInfo(type);
                                     const isActive = selectedType === type;
                                     
@@ -818,13 +822,13 @@ function TransactionList({
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
                                                 gap: '5px',
-                                                padding: '6px 12px',
+                                                padding: '6px 14px',
                                                 borderRadius: '20px',
-                                                border: isActive ? `2px solid ${typeInfo.color}` : `1px solid ${theme.colors.border}`,
-                                                background: isActive ? typeInfo.bg : 'transparent',
-                                                color: isActive ? typeInfo.color : theme.colors.secondaryText,
+                                                border: 'none',
+                                                background: isActive ? (type === 'all' ? txPrimary : typeInfo.color) : 'transparent',
+                                                color: isActive ? 'white' : theme.colors.mutedText,
                                                 fontSize: '0.8rem',
-                                                fontWeight: isActive ? '600' : '500',
+                                                fontWeight: '500',
                                                 cursor: 'pointer',
                                                 transition: 'all 0.15s ease'
                                             }}
@@ -846,55 +850,53 @@ function TransactionList({
                                 {!principalId && (
                                     <form onSubmit={handleTxIndexSubmit} style={{
                                         display: 'flex',
-                                        alignItems: 'center'
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
                                     }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            background: theme.colors.primaryBg,
-                                            borderRadius: '8px',
-                                            border: `1px solid ${theme.colors.border}`,
-                                            overflow: 'hidden'
+                                        <span style={{
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.8rem',
+                                            whiteSpace: 'nowrap'
                                         }}>
-                                            <span style={{
-                                                padding: '0 0.5rem 0 0.75rem',
-                                                color: theme.colors.mutedText,
-                                                fontSize: '0.75rem',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                                                #
-                                            </span>
-                                            <input
-                                                type="text"
-                                                value={txIndexInput}
-                                                onChange={(e) => setTxIndexInput(e.target.value)}
-                                                placeholder="Tx index"
-                                                style={{
-                                                    width: '80px',
-                                                    padding: '0.45rem 0',
-                                                    border: 'none',
-                                                    background: 'transparent',
-                                                    color: theme.colors.primaryText,
-                                                    fontSize: '0.85rem',
-                                                    outline: 'none'
-                                                }}
-                                            />
-                                            <button
-                                                type="submit"
-                                                style={{
-                                                    padding: '0.45rem 0.75rem',
-                                                    border: 'none',
-                                                    borderLeft: `1px solid ${theme.colors.border}`,
-                                                    background: txPrimary,
-                                                    color: 'white',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '600',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                GO
-                                            </button>
-                                        </div>
+                                            Jump to
+                                        </span>
+                                        <input
+                                            type="text"
+                                            value={txIndexInput}
+                                            onChange={(e) => setTxIndexInput(e.target.value)}
+                                            placeholder="index"
+                                            style={{
+                                                width: '70px',
+                                                padding: '0.45rem 0.6rem',
+                                                borderRadius: '6px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.primaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.85rem',
+                                                outline: 'none',
+                                                textAlign: 'center'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = txPrimary}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                        />
+                                        <button
+                                            type="submit"
+                                            style={{
+                                                padding: '0.45rem 0.75rem',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: txPrimary,
+                                                color: 'white',
+                                                fontSize: '0.8rem',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.background = txSecondary}
+                                            onMouseLeave={(e) => e.target.style.background = txPrimary}
+                                        >
+                                            Go
+                                        </button>
                                     </form>
                                 )}
                                 
@@ -962,17 +964,18 @@ function TransactionList({
                             {/* AND/OR toggle */}
                             <div style={{
                                 display: 'flex',
-                                borderRadius: '6px',
-                                overflow: 'hidden',
-                                border: `1px solid ${theme.colors.border}`
+                                padding: '3px',
+                                borderRadius: '8px',
+                                background: theme.colors.tertiaryBg
                             }}>
                                 <button
                                     onClick={() => setFilterOperator('and')}
                                     style={{
-                                        padding: '0.35rem 0.75rem',
+                                        padding: '0.35rem 0.875rem',
+                                        borderRadius: '5px',
                                         border: 'none',
                                         background: filterOperator === 'and' ? txPrimary : 'transparent',
-                                        color: filterOperator === 'and' ? 'white' : theme.colors.secondaryText,
+                                        color: filterOperator === 'and' ? 'white' : theme.colors.mutedText,
                                         fontSize: '0.75rem',
                                         fontWeight: '600',
                                         cursor: 'pointer',
@@ -984,11 +987,11 @@ function TransactionList({
                                 <button
                                     onClick={() => setFilterOperator('or')}
                                     style={{
-                                        padding: '0.35rem 0.75rem',
+                                        padding: '0.35rem 0.875rem',
+                                        borderRadius: '5px',
                                         border: 'none',
-                                        borderLeft: `1px solid ${theme.colors.border}`,
                                         background: filterOperator === 'or' ? txPrimary : 'transparent',
-                                        color: filterOperator === 'or' ? 'white' : theme.colors.secondaryText,
+                                        color: filterOperator === 'or' ? 'white' : theme.colors.mutedText,
                                         fontSize: '0.75rem',
                                         fontWeight: '600',
                                         cursor: 'pointer',
@@ -1018,23 +1021,22 @@ function TransactionList({
                                     style={{
                                         padding: '0.4rem 0.75rem',
                                         borderRadius: '6px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: 'transparent',
-                                        color: theme.colors.mutedText,
+                                        border: 'none',
+                                        background: `${theme.colors.error}15`,
+                                        color: theme.colors.error,
                                         fontSize: '0.75rem',
+                                        fontWeight: '500',
                                         cursor: 'pointer',
                                         transition: 'all 0.15s ease'
                                     }}
                                     onMouseEnter={(e) => {
-                                        e.target.style.borderColor = theme.colors.error;
-                                        e.target.style.color = theme.colors.error;
+                                        e.target.style.background = `${theme.colors.error}25`;
                                     }}
                                     onMouseLeave={(e) => {
-                                        e.target.style.borderColor = theme.colors.border;
-                                        e.target.style.color = theme.colors.mutedText;
+                                        e.target.style.background = `${theme.colors.error}15`;
                                     }}
                                 >
-                                    Clear
+                                    ✕ Clear
                                 </button>
                             )}
                         </div>
