@@ -107,10 +107,12 @@ function Neuron() {
     const [topicInput, setTopicInput] = useState('Governance');
     const [followeeInput, setFolloweeInput] = useState('');
     const [followeeAliasInput, setFolloweeAliasInput] = useState('');
-    const [bulkMode, setBulkMode] = useState(null);
-    const [bulkFolloweeInput, setBulkFolloweeInput] = useState('');
-    const [bulkTopicsNeuronId, setBulkTopicsNeuronId] = useState('');
-    const [bulkTopicsAlias, setBulkTopicsAlias] = useState('');
+    const [bulkMode, setBulkMode] = useState(null); // Keep for backwards compat
+    const [bulkFolloweeInput, setBulkFolloweeInput] = useState(''); // Keep for backwards compat
+    const [bulkTopicsNeuronId, setBulkTopicsNeuronId] = useState(''); // Keep for backwards compat
+    const [bulkTopicsAlias, setBulkTopicsAlias] = useState(''); // Keep for backwards compat
+    const [neuronsToAdd, setNeuronsToAdd] = useState([]); // List of {neuronId, alias} to add
+    const [currentNeuronToAdd, setCurrentNeuronToAdd] = useState(''); // Current input for adding to list
     const [selectedTopics, setSelectedTopics] = useState({
         Governance: true,
         DaoCommunitySettings: false,
@@ -671,6 +673,58 @@ function Neuron() {
                 setBulkTopicsNeuronId(''); setBulkTopicsAlias('');
                 const message = `Successfully added neuron to ${addedCount} topic(s)` + (skippedCount > 0 ? ` (skipped ${skippedCount} where already following)` : '');
                 alert(message);
+            }
+        } catch (e) { setError(e.message || String(e)); }
+        finally { setActionBusy(false); setActionMsg(''); }
+    };
+
+    // Unified add: add all neurons in neuronsToAdd list to all selected topics
+    const addNeuronsToSelectedTopics = async () => {
+        try {
+            if (neuronsToAdd.length === 0) { setError('Please add at least one neuron to the list'); return; }
+            const topicsToFollow = Object.entries(selectedTopics).filter(([_, isSelected]) => isSelected).map(([topic]) => topic);
+            if (topicsToFollow.length === 0) { setError('Please select at least one topic'); return; }
+            
+            setActionBusy(true); setActionMsg('Adding followees...'); setError('');
+            
+            const topicFollowingArray = [];
+            let totalAdded = 0;
+            
+            for (const topic of topicsToFollow) {
+                const existing = getCurrentFolloweesForTopic(topic);
+                const existingIds = new Set(existing.map(f => f.neuronId.toLowerCase()));
+                
+                const newFollowees = neuronsToAdd.filter(n => !existingIds.has(n.neuronId.toLowerCase()));
+                if (newFollowees.length === 0) continue;
+                
+                const allFollowees = [
+                    ...existing.map(f => ({
+                        neuron_id: [{ id: Array.from(hexToBytes(f.neuronId)) }],
+                        alias: f.alias ? [f.alias] : []
+                    })),
+                    ...newFollowees.map(n => ({
+                        neuron_id: [{ id: Array.from(hexToBytes(n.neuronId)) }],
+                        alias: n.alias ? [n.alias] : []
+                    }))
+                ];
+                
+                topicFollowingArray.push({ topic: [{ [topic]: null }], followees: allFollowees });
+                totalAdded += newFollowees.length;
+            }
+            
+            if (topicFollowingArray.length === 0) { 
+                setError('All neurons are already followed in all selected topics'); 
+                setActionBusy(false); setActionMsg('');
+                return; 
+            }
+            
+            const result = await manageNeuron({ SetFollowing: { topic_following: topicFollowingArray } });
+            
+            if (!result.ok) { setError(result.err); }
+            else {
+                await fetchNeuronData();
+                setNeuronsToAdd([]);
+                alert(`Successfully added ${totalAdded} followee(s) across ${topicFollowingArray.length} topic(s)`);
             }
         } catch (e) { setError(e.message || String(e)); }
         finally { setActionBusy(false); setActionMsg(''); }
@@ -1306,16 +1360,16 @@ function Neuron() {
 
                                 {isFolloweesExpanded && (
                                     <div style={cardStyle}>
-                                        {/* All Topics and Followees */}
+                                        {/* Compact display of all followees */}
                                         {(() => {
                                             const allTopics = [
-                                                { key: 'Governance', label: 'Governance' },
-                                                { key: 'DaoCommunitySettings', label: 'DAO Community Settings' },
-                                                { key: 'SnsFrameworkManagement', label: 'SNS Framework Management' },
-                                                { key: 'DappCanisterManagement', label: 'Dapp Canister Management' },
-                                                { key: 'ApplicationBusinessLogic', label: 'Application Business Logic' },
-                                                { key: 'TreasuryAssetManagement', label: 'Treasury Asset Management' },
-                                                { key: 'CriticalDappOperations', label: 'Critical Dapp Operations' }
+                                                { key: 'Governance', label: 'Gov' },
+                                                { key: 'DaoCommunitySettings', label: 'Community' },
+                                                { key: 'SnsFrameworkManagement', label: 'SNS Framework' },
+                                                { key: 'DappCanisterManagement', label: 'Dapp' },
+                                                { key: 'ApplicationBusinessLogic', label: 'App Logic' },
+                                                { key: 'TreasuryAssetManagement', label: 'Treasury' },
+                                                { key: 'CriticalDappOperations', label: 'Critical' }
                                             ];
                                             const topicsWithFollowees = allTopics.filter(t => getCurrentFolloweesForTopic(t.key).length > 0);
                                             const hasAnyFollowees = topicsWithFollowees.length > 0;
@@ -1323,41 +1377,44 @@ function Neuron() {
                                             return (
                                                 <div style={{ marginBottom: '1rem' }}>
                                                     {!hasAnyFollowees ? (
-                                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>
-                                                            No followees configured for any topic
+                                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem' }}>
+                                                            No followees configured
                                                         </p>
                                                     ) : (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                                             {topicsWithFollowees.map(topic => {
                                                                 const followees = getCurrentFolloweesForTopic(topic.key);
                                                                 return (
                                                                     <div key={topic.key} style={{
-                                                                        padding: '0.75rem', borderRadius: '10px',
-                                                                        background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
+                                                                        display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                                                                        padding: '0.5rem', borderRadius: '8px',
+                                                                        background: theme.colors.primaryBg
                                                                     }}>
-                                                                        <div style={{
-                                                                            color: neuronAccent, fontSize: '0.8rem', fontWeight: '600',
-                                                                            marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px'
+                                                                        <span style={{
+                                                                            color: neuronAccent, fontSize: '0.7rem', fontWeight: '600',
+                                                                            textTransform: 'uppercase', minWidth: '70px', paddingTop: '0.15rem'
                                                                         }}>
                                                                             {topic.label}
-                                                                        </div>
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                                        </span>
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', flex: 1 }}>
                                                                             {followees.map((f, idx) => (
                                                                                 <div key={idx} style={{
-                                                                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                                                                    padding: '0.4rem 0.5rem', borderRadius: '6px',
-                                                                                    background: theme.colors.secondaryBg
+                                                                                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                                                                                    padding: '0.2rem 0.4rem', borderRadius: '4px',
+                                                                                    background: theme.colors.secondaryBg, fontSize: '0.75rem'
                                                                                 }}>
-                                                                                    <NeuronDisplay neuronId={f.neuronId} snsRoot={selectedSnsRoot} />
-                                                                                    {f.alias && <span style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>({f.alias})</span>}
+                                                                                    <NeuronDisplay neuronId={f.neuronId} snsRoot={selectedSnsRoot} showCopyButton={false} />
                                                                                     {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
                                                                                         <button onClick={() => removeFollowee(f.neuronId, topic.key)} disabled={actionBusy}
                                                                                             style={{
-                                                                                                marginLeft: 'auto', padding: '0.25rem', borderRadius: '4px', border: 'none',
-                                                                                                background: `${theme.colors.error}15`, color: theme.colors.error, cursor: 'pointer'
+                                                                                                padding: '0.1rem', borderRadius: '3px', border: 'none',
+                                                                                                background: 'transparent', color: theme.colors.mutedText, cursor: 'pointer',
+                                                                                                display: 'flex', alignItems: 'center'
                                                                                             }}
+                                                                                            onMouseEnter={(e) => e.target.style.color = theme.colors.error}
+                                                                                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
                                                                                         >
-                                                                                            <FaTrash size={10} />
+                                                                                            <FaTimes size={8} />
                                                                                         </button>
                                                                                     )}
                                                                                 </div>
@@ -1372,205 +1429,128 @@ function Neuron() {
                                             );
                                         })()}
 
-                                        {/* Add followee */}
+                                        {/* Add followees - unified interface */}
                                         {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
                                             <div style={{
                                                 padding: '1rem', borderRadius: '10px',
                                                 background: `linear-gradient(135deg, ${neuronAccent}08, ${neuronPrimary}05)`,
                                                 border: `1px solid ${neuronAccent}20`
                                             }}>
-                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Add Followee</h4>
+                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Add Followees</h4>
                                                 
-                                                {/* Mode tabs */}
-                                                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                                                    {[
-                                                        { key: null, label: 'Single' },
-                                                        { key: 'neurons', label: 'Bulk Neurons' },
-                                                        { key: 'topics', label: 'Bulk Topics' }
-                                                    ].map(mode => (
-                                                        <button
-                                                            key={mode.key || 'single'}
-                                                            onClick={() => setBulkMode(mode.key)}
-                                                            style={{
-                                                                padding: '0.4rem 0.75rem', borderRadius: '6px',
-                                                                border: `1px solid ${bulkMode === mode.key ? neuronAccent : theme.colors.border}`,
-                                                                background: bulkMode === mode.key ? `${neuronAccent}20` : 'transparent',
-                                                                color: bulkMode === mode.key ? neuronAccent : theme.colors.secondaryText,
-                                                                fontSize: '0.8rem', cursor: 'pointer', fontWeight: '500'
-                                                            }}
-                                                        >
-                                                            {mode.label}
-                                                        </button>
-                                                    ))}
+                                                {/* Topic selection */}
+                                                <div style={{ marginBottom: '0.75rem' }}>
+                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', marginBottom: '0.4rem' }}>
+                                                        Select topics:
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                                                        {Object.entries(selectedTopics).map(([topic, isSelected]) => (
+                                                            <label key={topic} style={{
+                                                                display: 'flex', alignItems: 'center', gap: '0.25rem',
+                                                                padding: '0.25rem 0.5rem', borderRadius: '5px',
+                                                                background: isSelected ? `${neuronAccent}25` : 'transparent',
+                                                                border: `1px solid ${isSelected ? neuronAccent : theme.colors.border}`,
+                                                                cursor: 'pointer', fontSize: '0.7rem', transition: 'all 0.15s ease'
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={(e) => setSelectedTopics({ ...selectedTopics, [topic]: e.target.checked })}
+                                                                    style={{ margin: 0, width: '12px', height: '12px' }}
+                                                                />
+                                                                <span style={{ color: isSelected ? neuronAccent : theme.colors.secondaryText }}>
+                                                                    {topic.replace(/([A-Z])/g, ' $1').trim()}
+                                                                </span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
                                                 </div>
 
-                                                {/* Single mode */}
-                                                {bulkMode === null && (
-                                                    <>
-                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                                                            <select
-                                                                value={topicInput}
-                                                                onChange={(e) => setTopicInput(e.target.value)}
-                                                                style={{
-                                                                    flex: '1 1 180px', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                                                    border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                                    color: theme.colors.primaryText, fontSize: '0.85rem'
-                                                                }}
-                                                            >
-                                                                <option value="Governance">Governance</option>
-                                                                <option value="DaoCommunitySettings">DAO Community Settings</option>
-                                                                <option value="SnsFrameworkManagement">SNS Framework Management</option>
-                                                                <option value="DappCanisterManagement">Dapp Canister Management</option>
-                                                                <option value="ApplicationBusinessLogic">Application Business Logic</option>
-                                                                <option value="TreasuryAssetManagement">Treasury Asset Management</option>
-                                                                <option value="CriticalDappOperations">Critical Dapp Operations</option>
-                                                            </select>
-                                                        </div>
-                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                                                            <div style={{ flex: '2 1 250px', minWidth: '200px' }}>
-                                                                <NeuronInput
-                                                                    value={followeeInput}
-                                                                    onChange={setFolloweeInput}
-                                                                    placeholder="Neuron ID or search by name"
-                                                                    snsRoot={selectedSnsRoot}
-                                                                    defaultTab="all"
-                                                                />
-                                                            </div>
-                                                            <input
-                                                                type="text" value={followeeAliasInput}
-                                                                onChange={(e) => setFolloweeAliasInput(e.target.value)}
-                                                                placeholder="Alias (optional)"
-                                                                style={{
-                                                                    flex: '1 1 120px', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                                                    border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                                    color: theme.colors.primaryText, fontSize: '0.85rem', height: '38px', boxSizing: 'border-box'
-                                                                }}
+                                                {/* Neurons to add list */}
+                                                <div style={{ marginBottom: '0.75rem' }}>
+                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', marginBottom: '0.4rem' }}>
+                                                        Neurons to add ({neuronsToAdd.length}):
+                                                    </div>
+                                                    
+                                                    {/* Add neuron input */}
+                                                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-start' }}>
+                                                        <div style={{ flex: '2 1 200px', minWidth: '150px' }}>
+                                                            <NeuronInput
+                                                                value={currentNeuronToAdd}
+                                                                onChange={setCurrentNeuronToAdd}
+                                                                placeholder="Search neuron..."
+                                                                snsRoot={selectedSnsRoot}
+                                                                defaultTab="all"
                                                             />
-                                                            <button onClick={addFollowee} disabled={actionBusy || !followeeInput}
-                                                                style={{
-                                                                    padding: '0.5rem 1rem', borderRadius: '8px', border: 'none',
-                                                                    background: neuronAccent, color: 'white', fontSize: '0.85rem',
-                                                                    cursor: (actionBusy || !followeeInput) ? 'not-allowed' : 'pointer',
-                                                                    opacity: (actionBusy || !followeeInput) ? 0.5 : 1, whiteSpace: 'nowrap',
-                                                                    height: '38px', boxSizing: 'border-box'
-                                                                }}
-                                                            >
-                                                                <FaPlus size={10} style={{ marginRight: '4px' }} /> Add
-                                                            </button>
                                                         </div>
-                                                    </>
-                                                )}
-
-                                                {/* Bulk Neurons mode - add multiple neurons to one topic */}
-                                                {bulkMode === 'neurons' && (
-                                                    <>
-                                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-                                                            Add multiple neurons to a single topic. Enter one neuron ID per line (optionally followed by alias).
-                                                        </p>
-                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                                                            <select
-                                                                value={topicInput}
-                                                                onChange={(e) => setTopicInput(e.target.value)}
-                                                                style={{
-                                                                    flex: '1 1 180px', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                                                    border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                                    color: theme.colors.primaryText, fontSize: '0.85rem'
-                                                                }}
-                                                            >
-                                                                <option value="Governance">Governance</option>
-                                                                <option value="DaoCommunitySettings">DAO Community Settings</option>
-                                                                <option value="SnsFrameworkManagement">SNS Framework Management</option>
-                                                                <option value="DappCanisterManagement">Dapp Canister Management</option>
-                                                                <option value="ApplicationBusinessLogic">Application Business Logic</option>
-                                                                <option value="TreasuryAssetManagement">Treasury Asset Management</option>
-                                                                <option value="CriticalDappOperations">Critical Dapp Operations</option>
-                                                            </select>
-                                                        </div>
-                                                        <textarea
-                                                            value={bulkFolloweeInput}
-                                                            onChange={(e) => setBulkFolloweeInput(e.target.value)}
-                                                            placeholder="Enter neuron IDs (one per line)&#10;Format: neuronId [optional alias]&#10;Example:&#10;abc123def456 My Neuron&#10;789xyz..."
-                                                            rows={5}
-                                                            style={{
-                                                                width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                                                border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                                color: theme.colors.primaryText, fontSize: '0.85rem', fontFamily: 'monospace',
-                                                                resize: 'vertical', marginBottom: '0.75rem', boxSizing: 'border-box'
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (currentNeuronToAdd.trim() && /^[0-9a-fA-F]+$/.test(currentNeuronToAdd.trim())) {
+                                                                    const exists = neuronsToAdd.some(n => n.neuronId.toLowerCase() === currentNeuronToAdd.trim().toLowerCase());
+                                                                    if (!exists) {
+                                                                        setNeuronsToAdd([...neuronsToAdd, { neuronId: currentNeuronToAdd.trim(), alias: '' }]);
+                                                                        setCurrentNeuronToAdd('');
+                                                                    }
+                                                                }
                                                             }}
-                                                        />
-                                                        <button onClick={bulkAddFollowees} disabled={actionBusy || !bulkFolloweeInput.trim()}
+                                                            disabled={!currentNeuronToAdd.trim()}
                                                             style={{
-                                                                padding: '0.5rem 1rem', borderRadius: '8px', border: 'none',
-                                                                background: neuronAccent, color: 'white', fontSize: '0.85rem',
-                                                                cursor: (actionBusy || !bulkFolloweeInput.trim()) ? 'not-allowed' : 'pointer',
-                                                                opacity: (actionBusy || !bulkFolloweeInput.trim()) ? 0.5 : 1
+                                                                padding: '0.5rem 0.75rem', borderRadius: '6px', border: 'none',
+                                                                background: currentNeuronToAdd.trim() ? neuronAccent : theme.colors.border,
+                                                                color: 'white', fontSize: '0.8rem', cursor: currentNeuronToAdd.trim() ? 'pointer' : 'not-allowed',
+                                                                height: '38px', display: 'flex', alignItems: 'center', gap: '0.25rem'
                                                             }}
                                                         >
-                                                            <FaPlus size={10} style={{ marginRight: '4px' }} /> Add All to {topicInput}
+                                                            <FaPlus size={10} /> Add
                                                         </button>
-                                                    </>
-                                                )}
-
-                                                {/* Bulk Topics mode - add one neuron to multiple topics */}
-                                                {bulkMode === 'topics' && (
-                                                    <>
-                                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.75rem' }}>
-                                                            Add one neuron to multiple topics at once.
-                                                        </p>
-                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'flex-start' }}>
-                                                            <div style={{ flex: '2 1 250px', minWidth: '200px' }}>
-                                                                <NeuronInput
-                                                                    value={bulkTopicsNeuronId}
-                                                                    onChange={setBulkTopicsNeuronId}
-                                                                    placeholder="Neuron ID or search by name"
-                                                                    snsRoot={selectedSnsRoot}
-                                                                    defaultTab="all"
-                                                                />
-                                                            </div>
-                                                            <input
-                                                                type="text" value={bulkTopicsAlias}
-                                                                onChange={(e) => setBulkTopicsAlias(e.target.value)}
-                                                                placeholder="Alias (optional)"
-                                                                style={{
-                                                                    flex: '1 1 120px', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                                                    border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                                    color: theme.colors.primaryText, fontSize: '0.85rem', height: '38px', boxSizing: 'border-box'
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                                                            {Object.entries(selectedTopics).map(([topic, isSelected]) => (
-                                                                <label key={topic} style={{
-                                                                    display: 'flex', alignItems: 'center', gap: '0.35rem',
-                                                                    padding: '0.35rem 0.6rem', borderRadius: '6px',
-                                                                    background: isSelected ? `${neuronAccent}20` : theme.colors.primaryBg,
-                                                                    border: `1px solid ${isSelected ? neuronAccent : theme.colors.border}`,
-                                                                    cursor: 'pointer', fontSize: '0.75rem'
+                                                    </div>
+                                                    
+                                                    {/* List of neurons to add */}
+                                                    {neuronsToAdd.length > 0 && (
+                                                        <div style={{
+                                                            display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
+                                                            padding: '0.5rem', borderRadius: '6px',
+                                                            background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
+                                                        }}>
+                                                            {neuronsToAdd.map((n, idx) => (
+                                                                <div key={idx} style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                                                                    padding: '0.3rem 0.5rem', borderRadius: '5px',
+                                                                    background: `${neuronAccent}15`, border: `1px solid ${neuronAccent}30`
                                                                 }}>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={isSelected}
-                                                                        onChange={(e) => setSelectedTopics({ ...selectedTopics, [topic]: e.target.checked })}
-                                                                        style={{ margin: 0 }}
-                                                                    />
-                                                                    <span style={{ color: isSelected ? neuronAccent : theme.colors.secondaryText }}>
-                                                                        {topic.replace(/([A-Z])/g, ' $1').trim()}
-                                                                    </span>
-                                                                </label>
+                                                                    <NeuronDisplay neuronId={n.neuronId} snsRoot={selectedSnsRoot} showCopyButton={false} />
+                                                                    <button 
+                                                                        onClick={() => setNeuronsToAdd(neuronsToAdd.filter((_, i) => i !== idx))}
+                                                                        style={{
+                                                                            padding: '0.15rem', borderRadius: '3px', border: 'none',
+                                                                            background: 'transparent', color: theme.colors.mutedText, cursor: 'pointer',
+                                                                            display: 'flex', alignItems: 'center'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.target.style.color = theme.colors.error}
+                                                                        onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                                                                    >
+                                                                        <FaTimes size={10} />
+                                                                    </button>
+                                                                </div>
                                                             ))}
                                                         </div>
-                                                        <button onClick={bulkAddToMultipleTopics} disabled={actionBusy || !bulkTopicsNeuronId.trim()}
-                                                            style={{
-                                                                padding: '0.5rem 1rem', borderRadius: '8px', border: 'none',
-                                                                background: neuronAccent, color: 'white', fontSize: '0.85rem',
-                                                                cursor: (actionBusy || !bulkTopicsNeuronId.trim()) ? 'not-allowed' : 'pointer',
-                                                                opacity: (actionBusy || !bulkTopicsNeuronId.trim()) ? 0.5 : 1
-                                                            }}
-                                                        >
-                                                            <FaPlus size={10} style={{ marginRight: '4px' }} /> Add to Selected Topics
-                                                        </button>
-                                                    </>
-                                                )}
+                                                    )}
+                                                </div>
+
+                                                {/* Submit button */}
+                                                <button 
+                                                    onClick={addNeuronsToSelectedTopics} 
+                                                    disabled={actionBusy || neuronsToAdd.length === 0 || !Object.values(selectedTopics).some(v => v)}
+                                                    style={{
+                                                        padding: '0.6rem 1.25rem', borderRadius: '8px', border: 'none',
+                                                        background: (neuronsToAdd.length > 0 && Object.values(selectedTopics).some(v => v)) ? neuronAccent : theme.colors.border,
+                                                        color: 'white', fontSize: '0.85rem', fontWeight: '500',
+                                                        cursor: (actionBusy || neuronsToAdd.length === 0 || !Object.values(selectedTopics).some(v => v)) ? 'not-allowed' : 'pointer',
+                                                        opacity: actionBusy ? 0.6 : 1, width: '100%'
+                                                    }}
+                                                >
+                                                    {actionBusy ? 'Adding...' : `Add ${neuronsToAdd.length} neuron${neuronsToAdd.length !== 1 ? 's' : ''} to ${Object.values(selectedTopics).filter(v => v).length} topic${Object.values(selectedTopics).filter(v => v).length !== 1 ? 's' : ''}`}
+                                                </button>
                                             </div>
                                         )}
                                     </div>
