@@ -796,10 +796,18 @@ function SneedexOffers() {
 
     const styles = {
         container: {
-            maxWidth: '1400px',
-            margin: '0 auto',
             padding: '2rem',
             color: theme.colors.primaryText,
+        },
+        centeredContent: {
+            maxWidth: '1400px',
+            margin: '0 auto',
+        },
+        fullWidthGrid: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+            gap: '1.5rem',
+            padding: '0 2rem',
         },
         header: {
             display: 'flex',
@@ -1206,6 +1214,8 @@ function SneedexOffers() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main style={styles.container}>
+                {/* Centered content: banner, header, filters */}
+                <div style={styles.centeredContent}>
                 {/* Jailbreak Wizard Banner */}
                 <div style={{
                     background: `linear-gradient(135deg, ${theme.colors.success}12, ${theme.colors.accent}08)`,
@@ -1621,14 +1631,17 @@ function SneedexOffers() {
                         </div>
                     </div>
                 )}
+                </div>
+                {/* End centered content */}
                 
+                {/* Offers section */}
                 {loading && offers.length === 0 ? (
-                    <div style={styles.loadingState}>
+                    <div style={{ ...styles.centeredContent, ...styles.loadingState }}>
                         <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
                         Loading offers...
                     </div>
                 ) : filteredOffers.length === 0 ? (
-                    <div style={styles.emptyState}>
+                    <div style={{ ...styles.centeredContent, ...styles.emptyState }}>
                         <div style={styles.emptyIcon}>{offerTab === 'public' ? '📭' : '🔐'}</div>
                         <h3 style={styles.emptyTitle}>
                             {offerTab === 'public' ? 'No Public Offers' : 'No Private Offers'}
@@ -1649,9 +1662,9 @@ function SneedexOffers() {
                     </div>
                 ) : (
                     <>
-                        {/* Top Pagination */}
+                        {/* Top Pagination - centered */}
                         {filteredOffers.length > ITEMS_PER_PAGE && (
-                            <div style={{ ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
+                            <div style={{ ...styles.centeredContent, ...styles.pagination, marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: `1px solid ${theme.colors.border}` }}>
                                 <button
                                     style={{
                                         ...styles.paginationButton,
@@ -1680,7 +1693,8 @@ function SneedexOffers() {
                             </div>
                         )}
                         
-                        <div style={styles.grid}>
+                        {/* Full-width grid */}
+                        <div style={styles.fullWidthGrid}>
                         {paginatedOffers.map((offer) => {
                             const bidInfo = offersWithBids[Number(offer.id)] || {};
                             const tokenInfo = getTokenInfo(offer.price_token_ledger.toString());
@@ -2049,10 +2063,12 @@ function SneedexOffers() {
                                 </div>
                             );
                         })}
+                        </div>
+                        {/* End full-width grid */}
                         
-                        {/* Bottom Pagination */}
+                        {/* Bottom Pagination - centered */}
                         {filteredOffers.length > ITEMS_PER_PAGE && (
-                            <div style={styles.pagination}>
+                            <div style={{ ...styles.centeredContent, ...styles.pagination }}>
                                 <button
                                     style={{
                                         ...styles.paginationButton,
@@ -2080,7 +2096,6 @@ function SneedexOffers() {
                                 </button>
                             </div>
                         )}
-                    </div>
                     </>
                 )}
             </main>
