@@ -85,21 +85,21 @@ function TransactionList({
     React.useEffect(() => {
         const mediaQueryCSS = `
             <style id="transaction-responsive-css">
-                @media (max-width: 768px) {
+                @media (max-width: 640px) {
                     .transaction-table-container { display: none !important; }
                     .transaction-cards-container { display: block !important; }
                     .transaction-filters-row {
                         flex-direction: column !important;
                         align-items: stretch !important;
+                        gap: 0.75rem !important;
                     }
-                    .transaction-filter-group,
-                    .transaction-compact-filter-group {
+                    .transaction-filter-group {
                         min-width: 100% !important;
                         flex: 1 1 100% !important;
                         max-width: none !important;
                     }
                 }
-                @media (min-width: 769px) {
+                @media (min-width: 641px) {
                     .transaction-table-container { display: block !important; }
                     .transaction-cards-container { display: none !important; }
                 }
@@ -787,207 +787,256 @@ function TransactionList({
             
             {!isCollapsed && !error && (
                 <>
-                    {/* Filters */}
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1rem',
-                        marginBottom: '1.5rem',
-                        padding: '1rem',
-                        background: theme.colors.primaryBg,
-                        borderRadius: '12px',
-                        border: `1px solid ${theme.colors.border}`
-                    }}>
-                        {/* Go to index (ledger mode only) */}
-                        {!principalId && (
-                            <form onSubmit={handleTxIndexSubmit} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                            }}>
-                                <div style={{ position: 'relative', flex: '0 0 150px' }}>
-                                    <FaSearch size={12} style={{
-                                        position: 'absolute',
-                                        left: '10px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        color: theme.colors.mutedText
-                                    }} />
-                                    <input
-                                        type="text"
-                                        value={txIndexInput}
-                                        onChange={(e) => setTxIndexInput(e.target.value)}
-                                        placeholder="Jump to index..."
-                                        style={{
-                                            width: '100%',
-                                            padding: '0.5rem 0.75rem 0.5rem 2rem',
-                                            borderRadius: '8px',
-                                            border: `1px solid ${theme.colors.border}`,
-                                            background: theme.colors.secondaryBg,
-                                            color: theme.colors.primaryText,
-                                            fontSize: '0.85rem',
-                                            outline: 'none',
-                                            boxSizing: 'border-box'
-                                        }}
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        borderRadius: '8px',
-                                        border: 'none',
-                                        background: txPrimary,
-                                        color: 'white',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Go
-                                </button>
-                            </form>
-                        )}
-                        
-                        {/* Filter controls */}
+                    {/* Filters - Redesigned */}
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        {/* Top toolbar: Type pills + Actions */}
                         <div style={{
                             display: 'flex',
                             flexWrap: 'wrap',
-                            gap: '0.75rem',
-                            alignItems: 'flex-end'
-                        }} className="transaction-filters-row">
-                            <div style={{ flex: '1 1 180px', maxWidth: '220px' }} className="transaction-filter-group">
-                                <label style={{
-                                    display: 'block',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.75rem',
-                                    marginBottom: '4px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    From
-                                </label>
-                                <PrincipalInput
-                                    value={fromFilter}
-                                    onChange={setFromFilter}
-                                    placeholder="Filter sender..."
-                                />
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '1rem',
+                            marginBottom: '1rem'
+                        }}>
+                            {/* Transaction type pills */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '0.375rem',
+                                flexWrap: 'wrap'
+                            }}>
+                                {Object.values(TransactionType).map(type => {
+                                    const typeInfo = type === 'all' 
+                                        ? { color: theme.colors.primaryText, bg: theme.colors.tertiaryBg, icon: null, label: 'All' }
+                                        : getTypeInfo(type);
+                                    const isActive = selectedType === type;
+                                    
+                                    return (
+                                        <button
+                                            key={type}
+                                            onClick={() => setSelectedType(type)}
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px',
+                                                padding: '6px 12px',
+                                                borderRadius: '20px',
+                                                border: isActive ? `2px solid ${typeInfo.color}` : `1px solid ${theme.colors.border}`,
+                                                background: isActive ? typeInfo.bg : 'transparent',
+                                                color: isActive ? typeInfo.color : theme.colors.secondaryText,
+                                                fontSize: '0.8rem',
+                                                fontWeight: isActive ? '600' : '500',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            {typeInfo.icon}
+                                            {typeInfo.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
                             
-                            <div style={{ flex: '0 0 80px' }} className="transaction-compact-filter-group">
-                                <label style={{
-                                    display: 'block',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.75rem',
-                                    marginBottom: '4px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    Logic
-                                </label>
-                                <select
-                                    value={filterOperator}
-                                    onChange={(e) => setFilterOperator(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.5rem',
-                                        borderRadius: '8px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.secondaryBg,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '0.85rem',
-                                        cursor: 'pointer',
-                                        outline: 'none'
-                                    }}
-                                >
-                                    <option value="and">AND</option>
-                                    <option value="or">OR</option>
-                                </select>
-                            </div>
-                            
-                            <div style={{ flex: '1 1 180px', maxWidth: '220px' }} className="transaction-filter-group">
-                                <label style={{
-                                    display: 'block',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.75rem',
-                                    marginBottom: '4px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    To
-                                </label>
-                                <PrincipalInput
-                                    value={toFilter}
-                                    onChange={setToFilter}
-                                    placeholder="Filter recipient..."
-                                />
-                            </div>
-                            
-                            <div style={{ flex: '0 0 110px' }} className="transaction-compact-filter-group">
-                                <label style={{
-                                    display: 'block',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.75rem',
-                                    marginBottom: '4px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    Type
-                                </label>
-                                <select
-                                    value={selectedType}
-                                    onChange={(e) => setSelectedType(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.5rem',
-                                        borderRadius: '8px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.secondaryBg,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '0.85rem',
-                                        cursor: 'pointer',
-                                        outline: 'none'
-                                    }}
-                                >
-                                    {Object.values(TransactionType).map(type => (
-                                        <option key={type} value={type}>
-                                            {type.charAt(0).toUpperCase() + type.slice(1)}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            
-                            <div style={{ flex: '0 0 auto' }} className="transaction-compact-filter-group">
-                                <label style={{
-                                    display: 'block',
-                                    color: 'transparent',
-                                    fontSize: '0.75rem',
-                                    marginBottom: '4px'
-                                }}>
-                                    Export
-                                </label>
+                            {/* Right side actions */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.75rem'
+                            }}>
+                                {/* Jump to index (ledger mode only) */}
+                                {!principalId && (
+                                    <form onSubmit={handleTxIndexSubmit} style={{
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                    }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            background: theme.colors.primaryBg,
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            overflow: 'hidden'
+                                        }}>
+                                            <span style={{
+                                                padding: '0 0.5rem 0 0.75rem',
+                                                color: theme.colors.mutedText,
+                                                fontSize: '0.75rem',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                #
+                                            </span>
+                                            <input
+                                                type="text"
+                                                value={txIndexInput}
+                                                onChange={(e) => setTxIndexInput(e.target.value)}
+                                                placeholder="Tx index"
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '0.45rem 0',
+                                                    border: 'none',
+                                                    background: 'transparent',
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '0.85rem',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                            <button
+                                                type="submit"
+                                                style={{
+                                                    padding: '0.45rem 0.75rem',
+                                                    border: 'none',
+                                                    borderLeft: `1px solid ${theme.colors.border}`,
+                                                    background: txPrimary,
+                                                    color: 'white',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                GO
+                                            </button>
+                                        </div>
+                                    </form>
+                                )}
+                                
+                                {/* Export button */}
                                 <button
                                     onClick={exportTransactionsToCSV}
                                     disabled={displayedTransactions.length === 0}
+                                    title={`Export ${displayedTransactions.length} transactions to CSV`}
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '0.5rem',
-                                        padding: '0.5rem 1rem',
+                                        gap: '0.4rem',
+                                        padding: '0.5rem 0.875rem',
                                         borderRadius: '8px',
                                         border: 'none',
                                         background: `linear-gradient(135deg, ${txPrimary}, ${txSecondary})`,
                                         color: 'white',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
                                         cursor: displayedTransactions.length === 0 ? 'not-allowed' : 'pointer',
-                                        opacity: displayedTransactions.length === 0 ? 0.5 : 1
+                                        opacity: displayedTransactions.length === 0 ? 0.5 : 1,
+                                        boxShadow: displayedTransactions.length === 0 ? 'none' : `0 2px 8px ${txPrimary}40`
                                     }}
                                 >
-                                    <FaDownload size={12} />
-                                    CSV
+                                    <FaDownload size={11} />
+                                    Export
                                 </button>
                             </div>
+                        </div>
+                        
+                        {/* Address filter row */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.875rem 1rem',
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            border: `1px solid ${theme.colors.border}`,
+                            flexWrap: 'wrap'
+                        }} className="transaction-filters-row">
+                            {/* Filter icon label */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                color: theme.colors.mutedText,
+                                fontSize: '0.8rem',
+                                fontWeight: '500',
+                                minWidth: '55px'
+                            }}>
+                                <FaFilter size={12} />
+                                Filter
+                            </div>
+                            
+                            {/* From input */}
+                            <div style={{ flex: '1 1 160px', maxWidth: '240px' }} className="transaction-filter-group">
+                                <PrincipalInput
+                                    value={fromFilter}
+                                    onChange={setFromFilter}
+                                    placeholder="From address..."
+                                />
+                            </div>
+                            
+                            {/* AND/OR toggle */}
+                            <div style={{
+                                display: 'flex',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                border: `1px solid ${theme.colors.border}`
+                            }}>
+                                <button
+                                    onClick={() => setFilterOperator('and')}
+                                    style={{
+                                        padding: '0.35rem 0.75rem',
+                                        border: 'none',
+                                        background: filterOperator === 'and' ? txPrimary : 'transparent',
+                                        color: filterOperator === 'and' ? 'white' : theme.colors.secondaryText,
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    AND
+                                </button>
+                                <button
+                                    onClick={() => setFilterOperator('or')}
+                                    style={{
+                                        padding: '0.35rem 0.75rem',
+                                        border: 'none',
+                                        borderLeft: `1px solid ${theme.colors.border}`,
+                                        background: filterOperator === 'or' ? txPrimary : 'transparent',
+                                        color: filterOperator === 'or' ? 'white' : theme.colors.secondaryText,
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    OR
+                                </button>
+                            </div>
+                            
+                            {/* To input */}
+                            <div style={{ flex: '1 1 160px', maxWidth: '240px' }} className="transaction-filter-group">
+                                <PrincipalInput
+                                    value={toFilter}
+                                    onChange={setToFilter}
+                                    placeholder="To address..."
+                                />
+                            </div>
+                            
+                            {/* Clear filters button - only show if filters are active */}
+                            {(fromFilter || toFilter) && (
+                                <button
+                                    onClick={() => {
+                                        setFromFilter('');
+                                        setToFilter('');
+                                    }}
+                                    style={{
+                                        padding: '0.4rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: 'transparent',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.borderColor = theme.colors.error;
+                                        e.target.style.color = theme.colors.error;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.borderColor = theme.colors.border;
+                                        e.target.style.color = theme.colors.mutedText;
+                                    }}
+                                >
+                                    Clear
+                                </button>
+                            )}
                         </div>
                     </div>
 
