@@ -16,6 +16,7 @@ import { Principal } from '@dfinity/principal';
 import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
 import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
+import PrincipalInput from './components/PrincipalInput';
 import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion } from 'react-icons/fa';
 
 // Accent colors
@@ -1104,18 +1105,17 @@ function Neuron() {
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '0.9rem', marginBottom: '0.75rem' }}>
                                                     {editingPrincipal ? 'Edit Principal' : 'Add Principal'}
                                                 </h4>
-                                                <input
-                                                    type="text" value={managePrincipalInput}
-                                                    onChange={(e) => setManagePrincipalInput(e.target.value)}
-                                                    placeholder="Enter principal ID"
-                                                    disabled={!!editingPrincipal}
-                                                    style={{
-                                                        width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px',
-                                                        border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                        color: theme.colors.primaryText, fontSize: '0.85rem', marginBottom: '0.75rem',
-                                                        boxSizing: 'border-box'
-                                                    }}
-                                                />
+                                                <div style={{ marginBottom: '0.75rem' }}>
+                                                    <PrincipalInput
+                                                        value={managePrincipalInput}
+                                                        onChange={setManagePrincipalInput}
+                                                        placeholder="Enter principal ID or search by name"
+                                                        disabled={!!editingPrincipal}
+                                                        isAuthenticated={isAuthenticated}
+                                                        defaultTab="all"
+                                                        style={{ maxWidth: '100%' }}
+                                                    />
+                                                </div>
                                                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                                                     <button onClick={makeFullOwner} style={{
                                                         padding: '0.4rem 0.75rem', borderRadius: '6px', border: `1px solid ${neuronGold}40`,
@@ -1294,17 +1294,16 @@ function Neuron() {
                                                         <option value="CriticalDappOperations">Critical Dapp Operations</option>
                                                     </select>
                                                 </div>
-                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                                    <input
-                                                        type="text" value={followeeInput}
-                                                        onChange={(e) => setFolloweeInput(e.target.value)}
-                                                        placeholder="Neuron ID (hex)"
-                                                        style={{
-                                                            flex: '2 1 200px', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                                            border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                            color: theme.colors.primaryText, fontSize: '0.85rem'
-                                                        }}
-                                                    />
+                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                                    <div style={{ flex: '2 1 250px', minWidth: '200px' }}>
+                                                        <NeuronInput
+                                                            value={followeeInput}
+                                                            onChange={setFolloweeInput}
+                                                            placeholder="Neuron ID or search by name"
+                                                            snsRoot={selectedSnsRoot}
+                                                            defaultTab="all"
+                                                        />
+                                                    </div>
                                                     <input
                                                         type="text" value={followeeAliasInput}
                                                         onChange={(e) => setFolloweeAliasInput(e.target.value)}
@@ -1312,7 +1311,7 @@ function Neuron() {
                                                         style={{
                                                             flex: '1 1 120px', padding: '0.5rem 0.75rem', borderRadius: '8px',
                                                             border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                            color: theme.colors.primaryText, fontSize: '0.85rem'
+                                                            color: theme.colors.primaryText, fontSize: '0.85rem', height: '38px', boxSizing: 'border-box'
                                                         }}
                                                     />
                                                     <button onClick={addFollowee} disabled={actionBusy || !followeeInput}
@@ -1320,7 +1319,8 @@ function Neuron() {
                                                             padding: '0.5rem 1rem', borderRadius: '8px', border: 'none',
                                                             background: neuronAccent, color: 'white', fontSize: '0.85rem',
                                                             cursor: (actionBusy || !followeeInput) ? 'not-allowed' : 'pointer',
-                                                            opacity: (actionBusy || !followeeInput) ? 0.5 : 1, whiteSpace: 'nowrap'
+                                                            opacity: (actionBusy || !followeeInput) ? 0.5 : 1, whiteSpace: 'nowrap',
+                                                            height: '38px', boxSizing: 'border-box'
                                                         }}
                                                     >
                                                         <FaPlus size={10} style={{ marginRight: '4px' }} /> Add to {topicInput}
