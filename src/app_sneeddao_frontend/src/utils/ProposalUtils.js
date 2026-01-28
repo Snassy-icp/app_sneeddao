@@ -16,7 +16,7 @@
  * Priority of checks:
  * 1. deadline_timestamp_seconds - Most accurate, includes wait-for-quiet extensions
  * 2. reward_status - 1 = ACCEPT_VOTES, 2 = READY_TO_SETTLE, 3 = SETTLED
- * 3. Fallback: initial_voting_period_seconds from creation (less accurate)
+ * 3. Fallback: initial_voting_period_seconds from creation
  * 
  * @param {Object} proposalData - The proposal data object
  * @param {number} [currentTimeSeconds] - Optional current time in seconds (for testing)
@@ -53,28 +53,26 @@ export const isProposalAcceptingVotes = (proposalData, currentTimeSeconds = null
         }
         
         // Priority 3: Fallback to initial voting period calculation
-        // Note: This is LESS ACCURATE because it doesn't account for wait-for-quiet extensions
-        // The actual deadline could be up to 8 days from creation (vs initial 4 days)
+        // Use just the initial period - if we don't have deadline info, 
+        // we can't know about wait-for-quiet extensions
         const created = BigInt(proposalData.proposal_creation_timestamp_seconds || 
                                proposalData.proposal_timestamp_seconds || 0);
         const votingPeriod = BigInt(proposalData.initial_voting_period_seconds || 0);
         
         if (created > 0n && votingPeriod > 0n) {
-            // Add a buffer for potential wait-for-quiet extensions
-            // Initial period is typically 4 days, can extend to 8 days
-            // We err on the side of showing voting buttons
-            const maxExtension = votingPeriod; // Double the initial period as safety margin
-            return created + votingPeriod + maxExtension > now;
+            // Use the initial voting period as the deadline
+            // If voting was extended via wait-for-quiet, we'd have deadline_timestamp_seconds
+            return created + votingPeriod > now;
         }
         
-        // If we can't determine, err on the side of showing voting buttons
-        // (false negative is worse than false positive)
-        return true;
+        // If we can't determine, assume voting is closed
+        // (for old proposals without proper data, voting is likely closed)
+        return false;
         
     } catch (err) {
         console.error('Error checking if proposal accepts votes:', err);
-        // Err on the side of showing voting buttons
-        return true;
+        // On error, assume voting is closed to avoid showing incorrect UI
+        return false;
     }
 };
 
