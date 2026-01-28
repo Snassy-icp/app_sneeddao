@@ -457,6 +457,20 @@ function Neuron() {
 
     const removePrincipal = async (principalStr, perms) => {
         try {
+            // Safety check: prevent removing the last principal
+            if (neuronData?.permissions?.length === 1) {
+                setError('Cannot remove the last principal - this would permanently lock you out of the neuron!');
+                return;
+            }
+            // Safety check: prevent removing the last principal with management permissions
+            const managersCount = neuronData?.permissions?.filter(p => 
+                p.permission_type?.includes(PERM.MANAGE_PRINCIPALS)
+            ).length || 0;
+            if (managersCount === 1 && perms?.includes(PERM.MANAGE_PRINCIPALS)) {
+                setError('Cannot remove the last principal with management permissions!');
+                return;
+            }
+            
             setActionBusy(true); setActionMsg('Removing principal...'); setError('');
             const principal = Principal.fromText(principalStr);
             const result = await manageNeuron({
@@ -1192,23 +1206,40 @@ function Neuron() {
                                                 {neuronData.permissions?.map((perm, idx) => {
                                                     const symbolInfo = getPrincipalSymbol(perm);
                                                     const permTypes = perm.permission_type || [];
+                                                    const principalStr = perm.principal?.toString();
+                                                    const isCurrentUser = identity && principalStr === identity.getPrincipal()?.toString();
+                                                    const isLastPrincipal = neuronData.permissions?.length === 1;
+                                                    const isLastWithManagePermission = neuronData.permissions?.filter(p => 
+                                                        p.permission_type?.includes(PERM.MANAGE_PRINCIPALS)
+                                                    ).length === 1 && permTypes.includes(PERM.MANAGE_PRINCIPALS);
+                                                    
                                                     return (
                                                         <div key={idx} style={{
                                                             padding: '0.75rem 1rem', borderRadius: '10px',
-                                                            background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
+                                                            background: isCurrentUser ? `${neuronAccent}08` : theme.colors.primaryBg,
+                                                            border: `1px solid ${isCurrentUser ? neuronAccent + '40' : theme.colors.border}`
                                                         }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                                                                 <div style={{ color: symbolInfo.color, fontSize: '1rem' }} title={symbolInfo.title}>
                                                                     {symbolInfo.icon}
                                                                 </div>
-                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                                                     <PrincipalDisplay 
                                                                         principal={perm.principal}
-                                                                        displayInfo={principalDisplayInfo.get(perm.principal?.toString())}
+                                                                        displayInfo={principalDisplayInfo.get(principalStr)}
                                                                         showCopyButton={false}
                                                                         short={true}
                                                                         isAuthenticated={isAuthenticated}
                                                                     />
+                                                                    {isCurrentUser && (
+                                                                        <span style={{
+                                                                            padding: '0.15rem 0.4rem', borderRadius: '4px',
+                                                                            background: neuronAccent, color: 'white',
+                                                                            fontSize: '0.65rem', fontWeight: '600', textTransform: 'uppercase'
+                                                                        }}>
+                                                                            You
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
                                                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1217,14 +1248,38 @@ function Neuron() {
                                                                                 padding: '0.4rem', borderRadius: '6px', border: 'none',
                                                                                 background: `${neuronPrimary}15`, color: neuronPrimary, cursor: 'pointer'
                                                                             }}
+                                                                            title="Edit permissions"
                                                                         >
                                                                             <FaEdit size={12} />
                                                                         </button>
-                                                                        <button onClick={() => removePrincipal(perm.principal?.toString(), perm.permission_type)}
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                if (isLastPrincipal) {
+                                                                                    alert('⚠️ Cannot remove the last principal!\n\nThis would permanently lock you out of the neuron with no way to recover access.');
+                                                                                    return;
+                                                                                }
+                                                                                if (isLastWithManagePermission) {
+                                                                                    alert('⚠️ Cannot remove the last principal with management permissions!\n\nYou would lose the ability to manage this neuron\'s permissions.');
+                                                                                    return;
+                                                                                }
+                                                                                if (isCurrentUser) {
+                                                                                    const confirmed = window.confirm(
+                                                                                        '⚠️ Warning: You are about to remove YOURSELF from this neuron!\n\n' +
+                                                                                        'This will revoke your access. Are you absolutely sure you want to proceed?'
+                                                                                    );
+                                                                                    if (!confirmed) return;
+                                                                                }
+                                                                                removePrincipal(principalStr, perm.permission_type);
+                                                                            }}
+                                                                            disabled={isLastPrincipal}
                                                                             style={{
                                                                                 padding: '0.4rem', borderRadius: '6px', border: 'none',
-                                                                                background: `${theme.colors.error}15`, color: theme.colors.error, cursor: 'pointer'
+                                                                                background: isLastPrincipal ? theme.colors.border : `${theme.colors.error}15`,
+                                                                                color: isLastPrincipal ? theme.colors.mutedText : theme.colors.error,
+                                                                                cursor: isLastPrincipal ? 'not-allowed' : 'pointer',
+                                                                                opacity: isLastPrincipal ? 0.5 : 1
                                                                             }}
+                                                                            title={isLastPrincipal ? 'Cannot remove the last principal' : isCurrentUser ? 'Remove yourself (warning!)' : 'Remove principal'}
                                                                         >
                                                                             <FaTrash size={12} />
                                                                         </button>
