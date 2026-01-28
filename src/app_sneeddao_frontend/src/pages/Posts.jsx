@@ -13,6 +13,7 @@ import {
     markRepliesSeenUpTo,
     getLastSeenRepliesTimestamp
 } from '../utils/BackendUtils';
+import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import Header from '../components/Header';
 import MarkdownBody from '../components/MarkdownBody';
@@ -352,7 +353,7 @@ const Posts = () => {
                         {!isReply && post.title && post.title.length > 0 && (
                             <span className="post-title" style={{ color: theme.colors.primaryText }}>{post.title[0]}</span>
                         )}
-                        <span className="post-date" style={{ color: theme.colors.secondaryText }}>{formatDate(post.created_at)}</span>
+                        <span className="post-date" style={{ color: theme.colors.secondaryText, cursor: 'default' }} title={getFullDate(post.created_at)}>{getRelativeTime(post.created_at)}</span>
                     </div>
                     <div className="post-scores">
                         <span className={`score ${isNegative ? 'negative' : 'positive'}`}>
@@ -436,7 +437,7 @@ const Posts = () => {
                         {thread.title && (
                             <span className="post-title" style={{ color: theme.colors.primaryText }}>{thread.title}</span>
                         )}
-                        <span className="post-date" style={{ color: theme.colors.secondaryText }}>{formatDate(thread.created_at)}</span>
+                        <span className="post-date" style={{ color: theme.colors.secondaryText, cursor: 'default' }} title={getFullDate(thread.created_at)}>{getRelativeTime(thread.created_at)}</span>
                     </div>
                     <div className="post-scores">
                         {postCount !== undefined ? (

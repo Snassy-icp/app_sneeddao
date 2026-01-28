@@ -13,6 +13,7 @@ import {
     getLastSeenTipTimestamp,
     markTipsSeenUpTo
 } from '../utils/BackendUtils';
+import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
@@ -280,8 +281,8 @@ const Tips = () => {
                         )}
                     </div>
                 </td>
-                <td className="tip-date" style={{ color: theme.colors.secondaryText }}>
-                    {formatDate(tip.created_at)}
+                <td className="tip-date" style={{ color: theme.colors.secondaryText, cursor: 'default' }} title={getFullDate(tip.created_at)}>
+                    {getRelativeTime(tip.created_at)}
                 </td>
             </tr>
         );
@@ -421,7 +422,7 @@ const Tips = () => {
                     color: theme.colors.mutedText
                 }}>
                     <span style={{ minWidth: '40px' }}>Date:</span>
-                    <span>{formatDate(tip.created_at)}</span>
+                    <span style={{ cursor: 'default' }} title={getFullDate(tip.created_at)}>{getRelativeTime(tip.created_at)}</span>
                 </div>
             </div>
         );

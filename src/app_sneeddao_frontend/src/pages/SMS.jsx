@@ -12,6 +12,7 @@ import {
     markMessagesSeenUpTo,
     getLastSeenMessagesTimestamp
 } from '../utils/BackendUtils';
+import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
 import MarkdownButtons from '../components/MarkdownButtons';
@@ -618,7 +619,9 @@ const SMS = () => {
                     <div style={{ 
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '15px'
+                        gap: '1rem',
+                        maxWidth: '900px',
+                        margin: '0 auto'
                     }}>
                         {messages.map((message) => {
                             // Check if this is a received message (user is recipient, not sender)
@@ -723,14 +726,18 @@ const SMS = () => {
                                             ))}
                                         </div>
                                     </div>
-                                    <div style={{ 
-                                        color: theme.colors.mutedText, 
-                                        fontSize: '0.85rem',
-                                        fontFamily: SYSTEM_FONT,
-                                        textAlign: 'right',
-                                        whiteSpace: 'nowrap'
-                                    }}>
-                                        {formatDate(message.created_at)}
+                                    <div 
+                                        style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.85rem',
+                                            fontFamily: SYSTEM_FONT,
+                                            textAlign: 'right',
+                                            whiteSpace: 'nowrap',
+                                            cursor: 'default'
+                                        }}
+                                        title={getFullDate(message.created_at)}
+                                    >
+                                        {getRelativeTime(message.created_at)}
                                     </div>
                                 </div>
                                 <div style={{ 
