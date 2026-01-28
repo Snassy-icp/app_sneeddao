@@ -10,5 +10,10 @@
   },
   "sneed_sns_forum": {
     "ic": "mcigm-4aaaa-aaaad-qhlkq-cai"
+  },
+  "sneed_icp_neuron_manager": {
+    "ic": "trw7l-7iaaa-aaaad-admeq-cai",
+    "staging": "trw7l-7iaaa-aaaad-admeq-cai"
   }
+
 }
