@@ -2373,19 +2373,43 @@ function ThreadViewer({
                             onClick={() => setShowCommentForm(true)}
                             className="add-comment-button"
                             style={{
-                                backgroundColor: theme.colors.accent,
-                                color: theme.colors.primaryText,
+                                width: '100%',
+                                background: 'linear-gradient(135deg, #06b6d4, #0891b2)',
+                                color: 'white',
                                 border: 'none',
-                                borderRadius: '4px',
-                                padding: '10px 20px',
+                                borderRadius: '12px',
+                                padding: '1rem 1.5rem',
                                 cursor: 'pointer',
-                                fontSize: '14px'
+                                fontSize: '1rem',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                transition: 'all 0.2s ease',
+                                boxShadow: '0 4px 15px rgba(6, 182, 212, 0.3)'
                             }}
                         >
-                            {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
+                            💬 {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
                         </button>
                     ) : (
-                        <div style={{ marginTop: '8px' }}>
+                        <div style={{ 
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div style={{
+                                color: '#06b6d4',
+                                fontSize: '1rem',
+                                fontWeight: '600',
+                                marginBottom: '1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                💬 {discussionPosts.length === 0 ? 'Start the Discussion' : 'Add Your Comment'}
+                            </div>
                             <input
                                 type="text"
                                 value={commentTitle}
@@ -2393,26 +2417,25 @@ function ThreadViewer({
                                 placeholder="Title (optional)"
                                 style={{
                                     width: '100%',
-                                    backgroundColor: theme.colors.secondaryBg,
+                                    background: theme.colors.secondaryBg,
                                     color: theme.colors.primaryText,
-                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? theme.colors.error : '#444'}`,
-                                    borderRadius: '4px',
-                                    padding: '10px',
-                                    marginBottom: '5px',
-                                    fontSize: '14px'
+                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? theme.colors.error : theme.colors.border}`,
+                                    borderRadius: '10px',
+                                    padding: '0.75rem 1rem',
+                                    fontSize: '0.95rem',
+                                    marginBottom: '0.5rem',
+                                    boxSizing: 'border-box'
                                 }}
                             />
                             {textLimits && (
                                 <div style={{
-                                    fontSize: '12px',
+                                    fontSize: '0.75rem',
                                     color: commentTitle.length > textLimits.max_title_length ? theme.colors.error : 
-                                           (textLimits.max_title_length - commentTitle.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
-                                    marginBottom: '10px'
+                                           (textLimits.max_title_length - commentTitle.length) < 20 ? '#f39c12' : theme.colors.mutedText,
+                                    marginBottom: '0.75rem',
+                                    textAlign: 'right'
                                 }}>
-                                    Title: {commentTitle.length}/{textLimits.max_title_length} characters
-                                    {commentTitle.length > textLimits.max_title_length && 
-                                        <span style={{ marginLeft: '10px' }}>({commentTitle.length - textLimits.max_title_length} over limit)</span>
-                                    }
+                                    {commentTitle.length}/{textLimits.max_title_length}
                                 </div>
                             )}
                             <EmojiPicker
@@ -2431,42 +2454,42 @@ function ThreadViewer({
                             <textarea
                                 value={commentText}
                                 onChange={(e) => setCommentText(e.target.value)}
-                                placeholder="Write your comment here..."
+                                placeholder="Share your thoughts..."
                                 ref={commentBodyRef}
                                 style={{
                                     width: '100%',
-                                    backgroundColor: theme.colors.secondaryBg,
+                                    background: theme.colors.secondaryBg,
                                     color: theme.colors.primaryText,
-                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? theme.colors.error : '#444'}`,
-                                    borderRadius: '4px',
-                                    padding: '10px',
-                                    fontSize: '14px',
-                                    minHeight: '100px',
+                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? theme.colors.error : theme.colors.border}`,
+                                    borderRadius: '10px',
+                                    padding: '0.75rem 1rem',
+                                    fontSize: '0.95rem',
+                                    minHeight: '120px',
                                     resize: 'vertical',
-                                    marginBottom: '5px'
+                                    marginBottom: '0.5rem',
+                                    boxSizing: 'border-box'
                                 }}
                             />
                             {textLimits && (
                                 <div style={{
-                                    fontSize: '12px',
+                                    fontSize: '0.75rem',
                                     color: commentText.length > textLimits.max_body_length ? theme.colors.error : 
-                                           (textLimits.max_body_length - commentText.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
-                                    marginBottom: '10px',
+                                           (textLimits.max_body_length - commentText.length) < 100 ? '#f39c12' : theme.colors.mutedText,
+                                    marginBottom: '1rem',
+                                    textAlign: 'right',
                                     display: 'flex',
+                                    justifyContent: 'flex-end',
                                     alignItems: 'center',
-                                    gap: '8px'
+                                    gap: '0.5rem'
                                 }}>
-                                    <span>Body: {commentText.length}/{textLimits.max_body_length} characters</span>
-                                    {commentText.length > textLimits.max_body_length && 
-                                        <span>({commentText.length - textLimits.max_body_length} over limit)</span>
-                                    }
+                                    <span>{commentText.length}/{textLimits.max_body_length}</span>
                                     {isPremium && regularLimits && textLimits.max_body_length > regularLimits.max_body_length && (
                                         <span style={{
-                                            backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                                            color: '#ffd700',
+                                            background: 'linear-gradient(135deg, #ffd700, #ffb347)',
+                                            color: '#000',
                                             padding: '2px 6px',
                                             borderRadius: '4px',
-                                            fontSize: '10px',
+                                            fontSize: '0.65rem',
                                             fontWeight: 'bold'
                                         }}>
                                             ⭐ PREMIUM
@@ -2476,9 +2499,8 @@ function ThreadViewer({
                             )}
                             <div style={{ 
                                 display: 'flex', 
-                                gap: '10px', 
-                                marginTop: '10px',
-                                justifyContent: 'flex-end'
+                                gap: '0.75rem', 
+                                justifyContent: 'flex-start'
                             }}>
                                 <button
                                     onClick={() => {
@@ -2487,13 +2509,13 @@ function ThreadViewer({
                                         setCommentTitle('');
                                     }}
                                     style={{
-                                        backgroundColor: '#666',
-                                        color: theme.colors.primaryText,
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
+                                        background: 'transparent',
+                                        color: theme.colors.secondaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '10px',
+                                        padding: '0.75rem 1.5rem',
                                         cursor: 'pointer',
-                                        fontSize: '14px'
+                                        fontSize: '0.95rem'
                                     }}
                                 >
                                     Cancel
@@ -2504,20 +2526,26 @@ function ThreadViewer({
                                              (textLimits && (commentTitle.length > textLimits.max_title_length || 
                                                             commentText.length > textLimits.max_body_length))}
                                     style={{
-                                        backgroundColor: (submittingComment || !commentText.trim() || 
-                                                         (textLimits && (commentTitle.length > textLimits.max_title_length || 
-                                                                        commentText.length > textLimits.max_body_length))) ? '#666' : theme.colors.success,
-                                        color: theme.colors.primaryText,
+                                        background: (submittingComment || !commentText.trim() || 
+                                                     (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                                    commentText.length > textLimits.max_body_length))) 
+                                            ? theme.colors.mutedText 
+                                            : `linear-gradient(135deg, ${theme.colors.success}, #27ae60)`,
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
+                                        borderRadius: '10px',
+                                        padding: '0.75rem 1.5rem',
                                         cursor: (submittingComment || !commentText.trim() || 
                                                 (textLimits && (commentTitle.length > textLimits.max_title_length || 
                                                                commentText.length > textLimits.max_body_length))) ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px'
+                                        fontSize: '0.95rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
                                     }}
                                 >
-                                    {submittingComment ? 'Posting...' : 'Post Comment'}
+                                    {submittingComment ? '⏳ Posting...' : '✓ Post Comment'}
                                 </button>
                             </div>
                         </div>
