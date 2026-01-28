@@ -13,12 +13,12 @@ import { useTheme } from './contexts/ThemeContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
-import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
+import { calculateVotingPower, formatVotingPower, VotingPowerCalculator } from './utils/VotingPowerUtils';
 import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
 import PrincipalInput from './components/PrincipalInput';
 import ConfirmDialog from './components/ConfirmDialog';
-import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion } from 'react-icons/fa';
+import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion, FaCalendarAlt, FaPercent, FaChartLine, FaWallet } from 'react-icons/fa';
 
 // Accent colors
 const neuronPrimary = '#6366f1';
@@ -1134,102 +1134,359 @@ function Neuron() {
                                 </div>
                             </div>
 
-                            {/* Stats Grid */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                                {/* Stake */}
-                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.25s', marginBottom: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        {snsLogo ? (
-                                            <img src={snsLogo} alt="" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
-                                        ) : (
-                                            <FaCoins size={14} style={{ color: neuronGold }} />
-                                        )}
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stake</span>
-                                    </div>
-                                    <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
-                                        {formatE8s(neuronData.cached_neuron_stake_e8s)} {selectedSns?.symbol || 'tokens'}
-                                    </div>
-                                </div>
+                            {/* Stats Grid - Comprehensive Neuron Information */}
+                            {(() => {
+                                const symbol = selectedSns?.symbol || 'SNS';
+                                const now = Math.floor(Date.now() / 1000);
+                                
+                                // Calculate age from aging_since_timestamp_seconds
+                                const agingSince = Number(neuronData.aging_since_timestamp_seconds || 0);
+                                const ageSeconds = agingSince > 0 && agingSince < now ? now - agingSince : 0;
+                                
+                                // Calculate dissolve delay
+                                let dissolveDelay = 0;
+                                let isDissolving = false;
+                                if (neuronData.dissolve_state?.[0]) {
+                                    const ds = neuronData.dissolve_state[0];
+                                    if (ds.DissolveDelaySeconds !== undefined) {
+                                        dissolveDelay = Number(ds.DissolveDelaySeconds);
+                                    } else if (ds.WhenDissolvedTimestampSeconds !== undefined) {
+                                        const dissolveTs = Number(ds.WhenDissolvedTimestampSeconds);
+                                        dissolveDelay = dissolveTs > now ? dissolveTs - now : 0;
+                                        isDissolving = dissolveTs > now;
+                                    }
+                                }
+                                
+                                // Calculate bonuses if we have nervous system parameters
+                                let dissolveBonusPct = 0;
+                                let ageBonusPct = 0;
+                                let maxDissolveDelay = 0;
+                                let maxAge = 0;
+                                let maxDissolveBonusPct = 0;
+                                let maxAgeBonusPct = 0;
+                                
+                                if (nervousSystemParameters) {
+                                    maxDissolveDelay = nervousSystemParameters.max_dissolve_delay_seconds?.[0] ? Number(nervousSystemParameters.max_dissolve_delay_seconds[0]) : 0;
+                                    maxAge = nervousSystemParameters.max_neuron_age_for_age_bonus?.[0] ? Number(nervousSystemParameters.max_neuron_age_for_age_bonus[0]) : 0;
+                                    maxDissolveBonusPct = nervousSystemParameters.max_dissolve_delay_bonus_percentage?.[0] ? Number(nervousSystemParameters.max_dissolve_delay_bonus_percentage[0]) : 0;
+                                    maxAgeBonusPct = nervousSystemParameters.max_age_bonus_percentage?.[0] ? Number(nervousSystemParameters.max_age_bonus_percentage[0]) : 0;
+                                    
+                                    // Calculate actual bonus percentages
+                                    if (maxDissolveDelay > 0) {
+                                        const cappedDissolve = Math.min(dissolveDelay, maxDissolveDelay);
+                                        dissolveBonusPct = (cappedDissolve / maxDissolveDelay) * maxDissolveBonusPct;
+                                    }
+                                    if (maxAge > 0) {
+                                        const cappedAge = Math.min(ageSeconds, maxAge);
+                                        ageBonusPct = (cappedAge / maxAge) * maxAgeBonusPct;
+                                    }
+                                }
+                                
+                                const totalBonusPct = dissolveBonusPct + ageBonusPct;
+                                
+                                // Maturity breakdown
+                                const normalMaturity = Number(neuronData.maturity_e8s_equivalent || 0);
+                                const stakedMaturity = neuronData.staked_maturity_e8s_equivalent?.[0] ? Number(neuronData.staked_maturity_e8s_equivalent[0]) : 0;
+                                const disbursingMaturity = (neuronData.disburse_maturity_in_progress || [])
+                                    .reduce((sum, d) => sum + Number(d.amount_e8s || 0), 0);
+                                const totalMaturity = normalMaturity + stakedMaturity + disbursingMaturity;
+                                
+                                // Total value
+                                const stakedE8s = Number(neuronData.cached_neuron_stake_e8s || 0);
+                                const totalValue = stakedE8s + totalMaturity;
+                                
+                                // Voting power multiplier
+                                const vpMultiplier = Number(neuronData.voting_power_percentage_multiplier || 100);
+                                
+                                // Creation date
+                                const createdTimestamp = neuronData.created_timestamp_seconds ? Number(neuronData.created_timestamp_seconds) : null;
+                                const createdDate = createdTimestamp ? new Date(createdTimestamp * 1000) : null;
+                                
+                                // Additional neuron properties
+                                const neuronFees = Number(neuronData.neuron_fees_e8s || 0);
+                                const autoStakeMaturity = neuronData.auto_stake_maturity?.[0] || false;
+                                const vestingPeriod = neuronData.vesting_period_seconds?.[0] ? Number(neuronData.vesting_period_seconds[0]) : 0;
+                                const sourceNnsNeuronId = neuronData.source_nns_neuron_id?.[0] ? neuronData.source_nns_neuron_id[0].toString() : null;
+                                
+                                // Duration formatter
+                                const formatDuration = (seconds) => {
+                                    if (seconds <= 0) return '0d';
+                                    const days = Math.floor(seconds / 86400);
+                                    const months = Math.floor(days / 30);
+                                    const years = Math.floor(days / 365);
+                                    if (years > 0) return `${years}y ${Math.floor((days % 365) / 30)}m`;
+                                    if (months > 0) return `${months}m ${days % 30}d`;
+                                    if (days > 0) return `${days}d`;
+                                    const hours = Math.floor(seconds / 3600);
+                                    if (hours > 0) return `${hours}h`;
+                                    return `${Math.floor(seconds / 60)}m`;
+                                };
+                                
+                                return (
+                                    <>
+                                    {/* Primary Stats Row */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                                        {/* Stake */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.25s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                {snsLogo ? (
+                                                    <img src={snsLogo} alt="" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
+                                                ) : (
+                                                    <FaCoins size={14} style={{ color: neuronGold }} />
+                                                )}
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stake</span>
+                                            </div>
+                                            <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
+                                                {formatE8s(stakedE8s)} <span style={{ fontSize: '0.9rem', fontWeight: '500', color: theme.colors.secondaryText }}>{symbol}</span>
+                                            </div>
+                                        </div>
 
-                                {/* Voting Power */}
-                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.3s', marginBottom: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        <FaVoteYea size={14} style={{ color: neuronPrimary }} />
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Voting Power</span>
-                                    </div>
-                                    <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
-                                        {nervousSystemParameters 
-                                            ? formatVotingPower(calculateVotingPower(neuronData, nervousSystemParameters))
-                                            : formatE8s(neuronData.voting_power || 0)}
-                                    </div>
-                                </div>
-
-                                {/* Dissolve State */}
-                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.35s', marginBottom: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        {getDissolveState(neuronData).includes('Dissolving') ? <FaUnlock size={14} style={{ color: '#f59e0b' }} /> : <FaLock size={14} style={{ color: '#10b981' }} />}
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</span>
-                                    </div>
-                                    <div style={{ color: theme.colors.primaryText, fontSize: '1rem', fontWeight: '600' }}>
-                                        {getDissolveState(neuronData)}
-                                    </div>
-                                    {currentUserHasPermission(PERM.CONFIGURE_DISSOLVE_STATE) && (
-                                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                                            <button onClick={() => setShowDissolveDelayDialog(true)} disabled={actionBusy}
-                                                style={{
-                                                    padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none',
-                                                    background: neuronPrimary, color: 'white', fontSize: '0.75rem',
-                                                    cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.5 : 1
-                                                }}
-                                            >
-                                                <FaClock size={10} style={{ marginRight: '4px' }} /> Increase Delay
-                                            </button>
-                                            {getDissolveState(neuronData).includes('Locked') && (
-                                                <button onClick={startDissolving} disabled={actionBusy}
-                                                    style={{
-                                                        padding: '0.4rem 0.75rem', borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
-                                                        background: 'transparent', color: theme.colors.secondaryText, fontSize: '0.75rem',
-                                                        cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.5 : 1
-                                                    }}
-                                                >
-                                                    <FaUnlock size={10} style={{ marginRight: '4px' }} /> Start Dissolving
-                                                </button>
+                                        {/* Total Maturity */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.3s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                <FaChartLine size={14} style={{ color: '#10b981' }} />
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Maturity</span>
+                                            </div>
+                                            <div style={{ color: '#10b981', fontSize: '1.25rem', fontWeight: '700' }}>
+                                                {formatE8s(totalMaturity)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{symbol}</span>
+                                            </div>
+                                            {(stakedMaturity > 0 || disbursingMaturity > 0) && (
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    {normalMaturity > 0 && <span>Available: {formatE8s(normalMaturity)}</span>}
+                                                    {stakedMaturity > 0 && <span style={{ marginLeft: normalMaturity > 0 ? '0.5rem' : 0 }}>Staked: {formatE8s(stakedMaturity)}</span>}
+                                                    {disbursingMaturity > 0 && <span style={{ marginLeft: '0.5rem', color: '#f59e0b' }}>Disbursing: {formatE8s(disbursingMaturity)}</span>}
+                                                </div>
                                             )}
-                                            {getDissolveState(neuronData).includes('Dissolving') && (
-                                                <button onClick={stopDissolving} disabled={actionBusy}
-                                                    style={{
-                                                        padding: '0.4rem 0.75rem', borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
-                                                        background: 'transparent', color: theme.colors.secondaryText, fontSize: '0.75rem',
-                                                        cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.5 : 1
-                                                    }}
-                                                >
-                                                    <FaLock size={10} style={{ marginRight: '4px' }} /> Stop Dissolving
-                                                </button>
+                                        </div>
+
+                                        {/* Total Value */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.35s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                <FaWallet size={14} style={{ color: neuronGold }} />
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Value</span>
+                                            </div>
+                                            <div style={{ color: neuronGold, fontSize: '1.25rem', fontWeight: '700' }}>
+                                                {formatE8s(totalValue)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{symbol}</span>
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                Stake + Maturity
+                                            </div>
+                                        </div>
+
+                                        {/* Voting Power */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.4s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                <FaVoteYea size={14} style={{ color: neuronPrimary }} />
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Voting Power</span>
+                                            </div>
+                                            <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
+                                                {nervousSystemParameters 
+                                                    ? formatVotingPower(calculateVotingPower(neuronData, nervousSystemParameters))
+                                                    : formatE8s(neuronData.voting_power || 0)}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                Multiplier: {vpMultiplier}%
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Secondary Stats Row - Age, Dissolve, Bonuses */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                                        {/* Neuron Age */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.45s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                <FaCalendarAlt size={14} style={{ color: neuronAccent }} />
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Age</span>
+                                            </div>
+                                            <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
+                                                {formatDuration(ageSeconds)}
+                                            </div>
+                                            {nervousSystemParameters && maxAge > 0 && (
+                                                <div style={{ fontSize: '0.75rem', color: ageBonusPct > 0 ? '#10b981' : theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    Age Bonus: +{ageBonusPct.toFixed(1)}%
+                                                    {ageSeconds < maxAge && <span style={{ color: theme.colors.mutedText }}> (max {maxAgeBonusPct}%)</span>}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Dissolve Delay/Time */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.5s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                {isDissolving ? <FaClock size={14} style={{ color: '#f59e0b' }} /> : <FaLock size={14} style={{ color: '#10b981' }} />}
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                    {isDissolving ? 'Time to Dissolve' : 'Dissolve Delay'}
+                                                </span>
+                                            </div>
+                                            <div style={{ color: isDissolving ? '#f59e0b' : theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
+                                                {formatDuration(dissolveDelay)}
+                                            </div>
+                                            {nervousSystemParameters && maxDissolveDelay > 0 && (
+                                                <div style={{ fontSize: '0.75rem', color: dissolveBonusPct > 0 ? '#10b981' : theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    Dissolve Bonus: +{dissolveBonusPct.toFixed(1)}%
+                                                    {dissolveDelay < maxDissolveDelay && <span style={{ color: theme.colors.mutedText }}> (max {maxDissolveBonusPct}%)</span>}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Total Bonus */}
+                                        {nervousSystemParameters && (maxAge > 0 || maxDissolveDelay > 0) && (
+                                            <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.55s', marginBottom: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                    <FaPercent size={14} style={{ color: '#10b981' }} />
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Bonus</span>
+                                                </div>
+                                                <div style={{ color: totalBonusPct > 0 ? '#10b981' : theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
+                                                    +{totalBonusPct.toFixed(1)}%
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    Max: {maxAgeBonusPct + maxDissolveBonusPct}%
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Creation Date */}
+                                        {createdDate && (
+                                            <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.6s', marginBottom: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                    <FaHistory size={14} style={{ color: theme.colors.secondaryText }} />
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Created</span>
+                                                </div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '0.95rem', fontWeight: '600' }}>
+                                                    {createdDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    {createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Additional Info Row - only show if there's relevant data */}
+                                    {(neuronFees > 0 || autoStakeMaturity || vestingPeriod > 0 || sourceNnsNeuronId) && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                                            {/* Neuron Fees */}
+                                            {neuronFees > 0 && (
+                                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.65s', marginBottom: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                        <FaCoins size={14} style={{ color: '#ef4444' }} />
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Neuron Fees</span>
+                                                    </div>
+                                                    <div style={{ color: '#ef4444', fontSize: '1rem', fontWeight: '600' }}>
+                                                        {formatE8s(neuronFees)} <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>{symbol}</span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                        Accumulated fees
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Auto-Stake Maturity */}
+                                            <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.7s', marginBottom: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                    <FaChartLine size={14} style={{ color: autoStakeMaturity ? '#10b981' : theme.colors.mutedText }} />
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Auto-Stake</span>
+                                                </div>
+                                                <div style={{ color: autoStakeMaturity ? '#10b981' : theme.colors.secondaryText, fontSize: '1rem', fontWeight: '600' }}>
+                                                    {autoStakeMaturity ? 'Enabled' : 'Disabled'}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    Maturity auto-staking
+                                                </div>
+                                            </div>
+
+                                            {/* Vesting Period */}
+                                            {vestingPeriod > 0 && (
+                                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.75s', marginBottom: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                        <FaClock size={14} style={{ color: '#8b5cf6' }} />
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vesting</span>
+                                                    </div>
+                                                    <div style={{ color: '#8b5cf6', fontSize: '1rem', fontWeight: '600' }}>
+                                                        {formatDuration(vestingPeriod)}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                        Vesting period
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Source NNS Neuron */}
+                                            {sourceNnsNeuronId && (
+                                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.8s', marginBottom: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                        <FaKey size={14} style={{ color: neuronPrimary }} />
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Source NNS</span>
+                                                    </div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                                                        {sourceNnsNeuronId.slice(0, 8)}...
+                                                    </div>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                        From NNS neuron
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     )}
-                                </div>
 
-                                {/* Maturity */}
-                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.4s', marginBottom: 0 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        {snsLogo ? (
-                                            <img src={snsLogo} alt="" style={{ width: '14px', height: '14px', borderRadius: '3px' }} />
-                                        ) : (
-                                            <FaCoins size={12} style={{ color: neuronGold }} />
-                                        )}
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Maturity</span>
-                                    </div>
-                                    <div style={{ color: theme.colors.primaryText, fontSize: '1rem', fontWeight: '600' }}>
-                                        {formatE8s(neuronData.maturity_e8s_equivalent)}
-                                    </div>
-                                    {neuronData.staked_maturity_e8s_equivalent?.[0] > 0 && (
-                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                                            + {formatE8s(neuronData.staked_maturity_e8s_equivalent[0])} staked
+                                    {/* Dissolve State Actions */}
+                                    <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.85s', marginBottom: '1rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                                    {isDissolving ? <FaUnlock size={14} style={{ color: '#f59e0b' }} /> : dissolveDelay > 0 ? <FaLock size={14} style={{ color: '#10b981' }} /> : <FaUnlock size={14} style={{ color: '#ef4444' }} />}
+                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                        {getDissolveState(neuronData)}
+                                                    </span>
+                                                </div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                    {isDissolving && `Dissolves on ${new Date((Number(neuronData.dissolve_state[0].WhenDissolvedTimestampSeconds)) * 1000).toLocaleDateString()}`}
+                                                    {!isDissolving && dissolveDelay > 0 && `Locked for ${formatDuration(dissolveDelay)}`}
+                                                    {!isDissolving && dissolveDelay === 0 && 'Ready to disburse'}
+                                                </div>
+                                            </div>
+                                            {currentUserHasPermission(PERM.CONFIGURE_DISSOLVE_STATE) && (
+                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                    <button onClick={() => setShowDissolveDelayDialog(true)} disabled={actionBusy}
+                                                        style={{
+                                                            padding: '0.5rem 1rem', borderRadius: '8px', border: 'none',
+                                                            background: neuronPrimary, color: 'white', fontSize: '0.8rem', fontWeight: '500',
+                                                            cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.5 : 1,
+                                                            display: 'flex', alignItems: 'center', gap: '0.4rem'
+                                                        }}
+                                                    >
+                                                        <FaClock size={12} /> Increase Delay
+                                                    </button>
+                                                    {getDissolveState(neuronData).includes('Locked') && (
+                                                        <button onClick={startDissolving} disabled={actionBusy}
+                                                            style={{
+                                                                padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                                                background: 'transparent', color: theme.colors.secondaryText, fontSize: '0.8rem', fontWeight: '500',
+                                                                cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.5 : 1,
+                                                                display: 'flex', alignItems: 'center', gap: '0.4rem'
+                                                            }}
+                                                        >
+                                                            <FaUnlock size={12} /> Start Dissolving
+                                                        </button>
+                                                    )}
+                                                    {getDissolveState(neuronData).includes('Dissolving') && (
+                                                        <button onClick={stopDissolving} disabled={actionBusy}
+                                                            style={{
+                                                                padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                                                background: 'transparent', color: theme.colors.secondaryText, fontSize: '0.8rem', fontWeight: '500',
+                                                                cursor: actionBusy ? 'wait' : 'pointer', opacity: actionBusy ? 0.5 : 1,
+                                                                display: 'flex', alignItems: 'center', gap: '0.4rem'
+                                                            }}
+                                                        >
+                                                            <FaLock size={12} /> Stop Dissolving
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
+                                    </div>
+                                    </>
+                                );
+                            })()}
 
                             {/* Permissions Section */}
                             <div className="neuron-card-animate" style={{ opacity: 0, animationDelay: '0.45s' }}>
