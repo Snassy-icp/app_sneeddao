@@ -212,7 +212,7 @@ function Rewards() {
                         symbols[tokenIdStr] = metadata.symbol;
                         decimals[tokenIdStr] = metadata.decimals;
                         logos[tokenIdStr] = metadata.logo;
-                    } else {
+                        } else {
                         symbols[tokenIdStr] = await fetchTokenSymbol(tokenId);
                         decimals[tokenIdStr] = 8;
                     }
@@ -437,7 +437,7 @@ function Rewards() {
                         width: '100%',
                         height: '100%',
                         background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight})`,
-                        alignItems: 'center',
+            alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: size * 0.4,
                         fontWeight: 'bold',
@@ -496,8 +496,8 @@ function Rewards() {
                 padding: '2rem 1.5rem'
             }}>
                 {/* Hero Header */}
-                <div style={{
-                    textAlign: 'center',
+                        <div style={{
+                            textAlign: 'center',
                     marginBottom: '3rem'
                 }}>
                     <h1 style={{
@@ -510,10 +510,10 @@ function Rewards() {
                         WebkitTextFillColor: 'transparent',
                         backgroundClip: 'text',
                         letterSpacing: '-0.02em'
-                    }}>
+                        }}>
                         💰 Sneed Rewards
                     </h1>
-                    <p style={{
+                            <p style={{ 
                         color: theme.colors.mutedText,
                         fontSize: '1.1rem',
                         maxWidth: '500px',
@@ -548,7 +548,7 @@ function Rewards() {
                             🏆
                         </div>
                         <h2 style={{
-                            color: theme.colors.primaryText,
+                                color: theme.colors.primaryText, 
                             fontSize: '1.5rem',
                             marginBottom: '1rem',
                             fontWeight: '600'
@@ -561,27 +561,27 @@ function Rewards() {
                             maxWidth: '350px',
                             margin: '0 auto 2rem',
                             lineHeight: '1.6'
-                        }}>
+                            }}>
                             Connect your wallet to view and claim rewards earned through Sneed DAO governance participation.
-                        </p>
-                        <button 
-                            onClick={login}
+                            </p>
+                            <button 
+                                onClick={login}
                             className="claim-btn"
-                            style={{
+                                style={{
                                 background: `linear-gradient(135deg, ${goldPrimary}, ${goldDark})`,
                                 color: '#1a1a1a',
-                                border: 'none',
+                                    border: 'none',
                                 padding: '14px 40px',
                                 borderRadius: '12px',
                                 fontSize: '1.1rem',
                                 fontWeight: '600',
-                                cursor: 'pointer',
+                                    cursor: 'pointer',
                                 boxShadow: `0 4px 20px ${goldPrimary}50`
-                            }}
-                        >
+                                }}
+                            >
                             Connect Wallet
-                        </button>
-                    </div>
+                            </button>
+                        </div>
                 ) : loadingUserBalances ? (
                     /* Loading State */
                     <div style={{
@@ -600,15 +600,15 @@ function Rewards() {
                 ) : (
                     <>
                         {/* Total Value Cards */}
-                        {(userBalances.length > 0 || getTotalClaimedRewardsUSD() > 0) && (
-                            <div style={{
+                            {(userBalances.length > 0 || getTotalClaimedRewardsUSD() > 0) && (
+                                <div style={{ 
                                 display: 'grid',
                                 gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
                                 gap: '1.5rem',
                                 marginBottom: '2rem'
-                            }}>
+                                }}>
                                 {/* Unclaimed Rewards Card */}
-                                {userBalances.length > 0 && (
+                                    {userBalances.length > 0 && (
                                     <div className="rewards-card" style={{
                                         background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
                                         borderRadius: '20px',
@@ -616,8 +616,8 @@ function Rewards() {
                                         border: `2px solid ${goldPrimary}40`,
                                         position: 'relative',
                                         overflow: 'hidden'
-                                    }}>
-                                        <div style={{
+                                        }}>
+                                            <div style={{ 
                                             position: 'absolute',
                                             top: '-50px',
                                             right: '-50px',
@@ -641,22 +641,22 @@ function Rewards() {
                                             }}>
                                                 Unclaimed Rewards
                                             </span>
-                                        </div>
-                                        <div style={{
+                                            </div>
+                                            <div style={{ 
                                             fontSize: '2.5rem',
                                             fontWeight: '700',
                                             background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight})`,
                                             WebkitBackgroundClip: 'text',
                                             WebkitTextFillColor: 'transparent',
                                             backgroundClip: 'text'
-                                        }}>
-                                            {formatUSD(getTotalRewardsUSD())}
+                                            }}>
+                                                {formatUSD(getTotalRewardsUSD())}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                                
+                                    )}
+                                    
                                 {/* Claimed Rewards Card */}
-                                {getTotalClaimedRewardsUSD() > 0 && (
+                                    {getTotalClaimedRewardsUSD() > 0 && (
                                     <div className="rewards-card" style={{
                                         background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
                                         borderRadius: '20px',
@@ -664,8 +664,8 @@ function Rewards() {
                                         border: `2px solid ${theme.colors.success}40`,
                                         position: 'relative',
                                         overflow: 'hidden'
-                                    }}>
-                                        <div style={{
+                                        }}>
+                                            <div style={{ 
                                             position: 'absolute',
                                             top: '-50px',
                                             right: '-50px',
@@ -689,19 +689,19 @@ function Rewards() {
                                             }}>
                                                 Total Claimed
                                             </span>
-                                        </div>
-                                        <div style={{
+                                            </div>
+                                            <div style={{ 
                                             fontSize: '2.5rem',
                                             fontWeight: '700',
                                             color: theme.colors.success
-                                        }}>
-                                            {formatUSD(getTotalClaimedRewardsUSD())}
+                                            }}>
+                                                {formatUSD(getTotalClaimedRewardsUSD())}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
+                                    )}
+                                </div>
+                            )}
+                            
                         {/* Rewards List */}
                         {userBalances.filter(([_, balance]) => balance && Number(balance) > 0).length > 0 ? (
                             <div className="rewards-card" style={{
@@ -720,21 +720,21 @@ function Rewards() {
                                     borderBottom: `1px solid ${theme.colors.border}`
                                 }}>
                                     <h2 style={{
-                                        color: theme.colors.primaryText,
+                                color: theme.colors.primaryText, 
                                         fontSize: '1.25rem',
                                         fontWeight: '600',
                                         margin: 0,
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '0.5rem'
-                                    }}>
+                            }}>
                                         <span>🎁</span> Your Rewards
                                     </h2>
                                     <Link 
-                                        to="/wallet"
-                                        style={{
-                                            color: theme.colors.accent,
-                                            textDecoration: 'none',
+                                    to="/wallet"
+                                    style={{ 
+                                        color: theme.colors.accent,
+                                        textDecoration: 'none',
                                             fontSize: '0.9rem',
                                             display: 'flex',
                                             alignItems: 'center',
@@ -763,7 +763,7 @@ function Rewards() {
                                                     background: theme.colors.tertiaryBg,
                                                     borderRadius: '16px',
                                                     padding: '1.25rem',
-                                                    display: 'flex',
+                                                display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '1rem',
                                                     border: `1px solid ${theme.colors.border}`,
@@ -790,7 +790,7 @@ function Rewards() {
                                                         {formatBalance(balance, decimals)} {symbol}
                                                     </div>
                                                     {usdValue > 0 && (
-                                                        <div style={{
+                                                        <div style={{ 
                                                             color: goldPrimary,
                                                             fontSize: '0.95rem',
                                                             fontWeight: '600',
@@ -838,8 +838,8 @@ function Rewards() {
                                         );
                                     })}
                                 </div>
-                            </div>
-                        ) : (
+                                </div>
+                            ) : (
                             <div className="rewards-card" style={{
                                 background: theme.colors.secondaryBg,
                                 borderRadius: '20px',
@@ -878,8 +878,8 @@ function Rewards() {
                             padding: '1.5rem',
                             border: `1px solid ${theme.colors.border}`
                         }}>
-                            <button
-                                onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
+                                <button 
+                                    onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
                                 style={{
                                     width: '100%',
                                     display: 'flex',
@@ -910,7 +910,7 @@ function Rewards() {
                                 }}>
                                     ▼
                                 </span>
-                            </button>
+                                </button>
 
                             {isClaimHistoryExpanded && (
                                 <div style={{ marginTop: '1.5rem' }}>
@@ -921,10 +921,10 @@ function Rewards() {
                                             padding: '2rem' 
                                         }}>
                                             <Spinner size={32} />
-                                        </div>
-                                    ) : userClaimEvents.length > 0 ? (
+                                    </div>
+                                ) : userClaimEvents.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                            {Object.entries(groupEventsBySequence(userClaimEvents))
+                                        {Object.entries(groupEventsBySequence(userClaimEvents))
                                                 .sort((a, b) => {
                                                     // Sort by latest event timestamp (newest first)
                                                     const aLatest = a[1][a[1].length - 1];
@@ -932,9 +932,9 @@ function Rewards() {
                                                     return Number(bLatest.timestamp) - Number(aLatest.timestamp);
                                                 })
                                                 .slice(0, 10)
-                                                .map(([seqNum, events]) => {
-                                                    const status = getGroupStatus(events);
-                                                    const latestEvent = events[events.length - 1];
+                                            .map(([seqNum, events]) => {
+                                                const status = getGroupStatus(events);
+                                                const latestEvent = events[events.length - 1];
                                                     const tokenIdStr = latestEvent.token_id.toString();
                                                     const symbol = tokenSymbols[tokenIdStr] || tokenIdStr.slice(0, 8) + '...';
                                                     const usdValue = getTokenUSDValue(latestEvent.amount, latestEvent.token_id);
@@ -949,7 +949,7 @@ function Rewards() {
                                                         'Failed': theme.colors.error
                                                     };
 
-                                                    return (
+                                                return (
                                                         <div 
                                                             key={seqNum} 
                                                             style={{
@@ -974,14 +974,14 @@ function Rewards() {
                                                                     marginBottom: '0.25rem',
                                                                     flexWrap: 'wrap'
                                                                 }}>
-                                                                    <span style={{
+                                                            <span style={{
                                                                         color: theme.colors.primaryText,
                                                                         fontWeight: '600'
-                                                                    }}>
+                                                            }}>
                                                                         {formatBalance(latestEvent.amount, 8)} {symbol}
-                                                                    </span>
+                                                            </span>
                                                                     {usdValue > 0 && (
-                                                                        <span style={{
+                                                                        <span style={{ 
                                                                             color: goldPrimary,
                                                                             fontSize: '0.85rem'
                                                                         }}>
@@ -1032,12 +1032,12 @@ function Rewards() {
                                                                 letterSpacing: '0.03em'
                                                             }}>
                                                                 {status}
-                                                            </div>
                                                         </div>
-                                                    );
-                                                })}
-                                        </div>
-                                    ) : (
+                                                    </div>
+                                                );
+                                            })}
+                                    </div>
+                                ) : (
                                         <div style={{
                                             textAlign: 'center',
                                             padding: '2rem',
@@ -1064,4 +1064,4 @@ function Rewards() {
     );
 }
 
-export default Rewards;
+export default Rewards; 

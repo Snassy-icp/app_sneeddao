@@ -21,8 +21,57 @@ import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from './utils/ProposalUtils';
 import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
+import { FaChevronLeft, FaChevronRight, FaSearch, FaExternalLinkAlt, FaCheckCircle, FaTimesCircle, FaClock, FaVoteYea, FaComments, FaChevronDown, FaChevronUp, FaFilter, FaSort, FaGavel, FaUsers } from 'react-icons/fa';
+import { getRelativeTime, getFullDate } from './utils/DateUtils';
 
-// System font stack for consistent typography
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.proposal-animate {
+    animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.proposal-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.proposal-slide {
+    animation: slideIn 0.3s ease-out forwards;
+}
+`;
+
+// Accent colors - matching Forum/Topic pages
+const proposalPrimary = '#6366f1'; // Indigo
+const proposalSecondary = '#8b5cf6'; // Purple
+const proposalAccent = '#06b6d4'; // Cyan
+
+// System font stack
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
 function Proposal() {
@@ -39,7 +88,6 @@ function Proposal() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     
-    // Use optimized SNS loading
     const { 
         snsList, 
         currentSns, 
@@ -48,14 +96,11 @@ function Proposal() {
     } = useOptimizedSnsLoading();
     const [votingHistory, setVotingHistory] = useState(null);
     const [isVotingHistoryExpanded, setIsVotingHistoryExpanded] = useState(false);
-    // Add filter states
     const [hideYes, setHideYes] = useState(false);
     const [hideNo, setHideNo] = useState(false);
     const [hideNotVoted, setHideNotVoted] = useState(false);
-    // Add sort state
     const [sortBy, setSortBy] = useState('date');
 
-    // Forum actor state
     const [forumActor, setForumActor] = useState(null);
     const [isProposalExpanded, setIsProposalExpanded] = useState(true);
     const [isDiscussionExpanded, setIsDiscussionExpanded] = useState(true);
@@ -64,15 +109,12 @@ function Proposal() {
     const [discussionThread, setDiscussionThread] = useState(null);
     const [loadingThread, setLoadingThread] = useState(false);
     
-    // Quick vote state
-    const [quickVoteState, setQuickVoteState] = useState('idle'); // 'idle' | 'voting' | 'success' | 'error'
+    const [quickVoteState, setQuickVoteState] = useState('idle');
     const [eligibleNeuronsInfo, setEligibleNeuronsInfo] = useState({ count: 0, totalVP: 0 });
     const [nervousSystemParams, setNervousSystemParams] = useState(null);
 
-    // Get naming context
     const { getNeuronDisplayName, neuronNames, neuronNicknames, verifiedNames } = useNaming();
 
-    // Helper function to get neuron display info
     const getNeuronDisplayInfo = (neuronId) => {
         if (!neuronId || !selectedSnsRoot) return null;
         
@@ -87,26 +129,20 @@ function Proposal() {
         return { name, nickname, isVerified };
     };
 
-    // Handle nickname updates
     const handleNicknameUpdate = (neuronId, snsRoot, newNickname) => {
-        // The naming context will be updated by the dialog's success callback
-        // which should trigger a re-render via the useNaming hook
         console.log('Nickname updated for neuron:', neuronId, 'in SNS:', snsRoot, 'new nickname:', newNickname);
     };
 
-    // Initialize forum actor
     useEffect(() => {
         if (isAuthenticated && identity) {
             const actor = createForumActor(identity);
             setForumActor(actor);
         } else {
-            // Create anonymous actor for unauthenticated users to allow read-only access
             const actor = createForumActor(null);
             setForumActor(actor);
         }
     }, [isAuthenticated, identity, createForumActor]);
 
-    // Handle SNS loading errors
     useEffect(() => {
         if (snsError) {
             setError(snsError);
@@ -119,7 +155,6 @@ function Proposal() {
         }
     }, [currentProposalId, selectedSnsRoot]);
 
-    // Fetch discussion thread when forum actor and proposal are ready
     useEffect(() => {
         if (forumActor && currentProposalId && selectedSnsRoot) {
             fetchDiscussionThread();
@@ -176,24 +211,19 @@ function Proposal() {
             return;
         }
 
-        // Validate that the input is a valid number
         if (!/^\d+$/.test(proposalIdInput)) {
             setError('Proposal ID must be a number');
             return;
         }
 
-        // Update URL and trigger search
         setSearchParams({ proposalid: proposalIdInput, sns: selectedSnsRoot });
         setCurrentProposalId(proposalIdInput);
     };
 
     const handleSnsChange = async (newSnsRoot) => {
-        // Update global context
         updateSelectedSns(newSnsRoot);
+        setProposalData(null);
         
-        setProposalData(null); // Clear immediately
-        
-        // Update URL params
         setSearchParams(prev => {
             prev.set('sns', newSnsRoot);
             if (currentProposalId) {
@@ -202,9 +232,8 @@ function Proposal() {
             return prev;
         });
 
-        // Fetch with the new SNS root
         if (currentProposalId) {
-            const selectedSns = getSnsById(newSnsRoot); // Use newSnsRoot directly instead of state
+            const selectedSns = getSnsById(newSnsRoot);
             if (!selectedSns) {
                 setError('Selected SNS not found');
                 return;
@@ -244,29 +273,23 @@ function Proposal() {
         return (Number(e8s) / 100000000).toFixed(8);
     };
 
-    // Fetch discussion thread for the proposal
     const fetchDiscussionThread = async () => {
         if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
         
         setLoadingThread(true);
         try {
-            // Check if a thread exists for this proposal
             const threadResult = await forumActor.get_proposal_thread(
                 Principal.fromText(selectedSnsRoot), 
                 Number(currentProposalId)
             );
             
             if (threadResult && threadResult.length > 0) {
-                // Motoko optional returns as array
                 const thread = threadResult[0];
                 setDiscussionThread(thread);
                 setProposalThreadId(Number(thread.thread_id));
-                console.log('Found existing thread for proposal:', thread.thread_id);
             } else {
-                // No thread exists yet
                 setDiscussionThread(null);
                 setProposalThreadId(null);
-                console.log('No thread exists for this proposal yet');
             }
         } catch (err) {
             console.error('Error fetching discussion thread:', err);
@@ -277,13 +300,11 @@ function Proposal() {
         }
     };
 
-    // Function to fetch neurons directly from SNS using global context
     const fetchNeuronsFromSns = async () => {
         if (!selectedSnsRoot) return [];
         return await fetchNeuronsForSns(selectedSnsRoot);
     };
 
-    // Fetch nervous system parameters for voting power calculation
     useEffect(() => {
         const fetchParams = async () => {
             if (!selectedSnsRoot || !identity) {
@@ -310,7 +331,6 @@ function Proposal() {
         fetchParams();
     }, [selectedSnsRoot, identity]);
 
-    // Calculate eligible neurons when proposal data changes
     useEffect(() => {
         if (!proposalData || !isAuthenticated || !identity || !isProposalAcceptingVotes(proposalData)) {
             setEligibleNeuronsInfo({ count: 0, totalVP: 0 });
@@ -327,12 +347,10 @@ function Proposal() {
         let totalVP = 0;
 
         for (const neuron of hotkeyNeurons) {
-            // Check voting power
             const votingPower = nervousSystemParams ? 
                 calculateVotingPower(neuron, nervousSystemParams) : 0;
             if (votingPower === 0) continue;
 
-            // Check if already voted
             const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
             const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
             
@@ -349,7 +367,6 @@ function Proposal() {
         setEligibleNeuronsInfo({ count: eligibleCount, totalVP });
     }, [proposalData, isAuthenticated, identity, getHotkeyNeurons, nervousSystemParams]);
 
-    // Quick vote function - votes with all eligible neurons
     const quickVoteAll = async (vote) => {
         if (!identity || !selectedSnsRoot || !currentProposalId || !proposalData) return;
 
@@ -366,14 +383,11 @@ function Proposal() {
                 agentOptions: { identity }
             });
 
-            // Filter eligible neurons
             const eligibleNeurons = hotkeyNeurons.filter(neuron => {
-                // Check voting power
                 const votingPower = nervousSystemParams ? 
                     calculateVotingPower(neuron, nervousSystemParams) : 0;
                 if (votingPower === 0) return false;
 
-                // Check if already voted
                 const neuronIdHex = uint8ArrayToHex(neuron.id?.[0]?.id);
                 const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
                 
@@ -392,7 +406,6 @@ function Proposal() {
                 return;
             }
 
-            // Vote with all eligible neurons
             let successCount = 0;
 
             for (const neuron of eligibleNeurons) {
@@ -401,7 +414,7 @@ function Proposal() {
                         subaccount: neuron.id[0]?.id,
                         command: [{
                             RegisterVote: {
-                                vote: vote, // 1 for Adopt, 2 for Reject
+                                vote: vote,
                                 proposal: [{ id: BigInt(currentProposalId) }]
                             }
                         }]
@@ -420,7 +433,6 @@ function Proposal() {
             if (successCount > 0) {
                 setQuickVoteState('success');
                 setEligibleNeuronsInfo({ count: 0, totalVP: 0 });
-                // Refresh data
                 await refreshNeurons(selectedSnsRoot);
                 fetchProposalData();
             } else {
@@ -436,7 +448,6 @@ function Proposal() {
         }
     };
 
-    // Format VP in compact form
     const formatCompactVP = (vp) => {
         if (!vp || vp === 0) return '0';
         const displayValue = vp / 100_000_000;
@@ -448,10 +459,6 @@ function Proposal() {
         return displayValue.toFixed(displayValue < 10 ? 1 : 0).replace(/\.0$/, '');
     };
 
-    // getProposalStatus is now imported from ProposalUtils
-    // It correctly handles executed proposals that are still accepting votes
-
-    // Helper function to calculate voting percentages
     const calculateVotingPercentages = (tally) => {
         if (!tally) return { yesPercent: 0, noPercent: 0 };
         const total = Number(tally.total);
@@ -462,7 +469,6 @@ function Proposal() {
         return { yesPercent, noPercent };
     };
 
-    // Function to fetch thread ID for the current proposal
     const fetchProposalThread = async () => {
         if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
         
@@ -474,7 +480,6 @@ function Proposal() {
             );
             
             if (response && response.length > 0) {
-                // Motoko optional returns as array
                 setProposalThreadId(Number(response[0].thread_id));
             } else {
                 setProposalThreadId(null);
@@ -487,31 +492,21 @@ function Proposal() {
         }
     };
 
-    // Helper function to check if proposal is critical
     const isCriticalProposal = (data) => {
-        console.log('Checking if proposal is critical:', {
-            exercisedProportion: data?.minimum_yes_proportion_of_exercised?.[0]?.basis_points?.[0],
-            totalProportion: data?.minimum_yes_proportion_of_total?.[0]?.basis_points?.[0]
-        });
         return data?.minimum_yes_proportion_of_exercised?.[0]?.basis_points?.[0] === 6700n;
     };
 
-    // Helper function to get topic name
     const getTopicName = (data) => {
         if (!data?.topic?.[0]) return 'Unknown';
-        // Get the first key of the topic object
         const topicKey = Object.keys(data.topic[0])[0];
         return topicKey || 'Unknown';
     };
 
-    // Helper function to calculate standard majority threshold
     const calculateStandardMajorityThreshold = (tally) => {
         if (!tally) return 0;
-        // 3% of total voting power
         return (Number(tally.total) * 0.03);
     };
 
-    // Helper function to convert HTML breaks to Markdown
     const convertHtmlToMarkdown = (text) => {
         if (!text) return '';
         return text.replace(/<br>/g, '\n\n');
@@ -519,289 +514,214 @@ function Proposal() {
 
     const selectedSns = getSnsById(selectedSnsRoot);
 
-    // Theme-aware styles
-    const getStyles = (theme) => ({
-        pageContainer: {
-            backgroundColor: theme.colors.primaryBg,
-            minHeight: '100vh',
-            fontFamily: SYSTEM_FONT
-        },
-        title: {
-            color: theme.colors.primaryText,
-            fontSize: '24px',
-            fontWeight: 'bold'
-        },
-        section: {
-            backgroundColor: theme.colors.secondaryBg,
-            borderRadius: '8px',
-            padding: '20px',
-            marginTop: '20px'
-        },
-        button: {
-            backgroundColor: theme.colors.accent,
-            color: theme.colors.primaryText,
-            border: 'none',
-            borderRadius: '4px'
-        },
-        secondaryButton: {
-            backgroundColor: theme.colors.secondaryBg,
-            color: theme.colors.primaryText,
-            border: 'none',
-            borderRadius: '4px'
-        },
-        input: {
-            backgroundColor: theme.colors.secondaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '4px',
-            color: theme.colors.primaryText,
-            padding: '8px 12px'
-        },
-        error: {
-            color: theme.colors.error,
-            marginBottom: '20px'
-        },
-        loading: {
-            color: theme.colors.primaryText,
-            textAlign: 'center',
-            padding: '20px'
-        },
-        content: {
-            color: theme.colors.primaryText
-        },
-        expandToggle: {
-            backgroundColor: theme.colors.border,
-            borderRadius: '6px',
-            padding: '10px'
-        },
-        expandedContent: {
-            backgroundColor: theme.colors.border,
-            padding: '15px',
-            borderRadius: '6px',
-            marginTop: '10px'
-        },
-        summaryBox: {
-            backgroundColor: theme.colors.primaryBg,
-            padding: '10px',
-            borderRadius: '4px'
-        },
-        payloadBox: {
-            backgroundColor: theme.colors.primaryBg,
-            padding: '15px',
-            borderRadius: '6px',
-            marginTop: '8px',
-            border: `1px solid ${theme.colors.border}`,
-            fontFamily: 'monospace',
-            fontSize: '0.9rem',
-            lineHeight: '1.4',
-            color: theme.colors.primaryText,
-            whiteSpace: 'pre-wrap',
-            overflowWrap: 'break-word'
-        },
-        link: {
-            color: theme.colors.accent,
-            wordBreak: 'break-all',
-            overflowWrap: 'break-word'
-        },
-        mutedText: {
-            color: theme.colors.mutedText
-        },
-        votingInfo: {
-            marginTop: '25px',
-            fontSize: '14px',
-            color: theme.colors.mutedText
-        },
-        votingDetails: {
-            margin: '5px 0',
-            color: theme.colors.secondaryText
-        }
-    });
+    // Get status color
+    const getStatusColor = (status) => {
+        if (status.includes('Executed') || status.includes('Adopted')) return theme.colors.success;
+        if (status.includes('Rejected') || status.includes('Failed')) return theme.colors.error;
+        if (status.includes('Open')) return proposalPrimary;
+        return theme.colors.mutedText;
+    };
+
+    // Get status icon
+    const getStatusIcon = (status) => {
+        if (status.includes('Executed') || status.includes('Adopted')) return <FaCheckCircle />;
+        if (status.includes('Rejected') || status.includes('Failed')) return <FaTimesCircle />;
+        if (status.includes('Open')) return <FaClock />;
+        return <FaClock />;
+    };
 
     // VotingBar component
     const VotingBar = ({ proposalData }) => {
         if (!proposalData?.latest_tally?.[0]) return null;
         
         const tally = proposalData.latest_tally[0];
-        
-        // Memoize expensive calculations to prevent them from running on every render
         const { yesPercent, noPercent } = useMemo(() => calculateVotingPercentages(tally), [tally]);
         const isCritical = useMemo(() => isCriticalProposal(proposalData), [proposalData]);
         const standardMajorityThreshold = useMemo(() => calculateStandardMajorityThreshold(tally), [tally]);
         const standardMajorityPercent = useMemo(() => (standardMajorityThreshold / Number(tally.total)) * 100, [standardMajorityThreshold, tally.total]);
         
         return (
-            <div style={{ marginTop: '20px' }}>
-                <h3>Voting Results</h3>
-                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ color: theme.colors.success }}>
-                        <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Yes: {yesPercent.toFixed(3)}%</span>
-                        <br />
-                        <span style={{ fontSize: '14px', opacity: 0.9 }}>{formatE8s(tally.yes)} VP</span>
-                    </div>
-                    <div style={{ color: theme.colors.error, textAlign: 'right' }}>
-                        <span style={{ fontSize: '16px', fontWeight: 'bold' }}>No: {noPercent.toFixed(3)}%</span>
-                        <br />
-                        <span style={{ fontSize: '14px', opacity: 0.9 }}>{formatE8s(tally.no)} VP</span>
-                    </div>
-                </div>
-                
-                {/* Total eligible votes */}
-                <div style={{ 
-                    marginBottom: '15px',
-                    textAlign: 'center',
-                    fontSize: '14px',
-                    color: theme.colors.mutedText
+            <div style={{ marginTop: '1.5rem' }}>
+                {/* Vote Summary */}
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1rem'
                 }}>
-                    <span>Total Eligible: {formatE8s(tally.total)} VP</span>
-                    <br />
-                    <span>Last Updated: {new Date(Number(tally.timestamp_seconds || 0) * 1000).toLocaleString()}</span>
+                    <div>
+                        <div style={{
+                            color: theme.colors.success,
+                            fontSize: '1.5rem',
+                            fontWeight: '700'
+                        }}>
+                            {yesPercent.toFixed(2)}%
+                        </div>
+                        <div style={{
+                            color: theme.colors.success,
+                            fontSize: '0.85rem',
+                            opacity: 0.8
+                        }}>
+                            {formatE8s(tally.yes)} VP
+                        </div>
+                    </div>
+                    <div style={{
+                        textAlign: 'center',
+                        color: theme.colors.mutedText,
+                        fontSize: '0.8rem'
+                    }}>
+                        <div>Total: {formatE8s(tally.total)} VP</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                            color: theme.colors.error,
+                            fontSize: '1.5rem',
+                            fontWeight: '700'
+                        }}>
+                            {noPercent.toFixed(2)}%
+                        </div>
+                        <div style={{
+                            color: theme.colors.error,
+                            fontSize: '0.85rem',
+                            opacity: 0.8
+                        }}>
+                            {formatE8s(tally.no)} VP
+                        </div>
+                    </div>
                 </div>
                 
-                {/* Voting bar container */}
+                {/* Voting Bar */}
                 <div style={{ 
                     position: 'relative',
-                    height: '24px',
+                    height: '28px',
                     backgroundColor: theme.colors.border,
-                    borderRadius: '12px',
-                    overflow: 'hidden',
-                    marginBottom: '30px' // Space for the markers below
+                    borderRadius: '14px',
+                    overflow: 'visible',
+                    marginBottom: '2.5rem'
                 }}>
-                    {/* Yes votes (green) */}
+                    {/* Yes votes */}
                     <div style={{
                         position: 'absolute',
                         left: 0,
                         height: '100%',
                         width: `${yesPercent}%`,
-                        backgroundColor: theme.colors.success,
-                        transition: 'width 0.3s ease'
+                        background: `linear-gradient(90deg, ${theme.colors.success}, #27ae60)`,
+                        borderRadius: '14px 0 0 14px',
+                        transition: 'width 0.5s ease'
                     }} />
                     
-                    {/* No votes (red) */}
+                    {/* No votes */}
                     <div style={{
                         position: 'absolute',
                         right: 0,
                         height: '100%',
                         width: `${noPercent}%`,
-                        backgroundColor: theme.colors.error,
-                        transition: 'width 0.3s ease'
+                        background: `linear-gradient(90deg, #c0392b, ${theme.colors.error})`,
+                        borderRadius: '0 14px 14px 0',
+                        transition: 'width 0.5s ease'
                     }} />
                     
-                    {/* Pass threshold marker */}
+                    {/* Threshold markers */}
                     {isCritical ? (
                         <>
-                            {/* 67% marker for critical proposals */}
                             <div style={{
                                 position: 'absolute',
                                 left: '67%',
-                                height: '32px',
-                                width: '2px',
-                                backgroundColor: '#8247e5',
+                                height: '36px',
+                                width: '3px',
+                                backgroundColor: proposalSecondary,
                                 top: '-4px',
+                                borderRadius: '2px',
                                 cursor: 'help'
-                            }} 
-                            title="Critical Proposal Pass Threshold (67%): If this many votes are cast as 'Yes', the proposal will pass immediately"
-                            />
-                            {/* 20% marker for critical proposals */}
+                            }} title="Critical: 67% threshold for immediate adoption" />
                             <div style={{
                                 position: 'absolute',
                                 left: '20%',
-                                height: '32px',
-                                width: '2px',
+                                height: '36px',
+                                width: '3px',
                                 backgroundColor: '#f39c12',
                                 top: '-4px',
+                                borderRadius: '2px',
                                 cursor: 'help'
-                            }}
-                            title="Critical Proposal Minimum Total Threshold (20%): At least this much of total voting power must participate"
-                            />
+                            }} title="Minimum 20% participation required" />
                         </>
                     ) : (
                         <>
-                            {/* 50% marker for regular proposals */}
                             <div style={{
                                 position: 'absolute',
                                 left: '50%',
-                                height: '32px',
-                                width: '2px',
-                                backgroundColor: '#8247e5',
+                                height: '36px',
+                                width: '3px',
+                                backgroundColor: proposalSecondary,
                                 top: '-4px',
+                                borderRadius: '2px',
                                 cursor: 'help'
-                            }}
-                            title="Regular Proposal Threshold (50%): If more than half of the votes are 'Yes', the proposal will pass at the end of the voting period"
-                            />
-                            {/* Standard majority threshold marker (3% of total voting power) */}
+                            }} title="50% threshold for adoption" />
                             <div style={{
                                 position: 'absolute',
                                 left: `${standardMajorityPercent}%`,
-                                height: '32px',
-                                width: '2px',
+                                height: '36px',
+                                width: '3px',
                                 backgroundColor: '#f39c12',
                                 top: '-4px',
+                                borderRadius: '2px',
                                 cursor: 'help'
-                            }}
-                            title="Minimum Participation Threshold (3%): At least this much voting power must participate for the proposal to be valid"
-                            />
+                            }} title="3% minimum participation" />
                         </>
                     )}
                     
-                    {/* Current position marker */}
+                    {/* Current position */}
                     <div style={{
                         position: 'absolute',
                         left: `${yesPercent}%`,
-                        height: '32px',
-                        width: '2px',
-                        backgroundColor: '#3498db',
+                        height: '36px',
+                        width: '3px',
+                        backgroundColor: proposalAccent,
                         top: '-4px',
-                        cursor: 'help'
-                    }}
-                    title={`Current Position (${yesPercent.toFixed(2)}%): Current percentage of 'Yes' votes`}
-                    />
+                        borderRadius: '2px',
+                        cursor: 'help',
+                        boxShadow: `0 0 8px ${proposalAccent}`
+                    }} title={`Current: ${yesPercent.toFixed(2)}% Yes`} />
                 </div>
                 
-                {/* Voting information */}
-                <div style={{ marginTop: '25px', fontSize: '14px', color: theme.colors.mutedText }}>
-                    <p>There are two ways {isCritical ? 'a critical' : 'a'} proposal can be decided:</p>
-                    
-                    <ol style={{ paddingLeft: '20px' }}>
-                        <li style={{ marginBottom: '10px' }}>
-                            <strong>Immediate {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
-                            <p style={{ margin: '5px 0', color: theme.colors.secondaryText }}>
-                                {isCritical ? 
-                                    'A critical proposal is immediately adopted or rejected if, before the voting period ends, more than 67% of the total voting power votes Yes (indicated by the purple marker), or at least 33% votes No, respectively.' :
-                                    'A proposal is immediately adopted or rejected if, before the voting period ends, more than half of the total voting power votes Yes (indicated by the yellow marker), or at least half votes No, respectively.'}
-                            </p>
-                        </li>
-                        <li>
-                            <strong>Standard {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
-                            <p style={{ margin: '5px 0', color: theme.colors.secondaryText }}>
-                                {isCritical ?
-                                    'At the end of the voting period, a critical proposal is adopted if more than 67% of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power. Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.' :
-                                    'At the end of the voting period, a proposal is adopted if more than half of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by the orange marker). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.'}
-                            </p>
-                        </li>
-                    </ol>
+                {/* Legend */}
+                <div style={{
+                    display: 'flex',
+                    gap: '1.5rem',
+                    flexWrap: 'wrap',
+                    fontSize: '0.8rem',
+                    color: theme.colors.mutedText
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '12px', height: '12px', backgroundColor: proposalAccent, borderRadius: '2px' }} />
+                        <span>Current</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '12px', height: '12px', backgroundColor: proposalSecondary, borderRadius: '2px' }} />
+                        <span>{isCritical ? '67% Threshold' : '50% Threshold'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '12px', height: '12px', backgroundColor: '#f39c12', borderRadius: '2px' }} />
+                        <span>Min. Participation</span>
+                    </div>
                 </div>
             </div>
         );
     };
 
-    // Add helper function to format vote
     const formatVote = (voteNumber) => {
         switch (voteNumber) {
-            case 1:
-                return 'Yes';
-            case 2:
-                return 'No';
-            default:
-                return 'Not Voted';
+            case 1: return 'Yes';
+            case 2: return 'No';
+            default: return 'Not Voted';
         }
     };
 
-    // Add helper function to format neuron ID
     const formatNeuronId = (neuronId) => {
         if (!neuronId) return 'Unknown';
         return Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('');
     };
 
-    // Modify the fetch voting history to be a fallback for Sneed
     const fetchRllVotingHistory = async (proposalId) => {
         try {
             const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
@@ -809,11 +729,10 @@ function Proposal() {
             setVotingHistory(ballots);
         } catch (err) {
             console.error('Error fetching RLL voting history:', err);
-            setVotingHistory([]); // Set empty array on error
+            setVotingHistory([]);
         }
     };
 
-    // Effect to handle fallback to RLL for Sneed when no ballots found
     useEffect(() => {
         if (proposalData && selectedSnsRoot === SNEED_SNS_ROOT && (!proposalData.ballots || proposalData.ballots.length === 0)) {
             fetchRllVotingHistory(currentProposalId);
@@ -822,14 +741,12 @@ function Proposal() {
         }
     }, [proposalData, selectedSnsRoot, currentProposalId]);
 
-    // Effect to fetch proposal thread when forum actor and proposal data are available
     useEffect(() => {
         if (forumActor && currentProposalId && selectedSnsRoot) {
             fetchProposalThread();
         }
     }, [forumActor, currentProposalId, selectedSnsRoot]);
 
-    // Add helper function to filter and sort votes
     const filterAndSortVotes = (votes) => {
         if (!votes) return [];
         const filtered = votes.filter(([_, ballot]) => {
@@ -851,20 +768,86 @@ function Proposal() {
     };
 
     return (
-        <div className='page-container' style={getStyles(theme).pageContainer}>
+        <div className='page-container'>
+            <style>{customStyles}</style>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-            <main className="wallet-container">
-                <h1 style={getStyles(theme).title}>Proposal Details</h1>
-                
-                <section style={getStyles(theme).section}>
-                    <div style={{ 
-                        display: 'grid',
-                        gridTemplateColumns: '1fr minmax(auto, 500px) 1fr',
-                        gap: '20px',
-                        alignItems: 'center',
-                        marginBottom: '20px'
+            
+            <main style={{
+                background: theme.colors.primaryGradient,
+                minHeight: '100vh'
+            }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${proposalPrimary}15 50%, ${proposalSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${proposalPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{
+                        maxWidth: '900px',
+                        margin: '0 auto',
+                        position: 'relative',
+                        zIndex: 1
                     }}>
-                        <div style={{ justifySelf: 'start' }}>
+                        {/* Title */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1rem',
+                            marginBottom: '1.5rem'
+                        }}>
+                            <div style={{
+                                width: '56px',
+                                height: '56px',
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'white',
+                                flexShrink: 0,
+                                boxShadow: `0 4px 20px ${proposalPrimary}40`
+                            }}>
+                                <FaGavel size={24} />
+                            </div>
+                            <div>
+                                <h1 style={{
+                                    color: theme.colors.primaryText,
+                                    fontSize: '2rem',
+                                    fontWeight: '700',
+                                    margin: 0
+                                }}>
+                                    Proposal Details
+                                </h1>
+                                <p style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '1rem',
+                                    margin: '0.25rem 0 0 0'
+                                }}>
+                                    {selectedSns?.name || 'Select an SNS'} Governance
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Navigation */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1rem',
+                            flexWrap: 'wrap'
+                        }}>
                             <button 
                                 onClick={() => {
                                     const prevId = Number(currentProposalId) - 1;
@@ -874,71 +857,87 @@ function Proposal() {
                                         setCurrentProposalId(prevId.toString());
                                     }
                                 }}
+                                disabled={Number(currentProposalId) <= 1}
                                 style={{
-                                    ...getStyles(theme).button,
-                                    padding: '8px 16px',
+                                    background: Number(currentProposalId) > 1 
+                                        ? `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`
+                                        : theme.colors.mutedText,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    padding: '0.6rem 1rem',
                                     cursor: Number(currentProposalId) > 1 ? 'pointer' : 'not-allowed',
-                                    opacity: Number(currentProposalId) > 1 ? 1 : 0.5,
-                                    fontSize: '14px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px'
+                                    gap: '0.5rem',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    opacity: Number(currentProposalId) > 1 ? 1 : 0.5,
+                                    transition: 'all 0.3s ease'
                                 }}
-                                disabled={Number(currentProposalId) <= 1}
                             >
-                                <span style={{ fontSize: '18px' }}>←</span>
+                                <FaChevronLeft size={12} />
                                 Previous
                             </button>
-                        </div>
 
-                        <form onSubmit={handleSearch} style={{ 
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            width: '100%'
-                        }}>
-                            <div style={{ 
-                                flex: 1,
-                                position: 'relative',
+                            <form onSubmit={handleSearch} style={{ 
                                 display: 'flex',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                flex: 1,
+                                maxWidth: '300px'
                             }}>
-                                <span style={{
-                                    position: 'absolute',
-                                    left: '12px',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '14px'
-                                }}>#</span>
-                                <input
-                                    type="text"
-                                    value={proposalIdInput}
-                                    onChange={(e) => setProposalIdInput(e.target.value)}
-                                    placeholder="Proposal ID"
+                                <div style={{ 
+                                    flex: 1,
+                                    position: 'relative'
+                                }}>
+                                    <span style={{
+                                        position: 'absolute',
+                                        left: '12px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.9rem'
+                                    }}>#</span>
+                                    <input
+                                        type="text"
+                                        value={proposalIdInput}
+                                        onChange={(e) => setProposalIdInput(e.target.value)}
+                                        placeholder="Proposal ID"
+                                        style={{
+                                            width: '100%',
+                                            background: theme.colors.secondaryBg,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '10px',
+                                            padding: '0.6rem 0.75rem 0.6rem 2rem',
+                                            color: theme.colors.primaryText,
+                                            fontSize: '0.9rem',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+                                <button 
+                                    type="submit" 
                                     style={{
-                                        ...getStyles(theme).input,
-                                        padding: '8px 12px 8px 26px',
-                                        width: '100%',
-                                        fontSize: '14px'
+                                        background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '10px',
+                                        padding: '0.6rem 1rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500'
                                     }}
-                                />
-                            </div>
-                            <button 
-                                type="submit" 
-                                style={{
-                                    ...getStyles(theme).button,
-                                    padding: '8px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    whiteSpace: 'nowrap',
-                                    minWidth: '80px'
-                                }}
-                            >
-                                Search
-                            </button>
-                        </form>
+                                >
+                                    <FaSearch size={12} />
+                                    Go
+                                </button>
+                            </form>
 
-                        <div style={{ justifySelf: 'end' }}>
-                                                        <button
+                            <button
                                 onClick={() => {
                                     const nextId = Number(currentProposalId) + 1;
                                     setProposalIdInput(nextId.toString());
@@ -946,85 +945,268 @@ function Proposal() {
                                     setCurrentProposalId(nextId.toString());
                                 }}
                                 style={{
-                                    ...getStyles(theme).button,
-                                    padding: '8px 16px',
+                                    background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    padding: '0.6rem 1rem',
                                     cursor: 'pointer',
-                                    fontSize: '14px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px'
+                                    gap: '0.5rem',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    transition: 'all 0.3s ease'
                                 }}
                             >
                                 Next
-                                <span style={{ fontSize: '18px' }}>→</span>
+                                <FaChevronRight size={12} />
                             </button>
                         </div>
                     </div>
+                </div>
 
-                    {error && <div style={getStyles(theme).error}>{error}</div>}
-
-                    {loading && (
-                        <div style={getStyles(theme).loading}>
-                            Loading...
+                {/* Main Content */}
+                <div style={{
+                    maxWidth: '900px',
+                    margin: '0 auto',
+                    padding: '2rem 1.5rem'
+                }}>
+                    {/* Error */}
+                    {error && (
+                        <div style={{
+                            background: 'rgba(231, 76, 60, 0.1)',
+                            border: '1px solid rgba(231, 76, 60, 0.3)',
+                            borderRadius: '12px',
+                            padding: '1rem 1.5rem',
+                            marginBottom: '1.5rem',
+                            color: theme.colors.error,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem'
+                        }}>
+                            <FaTimesCircle />
+                            {error}
                         </div>
                     )}
 
-                    {proposalData && !loading && !error && (
-                        <div style={getStyles(theme).content}>
-                            <div 
-                                onClick={() => setIsProposalExpanded(!isProposalExpanded)}
-                                style={{
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    ...getStyles(theme).expandToggle,
-                                    marginBottom: isProposalExpanded ? '10px' : '0'
-                                }}
-                            >
-                                <span style={{ 
-                                    transform: isProposalExpanded ? 'rotate(90deg)' : 'none',
-                                    transition: 'transform 0.3s ease',
-                                    display: 'inline-block'
-                                }}>▶</span>
-                                <h2 style={{ margin: 0 }}>Proposal Information</h2>
+                    {/* Loading */}
+                    {loading && (
+                        <div style={{
+                            textAlign: 'center',
+                            padding: '4rem 2rem',
+                            color: theme.colors.mutedText
+                        }}>
+                            <div className="proposal-pulse" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                margin: '0 auto 1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaGavel size={24} color="white" />
                             </div>
-                            
-                            {isProposalExpanded && (
-                                <div style={getStyles(theme).expandedContent}>
-                                    <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
-                                    <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
-                                    <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                    <p style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                        <strong>Proposer Neuron:</strong> 
-                                        {proposalData.proposer?.[0]?.id ? 
-                                            formatNeuronDisplayWithContext(
-                                                proposalData.proposer[0].id, 
-                                                selectedSnsRoot, 
-                                                getNeuronDisplayInfo(proposalData.proposer[0].id),
-                                                { 
-                                                    onNicknameUpdate: handleNicknameUpdate,
-                                                    isAuthenticated: isAuthenticated
-                                                }
-                                            ) : 
-                                            <span>Unknown</span>
-                                        }
-                                    </p>
-                                    <p><strong>External Links:</strong>{' '}
-                                        <span style={{ display: 'inline-flex', gap: '10px', marginLeft: '10px' }}>
+                            <p>Loading proposal...</p>
+                        </div>
+                    )}
+
+                    {/* Proposal Content */}
+                    {proposalData && !loading && !error && (
+                        <div className="proposal-animate" style={{ opacity: 0 }}>
+                            {/* Proposal Info Card */}
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '16px',
+                                border: `1px solid ${theme.colors.border}`,
+                                marginBottom: '1.5rem',
+                                overflow: 'hidden'
+                            }}>
+                                {/* Header */}
+                                <div 
+                                    onClick={() => setIsProposalExpanded(!isProposalExpanded)}
+                                    style={{
+                                        padding: '1.25rem 1.5rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        background: `linear-gradient(135deg, ${proposalPrimary}10 0%, transparent 100%)`,
+                                        borderBottom: isProposalExpanded ? `1px solid ${theme.colors.border}` : 'none'
+                                    }}
+                                >
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '1rem'
+                                    }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '10px',
+                                            background: `${proposalPrimary}20`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: proposalPrimary
+                                        }}>
+                                            <FaGavel size={18} />
+                                        </div>
+                                        <div>
+                                            <h2 style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1.1rem',
+                                                fontWeight: '600',
+                                                margin: 0
+                                            }}>
+                                                Proposal #{currentProposalId}
+                                            </h2>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.75rem',
+                                                marginTop: '0.25rem'
+                                            }}>
+                                                <span style={{
+                                                    color: getStatusColor(getProposalStatus(proposalData)),
+                                                    fontSize: '0.85rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}>
+                                                    {getStatusIcon(getProposalStatus(proposalData))}
+                                                    {getProposalStatus(proposalData)}
+                                                </span>
+                                                <span style={{
+                                                    color: theme.colors.mutedText,
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    • {getTopicName(proposalData)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {isProposalExpanded ? <FaChevronUp color={theme.colors.mutedText} /> : <FaChevronDown color={theme.colors.mutedText} />}
+                                </div>
+                                
+                                {/* Content */}
+                                {isProposalExpanded && (
+                                    <div style={{ padding: '1.5rem' }}>
+                                        {/* Title */}
+                                        <h3 style={{
+                                            color: theme.colors.primaryText,
+                                            fontSize: '1.25rem',
+                                            fontWeight: '600',
+                                            marginBottom: '1rem'
+                                        }}>
+                                            {proposalData.proposal?.[0]?.title || 'Untitled Proposal'}
+                                        </h3>
+                                        
+                                        {/* Meta Info */}
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                            gap: '1rem',
+                                            marginBottom: '1.5rem'
+                                        }}>
+                                            <div style={{
+                                                background: theme.colors.primaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.75rem 1rem'
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.25rem' }}>Created</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                                    {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}
+                                                </div>
+                                            </div>
+                                            
+                                            {isProposalAcceptingVotes(proposalData) && (
+                                                <div style={{
+                                                    background: `${proposalPrimary}15`,
+                                                    borderRadius: '10px',
+                                                    padding: '0.75rem 1rem',
+                                                    border: `1px solid ${proposalPrimary}30`
+                                                }}>
+                                                    <div style={{ color: proposalPrimary, fontSize: '0.8rem', marginBottom: '0.25rem' }}>⏱️ Voting Ends</div>
+                                                    <div style={{ color: proposalPrimary, fontSize: '0.9rem', fontWeight: '500' }}>
+                                                        {getVotingTimeRemaining(proposalData)}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            <div style={{
+                                                background: theme.colors.primaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.75rem 1rem'
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.25rem' }}>Voting Period</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                                    {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Summary */}
+                                        <div style={{
+                                            background: theme.colors.primaryBg,
+                                            borderRadius: '12px',
+                                            padding: '1.25rem',
+                                            marginBottom: '1.5rem'
+                                        }}>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>Summary</div>
+                                            <div style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.95rem',
+                                                lineHeight: '1.6',
+                                                wordBreak: 'break-word'
+                                            }}>
+                                                <ReactMarkdown
+                                                    components={{
+                                                        a: ({node, ...props}) => (
+                                                            <a {...props} style={{
+                                                                color: proposalPrimary,
+                                                                wordBreak: 'break-all'
+                                                            }} target="_blank" rel="noopener noreferrer" />
+                                                        ),
+                                                        p: ({node, ...props}) => (
+                                                            <p {...props} style={{ margin: '0 0 0.75rem 0' }} />
+                                                        )
+                                                    }}
+                                                >
+                                                    {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
+                                                </ReactMarkdown>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* External Links */}
+                                        <div style={{
+                                            display: 'flex',
+                                            gap: '0.75rem',
+                                            flexWrap: 'wrap',
+                                            marginBottom: '1.5rem'
+                                        }}>
                                             <a 
                                                 href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${currentProposalId}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
-                                                    padding: '5px 10px',
-                                                    borderRadius: '4px',
-                                                    backgroundColor: theme.colors.accent,
-                                                    color: theme.colors.primaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem',
+                                                    padding: '0.5rem 1rem',
+                                                    background: `${proposalPrimary}15`,
+                                                    border: `1px solid ${proposalPrimary}30`,
+                                                    borderRadius: '8px',
+                                                    color: proposalPrimary,
                                                     textDecoration: 'none',
-                                                    fontSize: '14px'
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '500',
+                                                    transition: 'all 0.2s ease'
                                                 }}
                                             >
+                                                <FaExternalLinkAlt size={12} />
                                                 NNS
                                             </a>
                                             <a 
@@ -1032,14 +1214,20 @@ function Proposal() {
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
-                                                    padding: '5px 10px',
-                                                    borderRadius: '4px',
-                                                    backgroundColor: theme.colors.accent,
-                                                    color: theme.colors.primaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem',
+                                                    padding: '0.5rem 1rem',
+                                                    background: `${proposalPrimary}15`,
+                                                    border: `1px solid ${proposalPrimary}30`,
+                                                    borderRadius: '8px',
+                                                    color: proposalPrimary,
                                                     textDecoration: 'none',
-                                                    fontSize: '14px'
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '500'
                                                 }}
                                             >
+                                                <FaExternalLinkAlt size={12} />
                                                 Dashboard
                                             </a>
                                             <a 
@@ -1047,512 +1235,471 @@ function Proposal() {
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
-                                                    padding: '5px 10px',
-                                                    borderRadius: '4px',
-                                                    backgroundColor: theme.colors.accent,
-                                                    color: theme.colors.primaryText,
-                                                    textDecoration: 'none',
-                                                    fontSize: '14px'
-                                                }}
-                                            >
-                                                Toolkit
-                                            </a>
-                                        </span>
-                                    </p>
-                                    <p><strong>Summary:</strong> <div style={{ 
-                                        ...getStyles(theme).summaryBox,
-                                        marginTop: '5px',
-                                        wordBreak: 'break-word',
-                                        overflowWrap: 'anywhere',
-                                        overflow: 'hidden',
-                                        width: '100%',
-                                        boxSizing: 'border-box'
-                                    }}>
-                                        <ReactMarkdown
-                                            components={{
-                                                // Custom styling for links to handle long URLs
-                                                a: ({node, ...props}) => (
-                                                    <a {...props} style={{
-                                                        color: theme.colors.linkText,
-                                                        wordBreak: 'break-all',
-                                                        overflowWrap: 'break-word',
-                                                        textDecoration: 'underline'
-                                                    }} />
-                                                ),
-                                                // Custom styling for paragraphs
-                                                p: ({node, ...props}) => (
-                                                    <p {...props} style={{
-                                                        wordBreak: 'break-word',
-                                                        overflowWrap: 'anywhere',
-                                                        margin: '0 0 10px 0'
-                                                    }} />
-                                                )
-                                            }}
-                                        >
-                                            {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
-                                        </ReactMarkdown>
-                                    </div></p>
-                                    <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ 
-                                        color: theme.colors.linkText,
-                                        wordBreak: 'break-all',
-                                        overflowWrap: 'break-word',
-                                        display: 'inline-block',
-                                        maxWidth: '100%'
-                                    }}>{proposalData.proposal?.[0]?.url}</a></p>
-                                    
-                                    {proposalData.payload_text_rendering?.[0] && (
-                                        <div style={{ marginTop: '15px' }}>
-                                            <p><strong>Proposal Payload:</strong></p>
-                                            <div style={{ 
-                                                ...getStyles(theme).payloadBox,
-                                                whiteSpace: 'pre-wrap',
-                                                overflowWrap: 'break-word',
-                                                maxHeight: '400px',
-                                                overflowY: 'auto'
-                                            }}>
-                                                {proposalData.payload_text_rendering[0]}
-                                            </div>
-                                        </div>
-                                    )}
-                                    
-                                    <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
-                                    {isProposalAcceptingVotes(proposalData) && (
-                                        <p style={{ color: theme.colors.success }}>
-                                            <strong>⏱️ Voting:</strong> {getVotingTimeRemaining(proposalData)}
-                                        </p>
-                                    )}
-                                    <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
-                                    <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
-                                    
-                                    {/* Additional proposal metadata */}
-                                    {proposalData.decided_timestamp_seconds && Number(proposalData.decided_timestamp_seconds) > 0 && (
-                                        <p><strong>Decided:</strong> {new Date(Number(proposalData.decided_timestamp_seconds) * 1000).toLocaleString()}</p>
-                                    )}
-                                    
-                                    {proposalData.executed_timestamp_seconds && Number(proposalData.executed_timestamp_seconds) > 0 && (
-                                        <p><strong>Executed:</strong> {new Date(Number(proposalData.executed_timestamp_seconds) * 1000).toLocaleString()}</p>
-                                    )}
-                                    
-                                    {proposalData.failed_timestamp_seconds && Number(proposalData.failed_timestamp_seconds) > 0 && (
-                                        <p><strong>Failed:</strong> {new Date(Number(proposalData.failed_timestamp_seconds) * 1000).toLocaleString()}</p>
-                                    )}
-                                    
-                                    {proposalData.reject_cost_e8s && Number(proposalData.reject_cost_e8s) > 0 && (
-                                        <p><strong>Reject Cost:</strong> {formatE8s(proposalData.reject_cost_e8s)} tokens</p>
-                                    )}
-                                    
-                                    {proposalData.is_eligible_for_rewards !== undefined && (
-                                        <p><strong>Eligible for Rewards:</strong> {proposalData.is_eligible_for_rewards ? 'Yes' : 'No'}</p>
-                                    )}
-                                    
-                                    {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
-                                    
-                                    {/* Quick Vote Buttons */}
-                                    {isAuthenticated && isProposalAcceptingVotes(proposalData) && (
-                                        <div style={{
-                                            marginTop: '20px',
-                                            padding: '15px',
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            borderRadius: '8px',
-                                            border: `1px solid ${theme.colors.border}`
-                                        }}>
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '15px',
-                                                flexWrap: 'wrap'
-                                            }}>
-                                                <span style={{ 
-                                                    color: theme.colors.primaryText, 
-                                                    fontWeight: 'bold',
-                                                    fontSize: '14px'
-                                                }}>
-                                                    Vote with all eligible neurons:
-                                                </span>
-                                                
-                                                <button
-                                                    onClick={() => quickVoteAll(1)}
-                                                    disabled={eligibleNeuronsInfo.count === 0 || quickVoteState === 'voting'}
-                                                    style={{
-                                                        padding: '8px 16px',
-                                                        borderRadius: '6px',
-                                                        border: 'none',
-                                                        cursor: eligibleNeuronsInfo.count > 0 && quickVoteState !== 'voting' ? 'pointer' : 'not-allowed',
-                                                        fontWeight: 'bold',
-                                                        fontSize: '14px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        backgroundColor: eligibleNeuronsInfo.count > 0 
-                                                            ? quickVoteState === 'success' ? theme.colors.success : 'rgba(46, 204, 113, 0.2)'
-                                                            : 'rgba(100, 100, 100, 0.2)',
-                                                        color: eligibleNeuronsInfo.count > 0 
-                                                            ? theme.colors.success 
-                                                            : 'rgba(120, 120, 120, 0.6)',
-                                                        transition: 'all 0.2s ease'
-                                                    }}
-                                                >
-                                                    {quickVoteState === 'voting' ? '...' : '✓'}
-                                                    <span>Adopt</span>
-                                                    {eligibleNeuronsInfo.count > 0 && (
-                                                        <span style={{ opacity: 0.7 }}>
-                                                            ({eligibleNeuronsInfo.count} neuron{eligibleNeuronsInfo.count !== 1 ? 's' : ''}, {formatCompactVP(eligibleNeuronsInfo.totalVP)} VP)
-                                                        </span>
-                                                    )}
-                                                </button>
-                                                
-                                                <button
-                                                    onClick={() => quickVoteAll(2)}
-                                                    disabled={eligibleNeuronsInfo.count === 0 || quickVoteState === 'voting'}
-                                                    style={{
-                                                        padding: '8px 16px',
-                                                        borderRadius: '6px',
-                                                        border: 'none',
-                                                        cursor: eligibleNeuronsInfo.count > 0 && quickVoteState !== 'voting' ? 'pointer' : 'not-allowed',
-                                                        fontWeight: 'bold',
-                                                        fontSize: '14px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        backgroundColor: eligibleNeuronsInfo.count > 0 
-                                                            ? quickVoteState === 'success' ? theme.colors.success : 'rgba(231, 76, 60, 0.2)'
-                                                            : 'rgba(100, 100, 100, 0.2)',
-                                                        color: eligibleNeuronsInfo.count > 0 
-                                                            ? theme.colors.error 
-                                                            : 'rgba(120, 120, 120, 0.6)',
-                                                        transition: 'all 0.2s ease'
-                                                    }}
-                                                >
-                                                    {quickVoteState === 'voting' ? '...' : '✗'}
-                                                    <span>Reject</span>
-                                                    {eligibleNeuronsInfo.count > 0 && (
-                                                        <span style={{ opacity: 0.7 }}>
-                                                            ({eligibleNeuronsInfo.count} neuron{eligibleNeuronsInfo.count !== 1 ? 's' : ''}, {formatCompactVP(eligibleNeuronsInfo.totalVP)} VP)
-                                                        </span>
-                                                    )}
-                                                </button>
-                                                
-                                                {quickVoteState === 'success' && (
-                                                    <span style={{ color: theme.colors.success, fontSize: '14px' }}>
-                                                        ✓ Vote submitted!
-                                                    </span>
-                                                )}
-                                                {quickVoteState === 'error' && (
-                                                    <span style={{ color: theme.colors.error, fontSize: '14px' }}>
-                                                        ✗ Voting failed
-                                                    </span>
-                                                )}
-                                            </div>
-                                            
-                                            {eligibleNeuronsInfo.count === 0 && (
-                                                <div style={{ 
-                                                    marginTop: '10px', 
-                                                    fontSize: '12px', 
-                                                    color: theme.colors.mutedText 
-                                                }}>
-                                                    No eligible neurons available. Either you've already voted or your neurons have no voting power.
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    
-                                    {/* Modified voting history section to show for any SNS with ballots */}
-                                    {votingHistory && votingHistory.length > 0 && (
-                                        <div style={{ marginTop: '20px' }}>
-                                            <div 
-                                                onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
-                                                style={{
-                                                    cursor: 'pointer',
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    gap: '10px',
-                                                    padding: '10px',
-                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                    borderRadius: '6px',
-                                                    marginBottom: isVotingHistoryExpanded ? '10px' : '0'
+                                                    gap: '0.5rem',
+                                                    padding: '0.5rem 1rem',
+                                                    background: `${proposalPrimary}15`,
+                                                    border: `1px solid ${proposalPrimary}30`,
+                                                    borderRadius: '8px',
+                                                    color: proposalPrimary,
+                                                    textDecoration: 'none',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '500'
                                                 }}
                                             >
-                                                <span style={{ 
-                                                    transform: isVotingHistoryExpanded ? 'rotate(90deg)' : 'none',
-                                                    transition: 'transform 0.3s ease',
-                                                    display: 'inline-block',
-                                                    color: theme.colors.primaryText
-                                                }}>▶</span>
-                                                <h3 style={{ margin: 0, color: theme.colors.primaryText }}>Voting History</h3>
+                                                <FaExternalLinkAlt size={12} />
+                                                Toolkit
+                                            </a>
+                                            {proposalData.proposal?.[0]?.url && (
+                                                <a 
+                                                    href={proposalData.proposal[0].url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        padding: '0.5rem 1rem',
+                                                        background: `${proposalAccent}15`,
+                                                        border: `1px solid ${proposalAccent}30`,
+                                                        borderRadius: '8px',
+                                                        color: proposalAccent,
+                                                        textDecoration: 'none',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '500'
+                                                    }}
+                                                >
+                                                    <FaExternalLinkAlt size={12} />
+                                                    Proposal URL
+                                                </a>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Payload */}
+                                        {proposalData.payload_text_rendering?.[0] && (
+                                            <div style={{ marginBottom: '1.5rem' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Payload</div>
+                                                <div style={{
+                                                    background: theme.colors.primaryBg,
+                                                    borderRadius: '10px',
+                                                    padding: '1rem',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.85rem',
+                                                    color: theme.colors.primaryText,
+                                                    whiteSpace: 'pre-wrap',
+                                                    overflowWrap: 'break-word',
+                                                    maxHeight: '300px',
+                                                    overflowY: 'auto'
+                                                }}>
+                                                    {proposalData.payload_text_rendering[0]}
+                                                </div>
                                             </div>
-                                            
-                                            {isVotingHistoryExpanded && (
-                                                <div style={{ 
-                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                    padding: '15px',
-                                                    borderRadius: '6px'
+                                        )}
+                                        
+                                        {/* Voting Bar */}
+                                        {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
+                                        
+                                        {/* Quick Vote Buttons */}
+                                        {isAuthenticated && isProposalAcceptingVotes(proposalData) && (
+                                            <div style={{
+                                                marginTop: '1.5rem',
+                                                padding: '1.25rem',
+                                                background: theme.colors.primaryBg,
+                                                borderRadius: '12px',
+                                                border: `1px solid ${theme.colors.border}`
+                                            }}>
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '1rem',
+                                                    flexWrap: 'wrap'
                                                 }}>
                                                     <div style={{
                                                         display: 'flex',
-                                                        gap: '20px',
-                                                        marginBottom: '15px',
-                                                        padding: '10px',
-                                                        backgroundColor: theme.colors.secondaryBg,
-                                                        borderRadius: '4px',
-                                                        flexWrap: 'wrap',
                                                         alignItems: 'center',
-                                                        justifyContent: 'space-between'
+                                                        gap: '0.5rem',
+                                                        color: theme.colors.primaryText,
+                                                        fontWeight: '600',
+                                                        fontSize: '0.9rem'
                                                     }}>
-                                                        <div style={{
-                                                            display: 'flex',
-                                                            gap: '20px',
-                                                            alignItems: 'center'
-                                                        }}>
-                                                            <label style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '8px',
-                                                                color: '#2ecc71',
-                                                                cursor: 'pointer'
-                                                            }}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={hideYes}
-                                                                    onChange={(e) => setHideYes(e.target.checked)}
-                                                                />
-                                                                Hide Yes
-                                                            </label>
-                                                            <label style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '8px',
-                                                                color: '#e74c3c',
-                                                                cursor: 'pointer'
-                                                            }}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={hideNo}
-                                                                    onChange={(e) => setHideNo(e.target.checked)}
-                                                                />
-                                                                Hide No
-                                                            </label>
-                                                            <label style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '8px',
-                                                                color: '#888',
-                                                                cursor: 'pointer'
-                                                            }}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={hideNotVoted}
-                                                                    onChange={(e) => setHideNotVoted(e.target.checked)}
-                                                                />
-                                                                Hide Not Voted
-                                                            </label>
-                                                        </div>
-                                                        <div style={{
+                                                        <FaVoteYea size={16} style={{ color: proposalPrimary }} />
+                                                        Quick Vote:
+                                                    </div>
+                                                    
+                                                    <button
+                                                        onClick={() => quickVoteAll(1)}
+                                                        disabled={eligibleNeuronsInfo.count === 0 || quickVoteState === 'voting'}
+                                                        style={{
+                                                            padding: '0.6rem 1.25rem',
+                                                            borderRadius: '10px',
+                                                            border: 'none',
+                                                            cursor: eligibleNeuronsInfo.count > 0 && quickVoteState !== 'voting' ? 'pointer' : 'not-allowed',
+                                                            fontWeight: '600',
+                                                            fontSize: '0.9rem',
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            gap: '8px'
+                                                            gap: '0.5rem',
+                                                            background: eligibleNeuronsInfo.count > 0 
+                                                                ? `linear-gradient(135deg, ${theme.colors.success}, #27ae60)`
+                                                                : theme.colors.mutedText,
+                                                            color: 'white',
+                                                            opacity: eligibleNeuronsInfo.count > 0 ? 1 : 0.5,
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                    >
+                                                        {quickVoteState === 'voting' ? '...' : <FaCheckCircle size={14} />}
+                                                        Adopt
+                                                        {eligibleNeuronsInfo.count > 0 && (
+                                                            <span style={{ opacity: 0.8, fontWeight: '400' }}>
+                                                                ({eligibleNeuronsInfo.count})
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                    
+                                                    <button
+                                                        onClick={() => quickVoteAll(2)}
+                                                        disabled={eligibleNeuronsInfo.count === 0 || quickVoteState === 'voting'}
+                                                        style={{
+                                                            padding: '0.6rem 1.25rem',
+                                                            borderRadius: '10px',
+                                                            border: 'none',
+                                                            cursor: eligibleNeuronsInfo.count > 0 && quickVoteState !== 'voting' ? 'pointer' : 'not-allowed',
+                                                            fontWeight: '600',
+                                                            fontSize: '0.9rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '0.5rem',
+                                                            background: eligibleNeuronsInfo.count > 0 
+                                                                ? `linear-gradient(135deg, ${theme.colors.error}, #c0392b)`
+                                                                : theme.colors.mutedText,
+                                                            color: 'white',
+                                                            opacity: eligibleNeuronsInfo.count > 0 ? 1 : 0.5,
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                    >
+                                                        {quickVoteState === 'voting' ? '...' : <FaTimesCircle size={14} />}
+                                                        Reject
+                                                        {eligibleNeuronsInfo.count > 0 && (
+                                                            <span style={{ opacity: 0.8, fontWeight: '400' }}>
+                                                                ({eligibleNeuronsInfo.count})
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                    
+                                                    {quickVoteState === 'success' && (
+                                                        <span style={{ color: theme.colors.success, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <FaCheckCircle /> Vote submitted!
+                                                        </span>
+                                                    )}
+                                                    {quickVoteState === 'error' && (
+                                                        <span style={{ color: theme.colors.error, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <FaTimesCircle /> Voting failed
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                
+                                                {eligibleNeuronsInfo.count === 0 && (
+                                                    <div style={{ 
+                                                        marginTop: '0.75rem', 
+                                                        fontSize: '0.8rem', 
+                                                        color: theme.colors.mutedText 
+                                                    }}>
+                                                        No eligible neurons available. Either you've already voted or your neurons have no voting power.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        
+                                        {/* Voting History */}
+                                        {votingHistory && votingHistory.length > 0 && (
+                                            <div style={{ marginTop: '1.5rem' }}>
+                                                <div 
+                                                    onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
+                                                    style={{
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '0.75rem 1rem',
+                                                        background: theme.colors.primaryBg,
+                                                        borderRadius: '10px',
+                                                        border: `1px solid ${theme.colors.border}`
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        color: theme.colors.primaryText,
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        <FaUsers size={16} style={{ color: proposalPrimary }} />
+                                                        Voting History
+                                                        <span style={{
+                                                            background: `${proposalPrimary}20`,
+                                                            color: proposalPrimary,
+                                                            padding: '2px 8px',
+                                                            borderRadius: '10px',
+                                                            fontSize: '0.8rem'
                                                         }}>
-                                                            <label style={{
-                                                                color: theme.colors.mutedText,
-                                                                fontSize: '14px'
-                                                            }}>
-                                                                Sort by:
-                                                            </label>
-                                                            <select
-                                                                value={sortBy}
-                                                                onChange={(e) => setSortBy(e.target.value)}
-                                                                style={{
-                                                                    backgroundColor: theme.colors.primaryBg,
-                                                                    color: theme.colors.primaryText,
-                                                                    border: `1px solid ${theme.colors.border}`,
-                                                                    borderRadius: '4px',
-                                                                    padding: '4px 8px',
-                                                                    cursor: 'pointer'
-                                                                }}
-                                                            >
-                                                                <option value="date">Voting Date</option>
-                                                                <option value="power">Voting Power</option>
-                                                            </select>
+                                                            {votingHistory.length}
+                                                        </span>
+                                                    </div>
+                                                    {isVotingHistoryExpanded ? <FaChevronUp color={theme.colors.mutedText} /> : <FaChevronDown color={theme.colors.mutedText} />}
+                                                </div>
+                                                
+                                                {isVotingHistoryExpanded && (
+                                                    <div style={{
+                                                        marginTop: '0.75rem',
+                                                        background: theme.colors.primaryBg,
+                                                        borderRadius: '12px',
+                                                        padding: '1rem',
+                                                        border: `1px solid ${theme.colors.border}`
+                                                    }}>
+                                                        {/* Filters */}
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            gap: '1rem',
+                                                            marginBottom: '1rem',
+                                                            padding: '0.75rem',
+                                                            background: theme.colors.secondaryBg,
+                                                            borderRadius: '8px',
+                                                            flexWrap: 'wrap',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between'
+                                                        }}>
+                                                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.colors.success, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                                    <input type="checkbox" checked={hideYes} onChange={(e) => setHideYes(e.target.checked)} />
+                                                                    Hide Yes
+                                                                </label>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.colors.error, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                                    <input type="checkbox" checked={hideNo} onChange={(e) => setHideNo(e.target.checked)} />
+                                                                    Hide No
+                                                                </label>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.colors.mutedText, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                                    <input type="checkbox" checked={hideNotVoted} onChange={(e) => setHideNotVoted(e.target.checked)} />
+                                                                    Hide Pending
+                                                                </label>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <FaSort size={12} color={theme.colors.mutedText} />
+                                                                <select
+                                                                    value={sortBy}
+                                                                    onChange={(e) => setSortBy(e.target.value)}
+                                                                    style={{
+                                                                        background: theme.colors.primaryBg,
+                                                                        color: theme.colors.primaryText,
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        borderRadius: '6px',
+                                                                        padding: '4px 8px',
+                                                                        fontSize: '0.85rem',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    <option value="date">By Date</option>
+                                                                    <option value="power">By VP</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* Votes List */}
+                                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                                            {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => (
+                                                                <div 
+                                                                    key={index}
+                                                                    style={{
+                                                                        padding: '0.75rem',
+                                                                        background: theme.colors.secondaryBg,
+                                                                        marginBottom: '0.5rem',
+                                                                        borderRadius: '8px',
+                                                                        border: `1px solid ${theme.colors.border}`
+                                                                    }}
+                                                                >
+                                                                    <div style={{ 
+                                                                        fontSize: '0.8rem',
+                                                                        color: theme.colors.mutedText,
+                                                                        marginBottom: '0.5rem',
+                                                                        fontFamily: 'monospace',
+                                                                        wordBreak: 'break-all'
+                                                                    }}>
+                                                                        {formatNeuronDisplayWithContext(
+                                                                            neuronId, 
+                                                                            selectedSnsRoot, 
+                                                                            getNeuronDisplayInfo(neuronId),
+                                                                            { 
+                                                                                onNicknameUpdate: handleNicknameUpdate,
+                                                                                isAuthenticated: isAuthenticated
+                                                                            }
+                                                                        )}
+                                                                    </div>
+                                                                    <div style={{ 
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        alignItems: 'center',
+                                                                        fontSize: '0.85rem'
+                                                                    }}>
+                                                                        <span style={{ 
+                                                                            color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.mutedText,
+                                                                            fontWeight: '600'
+                                                                        }}>
+                                                                            {formatVote(ballot.vote)}
+                                                                        </span>
+                                                                        {ballot.vote !== 0 && ballot.cast_timestamp_seconds && (
+                                                                            <span style={{ color: theme.colors.mutedText }}>
+                                                                                {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
+                                                                            </span>
+                                                                        )}
+                                                                        <span style={{ color: theme.colors.secondaryText }}>
+                                                                            {formatE8s(ballot.voting_power)} VP
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </div>
-                                                    {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => (
-                                                        <div 
-                                                            key={index}
-                                                            style={{
-                                                                padding: '10px',
-                                                                backgroundColor: theme.colors.secondaryBg,
-                                                                marginBottom: '10px',
-                                                                borderRadius: '4px'
-                                                            }}
-                                                        >
-                                                            <div style={{ 
-                                                                wordBreak: 'break-all',
-                                                                color: theme.colors.mutedText,
-                                                                fontSize: '14px',
-                                                                marginBottom: '4px',
-                                                                fontFamily: 'monospace'
-                                                            }}>
-                                                                {formatNeuronDisplayWithContext(
-                                                                    neuronId, 
-                                                                    selectedSnsRoot, 
-                                                                    getNeuronDisplayInfo(neuronId),
-                                                                    { 
-                                                                        onNicknameUpdate: handleNicknameUpdate,
-                                                                        isAuthenticated: isAuthenticated
-                                                                    }
-                                                                )}
-                                                            </div>
-                                                            <div style={{ 
-                                                                display: 'flex',
-                                                                justifyContent: 'space-between',
-                                                                alignItems: 'center',
-                                                                color: theme.colors.mutedText,
-                                                                fontSize: '14px'
-                                                            }}>
-                                                                <div style={{ 
-                                                                    color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.primaryText,
-                                                                    fontWeight: 'bold'
-                                                                }}>
-                                                                    {formatVote(ballot.vote)}
-                                                                </div>
-                                                                {ballot.vote !== 0 && (
-                                                                    <div>
-                                                                        {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
-                                                                    </div>
-                                                                )}
-                                                                <div>
-                                                                    {formatE8s(ballot.voting_power)} VP
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Hotkey Neurons Section */}
-                    {selectedSnsRoot && (
-                        <div style={{ marginTop: '20px' }}>
-                            <HotkeyNeurons 
-                                fetchNeuronsFromSns={fetchNeuronsFromSns}
-                                showVotingStats={false}
-                                showExpandButton={true}
-                                defaultExpanded={false}
-                                title="Vote with Your Neurons"
-                                infoTooltip="These are your neurons that can be used to vote on this proposal. You need hotkey access to vote."
-                                proposalData={proposalData}
-                                currentProposalId={currentProposalId}
-                                onVoteSuccess={() => {
-                                    // Refresh proposal data after successful vote
-                                    fetchProposalData();
-                                    // Refresh neurons data to update voting power
-                                    refreshNeurons(selectedSnsRoot);
-                                }}
-                            />
-                        </div>
-                    )}
-
-
-                    {/* Discussion Section */}
-                    {proposalData && !loading && !error && (
-                        <div style={{ marginTop: '20px' }}>
-                            <div 
-                                onClick={() => setIsDiscussionExpanded(!isDiscussionExpanded)}
-                                style={{
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: '10px',
-                                    padding: '10px',
-                                    backgroundColor: theme.colors.tertiaryBg,
-                                    borderRadius: '6px',
-                                    marginBottom: isDiscussionExpanded ? '10px' : '0'
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ 
-                                        transform: isDiscussionExpanded ? 'rotate(90deg)' : 'none',
-                                        transition: 'transform 0.3s ease',
-                                        display: 'inline-block'
-                                    }}>▶</span>
-                                    <h2 style={{ margin: 0, color: theme.colors.primaryText }}>Discussion</h2>
-                                </div>
-                                
-                                {/* Thread link - only show if thread exists */}
-                                {proposalThreadId && (
-                                    <Link 
-                                        to={`/thread?threadid=${proposalThreadId}&sns=${selectedSnsRoot}`}
-                                        onClick={(e) => e.stopPropagation()} // Prevent header click
-                                        style={{
-                                            color: theme.colors.linkText,
-                                            textDecoration: 'none',
-                                            fontSize: '0.9rem',
-                                            padding: '4px 8px',
-                                            borderRadius: '4px',
-                                            border: `1px solid ${theme.colors.border}`,
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.backgroundColor = theme.colors.accentHover;
-                                            e.target.style.borderColor = theme.colors.borderHover;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.backgroundColor = 'transparent';
-                                            e.target.style.borderColor = theme.colors.border;
-                                        }}
-                                    >
-                                        {threadLinkLoading ? 'Loading...' : 'View in Forum →'}
-                                    </Link>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
-                            
-                            {isDiscussionExpanded && (
-                                <>
-                                    {loadingThread ? (
-                                        <div style={{ 
-                                            padding: '20px', 
-                                            textAlign: 'center', 
-                                            color: theme.colors.mutedText 
-                                        }}>
-                                            Loading discussion...
-                                        </div>
-                                    ) : discussionThread ? (
-                                        /* Thread exists - use ThreadViewer */
-                                        <ThreadViewer
-                                            forumActor={forumActor}
-                                            threadId={proposalThreadId.toString()}
-                                            mode="thread"
-                                            selectedSnsRoot={selectedSnsRoot}
-                                            isAuthenticated={isAuthenticated}
-                                            onError={setError}
-                                            showCreatePost={true}
-                                            title={`Discussion for Proposal #${currentProposalId}`}
-                                            hideProposalLink={true}
-                                        />
-                                    ) : (
-                                        /* No thread exists - show create thread UI */
-                                        <Discussion
-                                            forumActor={forumActor}
-                                            currentProposalId={currentProposalId}
-                                            selectedSnsRoot={selectedSnsRoot}
-                                            isAuthenticated={isAuthenticated}
-                                            onError={setError}
-                                            onThreadCreated={fetchDiscussionThread}
-                                        />
-                                    )}
-                                </>
+
+                            {/* Hotkey Neurons Section */}
+                            {selectedSnsRoot && (
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <HotkeyNeurons 
+                                        fetchNeuronsFromSns={fetchNeuronsFromSns}
+                                        showVotingStats={false}
+                                        showExpandButton={true}
+                                        defaultExpanded={false}
+                                        title="Vote with Your Neurons"
+                                        infoTooltip="These are your neurons that can be used to vote on this proposal."
+                                        proposalData={proposalData}
+                                        currentProposalId={currentProposalId}
+                                        onVoteSuccess={() => {
+                                            fetchProposalData();
+                                            refreshNeurons(selectedSnsRoot);
+                                        }}
+                                    />
+                                </div>
                             )}
+
+                            {/* Discussion Section */}
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '16px',
+                                border: `1px solid ${theme.colors.border}`,
+                                overflow: 'hidden'
+                            }}>
+                                <div 
+                                    onClick={() => setIsDiscussionExpanded(!isDiscussionExpanded)}
+                                    style={{
+                                        padding: '1.25rem 1.5rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        background: `linear-gradient(135deg, ${proposalAccent}10 0%, transparent 100%)`,
+                                        borderBottom: isDiscussionExpanded ? `1px solid ${theme.colors.border}` : 'none'
+                                    }}
+                                >
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '1rem'
+                                    }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '10px',
+                                            background: `${proposalAccent}20`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: proposalAccent
+                                        }}>
+                                            <FaComments size={18} />
+                                        </div>
+                                        <h2 style={{
+                                            color: theme.colors.primaryText,
+                                            fontSize: '1.1rem',
+                                            fontWeight: '600',
+                                            margin: 0
+                                        }}>
+                                            Discussion
+                                        </h2>
+                                    </div>
+                                    
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        {proposalThreadId && (
+                                            <Link 
+                                                to={`/thread?threadid=${proposalThreadId}&sns=${selectedSnsRoot}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{
+                                                    color: proposalAccent,
+                                                    textDecoration: 'none',
+                                                    fontSize: '0.85rem',
+                                                    padding: '0.4rem 0.75rem',
+                                                    borderRadius: '6px',
+                                                    border: `1px solid ${proposalAccent}40`,
+                                                    background: `${proposalAccent}10`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                {threadLinkLoading ? 'Loading...' : 'View in Forum'}
+                                                <FaExternalLinkAlt size={10} />
+                                            </Link>
+                                        )}
+                                        {isDiscussionExpanded ? <FaChevronUp color={theme.colors.mutedText} /> : <FaChevronDown color={theme.colors.mutedText} />}
+                                    </div>
+                                </div>
+                                
+                                {isDiscussionExpanded && (
+                                    <div style={{ padding: '1.5rem' }}>
+                                        {loadingThread ? (
+                                            <div style={{ 
+                                                padding: '2rem', 
+                                                textAlign: 'center', 
+                                                color: theme.colors.mutedText 
+                                            }}>
+                                                Loading discussion...
+                                            </div>
+                                        ) : discussionThread ? (
+                                            <ThreadViewer
+                                                forumActor={forumActor}
+                                                threadId={proposalThreadId.toString()}
+                                                mode="thread"
+                                                selectedSnsRoot={selectedSnsRoot}
+                                                isAuthenticated={isAuthenticated}
+                                                onError={setError}
+                                                showCreatePost={true}
+                                                title={`Discussion for Proposal #${currentProposalId}`}
+                                                hideProposalLink={true}
+                                            />
+                                        ) : (
+                                            <Discussion
+                                                forumActor={forumActor}
+                                                currentProposalId={currentProposalId}
+                                                selectedSnsRoot={selectedSnsRoot}
+                                                isAuthenticated={isAuthenticated}
+                                                onError={setError}
+                                                onThreadCreated={fetchDiscussionThread}
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
-                </section>
+                </div>
             </main>
         </div>
     );
 }
 
-export default Proposal; 
+export default Proposal;

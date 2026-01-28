@@ -728,9 +728,9 @@ const SMS = () => {
                                     </div>
                                     <div 
                                         style={{ 
-                                            color: theme.colors.mutedText, 
+                                        color: theme.colors.mutedText, 
                                             fontSize: '0.85rem',
-                                            fontFamily: SYSTEM_FONT,
+                                        fontFamily: SYSTEM_FONT,
                                             textAlign: 'right',
                                             whiteSpace: 'nowrap',
                                             cursor: 'default'

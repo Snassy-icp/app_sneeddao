@@ -27,7 +27,7 @@ const customStyles = `
     to {
         opacity: 1;
         transform: translateY(0);
-    }
+        }
 }
 
 @keyframes pulse {
@@ -506,19 +506,19 @@ function Forum() {
                                 lineHeight: '1.6'
                             }}>
                                 This SNS doesn't have a forum yet. Be the first to create one!
-                            </p>
+                                </p>
                             <p style={{
                                 color: theme.colors.mutedText,
                                 fontSize: '0.95rem',
                                 marginBottom: '2rem',
                                 lineHeight: '1.5'
                             }}>
-                                Creating a forum will set up discussion spaces for governance topics and proposals.
-                            </p>
-                            <button 
-                                onClick={handleCreateForum}
-                                disabled={creatingForum}
-                                style={{
+                                    Creating a forum will set up discussion spaces for governance topics and proposals.
+                                </p>
+                                <button 
+                                    onClick={handleCreateForum}
+                                    disabled={creatingForum}
+                                    style={{
                                     background: creatingForum 
                                         ? theme.colors.mutedText 
                                         : `linear-gradient(135deg, ${forumPrimary}, ${forumSecondary})`,
@@ -531,10 +531,10 @@ function Forum() {
                                     cursor: creatingForum ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.3s ease',
                                     boxShadow: creatingForum ? 'none' : `0 4px 20px ${forumPrimary}40`
-                                }}
-                            >
-                                {creatingForum ? 'Creating Forum...' : 'Create Forum'}
-                            </button>
+                                    }}
+                                >
+                                    {creatingForum ? 'Creating Forum...' : 'Create Forum'}
+                                </button>
                         </div>
                     </main>
                 </div>
@@ -614,68 +614,68 @@ function Forum() {
                     }}>
                         {/* SNS Logo and Title */}
                         <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
+                        display: 'flex',
+                        alignItems: 'center',
                             gap: '1.5rem',
                             marginBottom: '1.5rem'
-                        }}>
-                            {loadingLogo ? (
-                                <div style={{
+                    }}>
+                        {loadingLogo ? (
+                            <div style={{
                                     width: '72px',
                                     height: '72px',
-                                    borderRadius: '50%',
+                                borderRadius: '50%',
                                     background: theme.colors.tertiaryBg,
-                                    display: 'flex',
-                                    alignItems: 'center',
+                                display: 'flex',
+                                alignItems: 'center',
                                     justifyContent: 'center'
-                                }}>
+                            }}>
                                     <span className="forum-pulse" style={{ color: theme.colors.mutedText }}>...</span>
-                                </div>
-                            ) : snsLogo ? (
-                                <img
-                                    src={snsLogo}
-                                    alt={snsInfo?.name || 'SNS Logo'}
-                                    style={{
+                            </div>
+                        ) : snsLogo ? (
+                            <img
+                                src={snsLogo}
+                                alt={snsInfo?.name || 'SNS Logo'}
+                                style={{
                                         width: '72px',
                                         height: '72px',
-                                        borderRadius: '50%',
-                                        objectFit: 'cover',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
                                         border: `3px solid ${forumPrimary}40`,
                                         boxShadow: `0 4px 20px ${forumPrimary}30`
-                                    }}
-                                />
-                            ) : (
-                                <div style={{
+                                }}
+                            />
+                        ) : (
+                            <div style={{
                                     width: '72px',
                                     height: '72px',
-                                    borderRadius: '50%',
+                                borderRadius: '50%',
                                     background: `linear-gradient(135deg, ${forumPrimary}, ${forumSecondary})`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
                                     fontSize: '1.5rem',
                                     color: 'white',
                                     fontWeight: '700'
-                                }}>
+                            }}>
                                     {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SN'}
-                                </div>
-                            )}
-                            
+                            </div>
+                        )}
+                        
                             <div>
-                                <h1 style={{
-                                    color: theme.colors.primaryText,
+                        <h1 style={{
+                            color: theme.colors.primaryText,
                                     fontSize: '2.5rem',
                                     fontWeight: '700',
-                                    margin: 0,
+                            margin: 0,
                                     lineHeight: '1.2'
-                                }}>
+                        }}>
                                     {snsInfo?.name ? `${snsInfo.name} Forum` : (forum?.title || 'Community Forum')}
-                                </h1>
-                                <p style={{
-                                    color: theme.colors.secondaryText,
-                                    fontSize: '1.1rem',
+                        </h1>
+                        <p style={{
+                            color: theme.colors.secondaryText,
+                            fontSize: '1.1rem',
                                     margin: '0.5rem 0 0 0'
-                                }}>
+                        }}>
                                     Discuss, govern, and connect with your community
                                 </p>
                             </div>
@@ -696,7 +696,7 @@ function Forum() {
                                 <FaComments size={16} style={{ color: forumPrimary }} />
                                 <span>{topicHierarchy.length} Topic{topicHierarchy.length !== 1 ? 's' : ''}</span>
                             </div>
-                            {!identity && (
+                        {!identity && (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -706,7 +706,7 @@ function Forum() {
                                     padding: '0.5rem 1rem',
                                     borderRadius: '20px',
                                     fontSize: '0.9rem'
-                                }}>
+                            }}>
                                     <FaLock size={14} />
                                     <span>Log in to participate</span>
                                 </div>
@@ -722,10 +722,10 @@ function Forum() {
                     padding: '2rem 1.5rem'
                 }}>
                     {/* Feature Cards */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                        gap: '1rem',
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                            gap: '1rem',
                         marginBottom: '2.5rem'
                     }}>
                         {[
@@ -760,12 +760,12 @@ function Forum() {
                                     opacity: 0
                                 }}
                             >
-                                <div style={{
+                            <div style={{
                                     fontSize: '1.5rem',
                                     marginBottom: '0.75rem'
                                 }}>
                                     {feature.icon}
-                                </div>
+                            </div>
                                 <h3 style={{
                                     color: feature.color,
                                     fontSize: '1rem',
@@ -787,7 +787,7 @@ function Forum() {
                     </div>
 
                     {/* Topics Section */}
-                    <div style={{
+                        <div style={{
                         marginBottom: '2rem'
                     }}>
                         <h2 style={{
@@ -795,10 +795,10 @@ function Forum() {
                             fontSize: '1.5rem',
                             fontWeight: '600',
                             marginBottom: '1.5rem',
-                            display: 'flex',
-                            alignItems: 'center',
+                                display: 'flex', 
+                                alignItems: 'center', 
                             gap: '0.75rem'
-                        }}>
+                            }}>
                             <span style={{
                                 width: '36px',
                                 height: '36px',
@@ -813,7 +813,7 @@ function Forum() {
                             Discussion Topics
                         </h2>
 
-                        {topicHierarchy.length > 0 ? (
+                    {topicHierarchy.length > 0 ? (
                             <div style={{
                                 display: 'flex',
                                 flexDirection: 'column',
@@ -824,11 +824,11 @@ function Forum() {
                                     const isHovered = hoveredCard === topic.id;
                                     
                                     return (
-                                        <Link
+                                <Link
                                             key={topic.id}
                                             to={`/topic/${topic.id}`}
                                             className="forum-card-animate"
-                                            style={{
+                                    style={{
                                                 background: getTopicGradient(index),
                                                 borderRadius: '16px',
                                                 padding: '1.5rem',
@@ -844,10 +844,10 @@ function Forum() {
                                                 gap: '1.25rem',
                                                 animationDelay: `${index * 0.1}s`,
                                                 opacity: 0
-                                            }}
+                                    }}
                                             onMouseEnter={() => setHoveredCard(topic.id)}
-                                            onMouseLeave={() => setHoveredCard(null)}
-                                        >
+                                    onMouseLeave={() => setHoveredCard(null)}
+                                >
                                             {/* Topic Icon */}
                                             <div style={{
                                                 width: '52px',
@@ -864,11 +864,11 @@ function Forum() {
                                             }}>
                                                 {getTopicIcon(topic.title)}
                                             </div>
-                                            
+
                                             {/* Topic Content */}
                                             <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{
-                                                    display: 'flex',
+                                            <div style={{
+                                                display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '0.75rem',
                                                     marginBottom: '0.5rem',
@@ -883,18 +883,18 @@ function Forum() {
                                                         {topic.title}
                                                     </h3>
                                                     {stats?.total_unread_posts > 0 && (
-                                                        <span style={{
+                                                    <span style={{
                                                             background: theme.colors.error,
-                                                            color: 'white',
+                                                        color: 'white',
                                                             padding: '2px 8px',
                                                             borderRadius: '10px',
-                                                            fontSize: '0.75rem',
+                                                        fontSize: '0.75rem',
                                                             fontWeight: '600'
-                                                        }}>
-                                                            {stats.total_unread_posts} new
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                    }}>
+                                                        {stats.total_unread_posts} new
+                                                    </span>
+                                                )}
+                                            </div>
                                                 
                                                 <p style={{
                                                     color: theme.colors.secondaryText,
@@ -919,7 +919,7 @@ function Forum() {
                                                             📋 {stats.thread_count} thread{stats.thread_count !== 1 ? 's' : ''}
                                                         </span>
                                                     )}
-                                                    <span 
+                                                        <span 
                                                         style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                                                         title={getFullDate(topic.created_at)}
                                                     >
@@ -950,11 +950,11 @@ function Forum() {
                                                                 return (
                                                                     <span
                                                                         key={child.id}
-                                                                        onClick={(e) => {
-                                                                            e.preventDefault();
-                                                                            e.stopPropagation();
-                                                                            window.location.href = `/topic/${child.id}`;
-                                                                        }}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                window.location.href = `/topic/${child.id}`;
+                                                            }}
                                                                         style={{
                                                                             color: forumPrimary,
                                                                             fontSize: '0.85rem',
@@ -967,27 +967,27 @@ function Forum() {
                                                                             gap: '4px',
                                                                             transition: 'all 0.2s ease'
                                                                         }}
-                                                                    >
-                                                                        {child.title}
+                                                        >
+                                                            {child.title}
                                                                         {childStats?.total_unread_posts > 0 && (
-                                                                            <span style={{
+                                                                        <span style={{
                                                                                 background: theme.colors.error,
-                                                                                color: 'white',
+                                                                            color: 'white',
                                                                                 padding: '1px 5px',
-                                                                                borderRadius: '6px',
-                                                                                fontSize: '0.7rem',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '0.7rem',
                                                                                 fontWeight: '600'
-                                                                            }}>
-                                                                                {childStats.total_unread_posts}
-                                                                            </span>
+                                                                        }}>
+                                                                            {childStats.total_unread_posts}
+                                                                        </span>
                                                                         )}
-                                                                    </span>
+                                                        </span>
                                                                 );
                                                             })}
                                                         </div>
-                                                    </div>
-                                                )}
-                                            </div>
+                                        </div>
+                                    )}
+                                    </div>
                                             
                                             {/* Arrow */}
                                             <FaChevronRight 
@@ -999,11 +999,11 @@ function Forum() {
                                                     flexShrink: 0
                                                 }}
                                             />
-                                        </Link>
+                                </Link>
                                     );
                                 })}
-                            </div>
-                        ) : (
+                        </div>
+                    ) : (
                             <div style={{
                                 textAlign: 'center',
                                 padding: '3rem 2rem',
@@ -1037,8 +1037,8 @@ function Forum() {
                                 }}>
                                     Topics will be created automatically as the community grows.
                                 </p>
-                            </div>
-                        )}
+                        </div>
+                    )}
                     </div>
 
                     {/* Special Topic Prompts */}
@@ -1049,7 +1049,7 @@ function Forum() {
                             gap: '1rem',
                             marginTop: '2rem'
                         }}>
-                            {showGeneralPrompt && (
+                    {showGeneralPrompt && (
                                 <div style={{
                                     background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${forumPrimary}10 100%)`,
                                     border: `1px solid ${forumPrimary}40`,
@@ -1072,17 +1072,17 @@ function Forum() {
                                         lineHeight: '1.5'
                                     }}>
                                         This SNS doesn't have a "General" topic yet. Create one for general community discussions.
-                                    </p>
+                            </p>
                                     <div style={{
                                         display: 'flex',
                                         gap: '0.75rem',
                                         justifyContent: 'center',
                                         flexWrap: 'wrap'
                                     }}>
-                                        <button 
-                                            onClick={handleCreateGeneralTopic}
-                                            disabled={creatingGeneral}
-                                            style={{
+                                <button 
+                                    onClick={handleCreateGeneralTopic}
+                                    disabled={creatingGeneral}
+                                    style={{
                                                 background: creatingGeneral 
                                                     ? theme.colors.mutedText 
                                                     : `linear-gradient(135deg, ${forumPrimary}, ${forumSecondary})`,
@@ -1094,14 +1094,14 @@ function Forum() {
                                                 fontWeight: '600',
                                                 cursor: creatingGeneral ? 'not-allowed' : 'pointer',
                                                 transition: 'all 0.3s ease'
-                                            }}
-                                        >
-                                            {creatingGeneral ? 'Creating...' : 'Create General Topic'}
-                                        </button>
-                                        <button 
-                                            onClick={() => setShowGeneralPrompt(false)}
-                                            disabled={creatingGeneral}
-                                            style={{
+                                    }}
+                                >
+                                    {creatingGeneral ? 'Creating...' : 'Create General Topic'}
+                                </button>
+                                <button 
+                                    onClick={() => setShowGeneralPrompt(false)}
+                                    disabled={creatingGeneral}
+                                    style={{
                                                 background: 'transparent',
                                                 color: theme.colors.mutedText,
                                                 border: `1px solid ${theme.colors.border}`,
@@ -1110,15 +1110,15 @@ function Forum() {
                                                 fontSize: '0.95rem',
                                                 cursor: creatingGeneral ? 'not-allowed' : 'pointer',
                                                 transition: 'all 0.3s ease'
-                                            }}
-                                        >
-                                            Maybe Later
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                                    }}
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
-                            {showGovernancePrompt && (
+                    {showGovernancePrompt && (
                                 <div style={{
                                     background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, #9b59b615 100%)`,
                                     border: `1px solid rgba(155, 89, 182, 0.4)`,
@@ -1141,17 +1141,17 @@ function Forum() {
                                         lineHeight: '1.5'
                                     }}>
                                         This SNS doesn't have a "Governance" topic yet. Create one for governance discussions and decision-making.
-                                    </p>
+                            </p>
                                     <div style={{
                                         display: 'flex',
                                         gap: '0.75rem',
                                         justifyContent: 'center',
                                         flexWrap: 'wrap'
                                     }}>
-                                        <button 
-                                            onClick={handleCreateGovernanceTopic}
-                                            disabled={creatingGovernance}
-                                            style={{
+                                <button 
+                                    onClick={handleCreateGovernanceTopic}
+                                    disabled={creatingGovernance}
+                                    style={{
                                                 background: creatingGovernance 
                                                     ? theme.colors.mutedText 
                                                     : 'linear-gradient(135deg, #9b59b6, #8e44ad)',
@@ -1163,14 +1163,14 @@ function Forum() {
                                                 fontWeight: '600',
                                                 cursor: creatingGovernance ? 'not-allowed' : 'pointer',
                                                 transition: 'all 0.3s ease'
-                                            }}
-                                        >
-                                            {creatingGovernance ? 'Creating...' : 'Create Governance Topic'}
-                                        </button>
-                                        <button 
-                                            onClick={() => setShowGovernancePrompt(false)}
-                                            disabled={creatingGovernance}
-                                            style={{
+                                    }}
+                                >
+                                    {creatingGovernance ? 'Creating...' : 'Create Governance Topic'}
+                                </button>
+                                <button 
+                                    onClick={() => setShowGovernancePrompt(false)}
+                                    disabled={creatingGovernance}
+                                    style={{
                                                 background: 'transparent',
                                                 color: theme.colors.mutedText,
                                                 border: `1px solid ${theme.colors.border}`,
@@ -1179,11 +1179,11 @@ function Forum() {
                                                 fontSize: '0.95rem',
                                                 cursor: creatingGovernance ? 'not-allowed' : 'pointer',
                                                 transition: 'all 0.3s ease'
-                                            }}
-                                        >
-                                            Maybe Later
-                                        </button>
-                                    </div>
+                                    }}
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
                                 </div>
                             )}
                         </div>
