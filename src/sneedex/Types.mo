@@ -646,6 +646,8 @@ module {
         notify_on_expiration : Bool;
         // Notify when you win an auction
         notify_on_win : Bool;
+        // Notify when an offer you bid on is cancelled
+        notify_on_cancellation : Bool;
     };
     
     // Default notification settings (all enabled)
@@ -655,6 +657,7 @@ module {
         notify_on_sale = true;
         notify_on_expiration = true;
         notify_on_win = true;
+        notify_on_cancellation = true;
     };
     
     // ============================================

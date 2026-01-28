@@ -107,6 +107,7 @@ export default function Me() {
     const [notifyOnSale, setNotifyOnSale] = useState(true);
     const [notifyOnExpiration, setNotifyOnExpiration] = useState(true);
     const [notifyOnWin, setNotifyOnWin] = useState(true);
+    const [notifyOnCancellation, setNotifyOnCancellation] = useState(true);
     const [loadingNotificationSettings, setLoadingNotificationSettings] = useState(false);
     const [notificationSettingsSaved, setNotificationSettingsSaved] = useState(false);
 
@@ -169,6 +170,7 @@ export default function Me() {
                 setNotifyOnSale(settings.notify_on_sale);
                 setNotifyOnExpiration(settings.notify_on_expiration);
                 setNotifyOnWin(settings.notify_on_win);
+                setNotifyOnCancellation(settings.notify_on_cancellation ?? true);
             } catch (err) {
                 console.error('Failed to load notification settings:', err);
                 // Use defaults on error
@@ -193,6 +195,7 @@ export default function Me() {
                 notify_on_sale: notifyOnSale,
                 notify_on_expiration: notifyOnExpiration,
                 notify_on_win: notifyOnWin,
+                notify_on_cancellation: notifyOnCancellation,
             });
             
             if ('ok' in result) {
@@ -1946,6 +1949,55 @@ export default function Me() {
                                                                 height: '22px',
                                                                 width: '22px',
                                                                 left: notifyOnExpiration ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    padding: '10px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            ❌ Offer Cancelled
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when an offer I bid on is cancelled
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnCancellation}
+                                                            onChange={(e) => setNotifyOnCancellation(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnCancellation ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnCancellation ? '25px' : '3px',
                                                                 bottom: '3px',
                                                                 backgroundColor: 'white',
                                                                 transition: '0.3s',
