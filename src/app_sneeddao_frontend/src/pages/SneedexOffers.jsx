@@ -805,9 +805,10 @@ function SneedexOffers() {
         },
         fullWidthGrid: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))',
             gap: '1.5rem',
-            padding: '0 2rem',
+            padding: '0',
+            justifyItems: 'center',
         },
         header: {
             display: 'flex',
@@ -933,8 +934,9 @@ function SneedexOffers() {
         },
         grid: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))',
             gap: '1.5rem',
+            justifyItems: 'center',
         },
         card: {
             background: theme.colors.cardGradient,
@@ -943,6 +945,9 @@ function SneedexOffers() {
             padding: '1.5rem',
             transition: 'all 0.3s ease',
             cursor: 'pointer',
+            width: '100%',
+            maxWidth: '450px',
+            boxSizing: 'border-box',
         },
         cardHeader: {
             display: 'flex',
