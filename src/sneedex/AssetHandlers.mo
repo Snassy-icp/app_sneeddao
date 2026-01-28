@@ -282,25 +282,74 @@ module {
             };
         };
         
-        // Remove sneedex (use FULL_OWNER_PERMISSIONS since that's what the frontend adds)
-        // Don't use ALL_PERMISSIONS as SNS governance fails if principal doesn't have a permission
+        // Query the neuron to get sneedex's actual permissions before removing
+        // This handles the "Unspecified" permission case and avoids governance errors
         try {
-            let response = await governance.manage_neuron({
-                subaccount = neuronId.id;
-                command = ?#RemoveNeuronPermissions({
-                    permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
-                    principal_id = ?sneedex;
-                });
-            });
-            // Check for errors but don't fail - original owners have control
-            switch (response.command) {
-                case (?#Error(_e)) {
-                    // If removal fails, original owners still have control
+            let neuronResponse = await governance.get_neuron({ neuron_id = ?neuronId });
+            switch (neuronResponse.result) {
+                case (?#Neuron(neuron)) {
+                    // Find sneedex's actual permissions
+                    for (perm in neuron.permissions.vals()) {
+                        switch (perm.principal) {
+                            case (?p) {
+                                if (Principal.equal(p, sneedex) and perm.permission_type.size() > 0) {
+                                    // Remove sneedex's actual permissions
+                                    try {
+                                        let response = await governance.manage_neuron({
+                                            subaccount = neuronId.id;
+                                            command = ?#RemoveNeuronPermissions({
+                                                permissions_to_remove = ?{ permissions = perm.permission_type };
+                                                principal_id = ?sneedex;
+                                            });
+                                        });
+                                        // Check for errors but don't fail - original owners have control
+                                        switch (response.command) {
+                                            case (?#Error(_e)) {
+                                                // If removal fails, original owners still have control
+                                            };
+                                            case _ {};
+                                        };
+                                    } catch (_e) {
+                                        // If removal fails, original owners still have control
+                                    };
+                                };
+                            };
+                            case null {};
+                        };
+                    };
                 };
-                case _ {};
+                case _ {
+                    // Fallback to removing FULL_OWNER_PERMISSIONS if we can't query neuron
+                    try {
+                        let response = await governance.manage_neuron({
+                            subaccount = neuronId.id;
+                            command = ?#RemoveNeuronPermissions({
+                                permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                                principal_id = ?sneedex;
+                            });
+                        });
+                        switch (response.command) {
+                            case (?#Error(_e)) {};
+                            case _ {};
+                        };
+                    } catch (_e) {};
+                };
             };
         } catch (_e) {
-            // If removal fails, original owners still have control
+            // Fallback to removing FULL_OWNER_PERMISSIONS if we can't query neuron
+            try {
+                let response = await governance.manage_neuron({
+                    subaccount = neuronId.id;
+                    command = ?#RemoveNeuronPermissions({
+                        permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                        principal_id = ?sneedex;
+                    });
+                });
+                switch (response.command) {
+                    case (?#Error(_e)) {};
+                    case _ {};
+                };
+            } catch (_e) {};
         };
         
         #ok();
@@ -337,25 +386,74 @@ module {
             };
         };
         
-        // Remove sneedex (use FULL_OWNER_PERMISSIONS since that's what the frontend adds)
-        // Don't use ALL_PERMISSIONS as SNS governance fails if principal doesn't have a permission
+        // Query the neuron to get sneedex's actual permissions before removing
+        // This handles the "Unspecified" permission case and avoids governance errors
         try {
-            let response = await governance.manage_neuron({
-                subaccount = neuronId.id;
-                command = ?#RemoveNeuronPermissions({
-                    permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
-                    principal_id = ?sneedex;
-                });
-            });
-            // Check for errors but don't fail - new owners have control
-            switch (response.command) {
-                case (?#Error(_e)) {
-                    // Continue even if sneedex removal fails - new owners have control
+            let neuronResponse = await governance.get_neuron({ neuron_id = ?neuronId });
+            switch (neuronResponse.result) {
+                case (?#Neuron(neuron)) {
+                    // Find sneedex's actual permissions
+                    for (perm in neuron.permissions.vals()) {
+                        switch (perm.principal) {
+                            case (?p) {
+                                if (Principal.equal(p, sneedex) and perm.permission_type.size() > 0) {
+                                    // Remove sneedex's actual permissions
+                                    try {
+                                        let response = await governance.manage_neuron({
+                                            subaccount = neuronId.id;
+                                            command = ?#RemoveNeuronPermissions({
+                                                permissions_to_remove = ?{ permissions = perm.permission_type };
+                                                principal_id = ?sneedex;
+                                            });
+                                        });
+                                        // Check for errors but don't fail - new owners have control
+                                        switch (response.command) {
+                                            case (?#Error(_e)) {
+                                                // Continue even if sneedex removal fails - new owners have control
+                                            };
+                                            case _ {};
+                                        };
+                                    } catch (_e) {
+                                        // Continue even if sneedex removal fails
+                                    };
+                                };
+                            };
+                            case null {};
+                        };
+                    };
                 };
-                case _ {};
+                case _ {
+                    // Fallback to removing FULL_OWNER_PERMISSIONS if we can't query neuron
+                    try {
+                        let response = await governance.manage_neuron({
+                            subaccount = neuronId.id;
+                            command = ?#RemoveNeuronPermissions({
+                                permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                                principal_id = ?sneedex;
+                            });
+                        });
+                        switch (response.command) {
+                            case (?#Error(_e)) {};
+                            case _ {};
+                        };
+                    } catch (_e) {};
+                };
             };
         } catch (_e) {
-            // Continue even if sneedex removal fails
+            // Fallback to removing FULL_OWNER_PERMISSIONS if we can't query neuron
+            try {
+                let response = await governance.manage_neuron({
+                    subaccount = neuronId.id;
+                    command = ?#RemoveNeuronPermissions({
+                        permissions_to_remove = ?{ permissions = T.FULL_OWNER_PERMISSIONS };
+                        principal_id = ?sneedex;
+                    });
+                });
+                switch (response.command) {
+                    case (?#Error(_e)) {};
+                    case _ {};
+                };
+            } catch (_e) {};
         };
         
         #ok();
