@@ -16,12 +16,21 @@ import { useTokens } from '../hooks/useTokens';
 import { formatError } from '../utils/errorUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { useTheme } from '../contexts/ThemeContext';
+import { FaCommentAlt, FaReply, FaEdit, FaTrash, FaCoins, FaArrowUp, FaArrowDown, FaUndo, FaSpinner, FaCheck, FaTimes, FaPlus, FaMinus, FaEye, FaSitemap, FaCheckCircle, FaKey } from 'react-icons/fa';
+
+// Accent colors
+const accentPrimary = '#06b6d4'; // Cyan to match discussion section in Proposal
+const accentSecondary = '#0891b2';
 
 // Add CSS for spinner animation
 const spinnerStyles = `
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 `;
 
@@ -34,70 +43,94 @@ if (typeof document !== 'undefined') {
 }
 
 // Separate ReplyForm component to prevent PostComponent re-renders
-const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits }) => {
+const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits, theme }) => {
     const [replyText, setReplyText] = useState('');
     
-    // Get display name for the user being replied to
     const displayInfo = principalDisplayInfo?.get(createdBy?.toString());
     const displayName = displayInfo?.displayName || createdBy.toString().slice(0, 8) + '...';
     
-    // Character limit validation
     const maxLength = textLimits?.max_comment_length || 5000;
     const isOverLimit = replyText.length > maxLength;
     const remainingChars = maxLength - replyText.length;
     
     return (
-        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+        <div style={{ 
+            marginTop: '1rem', 
+            padding: '1rem', 
+            background: theme.colors.primaryBg, 
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`
+        }}>
+            <div style={{ 
+                color: theme.colors.mutedText, 
+                fontSize: '0.85rem', 
+                marginBottom: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+            }}>
+                <FaReply size={12} />
+                Replying to {displayName}
+            </div>
             <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder={`Reply to ${displayName}`}
+                placeholder={`Write your reply...`}
                 style={{
                     width: '100%',
                     minHeight: '80px',
-                    backgroundColor: '#2a2a2a',
-                    border: `1px solid ${isOverLimit ? '#e74c3c' : '#4a4a4a'}`,
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    padding: '10px',
-                    fontSize: '14px',
+                    background: theme.colors.secondaryBg,
+                    border: `1px solid ${isOverLimit ? theme.colors.error : theme.colors.border}`,
+                    borderRadius: '8px',
+                    color: theme.colors.primaryText,
+                    padding: '0.75rem',
+                    fontSize: '0.9rem',
                     resize: 'vertical',
-                    marginBottom: '5px'
+                    marginBottom: '0.5rem',
+                    boxSizing: 'border-box'
                 }}
             />
             <div style={{ 
-                fontSize: '12px', 
-                color: isOverLimit ? '#e74c3c' : remainingChars < 100 ? '#f39c12' : '#888',
-                marginBottom: '10px',
+                fontSize: '0.75rem', 
+                color: isOverLimit ? theme.colors.error : remainingChars < 100 ? '#f39c12' : theme.colors.mutedText,
+                marginBottom: '0.75rem',
                 textAlign: 'right'
             }}>
                 {replyText.length}/{maxLength} characters
-                {isOverLimit && <span style={{ marginLeft: '10px' }}>({Math.abs(remainingChars)} over limit)</span>}
+                {isOverLimit && <span style={{ marginLeft: '0.5rem' }}>({Math.abs(remainingChars)} over limit)</span>}
             </div>
-            <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                     onClick={() => onSubmit(replyText)}
                     disabled={!replyText.trim() || submittingComment || isOverLimit}
                     style={{
-                        padding: '8px 16px',
-                        backgroundColor: (replyText.trim() && !submittingComment && !isOverLimit) ? '#4CAF50' : '#333',
-                        color: (replyText.trim() && !submittingComment && !isOverLimit) ? 'white' : '#666',
+                        padding: '0.5rem 1rem',
+                        background: (replyText.trim() && !submittingComment && !isOverLimit) 
+                            ? `linear-gradient(135deg, ${accentPrimary}, ${accentSecondary})`
+                            : theme.colors.mutedText,
+                        color: 'white',
                         border: 'none',
-                        borderRadius: '4px',
-                        cursor: (replyText.trim() && !submittingComment && !isOverLimit) ? 'pointer' : 'not-allowed'
+                        borderRadius: '8px',
+                        cursor: (replyText.trim() && !submittingComment && !isOverLimit) ? 'pointer' : 'not-allowed',
+                        fontSize: '0.85rem',
+                        fontWeight: '500',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
                     }}
                 >
-                    {submittingComment ? 'Submitting...' : 'Submit Reply'}
+                    {submittingComment ? <><FaSpinner className="spin" size={12} /> Submitting...</> : <><FaReply size={12} /> Submit Reply</>}
                 </button>
                 <button
                     onClick={onCancel}
                     style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#666',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
+                        padding: '0.5rem 1rem',
+                        background: 'transparent',
+                        color: theme.colors.secondaryText,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
                     }}
                 >
                     Cancel
@@ -108,11 +141,10 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
 };
 
 // Separate EditForm component to prevent PostComponent re-renders
-const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits }) => {
+const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits, theme }) => {
     const [title, setTitle] = useState(initialTitle || '');
     const [body, setBody] = useState(initialBody || '');
     
-    // Character limit validation
     const maxTitleLength = textLimits?.max_title_length || 200;
     const maxBodyLength = textLimits?.max_body_length || 10000;
     const isTitleOverLimit = title.length > maxTitleLength;
@@ -120,8 +152,25 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     const isOverLimit = isTitleOverLimit || isBodyOverLimit;
     
     return (
-        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
-            <h4 style={{ color: '#f39c12', marginBottom: '10px' }}>Edit Post</h4>
+        <div style={{ 
+            marginTop: '1rem', 
+            padding: '1rem', 
+            background: theme.colors.primaryBg, 
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`
+        }}>
+            <div style={{ 
+                color: '#f39c12', 
+                fontSize: '0.9rem', 
+                marginBottom: '0.75rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+            }}>
+                <FaEdit size={14} />
+                Edit Post
+            </div>
             <input
                 type="text"
                 placeholder="Post Title (optional)"
@@ -129,23 +178,24 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 onChange={(e) => setTitle(e.target.value)}
                 style={{
                     width: '100%',
-                    backgroundColor: '#2a2a2a',
-                    border: `1px solid ${isTitleOverLimit ? '#e74c3c' : '#4a4a4a'}`,
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    padding: '10px',
-                    fontSize: '14px',
-                    marginBottom: '5px'
+                    background: theme.colors.secondaryBg,
+                    border: `1px solid ${isTitleOverLimit ? theme.colors.error : theme.colors.border}`,
+                    borderRadius: '8px',
+                    color: theme.colors.primaryText,
+                    padding: '0.75rem',
+                    fontSize: '0.9rem',
+                    marginBottom: '0.5rem',
+                    boxSizing: 'border-box'
                 }}
             />
             <div style={{ 
-                fontSize: '12px', 
-                color: isTitleOverLimit ? '#e74c3c' : (maxTitleLength - title.length) < 20 ? '#f39c12' : '#888',
-                marginBottom: '10px',
+                fontSize: '0.75rem', 
+                color: isTitleOverLimit ? theme.colors.error : (maxTitleLength - title.length) < 20 ? '#f39c12' : theme.colors.mutedText,
+                marginBottom: '0.75rem',
                 textAlign: 'right'
             }}>
-                Title: {title.length}/{maxTitleLength} characters
-                {isTitleOverLimit && <span style={{ marginLeft: '10px' }}>({title.length - maxTitleLength} over limit)</span>}
+                Title: {title.length}/{maxTitleLength}
+                {isTitleOverLimit && <span style={{ marginLeft: '0.5rem' }}>({title.length - maxTitleLength} over)</span>}
             </div>
             <textarea
                 value={body}
@@ -154,49 +204,58 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 style={{
                     width: '100%',
                     minHeight: '100px',
-                    backgroundColor: '#2a2a2a',
-                    border: `1px solid ${isBodyOverLimit ? '#e74c3c' : '#4a4a4a'}`,
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    padding: '10px',
-                    fontSize: '14px',
+                    background: theme.colors.secondaryBg,
+                    border: `1px solid ${isBodyOverLimit ? theme.colors.error : theme.colors.border}`,
+                    borderRadius: '8px',
+                    color: theme.colors.primaryText,
+                    padding: '0.75rem',
+                    fontSize: '0.9rem',
                     resize: 'vertical',
-                    marginBottom: '5px'
+                    marginBottom: '0.5rem',
+                    boxSizing: 'border-box'
                 }}
             />
             <div style={{ 
-                fontSize: '12px', 
-                color: isBodyOverLimit ? '#e74c3c' : (maxBodyLength - body.length) < 100 ? '#f39c12' : '#888',
-                marginBottom: '10px',
+                fontSize: '0.75rem', 
+                color: isBodyOverLimit ? theme.colors.error : (maxBodyLength - body.length) < 100 ? '#f39c12' : theme.colors.mutedText,
+                marginBottom: '0.75rem',
                 textAlign: 'right'
             }}>
-                Body: {body.length}/{maxBodyLength} characters
-                {isBodyOverLimit && <span style={{ marginLeft: '10px' }}>({body.length - maxBodyLength} over limit)</span>}
+                Body: {body.length}/{maxBodyLength}
+                {isBodyOverLimit && <span style={{ marginLeft: '0.5rem' }}>({body.length - maxBodyLength} over)</span>}
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                     onClick={() => onSubmit(title, body)}
                     disabled={!body.trim() || submittingEdit || isOverLimit}
                     style={{
-                        padding: '8px 16px',
-                        backgroundColor: (body.trim() && !submittingEdit && !isOverLimit) ? '#f39c12' : '#333',
-                        color: (body.trim() && !submittingEdit && !isOverLimit) ? 'white' : '#666',
+                        padding: '0.5rem 1rem',
+                        background: (body.trim() && !submittingEdit && !isOverLimit) 
+                            ? 'linear-gradient(135deg, #f39c12, #e67e22)'
+                            : theme.colors.mutedText,
+                        color: 'white',
                         border: 'none',
-                        borderRadius: '4px',
-                        cursor: (body.trim() && !submittingEdit && !isOverLimit) ? 'pointer' : 'not-allowed'
+                        borderRadius: '8px',
+                        cursor: (body.trim() && !submittingEdit && !isOverLimit) ? 'pointer' : 'not-allowed',
+                        fontSize: '0.85rem',
+                        fontWeight: '500',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
                     }}
                 >
-                    {submittingEdit ? 'Updating...' : 'Update Post'}
+                    {submittingEdit ? <><FaSpinner className="spin" size={12} /> Updating...</> : <><FaCheck size={12} /> Update Post</>}
                 </button>
                 <button
                     onClick={onCancel}
                     style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#666',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
+                        padding: '0.5rem 1rem',
+                        background: 'transparent',
+                        color: theme.colors.secondaryText,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
                     }}
                 >
                     Cancel
@@ -219,22 +278,18 @@ function Discussion({
     const { identity } = useAuth();
     const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
     
-    // Text limits hook (includes premium-aware limits if user is premium)
     const { textLimits, regularLimits, isPremium, loading: textLimitsLoading } = useTextLimits(forumActor);
     
-    // Admin check
     const { isAdmin } = useAdminCheck({
         identity,
         isAuthenticated,
-        redirectPath: null // Don't redirect, just check status
+        redirectPath: null
     });
 
-    // Tokens hook for tipping
     const { tokens: availableTokens, loading: tokensLoading, refreshTokenBalance } = useTokens(identity);
     
-    // State for discussion
-    const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
-    const [threadDetails, setThreadDetails] = useState(null); // Actual thread details
+    const [discussionThread, setDiscussionThread] = useState(null);
+    const [threadDetails, setThreadDetails] = useState(null);
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
@@ -242,41 +297,33 @@ function Discussion({
     const [submittingComment, setSubmittingComment] = useState(false);
     const [commentTitle, setCommentTitle] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [creatingFirstPost, setCreatingFirstPost] = useState(false); // Track when creating first post after new thread
+    const [creatingFirstPost, setCreatingFirstPost] = useState(false);
     
-    // State for editing posts
     const [editingPost, setEditingPost] = useState(null);
     const [submittingEdit, setSubmittingEdit] = useState(false);
     
-    // State for view mode and interactions
     const [viewMode, setViewMode] = useState(() => {
-        // Get saved preference from localStorage, default to 'tree'
         try {
             return localStorage.getItem('discussionViewMode') || 'tree';
         } catch (error) {
-            console.warn('Could not access localStorage:', error);
             return 'tree';
         }
     });
     const [collapsedPosts, setCollapsedPosts] = useState(new Set());
     const [replyingTo, setReplyingTo] = useState(null);
     
-    // State for voting
-    const [votingStates, setVotingStates] = useState({}); // postId -> 'voting' | 'success' | 'error'
-    const [userVotes, setUserVotes] = useState({}); // postId -> { vote_type, voting_power }
+    const [votingStates, setVotingStates] = useState({});
+    const [userVotes, setUserVotes] = useState({});
     const [retractingStates, setRetractingStates] = useState({});
 
-    // State for tipping
     const [tipModalOpen, setTipModalOpen] = useState(false);
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState(false);
-    const [postTips, setPostTips] = useState({}); // postId -> [tips]
+    const [postTips, setPostTips] = useState({});
 
-    // Get neurons from global context
     const hotkeyNeurons = getHotkeyNeurons() || [];
     const allNeurons = getAllNeurons() || [];
 
-    // Calculate total reachable voting power from all neurons (for forum voting)
     const totalVotingPower = React.useMemo(() => {
         if (!allNeurons || allNeurons.length === 0) return 0;
         
@@ -285,17 +332,14 @@ function Discussion({
                 const votingPower = calculateVotingPower(neuron);
                 return total + votingPower;
             } catch (error) {
-                console.warn('Error calculating voting power for neuron:', neuron.id, error);
                 return total;
             }
         }, 0);
     }, [allNeurons]);
 
-    // Format voting power for display
     const formatVotingPowerDisplay = (votingPower) => {
         if (votingPower === 0) return '0';
         
-        // Convert from e8s to display units
         const displayValue = votingPower / 100_000_000;
         
         if (displayValue >= 1) {
@@ -311,60 +355,44 @@ function Discussion({
         }
     };
 
-    // Fetch discussion thread and thread details
     const fetchDiscussionThread = async () => {
         if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
         
         setLoadingDiscussion(true);
         try {
-            console.log('Fetching discussion thread with params:', {
-                currentProposalId,
-                selectedSnsRoot,
-                forumActor: !!forumActor
-            });
-            
             const threadMapping = await forumActor.get_proposal_thread(
                 Principal.fromText(selectedSnsRoot),
                 Number(currentProposalId)
             );
             
-            console.log('Thread mapping result:', threadMapping);
-            
             if (threadMapping && threadMapping.length > 0) {
                 const mapping = Array.isArray(threadMapping) ? threadMapping[0] : threadMapping;
                 if (mapping && mapping.thread_id) {
-                    console.log('Found thread mapping:', mapping);
                     setDiscussionThread(mapping);
                     
-                    // Fetch the actual thread details
                     try {
                         const threadDetails = await forumActor.get_thread(Number(mapping.thread_id));
-                        console.log('Thread details result:', threadDetails);
                         if (threadDetails && threadDetails.length > 0) {
                             setThreadDetails(threadDetails[0]);
                         } else {
                             setThreadDetails(null);
                         }
                     } catch (threadErr) {
-                        console.error('Error fetching thread details:', threadErr);
                         setThreadDetails(null);
                     }
                     
                     await fetchDiscussionPosts(Number(mapping.thread_id));
                 } else {
-                    console.log('No valid thread mapping found');
                     setDiscussionThread(null);
                     setThreadDetails(null);
                     setDiscussionPosts([]);
                 }
             } else {
-                console.log('No thread mapping found for proposal ID:', currentProposalId);
                 setDiscussionThread(null);
                 setThreadDetails(null);
                 setDiscussionPosts([]);
             }
         } catch (err) {
-            console.error('Error fetching discussion thread:', err);
             setDiscussionThread(null);
             setThreadDetails(null);
             setDiscussionPosts([]);
@@ -373,43 +401,18 @@ function Discussion({
         }
     };
 
-    // Fetch discussion posts
     const fetchDiscussionPosts = async (threadId) => {
         if (!forumActor || !threadId) return;
         
         try {
-            console.log('Fetching posts for thread ID:', threadId);
             const posts = await forumActor.get_posts_by_thread(Number(threadId));
-            console.log('Posts result:', posts);
-            console.log('Posts length:', posts.length);
-            console.log('Posts type:', typeof posts);
-            
-            // Handle BigInt serialization for logging
-            try {
-                const postsForLogging = posts.map(post => ({
-                    ...post,
-                    id: post.id.toString(),
-                    created_at: post.created_at.toString(),
-                    upvote_score: post.upvote_score.toString(),
-                    downvote_score: post.downvote_score.toString()
-                }));
-                console.log('Posts data:', JSON.stringify(postsForLogging, null, 2));
-            } catch (serializationError) {
-                console.log('Could not serialize posts for logging, but posts were fetched');
-                console.log('Posts count:', posts.length);
-            }
-            
             setDiscussionPosts(posts || []);
-            
-            // Fetch tips for all posts
             await fetchTipsForPosts(posts || []);
         } catch (err) {
-            console.error('Error fetching discussion posts:', err);
             setDiscussionPosts([]);
         }
     };
 
-    // Fetch tips for posts
     const fetchTipsForPosts = async (posts) => {
         if (!forumActor || !posts.length) return;
         
@@ -419,7 +422,6 @@ function Discussion({
                     const tips = await getTipsByPost(forumActor, Number(post.id));
                     return { postId: post.id.toString(), tips };
                 } catch (err) {
-                    console.error(`Error fetching tips for post ${post.id}:`, err);
                     return { postId: post.id.toString(), tips: [] };
                 }
             });
@@ -437,7 +439,6 @@ function Discussion({
         }
     };
 
-    // Create proposal thread
     const createProposalThread = async (firstCommentText) => {
         if (!forumActor || !currentProposalId || !selectedSnsRoot) return null;
         
@@ -449,21 +450,17 @@ function Discussion({
 
             const result = await forumActor.create_proposal_thread_with_auto_setup(threadInput);
             if ('ok' in result) {
-                console.log('Thread created successfully with auto-setup, thread ID:', result.ok);
                 return result.ok;
             } else {
-                console.error('Failed to create thread with auto-setup:', result.err);
                 if (onError) onError('Failed to create discussion thread: ' + formatError(result.err));
                 return null;
             }
         } catch (err) {
-            console.error('Error creating proposal thread with auto-setup:', err);
             if (onError) onError('Error creating proposal thread: ' + formatError(err));
             return null;
         }
     };
 
-    // Submit comment
     const submitComment = async () => {
         if (!commentText.trim() || !forumActor) return;
         
@@ -472,28 +469,22 @@ function Discussion({
             let threadId = discussionThread?.thread_id;
             let newThreadCreated = false;
             
-            // Create thread if it doesn't exist
             if (!threadId) {
                 threadId = await createProposalThread(commentText);
                 if (!threadId) {
-                    return; // Error already handled in createProposalThread
+                    return;
                 }
                 newThreadCreated = true;
                 
-                // Immediately refresh thread data to update UI state
                 await fetchDiscussionThread();
                 
-                // Notify parent component that a thread was created
                 if (onThreadCreated) {
                     onThreadCreated();
                 }
                 
-                // Set flag to indicate we're creating the first post
                 setCreatingFirstPost(true);
             }
 
-            // Create post - always create a post whether thread existed or was just created
-            // Only use the title if it's explicitly provided and not a "Re:" title
             const shouldUseTitle = commentTitle && commentTitle.trim() && !commentTitle.trim().startsWith('Re: ');
             
             const result = await forumActor.create_post(
@@ -504,23 +495,17 @@ function Discussion({
             );
             
             if ('ok' in result) {
-                console.log('Comment created successfully, post ID:', result.ok);
                 const postId = result.ok;
                 
-                // Clear form immediately
                 setCommentText('');
                 setCommentTitle('');
                 setShowCommentForm(false);
                 
-                // Refresh posts immediately to show the new post with 0 score
                 await fetchDiscussionPosts(Number(threadId));
                 
-                // Clear the first post creation flag
                 setCreatingFirstPost(false);
                 
-                // Only auto-upvote if user has voting power
                 if (totalVotingPower > 0) {
-                    // Now automatically upvote the newly created post with spinner
                     const postIdStr = postId.toString();
                     setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
                     
@@ -540,10 +525,8 @@ function Discussion({
                                 }
                             }));
                             
-                            // Refresh posts again to show updated score
                             await fetchDiscussionPosts(Number(threadId));
                             
-                            // Clear voting state after a delay
                             setTimeout(() => {
                                 setVotingStates(prev => {
                                     const newState = { ...prev };
@@ -552,7 +535,6 @@ function Discussion({
                                 });
                             }, 2000);
                         } else {
-                            console.warn('Failed to auto-upvote post:', voteResult.err);
                             setVotingStates(prev => {
                                 const newState = { ...prev };
                                 delete newState[postIdStr];
@@ -560,7 +542,6 @@ function Discussion({
                             });
                         }
                     } catch (voteErr) {
-                        console.warn('Error auto-upvoting post:', voteErr);
                         setVotingStates(prev => {
                             const newState = { ...prev };
                             delete newState[postIdStr];
@@ -569,23 +550,18 @@ function Discussion({
                     }
                 }
             } else {
-                console.error('Failed to create comment:', result.err);
                 if (onError) onError('Failed to create comment: ' + formatError(result.err));
-                // Clear the first post creation flag on error
                 setCreatingFirstPost(false);
                 return;
             }
         } catch (err) {
-            console.error('Error submitting comment:', err);
             if (onError) onError('Failed to submit comment: ' + err.message);
-            // Clear the first post creation flag on error
             setCreatingFirstPost(false);
         } finally {
             setSubmittingComment(false);
         }
     };
 
-    // Helper functions for post organization
     const calculatePostScore = (post) => {
         const upvotes = Number(post.upvote_score);
         const downvotes = Number(post.downvote_score);
@@ -593,20 +569,16 @@ function Discussion({
     };
 
     const formatScore = (score) => {
-        // Convert from e8s (divide by 10^8)
         const scoreInTokens = score / 100000000;
         
-        // Format with commas and only necessary decimal places
         if (scoreInTokens === 0) {
             return '0';
         } else if (Math.abs(scoreInTokens) >= 1) {
-            // For values >= 1, show up to 2 decimal places, removing trailing zeros
             return scoreInTokens.toLocaleString('en-US', {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 2
             });
         } else {
-            // For values < 1, show up to 8 decimal places, removing trailing zeros
             return scoreInTokens.toLocaleString('en-US', {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 8
@@ -614,64 +586,41 @@ function Discussion({
         }
     };
 
-    // Helper function to find a post by ID
     const findPostById = (posts, postId) => {
         return posts.find(post => Number(post.id) === Number(postId));
     };
 
-    // Helper function to generate reply title - now returns null for "Re:" cases
     const generateReplyTitle = (parentPost) => {
-        // Always return null for replies - we'll derive the title in presentation
         return null;
     };
 
-    // Helper function to derive display title for presentation
     const getDerivedTitle = (post, parentPost = null) => {
-        // Debug logging
-        console.log('getDerivedTitle called with:', {
-            postId: post.id,
-            postTitle: post.title,
-            hasParentPost: !!parentPost,
-            parentPostId: parentPost?.id,
-            threadDetailsTitle: threadDetails?.title,
-            threadDetailsId: threadDetails?.id,
-            fullThreadDetails: threadDetails
-        });
-        
-        // If post has an explicit title, use it
         if (post.title && post.title.length > 0) {
             return post.title[0];
         }
         
-        // If it's a reply to a post, recursively find the first ancestor with a title
         if (post.reply_to_post_id && post.reply_to_post_id.length > 0) {
-            // If we have a parent post, check if it has a title
             if (parentPost) {
                 if (parentPost.title && parentPost.title.length > 0) {
                     const parentTitle = parentPost.title[0];
-                    // Check if parent title already starts with "Re: "
                     if (parentTitle.startsWith('Re: ')) {
-                        return parentTitle; // Don't add another "Re: "
+                        return parentTitle;
                     } else {
                         return `Re: ${parentTitle}`;
                     }
                 } else {
-                    // Parent has no title, so recursively check the parent's parent
                     const grandparentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0
                         ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
                         : null;
                     
                     if (grandparentPost) {
-                        // Recursively get the derived title from the grandparent
                         const ancestorTitle = getDerivedTitle(parentPost, grandparentPost);
-                        // If the ancestor title already starts with "Re: ", use it as is
                         if (ancestorTitle.startsWith('Re: ')) {
                             return ancestorTitle;
                         } else {
                             return `Re: ${ancestorTitle}`;
                         }
                     } else {
-                        // No grandparent found, fall back to thread title
                         if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
                             return `Re: ${threadDetails.title[0]}`;
                         } else {
@@ -680,12 +629,10 @@ function Discussion({
                     }
                 }
             } else {
-                // No parent post provided, try to find it
                 const foundParent = findPostById(discussionPosts, post.reply_to_post_id[0]);
                 if (foundParent) {
                     return getDerivedTitle(post, foundParent);
                 } else {
-                    // Parent not found, fall back to thread title
                     if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
                         return `Re: ${threadDetails.title[0]}`;
                     } else {
@@ -695,18 +642,14 @@ function Discussion({
             }
         }
         
-        // If it's a top-level post in a thread
         if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
             return `Re: ${threadDetails.title[0]}`;
         }
         
-        // Fallback
-        console.log('Falling back to Post #' + post.id);
         return `Post #${post.id}`;
     };
 
     const organizePostsFlat = (posts) => {
-        // Sort by post ID (chronological)
         return [...posts].sort((a, b) => Number(a.id) - Number(b.id));
     };
 
@@ -714,12 +657,10 @@ function Discussion({
         const postMap = new Map();
         const rootPosts = [];
         
-        // Create a map of all posts
         posts.forEach(post => {
             postMap.set(Number(post.id), { ...post, replies: [] });
         });
         
-        // Organize into tree structure
         posts.forEach(post => {
             const postData = postMap.get(Number(post.id));
             if (post.reply_to_post_id && post.reply_to_post_id.length > 0) {
@@ -735,13 +676,11 @@ function Discussion({
             }
         });
         
-        // Sort replies by score (highest first)
         const sortRepliesByScore = (post) => {
             post.replies.sort((a, b) => calculatePostScore(b) - calculatePostScore(a));
             post.replies.forEach(sortRepliesByScore);
         };
         
-        // Sort root posts by ID (chronological) and then sort all replies by score
         rootPosts.sort((a, b) => Number(a.id) - Number(b.id));
         rootPosts.forEach(sortRepliesByScore);
         
@@ -763,30 +702,24 @@ function Discussion({
         
         setSubmittingComment(true);
         try {
-            // Find the parent post to generate reply title
             const parentPost = findPostById(discussionPosts, parentPostId);
             const replyTitle = generateReplyTitle(parentPost);
             
             const result = await forumActor.create_post(
                 Number(discussionThread.thread_id),
                 [Number(parentPostId)],
-                [], // Always pass empty array for title since we derive it in presentation
+                [],
                 replyText
             );
             
             if ('ok' in result) {
-                console.log('Reply created successfully, post ID:', result.ok);
                 const postId = result.ok;
                 
-                // Clear form immediately
                 setReplyingTo(null);
                 
-                // Refresh posts immediately to show the new post with 0 score
                 await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 
-                // Only auto-upvote if user has voting power
                 if (totalVotingPower > 0) {
-                    // Now automatically upvote the newly created post with spinner
                     const postIdStr = postId.toString();
                     setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
                     
@@ -806,10 +739,8 @@ function Discussion({
                                 }
                             }));
                             
-                            // Refresh posts again to show updated score
                             await fetchDiscussionPosts(Number(discussionThread.thread_id));
                             
-                            // Clear voting state after a delay
                             setTimeout(() => {
                                 setVotingStates(prev => {
                                     const newState = { ...prev };
@@ -818,7 +749,6 @@ function Discussion({
                                 });
                             }, 2000);
                         } else {
-                            console.warn('Failed to auto-upvote reply:', voteResult.err);
                             setVotingStates(prev => {
                                 const newState = { ...prev };
                                 delete newState[postIdStr];
@@ -826,7 +756,6 @@ function Discussion({
                             });
                         }
                     } catch (voteErr) {
-                        console.warn('Error auto-upvoting reply:', voteErr);
                         setVotingStates(prev => {
                             const newState = { ...prev };
                             delete newState[postIdStr];
@@ -835,11 +764,9 @@ function Discussion({
                     }
                 }
             } else {
-                console.error('Failed to create reply:', result.err);
                 if (onError) onError('Failed to create reply: ' + formatError(result.err));
             }
         } catch (err) {
-            console.error('Error submitting reply:', err);
             if (onError) onError('Failed to submit reply: ' + err.message);
         } finally {
             setSubmittingComment(false);
@@ -852,19 +779,15 @@ function Discussion({
         const isNegative = score < 0;
         const hasBeenManuallyToggled = collapsedPosts.has(Number(post.id));
         
-        // Default state: negative posts are collapsed, positive posts are expanded
-        // If manually toggled, use the opposite of the default state
         const defaultCollapsed = isNegative;
         const isCollapsed = hasBeenManuallyToggled ? !defaultCollapsed : defaultCollapsed;
         
         const isReplying = replyingTo === Number(post.id);
         
-        // Find parent post if this is a reply
         const parentPost = post.reply_to_post_id && post.reply_to_post_id.length > 0 
             ? findPostById(discussionPosts, post.reply_to_post_id[0])
             : null;
         
-        // Get the derived display title for this post
         const displayTitle = getDerivedTitle(post, parentPost);
         const hasExplicitTitle = post.title && post.title.length > 0;
         
@@ -872,40 +795,43 @@ function Discussion({
             <div 
                 key={post.id}
                 style={{
-                    marginBottom: '10px'
+                    marginBottom: '0.75rem',
+                    animation: 'fadeIn 0.3s ease-out'
                 }}
             >
                 <div style={{
                     marginLeft: isFlat ? '0' : `${depth * 20}px`,
                     display: 'flex',
                     alignItems: 'flex-start',
-                    gap: '8px'
+                    gap: '0.5rem'
                 }}>
-                    {/* +/- Collapse Button */}
+                    {/* Collapse Button */}
                     <button
                         onClick={() => togglePostCollapse(Number(post.id))}
                         style={{
-                            backgroundColor: 'transparent',
-                            border: '1px solid #666',
-                            color: '#888',
-                            borderRadius: '4px',
-                            padding: '4px 8px',
+                            background: 'transparent',
+                            border: `1px solid ${theme.colors.border}`,
+                            color: theme.colors.mutedText,
+                            borderRadius: '6px',
+                            padding: '4px',
                             cursor: 'pointer',
-                            fontSize: '14px',
-                            minWidth: '28px',
-                            height: '28px',
-                            marginTop: '0',
+                            width: '24px',
+                            height: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginTop: '2px',
                             flexShrink: 0
                         }}
                     >
-                        {isCollapsed ? '+' : '−'}
+                        {isCollapsed ? <FaPlus size={10} /> : <FaMinus size={10} />}
                     </button>
 
                     <div style={{
-                        backgroundColor: isNegative ? '#3a2a2a' : '#2a2a2a',
-                        border: isNegative ? '1px solid #8b4513' : '1px solid #4a4a4a',
-                        borderRadius: '6px',
-                        padding: '15px',
+                        background: isNegative ? `${theme.colors.error}10` : theme.colors.primaryBg,
+                        border: `1px solid ${isNegative ? `${theme.colors.error}40` : theme.colors.border}`,
+                        borderRadius: '12px',
+                        padding: '1rem',
                         flex: 1
                     }}>
                         {/* Post Header */}
@@ -913,94 +839,90 @@ function Discussion({
                             display: 'flex', 
                             justifyContent: 'space-between', 
                             alignItems: 'center',
-                            marginBottom: isCollapsed ? '0' : '10px'
+                            marginBottom: isCollapsed ? '0' : '0.75rem',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem'
                         }}>
                             <div style={{ 
-                                color: '#888', 
-                                fontSize: '14px',
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.8rem',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '10px'
+                                gap: '0.5rem',
+                                flexWrap: 'wrap'
                             }}>
-                                <span>By: <PrincipalDisplay 
+                                <PrincipalDisplay 
                                     principal={post.created_by} 
                                     displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                                     showCopyButton={false}
                                     isAuthenticated={isAuthenticated}
-                                /></span>
+                                />
                                 <span>•</span>
                                 <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
                                 {isFlat && parentPost && (
                                     <>
                                         <span>•</span>
-                                        <span style={{ color: '#3498db' }}>
+                                        <span style={{ color: accentPrimary }}>
                                             Reply to #{Number(post.reply_to_post_id[0])}
-                                            {(() => {
-                                                // Find the parent's parent if it exists
-                                                const parentParentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0 
-                                                    ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
-                                                    : null;
-                                                const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost);
-                                                return <span>: {parentDerivedTitle}</span>;
-                                            })()}
                                         </span>
                                     </>
                                 )}
                                 {isNegative && (
-                                    <>
-                                        <span>•</span>
-                                        <span style={{ color: '#ff6b6b' }}>Low Score</span>
-                                    </>
+                                    <span style={{ 
+                                        color: theme.colors.error,
+                                        background: `${theme.colors.error}20`,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.7rem'
+                                    }}>Low Score</span>
                                 )}
                                 {isCollapsed && (
-                                    <>
-                                        <span>•</span>
-                                        <span style={{ color: '#888' }}>[Collapsed]</span>
-                                        <span>•</span>
-                                        <span style={{ color: '#666', fontStyle: 'italic' }}>
-                                            {post.body.slice(0, 50)}...
-                                        </span>
-                                    </>
+                                    <span style={{ 
+                                        color: theme.colors.mutedText,
+                                        fontStyle: 'italic',
+                                        fontSize: '0.75rem'
+                                    }}>
+                                        {post.body.slice(0, 50)}...
+                                    </span>
                                 )}
-                            </div>
-                            <div style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '10px'
-                            }}>
-                                {/* Removed voting display from header - moved to action buttons below */}
                             </div>
                         </div>
 
                         {/* Post Content */}
                         {!isCollapsed && (
                             <>
-                                {/* Show post title */}
+                                {/* Title */}
                                 {hasExplicitTitle ? (
                                     <div style={{ 
-                                        color: '#ffffff', 
-                                        fontSize: '18px', 
-                                        fontWeight: 'bold', 
-                                        marginBottom: '10px' 
+                                        color: theme.colors.primaryText, 
+                                        fontSize: '1.1rem', 
+                                        fontWeight: '600', 
+                                        marginBottom: '0.75rem' 
                                     }}>
                                         {displayTitle}
                                     </div>
                                 ) : (
                                     <div style={{ 
-                                        color: '#ffc107', 
-                                        fontSize: '16px', 
-                                        fontWeight: 'bold', 
-                                        marginBottom: '8px' 
+                                        color: accentPrimary, 
+                                        fontSize: '0.95rem', 
+                                        fontWeight: '500', 
+                                        marginBottom: '0.5rem' 
                                     }}>
                                         {displayTitle}
                                     </div>
                                 )}
                                 
-                                <div style={{ color: '#ffffff', lineHeight: '1.6', marginBottom: '10px' }}>
+                                {/* Body */}
+                                <div style={{ 
+                                    color: theme.colors.primaryText, 
+                                    lineHeight: '1.6', 
+                                    marginBottom: '0.75rem',
+                                    fontSize: '0.9rem'
+                                }}>
                                     <ReactMarkdown>{post.body}</ReactMarkdown>
                                 </div>
 
-                                {/* Tip Display */}
+                                {/* Tips */}
                                 <TipDisplay 
                                     tips={postTips[post.id.toString()] || []}
                                     tokenInfo={new Map(availableTokens.map(token => [token.principal, {
@@ -1012,220 +934,196 @@ function Discussion({
                                 />
                                 
                                 {/* Action Buttons */}
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    {/* Voting Buttons - Always show, but disable for unauthenticated users */}
-                                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
-                                        {/* Upvote Button */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '0.5rem', 
+                                    alignItems: 'center', 
+                                    flexWrap: 'wrap',
+                                    paddingTop: '0.5rem',
+                                    borderTop: `1px solid ${theme.colors.border}`
+                                }}>
+                                    {/* Voting */}
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        gap: '4px', 
+                                        alignItems: 'center',
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '8px',
+                                        padding: '4px'
+                                    }}>
                                         <button
                                             onClick={isAuthenticated ? () => voteOnPost(post.id, 'upvote') : undefined}
                                             disabled={!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
                                             style={{
-                                                backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#6b8e6b' : 'transparent',
+                                                background: userVotes[post.id.toString()]?.vote_type === 'upvote' ? theme.colors.success : 'transparent',
                                                 border: 'none',
-                                                color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : 
-                                                       (!isAuthenticated ? '#888' : (totalVotingPower === 0 ? '#666' : '#6b8e6b')),
-                                                borderRadius: '4px',
-                                                padding: '4px 6px',
+                                                color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? 'white' : 
+                                                       (!isAuthenticated || totalVotingPower === 0) ? theme.colors.mutedText : theme.colors.success,
+                                                borderRadius: '6px',
+                                                padding: '4px 8px',
                                                 cursor: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
-                                                fontSize: '12px',
+                                                fontSize: '0.75rem',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '3px',
-                                                opacity: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
-                                                fontWeight: 'bold'
+                                                gap: '4px',
+                                                opacity: (!isAuthenticated || totalVotingPower === 0) ? 0.5 : 1
                                             }}
-                                            title={!isAuthenticated ? 'Connect your wallet to vote' : 
-                                                   totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : 
-                                                   `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                            title={!isAuthenticated ? 'Connect to vote' : totalVotingPower === 0 ? 'Need hotkey neurons to vote' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                         >
-                                            ▲ {!isAuthenticated ? 'Up' :
-                                                votingStates[post.id.toString()] === 'voting' ? '...' : 
-                                                neuronsLoading ? 'Loading...' : 
-                                                totalVotingPower === 0 ? 'No VP' :
-                                                totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Up'}
+                                            <FaArrowUp size={10} />
                                         </button>
 
-                                        {/* Score Display - Always show */}
                                         <span style={{ 
-                                            color: score > 0 ? '#6b8e6b' : score < 0 ? '#b85c5c' : '#888',
-                                            fontSize: '14px',
-                                            fontWeight: 'bold',
-                                            minWidth: '40px',
-                                            textAlign: 'center',
-                                            padding: '0 4px'
+                                            color: score > 0 ? theme.colors.success : score < 0 ? theme.colors.error : theme.colors.mutedText,
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            minWidth: '30px',
+                                            textAlign: 'center'
                                         }}>
-                                            {isAuthenticated && votingStates[post.id.toString()] === 'voting' ? (
-                                                <div style={{ 
-                                                    display: 'inline-block',
-                                                    width: '12px',
-                                                    height: '12px',
-                                                    border: '2px solid #f3f3f3',
-                                                    borderTop: '2px solid #3498db',
-                                                    borderRadius: '50%',
-                                                    animation: 'spin 1s linear infinite'
-                                                }} />
+                                            {votingStates[post.id.toString()] === 'voting' ? (
+                                                <FaSpinner className="spin" size={12} />
                                             ) : (
                                                 (score > 0 ? '+' : '') + formatScore(score)
                                             )}
                                         </span>
 
-                                        {/* Downvote Button */}
                                         <button
                                             onClick={isAuthenticated ? () => voteOnPost(post.id, 'downvote') : undefined}
                                             disabled={!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
                                             style={{
-                                                backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#b85c5c' : 'transparent',
+                                                background: userVotes[post.id.toString()]?.vote_type === 'downvote' ? theme.colors.error : 'transparent',
                                                 border: 'none',
-                                                color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : 
-                                                       (!isAuthenticated ? '#888' : (totalVotingPower === 0 ? '#666' : '#b85c5c')),
-                                                borderRadius: '4px',
-                                                padding: '4px 6px',
+                                                color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? 'white' : 
+                                                       (!isAuthenticated || totalVotingPower === 0) ? theme.colors.mutedText : theme.colors.error,
+                                                borderRadius: '6px',
+                                                padding: '4px 8px',
                                                 cursor: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
-                                                fontSize: '12px',
+                                                fontSize: '0.75rem',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '3px',
-                                                opacity: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
-                                                fontWeight: 'bold'
+                                                gap: '4px',
+                                                opacity: (!isAuthenticated || totalVotingPower === 0) ? 0.5 : 1
                                             }}
-                                            title={!isAuthenticated ? 'Connect your wallet to vote' : 
-                                                   totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : 
-                                                   `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                         >
-                                            ▼ {!isAuthenticated ? 'Down' :
-                                                votingStates[post.id.toString()] === 'voting' ? '...' : 
-                                                neuronsLoading ? 'Loading...' : 
-                                                totalVotingPower === 0 ? 'No VP' :
-                                                totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Down'}
+                                            <FaArrowDown size={10} />
                                         </button>
                                     </div>
 
-                                    {/* Interactive buttons - Only show for authenticated users */}
                                     {isAuthenticated && (
                                         <>
-                                            {/* Reply Button */}
                                             <button
-                                                onClick={() => {
-                                                    if (isReplying) {
-                                                        setReplyingTo(null);
-                                                    } else {
-                                                        setReplyingTo(Number(post.id));
-                                                    }
-                                                }}
+                                                onClick={() => isReplying ? setReplyingTo(null) : setReplyingTo(Number(post.id))}
                                                 style={{
-                                                    backgroundColor: 'transparent',
+                                                    background: 'transparent',
                                                     border: 'none',
-                                                    color: '#6b8eb8',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
+                                                    color: accentPrimary,
+                                                    borderRadius: '6px',
+                                                    padding: '6px 10px',
                                                     cursor: 'pointer',
-                                                    fontSize: '12px',
+                                                    fontSize: '0.8rem',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '4px'
                                                 }}
                                             >
-                                                💬 {isReplying ? 'Cancel Reply' : 'Reply'}
+                                                <FaReply size={12} /> {isReplying ? 'Cancel' : 'Reply'}
                                             </button>
 
-                                            {/* Retract Vote Button */}
                                             {userVotes[post.id.toString()] && (
                                                 <button
                                                     onClick={() => retractVote(post.id)}
                                                     disabled={votingStates[post.id.toString()] === 'voting'}
                                                     style={{
-                                                        backgroundColor: 'transparent',
+                                                        background: 'transparent',
                                                         border: 'none',
-                                                        color: '#b8956b',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
-                                                        cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
-                                                        fontSize: '12px',
-                                                        opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}
-                                                >
-                                                    ↩️ {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
-                                                </button>
-                                            )}
-
-                                            {/* Edit Button - show if user owns the post or is admin */}
-                                            {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
-                                                <button
-                                                    onClick={() => startEditPost(post)}
-                                                    style={{
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: '#b8956b',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
+                                                        color: '#f39c12',
+                                                        borderRadius: '6px',
+                                                        padding: '6px 10px',
                                                         cursor: 'pointer',
-                                                        fontSize: '12px',
+                                                        fontSize: '0.8rem',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '4px'
                                                     }}
                                                 >
-                                                    ✏️ Edit
+                                                    <FaUndo size={12} /> Retract
                                                 </button>
                                             )}
 
-                                            {/* Delete Button - show if user owns the post or is admin */}
-                                            {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
-                                                <button
-                                                    onClick={() => deletePost(post.id)}
-                                                    style={{
-                                                        backgroundColor: 'transparent',
-                                                        border: 'none',
-                                                        color: '#b85c5c',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '12px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}
-                                                >
-                                                    🗑️ Delete
-                                                </button>
+                                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                                                <>
+                                                    <button
+                                                        onClick={() => startEditPost(post)}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: '#f39c12',
+                                                            borderRadius: '6px',
+                                                            padding: '6px 10px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.8rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        <FaEdit size={12} /> Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deletePost(post.id)}
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            color: theme.colors.error,
+                                                            borderRadius: '6px',
+                                                            padding: '6px 10px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.8rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        <FaTrash size={12} /> Delete
+                                                    </button>
+                                                </>
                                             )}
 
-                                            {/* Tip Button - show for authenticated users (but not for own posts) */}
-                                            {isAuthenticated && identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                                 <button
                                                     onClick={() => openTipModal(post)}
                                                     style={{
-                                                        backgroundColor: 'transparent',
+                                                        background: 'transparent',
                                                         border: 'none',
-                                                        color: '#f39c12',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
+                                                        color: '#ffd700',
+                                                        borderRadius: '6px',
+                                                        padding: '6px 10px',
                                                         cursor: 'pointer',
-                                                        fontSize: '12px',
+                                                        fontSize: '0.8rem',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '4px'
                                                     }}
                                                 >
-                                                    💰 Tip
+                                                    <FaCoins size={12} /> Tip
                                                 </button>
                                             )}
 
-                                            {/* Voting Status */}
                                             {votingStates[post.id.toString()] === 'success' && (
-                                                <span style={{ color: '#6b8e6b', fontSize: '12px' }}>✓ Voted</span>
+                                                <span style={{ color: theme.colors.success, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <FaCheck size={12} /> Voted
+                                                </span>
                                             )}
                                             {votingStates[post.id.toString()] === 'error' && (
-                                                <span style={{ color: '#b85c5c', fontSize: '12px' }}>✗ Error</span>
+                                                <span style={{ color: theme.colors.error, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <FaTimes size={12} /> Error
+                                                </span>
                                             )}
                                         </>
                                     )}
                                 </div>
 
-                                {/* Reply Form - Only show for authenticated users */}
+                                {/* Reply Form */}
                                 {isAuthenticated && isReplying && (
                                     <ReplyForm 
                                         postId={post.id}
@@ -1235,6 +1133,7 @@ function Discussion({
                                         createdBy={post.created_by}
                                         principalDisplayInfo={principalDisplayInfo}
                                         textLimits={textLimits}
+                                        theme={theme}
                                     />
                                 )}
 
@@ -1247,6 +1146,7 @@ function Discussion({
                                         onCancel={cancelEditPost}
                                         submittingEdit={submittingEdit}
                                         textLimits={textLimits}
+                                        theme={theme}
                                     />
                                 )}
                             </>
@@ -1254,9 +1154,9 @@ function Discussion({
                     </div>
                 </div>
 
-                {/* Render replies in tree mode */}
+                {/* Replies */}
                 {!isFlat && !isCollapsed && post.replies && post.replies.length > 0 && (
-                    <div style={{ marginTop: '10px' }}>
+                    <div style={{ marginTop: '0.5rem' }}>
                         {post.replies.map(reply => (
                             <PostComponent 
                                 key={reply.id} 
@@ -1269,30 +1169,26 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, allNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity, textLimits, postTips, availableTokens]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, allNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity, textLimits, postTips, availableTokens, theme]);
 
-    // Effect to fetch discussion when props change
     useEffect(() => {
         if (forumActor && currentProposalId && selectedSnsRoot) {
             fetchDiscussionThread();
         }
     }, [forumActor, currentProposalId, selectedSnsRoot]);
 
-    // Effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
             if (!principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
             
-            // Add principals from discussion posts
             discussionPosts.forEach(post => {
                 if (post.created_by) {
                     uniquePrincipals.add(post.created_by.toString());
                 }
             });
 
-            // Add principals from tips
             Object.values(postTips).forEach(tips => {
                 tips.forEach(tip => {
                     if (tip.from_principal) {
@@ -1324,7 +1220,6 @@ function Discussion({
         fetchPrincipalInfo();
     }, [discussionPosts, postTips, principalNames, principalNicknames]);
 
-    // Voting functions
     const voteOnPost = async (postId, voteType) => {
         if (!identity || !forumActor) {
             if (onError) onError('Please connect your wallet to vote');
@@ -1343,21 +1238,18 @@ function Discussion({
             if ('ok' in result) {
                 setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
                 
-                // Update user votes state
                 setUserVotes(prev => ({
                     ...prev,
                     [postIdStr]: {
                         vote_type: voteType,
-                        voting_power: 1 // Since we don't know the exact power, use 1 as placeholder
+                        voting_power: 1
                     }
                 }));
 
-                // Refresh posts to get updated scores
                 if (discussionThread) {
                     await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 }
 
-                // Clear voting state after a delay
                 setTimeout(() => {
                     setVotingStates(prev => {
                         const newState = { ...prev };
@@ -1369,11 +1261,9 @@ function Discussion({
                 throw new Error(formatError(result.err));
             }
         } catch (error) {
-            console.error('Error voting on post:', error);
             setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
             if (onError) onError('Failed to vote: ' + error.message);
 
-            // Clear error state after a delay
             setTimeout(() => {
                 setVotingStates(prev => {
                     const newState = { ...prev };
@@ -1399,19 +1289,16 @@ function Discussion({
             if ('ok' in result) {
                 setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
                 
-                // Remove from user votes state
                 setUserVotes(prev => {
                     const newState = { ...prev };
                     delete newState[postIdStr];
                     return newState;
                 });
 
-                // Refresh posts to get updated scores
                 if (discussionThread) {
                     await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 }
 
-                // Clear voting state after a delay
                 setTimeout(() => {
                     setVotingStates(prev => {
                         const newState = { ...prev };
@@ -1423,11 +1310,9 @@ function Discussion({
                 throw new Error(formatError(result.err));
             }
         } catch (error) {
-            console.error('Error retracting vote:', error);
             setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
             if (onError) onError('Failed to retract vote: ' + error.message);
 
-            // Clear error state after a delay
             setTimeout(() => {
                 setVotingStates(prev => {
                     const newState = { ...prev };
@@ -1438,17 +1323,14 @@ function Discussion({
         }
     };
 
-    // Function to start editing a post
     const startEditPost = (post) => {
         setEditingPost(Number(post.id));
     };
 
-    // Function to cancel editing
     const cancelEditPost = () => {
         setEditingPost(null);
     };
 
-    // Function to submit post edit
     const submitEditPost = async (title, body) => {
         if (!forumActor || !editingPost) return;
         
@@ -1461,24 +1343,20 @@ function Discussion({
             );
             
             if ('ok' in result) {
-                // Refresh posts to show updated content
                 if (discussionThread) {
                     await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 }
                 cancelEditPost();
             } else {
-                console.error('Failed to edit post:', result.err);
                 if (onError) onError('Failed to edit post: ' + formatError(result.err));
             }
         } catch (err) {
-            console.error('Error editing post:', err);
             if (onError) onError('Failed to edit post: ' + err.message);
         } finally {
             setSubmittingEdit(false);
         }
     };
 
-    // Function to delete a post
     const deletePost = async (postId) => {
         if (!forumActor) return;
         
@@ -1488,21 +1366,17 @@ function Discussion({
             const result = await forumActor.delete_post(Number(postId));
             
             if ('ok' in result) {
-                // Refresh posts to show updated content
                 if (discussionThread) {
                     await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 }
             } else {
-                console.error('Failed to delete post:', result.err);
                 if (onError) onError('Failed to delete post: ' + formatError(result.err));
             }
         } catch (err) {
-            console.error('Error deleting post:', err);
             if (onError) onError('Failed to delete post: ' + err.message);
         }
     };
 
-    // Tip handling functions
     const openTipModal = (post) => {
         setSelectedPostForTip(post);
         setTipModalOpen(true);
@@ -1520,49 +1394,32 @@ function Discussion({
 
         setTippingState(true);
         try {
-            console.log('Starting ICRC1 tip transfer:', {
-                from: identity.getPrincipal().toString(),
-                to: recipientPrincipal.toString(),
-                amount: amount.toString(),
-                token: tokenPrincipal
-            });
-
-            // Step 1: Perform actual ICRC1 transfer
             const ledgerActor = createLedgerActor(tokenPrincipal, {
                 agentOptions: { identity }
             });
 
-            // Get token fee for validation
             const tokenFee = await ledgerActor.icrc1_fee();
-            console.log('Token fee:', tokenFee.toString());
 
-            // Perform the transfer
             const transferResult = await ledgerActor.icrc1_transfer({
                 to: { 
                     owner: recipientPrincipal, 
                     subaccount: [] 
                 },
-                fee: [], // Let the ledger use default fee
-                memo: [], // Optional memo
-                from_subaccount: [], // Transfer from main account
-                created_at_time: [], // Let ledger set timestamp
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
                 amount: BigInt(amount)
             });
 
-            console.log('ICRC1 transfer result:', transferResult);
-
-            // Check if transfer was successful
             let transactionBlockIndex = null;
             if ('Ok' in transferResult) {
                 transactionBlockIndex = Number(transferResult.Ok);
-                console.log('Transfer successful, block index:', transactionBlockIndex);
             } else {
-                // Handle transfer error
                 const errorMsg = 'Err' in transferResult ? JSON.stringify(transferResult.Err) : 'Unknown transfer error';
                 throw new Error(`ICRC1 transfer failed: ${errorMsg}`);
             }
 
-            // Step 2: Register the tip in the forum backend
             const tipResult = await createTip(forumActor, {
                 to_principal: recipientPrincipal,
                 post_id: Number(postId),
@@ -1572,31 +1429,23 @@ function Discussion({
             });
 
             if ('ok' in tipResult) {
-                console.log('Tip registered successfully:', tipResult.ok);
-                
-                // Refresh tips for this post
                 const tips = await getTipsByPost(forumActor, Number(postId));
                 setPostTips(prev => ({
                     ...prev,
                     [postId.toString()]: tips
                 }));
 
-                // Refresh the token balance to show updated amount
                 await refreshTokenBalance(tokenPrincipal);
                 
                 closeTipModal();
                 
                 if (onError) {
-                    // Clear any existing errors to show success
                     onError('');
                 }
             } else {
                 throw new Error('Failed to register tip: ' + JSON.stringify(tipResult.err));
             }
         } catch (error) {
-            console.error('Error sending tip:', error);
-            
-            // Provide user-friendly error messages
             let userMessage = error.message;
             if (error.message.includes('InsufficientFunds')) {
                 userMessage = 'Insufficient funds for this transfer including transaction fees';
@@ -1614,7 +1463,6 @@ function Discussion({
         }
     };
 
-    // Save view mode preference to localStorage when it changes
     const handleViewModeChange = (newViewMode) => {
         setViewMode(newViewMode);
         try {
@@ -1625,60 +1473,60 @@ function Discussion({
     };
 
     return (
-        <div style={{ marginTop: '20px' }}>
-            
+        <div>
             {loadingDiscussion ? (
                 <div style={{ 
-                    backgroundColor: '#3a3a3a', 
-                    padding: '20px', 
-                    borderRadius: '6px',
+                    padding: '2rem', 
                     textAlign: 'center',
-                    color: '#888'
+                    color: theme.colors.mutedText
                 }}>
-                    Loading discussion...
+                    <FaSpinner className="spin" size={24} style={{ marginBottom: '0.5rem' }} />
+                    <p style={{ margin: 0 }}>Loading discussion...</p>
                 </div>
             ) : (
-                <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
+                <div>
                     {discussionThread && (
-                        <div style={{ marginBottom: '20px' }}>
-                            
-                            {/* Voting Status Indicator */}
+                        <div>
+                            {/* Voting Status */}
                             {isAuthenticated && (
                                 <div style={{ 
-                                    backgroundColor: '#1a1a1a', 
-                                    padding: '10px', 
-                                    borderRadius: '4px', 
-                                    marginBottom: '15px',
-                                    border: `1px solid ${totalVotingPower > 0 ? '#2ecc71' : '#f39c12'}`
+                                    background: theme.colors.primaryBg, 
+                                    padding: '0.75rem 1rem', 
+                                    borderRadius: '10px', 
+                                    marginBottom: '1rem',
+                                    border: `1px solid ${totalVotingPower > 0 ? `${theme.colors.success}40` : `${accentPrimary}40`}`
                                 }}>
                                     <div style={{ 
                                         display: 'flex', 
                                         alignItems: 'center', 
-                                        gap: '8px',
-                                        fontSize: '12px'
+                                        gap: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        flexWrap: 'wrap'
                                     }}>
                                         {neuronsLoading ? (
-                                            <>
-                                                <span style={{ color: '#888' }}>⏳ Loading voting neurons...</span>
-                                            </>
+                                            <span style={{ color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <FaSpinner className="spin" size={12} /> Loading voting neurons...
+                                            </span>
                                         ) : totalVotingPower > 0 ? (
                                             <>
-                                                <span style={{ color: '#2ecc71' }}>✓ Forum voting enabled</span>
-                                                <span style={{ color: '#888' }}>•</span>
-                                                <span style={{ color: '#888' }}>
-                                                    {allNeurons.length} reachable neuron{allNeurons.length !== 1 ? 's' : ''}
+                                                <FaCheckCircle size={14} style={{ color: theme.colors.success }} />
+                                                <span style={{ color: theme.colors.success }}>Forum voting enabled</span>
+                                                <span style={{ color: theme.colors.mutedText }}>•</span>
+                                                <span style={{ color: theme.colors.mutedText }}>
+                                                    {allNeurons.length} neuron{allNeurons.length !== 1 ? 's' : ''}
                                                 </span>
-                                                <span style={{ color: '#888' }}>•</span>
-                                                <span style={{ color: '#2ecc71' }}>
+                                                <span style={{ color: theme.colors.mutedText }}>•</span>
+                                                <span style={{ color: theme.colors.success, fontWeight: '600' }}>
                                                     {formatVotingPowerDisplay(totalVotingPower)} VP
                                                 </span>
                                             </>
                                         ) : (
                                             <>
-                                                <span style={{ color: '#f39c12' }}>⚠ No voting power</span>
-                                                <span style={{ color: '#888' }}>•</span>
-                                                <span style={{ color: '#888' }}>
-                                                    You need hotkey neurons with voting power to vote on posts
+                                                <FaKey size={14} style={{ color: accentPrimary }} />
+                                                <span style={{ color: accentPrimary }}>No voting power</span>
+                                                <span style={{ color: theme.colors.mutedText }}>•</span>
+                                                <span style={{ color: theme.colors.mutedText }}>
+                                                    Add hotkey neurons to vote on posts
                                                 </span>
                                             </>
                                         )}
@@ -1686,31 +1534,28 @@ function Discussion({
                                 </div>
                             )}
                             
-                            {/* Thread Title and Description */}
-                            {threadDetails && (
+                            {/* Thread Title */}
+                            {threadDetails && threadDetails.title && threadDetails.title.length > 0 && (
                                 <div style={{ 
-                                    backgroundColor: '#1a1a1a', 
-                                    padding: '15px', 
-                                    borderRadius: '6px', 
-                                    marginBottom: '20px',
-                                    border: '1px solid #4a4a4a'
+                                    background: theme.colors.primaryBg, 
+                                    padding: '1rem', 
+                                    borderRadius: '12px', 
+                                    marginBottom: '1rem',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
-                                    {threadDetails.title && threadDetails.title.length > 0 && (
-                                        <h3 style={{ 
-                                            color: '#ffffff', 
-                                            margin: '0 0 10px 0', 
-                                            fontSize: '18px',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {threadDetails.title[0]}
-                                        </h3>
-                                    )}
+                                    <h3 style={{ 
+                                        color: theme.colors.primaryText, 
+                                        margin: '0 0 0.5rem 0', 
+                                        fontSize: '1.1rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        {threadDetails.title[0]}
+                                    </h3>
                                     {threadDetails.body && (
                                         <div style={{ 
-                                            color: '#cccccc', 
-                                            fontSize: '14px',
-                                            lineHeight: '1.5',
-                                            whiteSpace: 'pre-wrap'
+                                            color: theme.colors.secondaryText, 
+                                            fontSize: '0.9rem',
+                                            lineHeight: '1.5'
                                         }}>
                                             {threadDetails.body}
                                         </div>
@@ -1721,78 +1566,80 @@ function Discussion({
                             {/* View Mode Toggle */}
                             <div style={{ 
                                 display: 'flex', 
-                                gap: '10px', 
-                                marginBottom: '20px',
+                                gap: '0.5rem', 
+                                marginBottom: '1rem',
                                 alignItems: 'center'
                             }}>
-                                <span style={{ color: '#888', fontSize: '14px' }}>View:</span>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>View:</span>
                                 <button
                                     onClick={() => handleViewModeChange('flat')}
                                     style={{
-                                        backgroundColor: viewMode === 'flat' ? '#3498db' : 'transparent',
-                                        border: '1px solid #3498db',
-                                        color: viewMode === 'flat' ? '#ffffff' : '#3498db',
-                                        borderRadius: '4px',
-                                        padding: '6px 12px',
+                                        background: viewMode === 'flat' ? `linear-gradient(135deg, ${accentPrimary}, ${accentSecondary})` : 'transparent',
+                                        border: viewMode === 'flat' ? 'none' : `1px solid ${theme.colors.border}`,
+                                        color: viewMode === 'flat' ? 'white' : theme.colors.secondaryText,
+                                        borderRadius: '8px',
+                                        padding: '0.4rem 0.75rem',
                                         cursor: 'pointer',
-                                        fontSize: '12px'
+                                        fontSize: '0.8rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem'
                                     }}
                                 >
-                                    Flat
+                                    <FaEye size={12} /> Flat
                                 </button>
                                 <button
                                     onClick={() => handleViewModeChange('tree')}
                                     style={{
-                                        backgroundColor: viewMode === 'tree' ? '#3498db' : 'transparent',
-                                        border: '1px solid #3498db',
-                                        color: viewMode === 'tree' ? '#ffffff' : '#3498db',
-                                        borderRadius: '4px',
-                                        padding: '6px 12px',
+                                        background: viewMode === 'tree' ? `linear-gradient(135deg, ${accentPrimary}, ${accentSecondary})` : 'transparent',
+                                        border: viewMode === 'tree' ? 'none' : `1px solid ${theme.colors.border}`,
+                                        color: viewMode === 'tree' ? 'white' : theme.colors.secondaryText,
+                                        borderRadius: '8px',
+                                        padding: '0.4rem 0.75rem',
                                         cursor: 'pointer',
-                                        fontSize: '12px'
+                                        fontSize: '0.8rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem'
                                     }}
                                 >
-                                    Tree
+                                    <FaSitemap size={12} /> Tree
                                 </button>
-                                <span style={{ color: '#666', fontSize: '12px', marginLeft: '10px' }}>
-                                    {discussionPosts.length} {discussionPosts.length === 1 ? 'comment' : 'comments'}
+                                <span style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '0.8rem', 
+                                    marginLeft: '0.5rem' 
+                                }}>
+                                    {discussionPosts.length} comment{discussionPosts.length !== 1 ? 's' : ''}
                                 </span>
                             </div>
 
-                            {/* Posts Display */}
+                            {/* Posts */}
                             {discussionPosts.length > 0 ? (
-                                <div style={{ marginBottom: '20px' }}>
+                                <div style={{ marginBottom: '1.5rem' }}>
                                     {viewMode === 'flat' ? (
-                                        // Flat view - chronological order
                                         organizePostsFlat(discussionPosts).map(post => (
-                                            <PostComponent 
-                                                key={post.id} 
-                                                post={post} 
-                                                isFlat={true}
-                                            />
+                                            <PostComponent key={post.id} post={post} isFlat={true} />
                                         ))
                                     ) : (
-                                        // Tree view - hierarchical with score sorting
                                         organizePostsTree(discussionPosts).map(post => (
-                                            <PostComponent 
-                                                key={post.id} 
-                                                post={post} 
-                                                isFlat={false}
-                                            />
+                                            <PostComponent key={post.id} post={post} isFlat={false} />
                                         ))
                                     )}
                                 </div>
                             ) : !creatingFirstPost ? (
                                 <div style={{ 
-                                    color: '#888', 
-                                    fontStyle: 'italic', 
                                     textAlign: 'center',
-                                    padding: '20px',
-                                    backgroundColor: '#1a1a1a',
-                                    borderRadius: '6px',
-                                    marginBottom: '20px'
+                                    padding: '2rem',
+                                    background: theme.colors.primaryBg,
+                                    borderRadius: '12px',
+                                    marginBottom: '1.5rem',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
-                                    No comments yet. Be the first to start the discussion!
+                                    <FaCommentAlt size={32} style={{ color: theme.colors.mutedText, opacity: 0.5, marginBottom: '0.75rem' }} />
+                                    <p style={{ color: theme.colors.mutedText, margin: 0 }}>
+                                        No comments yet. Be the first to start the discussion!
+                                    </p>
                                 </div>
                             ) : null}
                         </div>
@@ -1805,20 +1652,45 @@ function Discussion({
                                 <button
                                     onClick={() => setShowCommentForm(true)}
                                     style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
+                                        width: '100%',
+                                        background: `linear-gradient(135deg, ${accentPrimary}, ${accentSecondary})`,
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '10px 20px',
+                                        borderRadius: '12px',
+                                        padding: '1rem 1.5rem',
                                         cursor: 'pointer',
-                                        fontSize: '14px',
-                                        width: '100%'
+                                        fontSize: '1rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '0.5rem',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: `0 4px 15px ${accentPrimary}30`
                                     }}
                                 >
+                                    <FaCommentAlt size={16} />
                                     {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
                                 </button>
                             ) : (
-                                <div style={{ marginTop: '15px' }}>
+                                <div style={{ 
+                                    background: theme.colors.primaryBg,
+                                    borderRadius: '12px',
+                                    padding: '1.5rem',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <div style={{
+                                        color: accentPrimary,
+                                        fontSize: '1rem',
+                                        fontWeight: '600',
+                                        marginBottom: '1rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
+                                    }}>
+                                        <FaCommentAlt size={16} />
+                                        {discussionPosts.length === 0 ? 'Start the Discussion' : 'Add Your Comment'}
+                                    </div>
                                     <input
                                         type="text"
                                         value={commentTitle}
@@ -1826,27 +1698,24 @@ function Discussion({
                                         placeholder="Title (optional)"
                                         style={{
                                             width: '100%',
-                                            backgroundColor: '#2a2a2a',
-                                            border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? '#e74c3c' : '#4a4a4a'}`,
-                                            borderRadius: '4px',
-                                            color: '#ffffff',
-                                            padding: '10px',
-                                            fontSize: '14px',
-                                            marginBottom: '5px'
+                                            background: theme.colors.secondaryBg,
+                                            border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? theme.colors.error : theme.colors.border}`,
+                                            borderRadius: '10px',
+                                            color: theme.colors.primaryText,
+                                            padding: '0.75rem 1rem',
+                                            fontSize: '0.95rem',
+                                            marginBottom: '0.5rem',
+                                            boxSizing: 'border-box'
                                         }}
                                     />
                                     {textLimits && (
                                         <div style={{ 
-                                            fontSize: '12px', 
-                                            color: commentTitle.length > textLimits.max_title_length ? '#e74c3c' : 
-                                                   (textLimits.max_title_length - commentTitle.length) < 20 ? '#f39c12' : '#888',
-                                            marginBottom: '10px',
+                                            fontSize: '0.75rem', 
+                                            color: commentTitle.length > textLimits.max_title_length ? theme.colors.error : theme.colors.mutedText,
+                                            marginBottom: '0.75rem',
                                             textAlign: 'right'
                                         }}>
-                                            Title: {commentTitle.length}/{textLimits.max_title_length} characters
-                                            {commentTitle.length > textLimits.max_title_length && 
-                                                <span style={{ marginLeft: '10px' }}>({commentTitle.length - textLimits.max_title_length} over limit)</span>
-                                            }
+                                            {commentTitle.length}/{textLimits.max_title_length}
                                         </div>
                                     )}
                                     <textarea
@@ -1855,40 +1724,37 @@ function Discussion({
                                         placeholder="Share your thoughts on this proposal..."
                                         style={{
                                             width: '100%',
-                                            minHeight: '100px',
-                                            backgroundColor: '#2a2a2a',
-                                            border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? '#e74c3c' : '#4a4a4a'}`,
-                                            borderRadius: '4px',
-                                            color: '#ffffff',
-                                            padding: '10px',
-                                            fontSize: '14px',
+                                            minHeight: '120px',
+                                            background: theme.colors.secondaryBg,
+                                            border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? theme.colors.error : theme.colors.border}`,
+                                            borderRadius: '10px',
+                                            color: theme.colors.primaryText,
+                                            padding: '0.75rem 1rem',
+                                            fontSize: '0.95rem',
                                             resize: 'vertical',
-                                            marginBottom: '5px'
+                                            marginBottom: '0.5rem',
+                                            boxSizing: 'border-box'
                                         }}
                                     />
                                     {textLimits && (
                                         <div style={{ 
-                                            fontSize: '12px', 
-                                            color: commentText.length > textLimits.max_body_length ? '#e74c3c' : 
-                                                   (textLimits.max_body_length - commentText.length) < 100 ? '#f39c12' : '#888',
-                                            marginBottom: '10px',
+                                            fontSize: '0.75rem', 
+                                            color: commentText.length > textLimits.max_body_length ? theme.colors.error : theme.colors.mutedText,
+                                            marginBottom: '1rem',
                                             textAlign: 'right',
                                             display: 'flex',
                                             justifyContent: 'flex-end',
                                             alignItems: 'center',
-                                            gap: '8px'
+                                            gap: '0.5rem'
                                         }}>
-                                            <span>Body: {commentText.length}/{textLimits.max_body_length} characters</span>
-                                            {commentText.length > textLimits.max_body_length && 
-                                                <span>({commentText.length - textLimits.max_body_length} over limit)</span>
-                                            }
+                                            <span>{commentText.length}/{textLimits.max_body_length}</span>
                                             {isPremium && regularLimits && textLimits.max_body_length > regularLimits.max_body_length && (
                                                 <span style={{
-                                                    backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                                                    color: '#ffd700',
+                                                    background: 'linear-gradient(135deg, #ffd700, #ffb347)',
+                                                    color: '#000',
                                                     padding: '2px 6px',
                                                     borderRadius: '4px',
-                                                    fontSize: '10px',
+                                                    fontSize: '0.65rem',
                                                     fontWeight: 'bold'
                                                 }}>
                                                     ⭐ PREMIUM
@@ -1896,27 +1762,31 @@ function Discussion({
                                             )}
                                         </div>
                                     )}
-                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <div style={{ display: 'flex', gap: '0.75rem' }}>
                                         <button
                                             onClick={submitComment}
                                             disabled={!commentText.trim() || submittingComment || 
                                                      (textLimits && (commentTitle.length > textLimits.max_title_length || 
                                                                     commentText.length > textLimits.max_body_length))}
                                             style={{
-                                                backgroundColor: (commentText.trim() && !submittingComment && 
-                                                                 (!textLimits || (commentTitle.length <= textLimits.max_title_length && 
-                                                                                  commentText.length <= textLimits.max_body_length))) ? '#2ecc71' : '#666',
-                                                color: '#ffffff',
+                                                background: (commentText.trim() && !submittingComment && 
+                                                             (!textLimits || (commentTitle.length <= textLimits.max_title_length && 
+                                                                              commentText.length <= textLimits.max_body_length)))
+                                                    ? `linear-gradient(135deg, ${theme.colors.success}, #27ae60)`
+                                                    : theme.colors.mutedText,
+                                                color: 'white',
                                                 border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '8px 16px',
-                                                cursor: (commentText.trim() && !submittingComment && 
-                                                        (!textLimits || (commentTitle.length <= textLimits.max_title_length && 
-                                                                         commentText.length <= textLimits.max_body_length))) ? 'pointer' : 'not-allowed',
-                                                fontSize: '14px'
+                                                borderRadius: '10px',
+                                                padding: '0.75rem 1.5rem',
+                                                cursor: (commentText.trim() && !submittingComment) ? 'pointer' : 'not-allowed',
+                                                fontSize: '0.95rem',
+                                                fontWeight: '500',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
                                             }}
                                         >
-                                            {submittingComment ? 'Posting...' : 'Post Comment'}
+                                            {submittingComment ? <><FaSpinner className="spin" size={14} /> Posting...</> : <><FaCheck size={14} /> Post Comment</>}
                                         </button>
                                         <button
                                             onClick={() => {
@@ -1925,13 +1795,13 @@ function Discussion({
                                                 setCommentTitle('');
                                             }}
                                             style={{
-                                                backgroundColor: '#666',
-                                                color: '#ffffff',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '8px 16px',
+                                                background: 'transparent',
+                                                color: theme.colors.secondaryText,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '10px',
+                                                padding: '0.75rem 1.5rem',
                                                 cursor: 'pointer',
-                                                fontSize: '14px'
+                                                fontSize: '0.95rem'
                                             }}
                                         >
                                             Cancel
@@ -1943,12 +1813,15 @@ function Discussion({
                     ) : (
                         <div style={{ 
                             textAlign: 'center', 
-                            color: '#888', 
-                            padding: '20px',
-                            backgroundColor: '#2a2a2a',
-                            borderRadius: '4px'
+                            padding: '1.5rem',
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            border: `1px solid ${theme.colors.border}`
                         }}>
-                            Please connect your wallet to participate in the discussion.
+                            <FaKey size={24} style={{ color: theme.colors.mutedText, marginBottom: '0.5rem' }} />
+                            <p style={{ color: theme.colors.mutedText, margin: 0 }}>
+                                Please connect your wallet to participate in the discussion.
+                            </p>
                         </div>
                     )}
                 </div>
@@ -1965,8 +1838,16 @@ function Discussion({
                 userPrincipal={identity?.getPrincipal()}
                 identity={identity}
             />
+            
+            <style>
+                {`
+                    .spin {
+                        animation: spin 1s linear infinite;
+                    }
+                `}
+            </style>
         </div>
     );
 }
 
-export default Discussion; 
+export default Discussion;
