@@ -19,6 +19,70 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
 
+// Migration expression to add notify_on_cancellation field to existing notification settings
+(with migration = func (old : { 
+    var userNotificationSettings : [(Principal, {
+        notify_on_bid : Bool;
+        notify_on_outbid : Bool;
+        notify_on_sale : Bool;
+        notify_on_expiration : Bool;
+        notify_on_win : Bool;
+    })] 
+}) : { 
+    var userNotificationSettings : [(Principal, {
+        notify_on_bid : Bool;
+        notify_on_outbid : Bool;
+        notify_on_sale : Bool;
+        notify_on_expiration : Bool;
+        notify_on_win : Bool;
+        notify_on_cancellation : Bool;
+    })] 
+} {
+    {
+        var userNotificationSettings = Array.map<
+            (Principal, {
+                notify_on_bid : Bool;
+                notify_on_outbid : Bool;
+                notify_on_sale : Bool;
+                notify_on_expiration : Bool;
+                notify_on_win : Bool;
+            }),
+            (Principal, {
+                notify_on_bid : Bool;
+                notify_on_outbid : Bool;
+                notify_on_sale : Bool;
+                notify_on_expiration : Bool;
+                notify_on_win : Bool;
+                notify_on_cancellation : Bool;
+            })
+        >(
+            old.userNotificationSettings,
+            func ((p, s) : (Principal, {
+                notify_on_bid : Bool;
+                notify_on_outbid : Bool;
+                notify_on_sale : Bool;
+                notify_on_expiration : Bool;
+                notify_on_win : Bool;
+            })) : (Principal, {
+                notify_on_bid : Bool;
+                notify_on_outbid : Bool;
+                notify_on_sale : Bool;
+                notify_on_expiration : Bool;
+                notify_on_win : Bool;
+                notify_on_cancellation : Bool;
+            }) {
+                (p, {
+                    notify_on_bid = s.notify_on_bid;
+                    notify_on_outbid = s.notify_on_outbid;
+                    notify_on_sale = s.notify_on_sale;
+                    notify_on_expiration = s.notify_on_expiration;
+                    notify_on_win = s.notify_on_win;
+                    notify_on_cancellation = true; // Default to true for existing users
+                })
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
