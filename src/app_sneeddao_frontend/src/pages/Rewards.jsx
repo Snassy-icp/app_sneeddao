@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -11,6 +11,9 @@ import Notification from '../Notification';
 import priceService from '../services/PriceService';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
+import { FaExternalLinkAlt } from 'react-icons/fa';
+
+const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 
 // Custom CSS for animations
 const customStyles = `
@@ -116,6 +119,7 @@ const formatE8s = (e8s) => {
 };
 
 function Rewards() {
+    const navigate = useNavigate();
     const { identity, isAuthenticated, login } = useAuth();
     const { theme } = useTheme();
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
@@ -699,7 +703,7 @@ function Rewards() {
                         )}
 
                         {/* Rewards List */}
-                        {userBalances.length > 0 ? (
+                        {userBalances.filter(([_, balance]) => balance && Number(balance) > 0).length > 0 ? (
                             <div className="rewards-card" style={{
                                 background: theme.colors.secondaryBg,
                                 borderRadius: '20px',
@@ -742,7 +746,9 @@ function Rewards() {
                                 </div>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                    {userBalances.map(([tokenId, balance]) => {
+                                    {userBalances
+                                        .filter(([tokenId, balance]) => balance && Number(balance) > 0)
+                                        .map(([tokenId, balance]) => {
                                         const tokenIdStr = tokenId.toString();
                                         const decimals = tokenDecimals[tokenIdStr] || 8;
                                         const usdValue = getTokenUSDValue(balance, tokenId);
@@ -919,14 +925,23 @@ function Rewards() {
                                     ) : userClaimEvents.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             {Object.entries(groupEventsBySequence(userClaimEvents))
-                                                .sort((a, b) => Number(b[0]) - Number(a[0]))
-                                                .slice(0, 5)
+                                                .sort((a, b) => {
+                                                    // Sort by latest event timestamp (newest first)
+                                                    const aLatest = a[1][a[1].length - 1];
+                                                    const bLatest = b[1][b[1].length - 1];
+                                                    return Number(bLatest.timestamp) - Number(aLatest.timestamp);
+                                                })
+                                                .slice(0, 10)
                                                 .map(([seqNum, events]) => {
                                                     const status = getGroupStatus(events);
                                                     const latestEvent = events[events.length - 1];
                                                     const tokenIdStr = latestEvent.token_id.toString();
                                                     const symbol = tokenSymbols[tokenIdStr] || tokenIdStr.slice(0, 8) + '...';
                                                     const usdValue = getTokenUSDValue(latestEvent.amount, latestEvent.token_id);
+                                                    
+                                                    // Get transaction ID if available
+                                                    const txEvent = events.find(e => e.tx_index && e.tx_index.length > 0);
+                                                    const txId = txEvent?.tx_index?.[0];
 
                                                     const statusColors = {
                                                         'Success': theme.colors.success,
@@ -956,7 +971,8 @@ function Rewards() {
                                                                     display: 'flex',
                                                                     alignItems: 'center',
                                                                     gap: '0.75rem',
-                                                                    marginBottom: '0.25rem'
+                                                                    marginBottom: '0.25rem',
+                                                                    flexWrap: 'wrap'
                                                                 }}>
                                                                     <span style={{
                                                                         color: theme.colors.primaryText,
@@ -971,6 +987,25 @@ function Rewards() {
                                                                         }}>
                                                                             ({formatUSD(usdValue)})
                                                                         </span>
+                                                                    )}
+                                                                    {/* Transaction Link */}
+                                                                    {txId !== undefined && status === 'Success' && (
+                                                                        <Link
+                                                                            to={`/transaction?sns=${SNEED_SNS_ROOT}&id=${txId}&ledger=${tokenIdStr}`}
+                                                                            style={{
+                                                                                color: theme.colors.accent,
+                                                                                fontSize: '0.8rem',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                textDecoration: 'none'
+                                                                            }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            title="View transaction"
+                                                                        >
+                                                                            <FaExternalLinkAlt size={10} />
+                                                                            <span>Tx</span>
+                                                                        </Link>
                                                                     )}
                                                                 </div>
                                                                 <div 
