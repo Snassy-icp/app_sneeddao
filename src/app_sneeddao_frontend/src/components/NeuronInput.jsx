@@ -279,14 +279,22 @@ const NeuronInput = ({
                 style={{
                     width: '100%',
                     padding: '8px 12px',
-                    border: `2px solid ${isValid ? theme.colors.success : theme.colors.border}`,
-                    borderRadius: '4px',
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '8px',
                     backgroundColor: theme.colors.secondaryBg,
                     color: theme.colors.primaryText,
                     fontSize: '14px',
                     outline: 'none',
-                    transition: 'border-color 0.2s ease',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                     boxSizing: 'border-box'
+                }}
+                onFocusCapture={(e) => {
+                    e.target.style.borderColor = theme.colors.accent;
+                    e.target.style.boxShadow = `0 0 0 2px ${theme.colors.accent}25`;
+                }}
+                onBlurCapture={(e) => {
+                    e.target.style.borderColor = theme.colors.border;
+                    e.target.style.boxShadow = 'none';
                 }}
             />
             

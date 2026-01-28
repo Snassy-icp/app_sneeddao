@@ -1028,50 +1028,66 @@ function Neuron() {
                                             <h4 style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                                 Current Principals
                                             </h4>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                                 {neuronData.permissions?.map((perm, idx) => {
                                                     const symbolInfo = getPrincipalSymbol(perm);
+                                                    const permTypes = perm.permission_type || [];
                                                     return (
                                                         <div key={idx} style={{
-                                                            display: 'flex', alignItems: 'center', gap: '0.75rem',
                                                             padding: '0.75rem 1rem', borderRadius: '10px',
                                                             background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
                                                         }}>
-                                                            <div style={{ color: symbolInfo.color, fontSize: '1rem' }} title={symbolInfo.title}>
-                                                                {symbolInfo.icon}
-                                                            </div>
-                                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                                <PrincipalDisplay 
-                                                                    principal={perm.principal}
-                                                                    displayInfo={principalDisplayInfo.get(perm.principal?.toString())}
-                                                                    showCopyButton={false}
-                                                                    short={true}
-                                                                    isAuthenticated={isAuthenticated}
-                                                                />
-                                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                                                    {perm.permission_type?.length || 0} permissions
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                                                                <div style={{ color: symbolInfo.color, fontSize: '1rem' }} title={symbolInfo.title}>
+                                                                    {symbolInfo.icon}
                                                                 </div>
-                                                            </div>
-                                                            {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
-                                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                                    <button onClick={() => startEditingPrincipal(perm)}
-                                                                        style={{
-                                                                            padding: '0.4rem', borderRadius: '6px', border: 'none',
-                                                                            background: `${neuronPrimary}15`, color: neuronPrimary, cursor: 'pointer'
-                                                                        }}
-                                                                    >
-                                                                        <FaEdit size={12} />
-                                                                    </button>
-                                                                    <button onClick={() => removePrincipal(perm.principal?.toString(), perm.permission_type)}
-                                                                        style={{
-                                                                            padding: '0.4rem', borderRadius: '6px', border: 'none',
-                                                                            background: `${theme.colors.error}15`, color: theme.colors.error, cursor: 'pointer'
-                                                                        }}
-                                                                    >
-                                                                        <FaTrash size={12} />
-                                                                    </button>
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    <PrincipalDisplay 
+                                                                        principal={perm.principal}
+                                                                        displayInfo={principalDisplayInfo.get(perm.principal?.toString())}
+                                                                        showCopyButton={false}
+                                                                        short={true}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                    />
                                                                 </div>
-                                                            )}
+                                                                {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
+                                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                                        <button onClick={() => startEditingPrincipal(perm)}
+                                                                            style={{
+                                                                                padding: '0.4rem', borderRadius: '6px', border: 'none',
+                                                                                background: `${neuronPrimary}15`, color: neuronPrimary, cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            <FaEdit size={12} />
+                                                                        </button>
+                                                                        <button onClick={() => removePrincipal(perm.principal?.toString(), perm.permission_type)}
+                                                                            style={{
+                                                                                padding: '0.4rem', borderRadius: '6px', border: 'none',
+                                                                                background: `${theme.colors.error}15`, color: theme.colors.error, cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            <FaTrash size={12} />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            {/* Show actual permissions */}
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', paddingLeft: '1.75rem' }}>
+                                                                {Object.entries(PERMISSION_INFO).map(([key, info]) => {
+                                                                    const hasPermission = permTypes.includes(info.value);
+                                                                    if (!hasPermission) return null;
+                                                                    return (
+                                                                        <span key={key} style={{
+                                                                            padding: '0.2rem 0.5rem', borderRadius: '4px',
+                                                                            background: `${neuronPrimary}15`, color: theme.colors.secondaryText,
+                                                                            fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.25rem'
+                                                                        }} title={info.description}>
+                                                                            <span>{info.icon}</span>
+                                                                            <span>{info.label}</span>
+                                                                        </span>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -1185,62 +1201,71 @@ function Neuron() {
 
                                 {isFolloweesExpanded && (
                                     <div style={cardStyle}>
-                                        {/* Topic selector */}
-                                        <div style={{ marginBottom: '1rem' }}>
-                                            <label style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>
-                                                Topic
-                                            </label>
-                                            <select
-                                                value={topicInput}
-                                                onChange={(e) => setTopicInput(e.target.value)}
-                                                style={{
-                                                    width: '100%', maxWidth: '300px', padding: '0.6rem', borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
-                                                    color: theme.colors.primaryText, fontSize: '0.9rem'
-                                                }}
-                                            >
-                                                <option value="Governance">Governance</option>
-                                                <option value="DaoCommunitySettings">DAO Community Settings</option>
-                                                <option value="SnsFrameworkManagement">SNS Framework Management</option>
-                                                <option value="DappCanisterManagement">Dapp Canister Management</option>
-                                                <option value="ApplicationBusinessLogic">Application Business Logic</option>
-                                                <option value="TreasuryAssetManagement">Treasury Asset Management</option>
-                                                <option value="CriticalDappOperations">Critical Dapp Operations</option>
-                                            </select>
-                                        </div>
-
-                                        {/* Current followees for selected topic */}
-                                        <div style={{ marginBottom: '1rem' }}>
-                                            <h4 style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-                                                Following for {topicInput}
-                                            </h4>
-                                            {getCurrentFolloweesForTopic(topicInput).length > 0 ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                                    {getCurrentFolloweesForTopic(topicInput).map((f, idx) => (
-                                                        <div key={idx} style={{
-                                                            display: 'flex', alignItems: 'center', gap: '0.75rem',
-                                                            padding: '0.6rem 0.75rem', borderRadius: '8px',
-                                                            background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
-                                                        }}>
-                                                            <NeuronDisplay neuronId={f.neuronId} snsRoot={selectedSnsRoot} />
-                                                            {f.alias && <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>({f.alias})</span>}
-                                                            {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
-                                                                <button onClick={() => removeFollowee(f.neuronId, topicInput)} disabled={actionBusy}
-                                                                    style={{
-                                                                        marginLeft: 'auto', padding: '0.3rem', borderRadius: '4px', border: 'none',
-                                                                        background: `${theme.colors.error}15`, color: theme.colors.error, cursor: 'pointer'
-                                                                    }}
-                                                                >
-                                                                    <FaTrash size={10} />
-                                                                </button>
-                                                            )}
+                                        {/* All Topics and Followees */}
+                                        {(() => {
+                                            const allTopics = [
+                                                { key: 'Governance', label: 'Governance' },
+                                                { key: 'DaoCommunitySettings', label: 'DAO Community Settings' },
+                                                { key: 'SnsFrameworkManagement', label: 'SNS Framework Management' },
+                                                { key: 'DappCanisterManagement', label: 'Dapp Canister Management' },
+                                                { key: 'ApplicationBusinessLogic', label: 'Application Business Logic' },
+                                                { key: 'TreasuryAssetManagement', label: 'Treasury Asset Management' },
+                                                { key: 'CriticalDappOperations', label: 'Critical Dapp Operations' }
+                                            ];
+                                            const topicsWithFollowees = allTopics.filter(t => getCurrentFolloweesForTopic(t.key).length > 0);
+                                            const hasAnyFollowees = topicsWithFollowees.length > 0;
+                                            
+                                            return (
+                                                <div style={{ marginBottom: '1rem' }}>
+                                                    {!hasAnyFollowees ? (
+                                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>
+                                                            No followees configured for any topic
+                                                        </p>
+                                                    ) : (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                            {topicsWithFollowees.map(topic => {
+                                                                const followees = getCurrentFolloweesForTopic(topic.key);
+                                                                return (
+                                                                    <div key={topic.key} style={{
+                                                                        padding: '0.75rem', borderRadius: '10px',
+                                                                        background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`
+                                                                    }}>
+                                                                        <div style={{
+                                                                            color: neuronAccent, fontSize: '0.8rem', fontWeight: '600',
+                                                                            marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px'
+                                                                        }}>
+                                                                            {topic.label}
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                                            {followees.map((f, idx) => (
+                                                                                <div key={idx} style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                                                                    padding: '0.4rem 0.5rem', borderRadius: '6px',
+                                                                                    background: theme.colors.secondaryBg
+                                                                                }}>
+                                                                                    <NeuronDisplay neuronId={f.neuronId} snsRoot={selectedSnsRoot} />
+                                                                                    {f.alias && <span style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>({f.alias})</span>}
+                                                                                    {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
+                                                                                        <button onClick={() => removeFollowee(f.neuronId, topic.key)} disabled={actionBusy}
+                                                                                            style={{
+                                                                                                marginLeft: 'auto', padding: '0.25rem', borderRadius: '4px', border: 'none',
+                                                                                                background: `${theme.colors.error}15`, color: theme.colors.error, cursor: 'pointer'
+                                                                                            }}
+                                                                                        >
+                                                                                            <FaTrash size={10} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    ))}
+                                                    )}
                                                 </div>
-                                            ) : (
-                                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>No followees for this topic</p>
-                                            )}
-                                        </div>
+                                            );
+                                        })()}
 
                                         {/* Add followee */}
                                         {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
@@ -1250,6 +1275,25 @@ function Neuron() {
                                                 border: `1px solid ${neuronAccent}20`
                                             }}>
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '0.9rem', marginBottom: '0.75rem' }}>Add Followee</h4>
+                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                                                    <select
+                                                        value={topicInput}
+                                                        onChange={(e) => setTopicInput(e.target.value)}
+                                                        style={{
+                                                            flex: '1 1 180px', padding: '0.5rem 0.75rem', borderRadius: '8px',
+                                                            border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
+                                                            color: theme.colors.primaryText, fontSize: '0.85rem'
+                                                        }}
+                                                    >
+                                                        <option value="Governance">Governance</option>
+                                                        <option value="DaoCommunitySettings">DAO Community Settings</option>
+                                                        <option value="SnsFrameworkManagement">SNS Framework Management</option>
+                                                        <option value="DappCanisterManagement">Dapp Canister Management</option>
+                                                        <option value="ApplicationBusinessLogic">Application Business Logic</option>
+                                                        <option value="TreasuryAssetManagement">Treasury Asset Management</option>
+                                                        <option value="CriticalDappOperations">Critical Dapp Operations</option>
+                                                    </select>
+                                                </div>
                                                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                                     <input
                                                         type="text" value={followeeInput}
@@ -1279,7 +1323,7 @@ function Neuron() {
                                                             opacity: (actionBusy || !followeeInput) ? 0.5 : 1, whiteSpace: 'nowrap'
                                                         }}
                                                     >
-                                                        <FaPlus size={10} style={{ marginRight: '4px' }} /> Add
+                                                        <FaPlus size={10} style={{ marginRight: '4px' }} /> Add to {topicInput}
                                                     </button>
                                                 </div>
                                             </div>
