@@ -885,6 +885,20 @@ function SneedexOffer() {
         }
     }, [offer, identity, fetchSnsData, fetchSnsLogoForGovernance, snsLogos, snsSymbols, fetchSnsSymbol, neuronInfo, fetchNeuronInfo]);
     
+    // Fetch SNS token symbols after snsData is populated
+    // This is separate because fetchSnsSymbol depends on snsData to find the ledger ID
+    useEffect(() => {
+        if (offer && identity && snsData.length > 0) {
+            const neuronAssets = offer.assets?.filter(a => 'SNSNeuron' in a.asset) || [];
+            neuronAssets.forEach((assetEntry) => {
+                const governanceId = assetEntry.asset.SNSNeuron.governance_canister_id.toString();
+                if (!snsSymbols[governanceId]) {
+                    fetchSnsSymbol(governanceId);
+                }
+            });
+        }
+    }, [offer, identity, snsData, snsSymbols, fetchSnsSymbol]);
+    
     // Proactively fetch neuronManagerInfo for ICP Neuron Manager canisters (for USD estimates)
     useEffect(() => {
         if (offer && identity) {
