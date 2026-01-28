@@ -785,7 +785,7 @@ function SneedexOffer() {
                 await agent.fetchRootKey();
             }
             
-            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const ledgerActor = createICRC1Actor(ledgerId, { agent });
             const metadata = await ledgerActor.icrc1_metadata();
             
             // Find symbol in metadata
