@@ -7,13 +7,14 @@ import { useAuth } from './AuthContext';
 import { useSns } from './contexts/SnsContext';
 import Header from './components/Header';
 import './Wallet.css';
-import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache, fetchSnsLogo } from './utils/SnsUtils';
 import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
 import { calculateVotingPower, formatVotingPower, VotingPowerCalculator } from './utils/VotingPowerUtils';
 import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
@@ -90,6 +91,7 @@ function Neuron() {
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('');
+    const [tokenLogo, setTokenLogo] = useState(null);
     const [actionBusy, setActionBusy] = useState(false);
     const [actionMsg, setActionMsg] = useState('');
     const [managePrincipalInput, setManagePrincipalInput] = useState('');
@@ -900,6 +902,33 @@ function Neuron() {
         fetchTokenSymbol();
     }, [selectedSnsRoot]);
 
+    // Fetch token logo from governance
+    useEffect(() => {
+        const loadTokenLogo = async () => {
+            if (!selectedSnsRoot) return;
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns?.canisters?.governance) return;
+                
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const logo = await fetchSnsLogo(selectedSns.canisters.governance, agent);
+                if (logo) {
+                    setTokenLogo(logo);
+                }
+            } catch (error) {
+                console.error('Error fetching token logo:', error);
+            }
+        };
+        loadTokenLogo();
+    }, [selectedSnsRoot]);
+
     // Card style helper
     const cardStyle = {
         background: theme.colors.secondaryBg,
@@ -1279,8 +1308,8 @@ function Neuron() {
                                         {/* Stake */}
                                         <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.25s', marginBottom: 0 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                {snsLogo ? (
-                                                    <img src={snsLogo} alt="" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
+                                                {tokenLogo ? (
+                                                    <img src={tokenLogo} alt={symbol} style={{ width: '18px', height: '18px', borderRadius: '50%' }} />
                                                 ) : (
                                                     <FaCoins size={14} style={{ color: neuronGold }} />
                                                 )}
