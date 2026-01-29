@@ -310,25 +310,46 @@ function SneedexOffers() {
                 canisterId: ledgerId,
             });
             
-            const [symbol, name, decimals, fee, metadata] = await Promise.all([
-                ledgerActor.icrc1_symbol(),
-                ledgerActor.icrc1_name().catch(() => 'Unknown Token'),
-                ledgerActor.icrc1_decimals(),
-                ledgerActor.icrc1_fee(),
-                ledgerActor.icrc1_metadata().catch(() => [])
-            ]);
+            // First try to get everything from icrc1_metadata
+            const metadata = await ledgerActor.icrc1_metadata().catch(() => []);
             
-            // Extract logo from metadata
+            // Extract all available fields from metadata
+            let symbol = null;
+            let name = null;
+            let decimals = null;
+            let fee = null;
             let logo = null;
+            
             for (const [key, value] of metadata) {
-                if (key === 'icrc1:logo' && value.Text) {
+                if ((key === 'icrc1:symbol' || key === 'symbol') && value.Text) {
+                    symbol = value.Text;
+                } else if ((key === 'icrc1:name' || key === 'name') && value.Text) {
+                    name = value.Text;
+                } else if ((key === 'icrc1:decimals' || key === 'decimals') && value.Nat !== undefined) {
+                    decimals = Number(value.Nat);
+                } else if ((key === 'icrc1:fee' || key === 'fee') && value.Nat !== undefined) {
+                    fee = BigInt(value.Nat);
+                } else if ((key === 'icrc1:logo' || key === 'logo') && value.Text) {
                     logo = value.Text;
-                    break;
                 }
             }
             
-            // Cache the metadata including fee
-            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals: Number(decimals), logo, fee: BigInt(fee) }));
+            // Fall back to individual calls only for missing fields
+            if (symbol === null) {
+                symbol = await ledgerActor.icrc1_symbol().catch(() => 'TOKEN');
+            }
+            if (name === null) {
+                name = await ledgerActor.icrc1_name().catch(() => 'Unknown Token');
+            }
+            if (decimals === null) {
+                decimals = Number(await ledgerActor.icrc1_decimals().catch(() => 8));
+            }
+            if (fee === null) {
+                fee = BigInt(await ledgerActor.icrc1_fee().catch(() => 0));
+            }
+            
+            // Cache the metadata
+            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals, logo, fee }));
             
             // Also update tokenLogos for backward compatibility
             if (logo) {
