@@ -35,7 +35,7 @@ import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
-import { fetchAndCacheSnsData, getAllSnses } from './utils/SnsUtils';
+import { fetchAndCacheSnsData, getAllSnses, getSnsById } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
 import PrincipalInput from './components/PrincipalInput';

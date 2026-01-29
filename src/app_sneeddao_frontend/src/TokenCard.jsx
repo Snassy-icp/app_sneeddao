@@ -2830,44 +2830,66 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 });*/
                 
                 if ((isGLDT || isSGLDT) && token.available > 0n && !hideButtons) {
+                    const wrapPrimary = '#8b5cf6';
+                    const wrapSecondary = '#7c3aed';
                     return (
-                        <div className="wrap-unwrap-section" style={{ marginTop: '10px', padding: '10px 0', borderTop: `1px solid ${theme.colors.border}` }}>
+                        <div style={{ 
+                            marginTop: '12px', 
+                            padding: '12px', 
+                            borderTop: `1px solid ${theme.colors.border}`,
+                            background: `linear-gradient(135deg, ${wrapPrimary}08 0%, ${wrapSecondary}05 100%)`,
+                            borderRadius: '0 0 12px 12px',
+                            marginLeft: '-16px',
+                            marginRight: '-16px',
+                            marginBottom: '-16px',
+                            paddingLeft: '16px',
+                            paddingRight: '16px',
+                            paddingBottom: '16px'
+                        }}>
                             {isGLDT && (
                                 <button 
-                                    className="wrap-button-full" 
                                     onClick={() => openWrapModal(token)}
                                     style={{
                                         width: '100%',
-                                        padding: '8px 16px',
-                                        background: theme.colors.success,
-                                        color: theme.colors.primaryBg,
+                                        padding: '12px 20px',
+                                        background: `linear-gradient(135deg, ${wrapPrimary}, ${wrapSecondary})`,
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '4px',
+                                        borderRadius: '10px',
                                         cursor: 'pointer',
-                                        fontSize: '14px',
-                                        fontWeight: 'bold'
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        boxShadow: `0 4px 12px ${wrapPrimary}40`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px'
                                     }}
                                 >
-                                    Wrap to sGLDT
+                                    🔄 Wrap to sGLDT
                                 </button>
                             )}
                             {isSGLDT && (
                                 <button 
-                                    className="unwrap-button-full" 
                                     onClick={() => openUnwrapModal(token)}
                                     style={{
                                         width: '100%',
-                                        padding: '8px 16px',
-                                        background: theme.colors.warning,
-                                        color: theme.colors.primaryBg,
+                                        padding: '12px 20px',
+                                        background: `linear-gradient(135deg, ${wrapPrimary}, ${wrapSecondary})`,
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '4px',
+                                        borderRadius: '10px',
                                         cursor: 'pointer',
-                                        fontSize: '14px',
-                                        fontWeight: 'bold'
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        boxShadow: `0 4px 12px ${wrapPrimary}40`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px'
                                     }}
                                 >
-                                    Unwrap to GLDT
+                                    🔄 Unwrap to GLDT
                                 </button>
                             )}
                         </div>
