@@ -4305,7 +4305,7 @@ function Wallet() {
                             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                             gap: '0.75rem'
                         }}>
-                            {/* Total Portfolio */}
+                            {/* Total Portfolio with Breakdown */}
                             {totalDollarValue && (
                                 <div style={{
                                     background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${walletPrimary}08 100%)`,
@@ -4314,7 +4314,7 @@ function Wallet() {
                                     padding: '1rem 1.25rem',
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    gap: '0.25rem'
+                                    gap: '0.5rem'
                                 }}>
                                     <div style={{ 
                                         color: theme.colors.mutedText, 
@@ -4332,6 +4332,59 @@ function Wallet() {
                                     }}>
                                         ${totalDollarValue}
                                     </div>
+                                    {/* Breakdown badges inside portfolio card */}
+                                    {totalBreakdown && (totalBreakdown.liquid > 0 || totalBreakdown.staked > 0 || totalBreakdown.locked > 0 || totalBreakdown.liquidity > 0) && (
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            flexWrap: 'wrap', 
+                                            gap: '0.4rem',
+                                            fontSize: '0.7rem',
+                                            borderTop: `1px solid ${theme.colors.border}`,
+                                            paddingTop: '0.5rem',
+                                            marginTop: '0.25rem'
+                                        }}>
+                                            {totalBreakdown.liquid > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    💧 ${totalBreakdown.liquid.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                            {totalBreakdown.staked > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    🧠 ${totalBreakdown.staked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                            {totalBreakdown.locked > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    🔐 ${totalBreakdown.locked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                            {totalBreakdown.liquidity > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    🌊 ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             
@@ -4356,7 +4409,11 @@ function Wallet() {
                                         alignItems: 'center',
                                         gap: '0.35rem'
                                     }}>
-                                        <FaCoins size={10} color={walletAccent} />
+                                        <img 
+                                            src="https://swaprunner.com/icp_symbol.svg" 
+                                            alt="ICP" 
+                                            style={{ width: 14, height: 14 }} 
+                                        />
                                         ICP Price
                                     </div>
                                     <div style={{ 
@@ -4365,77 +4422,6 @@ function Wallet() {
                                         fontWeight: '700'
                                     }}>
                                         ${icpPrice.toFixed(2)}
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* Breakdown badges */}
-                            {totalBreakdown && (totalBreakdown.liquid > 0 || totalBreakdown.staked > 0 || totalBreakdown.locked > 0) && (
-                                <div style={{
-                                    background: theme.colors.secondaryBg,
-                                    border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: '12px',
-                                    padding: '0.75rem 1rem',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'center',
-                                    gap: '0.35rem'
-                                }}>
-                                    <div style={{ 
-                                        color: theme.colors.mutedText, 
-                                        fontSize: '0.7rem', 
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                        fontWeight: '500'
-                                    }}>
-                                        Breakdown
-                                    </div>
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        flexWrap: 'wrap', 
-                                        gap: '0.5rem',
-                                        fontSize: '0.75rem'
-                                    }}>
-                                        {totalBreakdown.liquid > 0 && (
-                                            <span style={{ 
-                                                color: theme.colors.secondaryText,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.2rem'
-                                            }}>
-                                                💧 ${totalBreakdown.liquid.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                            </span>
-                                        )}
-                                        {totalBreakdown.staked > 0 && (
-                                            <span style={{ 
-                                                color: theme.colors.secondaryText,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.2rem'
-                                            }}>
-                                                🧠 ${totalBreakdown.staked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                            </span>
-                                        )}
-                                        {totalBreakdown.locked > 0 && (
-                                            <span style={{ 
-                                                color: theme.colors.secondaryText,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.2rem'
-                                            }}>
-                                                🔐 ${totalBreakdown.locked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                            </span>
-                                        )}
-                                        {totalBreakdown.liquidity > 0 && (
-                                            <span style={{ 
-                                                color: theme.colors.secondaryText,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.2rem'
-                                            }}>
-                                                🌊 ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                            </span>
-                                        )}
                                     </div>
                                 </div>
                             )}
