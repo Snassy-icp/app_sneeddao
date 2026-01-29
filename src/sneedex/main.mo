@@ -3113,6 +3113,149 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
+    /// Get paginated offer feed (sorted by ID descending = newest first)
+    public query func getOfferFeed(input : T.GetOfferFeedInput) : async T.GetOfferFeedResponse {
+        // Determine starting ID (default to highest offer ID)
+        let startId : Nat = switch (input.start_id) {
+            case (?id) id;
+            case null if (nextOfferId > 0) nextOfferId else 0;
+        };
+        
+        // Collect matching offers
+        let resultBuffer = Buffer.Buffer<T.Offer>(input.length);
+        var lastMatchedId : ?Nat = null;
+        
+        // Sort offers by ID descending and filter
+        let sortedOffers = Array.sort<T.Offer>(offers, func(a : T.Offer, b : T.Offer) : {#less; #equal; #greater} {
+            if (a.id > b.id) #less
+            else if (a.id < b.id) #greater
+            else #equal
+        });
+        
+        for (offer in sortedOffers.vals()) {
+            // Skip offers with ID >= startId (we want offers BEFORE startId)
+            if (offer.id >= startId) {
+                // continue
+            } else {
+                // Check if offer matches filter
+                if (matchesOfferFilter(offer, input.filter)) {
+                    if (resultBuffer.size() < input.length) {
+                        resultBuffer.add(offer);
+                        lastMatchedId := ?offer.id;
+                    } else {
+                        // We have enough, but there are more
+                        return {
+                            offers = Buffer.toArray(resultBuffer);
+                            has_more = true;
+                            next_start_id = lastMatchedId;
+                        };
+                    };
+                };
+            };
+        };
+        
+        // Return what we have (no more items available)
+        {
+            offers = Buffer.toArray(resultBuffer);
+            has_more = false;
+            next_start_id = if (resultBuffer.size() > 0) lastMatchedId else null;
+        };
+    };
+    
+    // Helper function to check if an offer matches the filter
+    private func matchesOfferFilter(offer : T.Offer, filter : ?T.OfferFeedFilter) : Bool {
+        switch (filter) {
+            case null true; // No filter = match all
+            case (?f) {
+                // Check state filter
+                switch (f.states) {
+                    case (?states) {
+                        var stateMatches = false;
+                        label stateCheck for (state in states.vals()) {
+                            if (offerStateEquals(offer.state, state)) {
+                                stateMatches := true;
+                                break stateCheck;
+                            };
+                        };
+                        if (not stateMatches) return false;
+                    };
+                    case null {};
+                };
+                
+                // Check asset type filter
+                switch (f.asset_types) {
+                    case (?assetTypes) {
+                        var hasMatchingAsset = false;
+                        label assetCheck for (assetEntry in offer.assets.vals()) {
+                            let assetTypeId = getAssetTypeId(assetEntry.asset);
+                            for (targetType in assetTypes.vals()) {
+                                if (assetTypeId == targetType) {
+                                    hasMatchingAsset := true;
+                                    break assetCheck;
+                                };
+                            };
+                        };
+                        if (not hasMatchingAsset) return false;
+                    };
+                    case null {};
+                };
+                
+                // Check creator filter
+                switch (f.creator) {
+                    case (?creator) {
+                        if (not Principal.equal(offer.creator, creator)) return false;
+                    };
+                    case null {};
+                };
+                
+                // Check has_bids filter
+                switch (f.has_bids) {
+                    case (?hasBids) {
+                        let offerHasBids = Array.size(Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
+                            b.offer_id == offer.id
+                        })) > 0;
+                        if (hasBids != offerHasBids) return false;
+                    };
+                    case null {};
+                };
+                
+                // Check public_only filter
+                switch (f.public_only) {
+                    case (?publicOnly) {
+                        if (publicOnly and offer.approved_bidders != null) return false;
+                    };
+                    case null {};
+                };
+                
+                true
+            };
+        };
+    };
+    
+    // Helper to compare offer states
+    private func offerStateEquals(a : T.OfferState, b : T.OfferState) : Bool {
+        switch (a, b) {
+            case (#Draft, #Draft) true;
+            case (#PendingEscrow, #PendingEscrow) true;
+            case (#Active, #Active) true;
+            case (#Completed(_), #Completed(_)) true;
+            case (#Expired, #Expired) true;
+            case (#Cancelled, #Cancelled) true;
+            case (#Reclaimed, #Reclaimed) true;
+            case (#Claimed, #Claimed) true;
+            case _ false;
+        };
+    };
+    
+    // Helper to get asset type ID from asset
+    private func getAssetTypeId(asset : T.Asset) : T.AssetTypeId {
+        switch (asset) {
+            case (#Canister(_)) T.ASSET_TYPE_CANISTER;
+            case (#SNSNeuron(_)) T.ASSET_TYPE_SNS_NEURON;
+            case (#ICRC1Token(_)) T.ASSET_TYPE_ICRC1_TOKEN;
+        };
+    };
+    
     /// Debug: Get all offers (for debugging approved_bidders)
     public query func debugGetAllOffers() : async [{
         id : T.OfferId;

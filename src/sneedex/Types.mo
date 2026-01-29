@@ -672,5 +672,43 @@ module {
             body : Text;
         }) -> async { #ok : Nat; #err : { #Unauthorized : Text; #NotFound : Text; #InvalidInput : Text; #RateLimited : Text; #AlreadyExists : Text } };
     };
+    
+    // ============================================
+    // OFFER FEED TYPES (for paginated listing)
+    // ============================================
+    
+    // Filter options for offer feed
+    public type OfferFeedFilter = {
+        // Filter by offer states (null = all states)
+        states : ?[OfferState];
+        // Filter by asset type IDs present in offer (null = all)
+        asset_types : ?[AssetTypeId];
+        // Filter by creator principal (null = all)
+        creator : ?Principal;
+        // Filter by whether offer has bids (null = don't filter)
+        has_bids : ?Bool;
+        // Filter to only public offers (no approved_bidders list)
+        public_only : ?Bool;
+    };
+    
+    // Input for paginated offer feed
+    public type GetOfferFeedInput = {
+        // Start from this ID (exclusive), if null start from highest ID
+        start_id : ?OfferId;
+        // Number of items to return
+        length : Nat;
+        // Optional filter
+        filter : ?OfferFeedFilter;
+    };
+    
+    // Response for paginated offer feed
+    public type GetOfferFeedResponse = {
+        // Offers returned (sorted by ID descending = newest first)
+        offers : [Offer];
+        // Whether there are more offers available
+        has_more : Bool;
+        // ID to use for next page (pass as start_id)
+        next_start_id : ?OfferId;
+    };
 };
 
