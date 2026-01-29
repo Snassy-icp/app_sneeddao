@@ -61,6 +61,11 @@ const PrincipalInput = ({
         if (defaultTab) setActiveTab(defaultTab);
     }, [defaultTab]);
 
+    // Sync internal input value with external value prop
+    useEffect(() => {
+        setInputValue(value);
+    }, [value]);
+
     // Search and rank principals
     const searchResults = useMemo(() => {
         if (!inputValue.trim()) {
