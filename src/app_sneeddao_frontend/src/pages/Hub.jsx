@@ -169,6 +169,14 @@ function Hub() {
             color: theme.colors.success,
         },
         {
+            title: 'Users',
+            icon: <FaUsers size={22} />,
+            desc: 'Discover users with neuron holdings, see their stake, and explore their governance activity.',
+            path: '/users',
+            cta: 'Browse Users',
+            color: '#f39c12',
+        },
+        {
             title: 'SNS Directory',
             icon: <FaUsers size={22} />,
             desc: 'Discover SNS DAOs and explore their governance, communities, and tokens.',

@@ -58,6 +58,7 @@ import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
 import Principal from './pages/Principal';
 import Neurons from './pages/Neurons';
+import Users from './pages/Users';
 import Transaction from './pages/Transaction';
 import Transactions from './pages/Transactions';
 import Hub from './pages/Hub';
@@ -179,6 +180,7 @@ function App() {
                     <Route path="/canister" element={<Canister />} />
                     <Route path="/canisters" element={<Canisters />} />
                     <Route path="/neurons" element={<Neurons />} />
+                    <Route path="/users" element={<Users />} />
                     <Route path="/create_icp_neuron" element={<CreateIcpNeuron />} />
                     <Route path="/icp_neuron_manager/:canisterId" element={<IcpNeuronManager />} />
                     <Route path="/transaction" element={<Transaction />} />
