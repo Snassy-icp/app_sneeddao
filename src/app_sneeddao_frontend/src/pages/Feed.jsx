@@ -704,7 +704,12 @@ function Feed() {
             if (asset.type === 'SNSNeuron') {
                 title = 'SNS Neuron for Sale';
             } else if (asset.type === 'Canister') {
-                title = asset.title || 'Canister for Sale';
+                // Check if it's an ICP Neuron Manager (canister_kind === 1)
+                if (asset.canister_kind === 1) {
+                    title = asset.title || 'ICP Neuron Manager for Sale';
+                } else {
+                    title = asset.title || 'Canister for Sale';
+                }
             } else if (asset.type === 'ICRC1Token') {
                 title = 'Token Lot for Sale';
             }
@@ -837,6 +842,13 @@ function Feed() {
                     if (asset.type === 'ICRC1Token' && asset.ledger_id) {
                         uniqueLedgers.add(asset.ledger_id);
                     }
+                    // For SNS neurons, get the ledger ID from the SNS info
+                    if (asset.type === 'SNSNeuron' && asset.governance_id) {
+                        const snsInfo = allSnses.find(s => s.canisters?.governance === asset.governance_id);
+                        if (snsInfo?.canisters?.ledger) {
+                            uniqueLedgers.add(snsInfo.canisters.ledger);
+                        }
+                    }
                 });
             }
         });
@@ -846,7 +858,7 @@ function Feed() {
                 fetchAuctionTokenMetadata(ledgerId);
             }
         });
-    }, [feedItems]);
+    }, [feedItems, allSnses]);
     
     // Fetch SNS logos for auction assets that are SNS neurons
     useEffect(() => {
@@ -2135,11 +2147,12 @@ function Feed() {
                                             const assetTokenMeta = asset.ledger_id ? auctionTokenMetadata.get(asset.ledger_id) : null;
                                             const isLoadingAssetToken = asset.ledger_id ? loadingAuctionTokens.has(asset.ledger_id) : false;
                                             
-                                            // For SNS neurons, get SNS info
+                                            // For SNS neurons, get SNS info and token symbol
                                             const snsNeuronInfo = asset.type === 'SNSNeuron' && asset.governance_id 
                                                 ? allSnses.find(s => s.canisters?.governance === asset.governance_id)
                                                 : null;
                                             const snsNeuronLogo = snsNeuronInfo ? snsLogos.get(snsNeuronInfo.canisters.governance) : null;
+                                            const snsTokenMeta = snsNeuronInfo?.canisters?.ledger ? auctionTokenMetadata.get(snsNeuronInfo.canisters.ledger) : null;
                                             
                                             // Check if it's an ICP Neuron Manager canister
                                             const isNeuronManager = asset.type === 'Canister' && asset.canister_kind === 1;
@@ -2178,7 +2191,7 @@ function Feed() {
                                                             </span>
                                                             <span style={{ color: theme.colors.primaryText }}>
                                                                 {asset.cached_stake_e8s 
-                                                                    ? `${formatAmount(asset.cached_stake_e8s)} ${snsNeuronInfo?.symbol || 'Neuron'}`
+                                                                    ? `${formatAmount(asset.cached_stake_e8s)} ${snsTokenMeta?.symbol || snsNeuronInfo?.name || 'SNS'}`
                                                                     : `${snsNeuronInfo?.name || 'SNS'} Neuron`
                                                                 }
                                                             </span>
