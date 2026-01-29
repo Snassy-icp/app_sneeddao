@@ -122,8 +122,13 @@ const injectFeedStyles = () => {
             transition: all 0.2s ease;
         }
         .feed-sns-avatar:hover {
-            transform: scale(1.15) translateY(-3px);
+            transform: scale(1.15) translateY(-2px);
             z-index: 10;
+            opacity: 1 !important;
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4) !important;
+        }
+        .feed-sns-avatar:active {
+            transform: scale(0.95);
         }
     `;
     document.head.appendChild(style);
@@ -557,6 +562,7 @@ function Feed() {
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
     const [showSnsList, setShowSnsList] = useState(true); // For collapsible SNS list
+    const [showAllSnses, setShowAllSnses] = useState(false); // Expanded SNS avatar view
     const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth <= 768);
     const [searchText, setSearchText] = useState('');
     const [selectedCreator, setSelectedCreator] = useState('');
@@ -1433,6 +1439,38 @@ function Feed() {
         setSelectedSnsList([]);
     };
 
+    // Toggle SNS selection (for clicking on avatars)
+    const toggleSnsSelection = (snsRootId) => {
+        setSelectedSnsList(prev => {
+            if (prev.includes(snsRootId)) {
+                return prev.filter(id => id !== snsRootId);
+            } else {
+                return [...prev, snsRootId];
+            }
+        });
+    };
+
+    // Auto-apply filter when SNS selection changes (immediate feedback)
+    useEffect(() => {
+        // Update applied filters to include current SNS selection
+        setAppliedFilters(prev => {
+            const newFilters = { ...prev };
+            if (selectedSnsList.length > 0) {
+                newFilters.selectedSnsList = selectedSnsList;
+            } else {
+                delete newFilters.selectedSnsList;
+            }
+            return newFilters;
+        });
+        
+        // Save to localStorage
+        try {
+            localStorage.setItem('feedSnsSelection', JSON.stringify(selectedSnsList));
+        } catch (e) {
+            console.warn('Failed to save SNS selection to localStorage:', e);
+        }
+    }, [selectedSnsList]);
+
     // Helper function to safely convert Principal to text
     const principalToText = (principal) => {
         if (!principal) return '';
@@ -1885,44 +1923,80 @@ function Feed() {
                                 margin: 0,
                                 maxWidth: '400px'
                             }}>
-                                Real-time activity from {snsInstances.length} SNS forums
+                                {selectedSnsList.length > 0 
+                                    ? `Filtering ${selectedSnsList.length} of ${snsInstances.length} SNS forums`
+                                    : `Real-time activity from ${snsInstances.length} SNS forums`
+                                }
                             </p>
                         </div>
 
-                        {/* SNS Avatars Row - Centered with filter button */}
+                        {/* SNS Avatars Row - Clickable to toggle filter */}
                         {(() => {
-                            const selectedSnsIds = appliedFilters.selectedSnsList || [];
-                            const snsesToShow = selectedSnsIds.length > 0 
-                                ? snsInstances.filter(sns => selectedSnsIds.includes(sns.root_canister_id))
-                                : snsInstances;
+                            if (snsInstances.length === 0) return null;
                             
-                            // Create stable randomized list
-                            const snsKey = snsesToShow.map(s => s.root_canister_id).sort().join(',');
-                            if (randomizedSnsDisplayRef.current.key !== snsKey) {
-                                const displaySnses = snsesToShow.length > 10 
-                                    ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 10)
-                                    : snsesToShow;
-                                randomizedSnsDisplayRef.current = { key: snsKey, list: displaySnses };
+                            // Determine which SNSes to display
+                            // When collapsed: show up to 10, prioritizing selected ones
+                            // When expanded: show all
+                            const maxCollapsed = 10;
+                            let displaySnses;
+                            
+                            if (showAllSnses) {
+                                // Show all SNSes when expanded
+                                displaySnses = snsInstances;
+                            } else {
+                                // Create stable prioritized list for collapsed view
+                                // Key includes selection state so list updates when selection changes significantly
+                                const snsKey = `${snsInstances.length}-${selectedSnsList.length > 0 ? 'filtered' : 'all'}`;
+                                
+                                if (randomizedSnsDisplayRef.current.key !== snsKey) {
+                                    // Prioritize selected SNSes, then fill with random others
+                                    const selectedSet = new Set(selectedSnsList);
+                                    const selected = snsInstances.filter(sns => selectedSet.has(sns.root_canister_id));
+                                    const unselected = snsInstances.filter(sns => !selectedSet.has(sns.root_canister_id));
+                                    
+                                    // Shuffle unselected to get random sample
+                                    const shuffledUnselected = [...unselected].sort(() => Math.random() - 0.5);
+                                    
+                                    // Take selected first, then fill remaining slots with unselected
+                                    const combined = [
+                                        ...selected.slice(0, maxCollapsed),
+                                        ...shuffledUnselected.slice(0, Math.max(0, maxCollapsed - selected.length))
+                                    ];
+                                    
+                                    randomizedSnsDisplayRef.current = { key: snsKey, list: combined };
+                                }
+                                
+                                displaySnses = randomizedSnsDisplayRef.current.list;
                             }
-                            const displaySnses = randomizedSnsDisplayRef.current.list;
+                            
+                            const hiddenCount = snsInstances.length - displaySnses.length;
+                            const hasSelection = selectedSnsList.length > 0;
                             
                             return (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '8px',
-                                    flexWrap: 'wrap'
+                                    gap: '6px',
+                                    flexWrap: 'wrap',
+                                    maxWidth: showAllSnses ? '100%' : '600px'
                                 }}>
-                                    {displaySnses.length > 0 && displaySnses.map((sns, index) => {
+                                    {displaySnses.map((sns, index) => {
                                         const snsInfo = getSnsInfo(sns.root_canister_id);
                                         const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
                                         const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
+                                        const isSelected = selectedSnsList.includes(sns.root_canister_id);
+                                        
+                                        // If there's a selection, unselected items appear faded
+                                        // If no selection, all items appear fully opaque (showing all)
+                                        const opacity = hasSelection && !isSelected ? 0.35 : 1;
+                                        const borderColor = isSelected ? feedPrimary : theme.colors.border;
                                         
                                         return (
                                             <div
                                                 key={sns.root_canister_id}
                                                 className="feed-sns-avatar"
+                                                onClick={() => toggleSnsSelection(sns.root_canister_id)}
                                                 style={{
                                                     width: '32px',
                                                     height: '32px',
@@ -1932,11 +2006,14 @@ function Feed() {
                                                     borderRadius: '8px',
                                                     overflow: 'hidden',
                                                     cursor: 'pointer',
-                                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
-                                                    border: `1.5px solid ${theme.colors.border}`,
-                                                    transition: 'all 0.2s ease'
+                                                    boxShadow: isSelected 
+                                                        ? `0 2px 8px ${feedPrimary}50` 
+                                                        : '0 2px 6px rgba(0, 0, 0, 0.2)',
+                                                    border: `2px solid ${borderColor}`,
+                                                    transition: 'all 0.2s ease',
+                                                    opacity: opacity
                                                 }}
-                                                title={snsInfo?.name || sns.name || 'SNS'}
+                                                title={`${snsInfo?.name || sns.name || 'SNS'}${isSelected ? ' (selected)' : hasSelection ? ' (click to include)' : ' (click to filter)'}`}
                                             >
                                                 {isLoadingLogo ? (
                                                     <div style={{
@@ -1981,26 +2058,55 @@ function Feed() {
                                         );
                                     })}
                                     
-                                    {/* +X more badge */}
-                                    {snsesToShow.length > 10 && (
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '8px',
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            border: `1.5px solid ${theme.colors.border}`,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '0.65rem',
-                                            fontWeight: '700',
-                                            color: theme.colors.mutedText
-                                        }}>
-                                            +{snsesToShow.length - 10}
-                                        </div>
+                                    {/* Expand/Collapse button */}
+                                    {(hiddenCount > 0 || showAllSnses) && (
+                                        <button
+                                            onClick={() => setShowAllSnses(!showAllSnses)}
+                                            style={{
+                                                width: '32px',
+                                                height: '32px',
+                                                borderRadius: '8px',
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                border: `1.5px solid ${theme.colors.border}`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '0.6rem',
+                                                fontWeight: '700',
+                                                color: theme.colors.secondaryText,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                            title={showAllSnses ? 'Show less' : `Show all ${snsInstances.length} SNSes`}
+                                        >
+                                            {showAllSnses ? <FaChevronUp size={10} /> : `+${hiddenCount}`}
+                                        </button>
                                     )}
                                     
-                                    {/* Filter Toggle */}
+                                    {/* Clear selection button - only show when there's a selection */}
+                                    {hasSelection && (
+                                        <button
+                                            onClick={() => setSelectedSnsList([])}
+                                            style={{
+                                                width: '32px',
+                                                height: '32px',
+                                                borderRadius: '8px',
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                border: `1.5px solid ${theme.colors.border}`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: theme.colors.mutedText,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                            title="Clear SNS filter (show all)"
+                                        >
+                                            <FaTimes size={10} />
+                                        </button>
+                                    )}
+                                    
+                                    {/* Advanced Filter Toggle */}
                                     <button 
                                         onClick={() => setShowFilters(!showFilters)}
                                         className="feed-filter-toggle"
@@ -2017,9 +2123,9 @@ function Feed() {
                                             cursor: 'pointer',
                                             marginLeft: '4px'
                                         }}
-                                        title={showFilters ? 'Hide Filters' : 'Show Filters'}
+                                        title={showFilters ? 'Hide advanced filters' : 'Show advanced filters'}
                                     >
-                                        {showFilters ? <FaTimes size={12} /> : <FaFilter size={12} />}
+                                        <FaFilter size={10} />
                                     </button>
                                 </div>
                             );
