@@ -1820,96 +1820,87 @@ function Feed() {
             >
                 {/* Hero Section */}
                 <div style={{
-                    background: `linear-gradient(135deg, ${feedPrimary}15 0%, ${feedSecondary}10 50%, transparent 100%)`,
+                    background: `linear-gradient(180deg, ${feedPrimary}12 0%, transparent 100%)`,
                     borderBottom: `1px solid ${theme.colors.border}`,
-                    padding: '2rem 1rem 1.5rem',
+                    padding: '1.5rem 1rem',
                     position: 'relative',
                     overflow: 'hidden'
                 }}>
-                    {/* Decorative elements */}
+                    {/* Subtle decorative glow */}
                     <div style={{
                         position: 'absolute',
-                        top: '-50%',
-                        right: '-10%',
-                        width: '300px',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '600px',
                         height: '300px',
-                        background: `radial-gradient(circle, ${feedPrimary}20 0%, transparent 70%)`,
-                        borderRadius: '50%',
-                        pointerEvents: 'none'
-                    }} />
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '-30%',
-                        left: '-5%',
-                        width: '200px',
-                        height: '200px',
-                        background: `radial-gradient(circle, ${feedSecondary}15 0%, transparent 70%)`,
-                        borderRadius: '50%',
+                        background: `radial-gradient(ellipse, ${feedPrimary}15 0%, transparent 70%)`,
                         pointerEvents: 'none'
                     }} />
                     
                     <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
-                        {/* Title Row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
-                            <img
-                                src="sneed_logo.png"
-                                alt="Sneed Logo"
-                                className="feed-hero-logo"
-                                style={{
-                                    width: '56px',
-                                    height: '56px',
-                                    objectFit: 'cover',
-                                    borderRadius: '14px',
-                                    boxShadow: `0 4px 20px ${feedPrimary}40`
-                                }}
-                            />
-                            <div>
+                        {/* Centered Hero Content */}
+                        <div style={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            textAlign: 'center',
+                            marginBottom: '1.25rem'
+                        }}>
+                            {/* Logo and Title */}
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem',
+                                marginBottom: '0.5rem'
+                            }}>
+                                <img
+                                    src="sneed_logo.png"
+                                    alt="Sneed Logo"
+                                    className="feed-hero-logo"
+                                    style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        objectFit: 'cover',
+                                        borderRadius: '12px',
+                                        boxShadow: `0 4px 16px ${feedPrimary}40`
+                                    }}
+                                />
                                 <h1 style={{ 
-                                    color: theme.colors.primaryText, 
-                                    fontSize: '1.75rem', 
+                                    fontSize: '1.6rem', 
                                     fontWeight: '800', 
                                     margin: 0,
-                                    background: `linear-gradient(135deg, ${theme.colors.primaryText}, ${feedPrimary})`,
+                                    background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${feedPrimary})`,
                                     WebkitBackgroundClip: 'text',
                                     WebkitTextFillColor: 'transparent',
                                     backgroundClip: 'text'
                                 }}>
                                     Sneed's Feed
                                 </h1>
-                                <p style={{ 
-                                    color: theme.colors.secondaryText, 
-                                    fontSize: '0.9rem', 
-                                    margin: '0.25rem 0 0 0',
-                                    fontStyle: 'italic'
-                                }}>
-                                    "The name is a subtle joke."
-                                </p>
                             </div>
+                            
+                            <p style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.85rem', 
+                                margin: 0,
+                                maxWidth: '400px'
+                            }}>
+                                Real-time activity from {snsInstances.length} SNS forums
+                            </p>
                         </div>
-                        
-                        <p style={{ 
-                            color: theme.colors.mutedText, 
-                            fontSize: '0.9rem', 
-                            margin: '0 0 1.25rem 0',
-                            maxWidth: '500px'
-                        }}>
-                            Latest activity across all SNS forums — forums, topics, threads, and posts as they happen.
-                        </p>
 
-                        {/* SNS Avatars Row */}
+                        {/* SNS Avatars Row - Centered with filter button */}
                         {(() => {
                             const selectedSnsIds = appliedFilters.selectedSnsList || [];
                             const snsesToShow = selectedSnsIds.length > 0 
                                 ? snsInstances.filter(sns => selectedSnsIds.includes(sns.root_canister_id))
                                 : snsInstances;
                             
-                            if (snsesToShow.length === 0) return null;
-                            
                             // Create stable randomized list
                             const snsKey = snsesToShow.map(s => s.root_canister_id).sort().join(',');
                             if (randomizedSnsDisplayRef.current.key !== snsKey) {
-                                const displaySnses = snsesToShow.length > 12 
-                                    ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 12)
+                                const displaySnses = snsesToShow.length > 10 
+                                    ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 10)
                                     : snsesToShow;
                                 randomizedSnsDisplayRef.current = { key: snsKey, list: displaySnses };
                             }
@@ -1919,10 +1910,11 @@ function Feed() {
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '10px',
+                                    justifyContent: 'center',
+                                    gap: '8px',
                                     flexWrap: 'wrap'
                                 }}>
-                                    {displaySnses.map((sns, index) => {
+                                    {displaySnses.length > 0 && displaySnses.map((sns, index) => {
                                         const snsInfo = getSnsInfo(sns.root_canister_id);
                                         const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
                                         const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
@@ -1932,16 +1924,17 @@ function Feed() {
                                                 key={sns.root_canister_id}
                                                 className="feed-sns-avatar"
                                                 style={{
-                                                    width: '36px',
-                                                    height: '36px',
-                                                    minWidth: '36px',
-                                                    maxWidth: '36px',
+                                                    width: '32px',
+                                                    height: '32px',
+                                                    minWidth: '32px',
+                                                    maxWidth: '32px',
                                                     flexShrink: 0,
-                                                    borderRadius: '10px',
+                                                    borderRadius: '8px',
                                                     overflow: 'hidden',
                                                     cursor: 'pointer',
-                                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-                                                    border: `2px solid ${theme.colors.border}`
+                                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
+                                                    border: `1.5px solid ${theme.colors.border}`,
+                                                    transition: 'all 0.2s ease'
                                                 }}
                                                 title={snsInfo?.name || sns.name || 'SNS'}
                                             >
@@ -1953,7 +1946,7 @@ function Feed() {
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        fontSize: '10px',
+                                                        fontSize: '9px',
                                                         color: theme.colors.mutedText,
                                                         animation: 'feedPulse 1.5s ease-in-out infinite'
                                                     }}>
@@ -1977,7 +1970,7 @@ function Feed() {
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        fontSize: '0.65rem',
+                                                        fontSize: '0.6rem',
                                                         fontWeight: '700',
                                                         color: theme.colors.secondaryText
                                                     }}>
@@ -1989,21 +1982,21 @@ function Feed() {
                                     })}
                                     
                                     {/* +X more badge */}
-                                    {snsesToShow.length > 12 && (
+                                    {snsesToShow.length > 10 && (
                                         <div style={{
-                                            width: '36px',
-                                            height: '36px',
-                                            borderRadius: '10px',
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
                                             backgroundColor: theme.colors.tertiaryBg,
-                                            border: `2px solid ${theme.colors.border}`,
+                                            border: `1.5px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            fontSize: '0.7rem',
+                                            fontSize: '0.65rem',
                                             fontWeight: '700',
                                             color: theme.colors.mutedText
                                         }}>
-                                            +{snsesToShow.length - 12}
+                                            +{snsesToShow.length - 10}
                                         </div>
                                     )}
                                     
@@ -2012,20 +2005,21 @@ function Feed() {
                                         onClick={() => setShowFilters(!showFilters)}
                                         className="feed-filter-toggle"
                                         style={{
-                                            width: '36px',
-                                            height: '36px',
-                                            borderRadius: '10px',
-                                            backgroundColor: showFilters ? feedPrimary : theme.colors.tertiaryBg,
-                                            border: `2px solid ${showFilters ? feedPrimary : theme.colors.border}`,
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            backgroundColor: showFilters ? feedPrimary : theme.colors.secondaryBg,
+                                            border: `1.5px solid ${showFilters ? feedPrimary : theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             color: showFilters ? 'white' : theme.colors.mutedText,
-                                            cursor: 'pointer'
+                                            cursor: 'pointer',
+                                            marginLeft: '4px'
                                         }}
                                         title={showFilters ? 'Hide Filters' : 'Show Filters'}
                                     >
-                                        {showFilters ? <FaTimes size={14} /> : <FaFilter size={14} />}
+                                        {showFilters ? <FaTimes size={12} /> : <FaFilter size={12} />}
                                     </button>
                                 </div>
                             );
