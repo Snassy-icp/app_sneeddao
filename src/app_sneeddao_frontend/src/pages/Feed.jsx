@@ -14,6 +14,16 @@ import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 import MarkdownBody from '../components/MarkdownBody';
+import TokenIcon from '../components/TokenIcon';
+import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList } from 'react-icons/fa';
+
+// Accent colors for Feed
+const feedPrimary = '#f97316'; // Warm orange
+const feedSecondary = '#fb923c';
+const feedAccent = '#fbbf24'; // Golden yellow
+const feedGreen = '#22c55e';
+const feedBlue = '#3b82f6';
+const feedPurple = '#a855f7';
 
 // Format relative time (e.g., "5m", "2h", "3d")
 const formatRelativeTime = (timestamp) => {
@@ -43,185 +53,227 @@ const getFullDate = (timestamp) => {
     return date.toLocaleString();
 };
 
-const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+// CSS animation keyframes (injected into document)
+const injectFeedStyles = () => {
+    if (document.getElementById('feed-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'feed-styles';
+    style.textContent = `
+        @keyframes feedFadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes feedPulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        @keyframes feedSlideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes feedGlow {
+            0%, 100% { box-shadow: 0 0 5px rgba(249, 115, 22, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.5); }
+        }
+        .feed-item-animate {
+            animation: feedFadeIn 0.4s ease-out forwards;
+        }
+        .feed-hero-logo {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .feed-hero-logo:hover {
+            transform: scale(1.1) rotate(5deg);
+            box-shadow: 0 8px 32px rgba(249, 115, 22, 0.4);
+        }
+        .feed-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        .feed-type-badge {
+            transition: all 0.2s ease;
+        }
+        .feed-type-badge:hover {
+            transform: translateY(-1px) scale(1.05);
+            filter: brightness(1.1);
+        }
+        .feed-title-link {
+            transition: color 0.2s ease;
+        }
+        .feed-title-link:hover {
+            color: ${feedPrimary} !important;
+        }
+        .feed-context-tag {
+            transition: all 0.2s ease;
+        }
+        .feed-context-tag:hover {
+            transform: translateY(-1px);
+            border-color: ${feedPrimary};
+            color: ${feedPrimary};
+        }
+        .feed-filter-toggle {
+            transition: all 0.3s ease;
+        }
+        .feed-filter-toggle:hover {
+            transform: scale(1.1);
+            background-color: ${feedPrimary} !important;
+            color: white !important;
+        }
+        .feed-sns-avatar {
+            transition: all 0.2s ease;
+        }
+        .feed-sns-avatar:hover {
+            transform: scale(1.15) translateY(-3px);
+            z-index: 10;
+        }
+    `;
+    document.head.appendChild(style);
+};
 
 const getStyles = (theme) => ({
+    // Container
     container: {
-        maxWidth: '1200px',
+        maxWidth: '900px',
         margin: '0 auto',
-        padding: '20px',
-        fontFamily: SYSTEM_FONT,
-        fontSize: '14px'
+        padding: '24px 16px'
     },
-    header: {
-        marginBottom: '30px',
-        textAlign: 'center'
-    },
-    title: {
-        color: theme.colors.primaryText,
-        fontSize: '1.8rem',
-        marginBottom: '10px',
-        fontWeight: '600',
-        fontFamily: SYSTEM_FONT
-    },
-    description: {
-        color: theme.colors.mutedText,
-        fontSize: '14px',
-        lineHeight: '1.5',
-        fontFamily: SYSTEM_FONT
-    },
+    // Filter Section - Modern Card Style
     filterSection: {
         backgroundColor: theme.colors.secondaryBg,
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '20px',
+        borderRadius: '16px',
+        padding: '20px',
+        marginBottom: '24px',
         border: `1px solid ${theme.colors.border}`,
-        fontFamily: SYSTEM_FONT
-    },
-    filterTitle: {
-        color: theme.colors.primaryText,
-        fontSize: '14px',
-        marginBottom: '12px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+        animation: 'feedSlideDown 0.3s ease-out'
     },
     filterRow: {
         display: 'flex',
         flexWrap: 'wrap',
         gap: '12px',
-        marginBottom: '12px'
+        marginBottom: '16px'
     },
     filterGroup: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '4px',
-        minWidth: '200px'
+        gap: '6px',
+        flex: '1',
+        minWidth: '180px'
     },
     filterLabel: {
         color: theme.colors.secondaryText,
-        fontSize: '12px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.75rem',
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px'
     },
     filterInput: {
         backgroundColor: theme.colors.primaryBg,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '4px',
-        padding: '8px 12px',
+        borderRadius: '10px',
+        padding: '10px 14px',
         color: theme.colors.primaryText,
-        fontSize: '13px',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.9rem',
+        transition: 'all 0.2s ease',
+        outline: 'none'
     },
     filterSelect: {
         backgroundColor: theme.colors.primaryBg,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '4px',
-        padding: '8px 12px',
+        borderRadius: '10px',
+        padding: '10px 14px',
         color: theme.colors.primaryText,
-        fontSize: '13px',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
     },
     applyButton: {
-        backgroundColor: theme.colors.accent,
-        color: theme.colors.primaryText,
-        border: 'none',
-        borderRadius: '4px',
-        padding: '8px 16px',
-        cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT,
-        transition: 'all 0.3s ease'
-    },
-    clearButton: {
-        backgroundColor: theme.colors.mutedText,
+        background: `linear-gradient(135deg, ${feedPrimary}, ${feedSecondary})`,
         color: 'white',
         border: 'none',
-        borderRadius: '4px',
-        padding: '8px 16px',
+        borderRadius: '10px',
+        padding: '10px 20px',
         cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT,
-        marginLeft: '10px',
-        transition: 'all 0.3s ease'
+        fontSize: '0.85rem',
+        fontWeight: '600',
+        transition: 'all 0.3s ease',
+        boxShadow: `0 4px 15px ${feedPrimary}40`
     },
+    clearButton: {
+        backgroundColor: theme.colors.tertiaryBg,
+        color: theme.colors.secondaryText,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '10px',
+        padding: '10px 20px',
+        cursor: 'pointer',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        transition: 'all 0.2s ease'
+    },
+    // Feed Container
     feedContainer: {
         display: 'flex',
         flexDirection: 'column',
         gap: '16px'
     },
+    // Feed Item Card
     feedItem: {
         backgroundColor: theme.colors.secondaryBg,
-        borderRadius: '8px',
-        padding: '16px',
+        borderRadius: '16px',
+        padding: '20px',
+        paddingLeft: '76px',
         border: `1px solid ${theme.colors.border}`,
-        transition: 'all 0.2s ease',
+        transition: 'all 0.3s ease',
         position: 'relative',
-        fontFamily: SYSTEM_FONT
-    },
-    feedItemHover: {
-        borderColor: theme.colors.borderHover,
-        boxShadow: theme.colors.accentShadow
+        cursor: 'default',
+        overflow: 'hidden'
     },
     feedItemHeader: {
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: '10px',
+        alignItems: 'center',
+        marginBottom: '12px',
         flexWrap: 'wrap',
-        gap: '8px'
+        gap: '10px'
     },
     feedItemHeaderLeft: {
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        gap: '10px',
         flexWrap: 'wrap'
     },
     feedItemType: {
-        display: 'inline-block',
-        backgroundColor: theme.colors.accent,
-        color: 'white',
-        padding: '3px 6px',
-        borderRadius: '4px',
-        fontSize: '11px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '5px',
+        padding: '4px 10px',
+        borderRadius: '6px',
+        fontSize: '0.7rem',
+        fontWeight: '700',
         textTransform: 'uppercase',
+        letterSpacing: '0.5px',
         cursor: 'pointer',
-        textDecoration: 'none',
-        transition: 'all 0.2s ease'
-    },
-    feedItemTypeHover: {
-        backgroundColor: theme.colors.accentHover,
-        transform: 'translateY(-1px)'
+        textDecoration: 'none'
     },
     feedItemDate: {
         color: theme.colors.mutedText,
-        fontSize: '12px',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.8rem',
+        fontWeight: '500'
     },
     feedItemTitle: {
         color: theme.colors.primaryText,
-        fontSize: '16px',
-        fontWeight: '600',
-        fontFamily: SYSTEM_FONT,
-        marginBottom: '8px',
+        fontSize: '1.1rem',
+        fontWeight: '700',
+        marginBottom: '10px',
         lineHeight: '1.4',
         cursor: 'pointer',
-        textDecoration: 'none',
-        transition: 'color 0.2s ease'
-    },
-    feedItemTitleHover: {
-        color: theme.colors.accent
+        textDecoration: 'none'
     },
     feedItemBody: {
         color: theme.colors.secondaryText,
-        fontSize: '14px',
-        fontFamily: SYSTEM_FONT,
-        lineHeight: '1.5',
-        marginBottom: '12px',
-        maxHeight: '120px',
+        fontSize: '0.9rem',
+        lineHeight: '1.6',
+        marginBottom: '14px',
+        maxHeight: '100px',
         overflow: 'hidden',
         position: 'relative'
     },
@@ -229,190 +281,148 @@ const getStyles = (theme) => ({
         display: 'flex',
         flexWrap: 'wrap',
         gap: '8px',
-        marginTop: '12px',
-        paddingTop: '12px',
+        marginTop: '14px',
+        paddingTop: '14px',
         borderTop: `1px solid ${theme.colors.border}`
     },
-    contextItem: {
-        color: theme.colors.mutedText,
-        fontSize: '12px',
-        fontFamily: SYSTEM_FONT,
-        backgroundColor: theme.colors.primaryBg,
-        padding: '4px 8px',
-        borderRadius: '4px',
-        border: `1px solid ${theme.colors.border}`
-    },
     contextLink: {
-        color: theme.colors.accent,
+        color: theme.colors.secondaryText,
         textDecoration: 'none',
-        fontSize: '12px',
-        fontFamily: SYSTEM_FONT,
-        backgroundColor: theme.colors.primaryBg,
-        padding: '4px 8px',
-        borderRadius: '4px',
+        fontSize: '0.75rem',
+        fontWeight: '500',
+        backgroundColor: theme.colors.tertiaryBg,
+        padding: '6px 12px',
+        borderRadius: '8px',
         border: `1px solid ${theme.colors.border}`,
-        transition: 'all 0.2s ease'
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '5px'
     },
+    // SNS Logo (in feed items)
     snsLogo: {
         position: 'absolute',
-        top: '16px',
-        left: '16px',
-        width: '40px',
-        height: '40px',
-        borderRadius: '50%',
+        top: '20px',
+        left: '20px',
+        width: '44px',
+        height: '44px',
+        minWidth: '44px',
+        maxWidth: '44px',
+        flexShrink: 0,
+        borderRadius: '12px',
         objectFit: 'cover',
         border: `2px solid ${theme.colors.border}`,
         cursor: 'pointer',
-        transition: 'all 0.2s ease'
-    },
-    snsLogoHover: {
-        border: '2px solid #3498db',
-        transform: 'scale(1.05)'
+        transition: 'all 0.2s ease',
+        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
     },
     snsLogoPlaceholder: {
         position: 'absolute',
-        top: '16px',
-        left: '16px',
-        width: '40px',
-        height: '40px',
-        borderRadius: '50%',
-        backgroundColor: theme.colors.border,
+        top: '20px',
+        left: '20px',
+        width: '44px',
+        height: '44px',
+        minWidth: '44px',
+        maxWidth: '44px',
+        flexShrink: 0,
+        borderRadius: '12px',
+        backgroundColor: theme.colors.tertiaryBg,
         border: `2px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '11px',
-        fontFamily: SYSTEM_FONT,
-        color: theme.colors.mutedText,
+        fontSize: '0.75rem',
+        fontWeight: '700',
+        color: theme.colors.secondaryText,
         cursor: 'pointer',
-        transition: 'all 0.2s ease'
+        transition: 'all 0.2s ease',
+        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
     },
     feedItemContent: {
-        marginLeft: '56px' // Make room for the logo
+        // Content is positioned by padding on feedItem
     },
+    // Load More / Loading
     loadMoreButton: {
-        backgroundColor: theme.colors.accent,
+        background: `linear-gradient(135deg, ${feedPrimary}, ${feedSecondary})`,
         color: 'white',
         border: 'none',
-        borderRadius: '8px',
-        padding: '12px 24px',
+        borderRadius: '12px',
+        padding: '14px 32px',
         cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT,
+        fontSize: '0.9rem',
+        fontWeight: '600',
         alignSelf: 'center',
-        marginTop: '20px',
-        transition: 'background-color 0.2s ease'
+        marginTop: '24px',
+        transition: 'all 0.3s ease',
+        boxShadow: `0 4px 20px ${feedPrimary}40`
     },
     loadingSpinner: {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: '30px',
+        padding: '40px',
         color: theme.colors.mutedText,
-        fontSize: '13px',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.9rem'
     },
     errorMessage: {
-        backgroundColor: theme.colors.error,
+        backgroundColor: '#ef4444',
         color: 'white',
-        padding: '12px',
-        borderRadius: '8px',
-        marginBottom: '16px',
+        padding: '16px',
+        borderRadius: '12px',
+        marginBottom: '20px',
         textAlign: 'center',
-        fontSize: '13px',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.9rem',
+        fontWeight: '500'
     },
     emptyState: {
         textAlign: 'center',
-        padding: '40px 20px',
-        color: theme.colors.mutedText,
-        fontFamily: SYSTEM_FONT
+        padding: '60px 20px',
+        color: theme.colors.mutedText
     },
     emptyStateTitle: {
-        fontSize: '16px',
-        marginBottom: '8px',
+        fontSize: '1.25rem',
+        marginBottom: '10px',
         color: theme.colors.secondaryText,
-        fontFamily: SYSTEM_FONT
+        fontWeight: '600'
     },
     emptyStateDescription: {
-        fontSize: '14px',
-        lineHeight: '1.5',
-        fontFamily: SYSTEM_FONT
+        fontSize: '0.95rem',
+        lineHeight: '1.6'
     },
+    // New Items Notification
     newItemsNotification: {
         position: 'fixed',
-        top: '80px', // Below header
+        top: '80px',
         left: '50%',
         transform: 'translateX(-50%)',
-        backgroundColor: theme.colors.accent,
+        background: `linear-gradient(135deg, ${feedPrimary}, ${feedSecondary})`,
         color: 'white',
-        padding: '10px 20px',
-        borderRadius: '20px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        padding: '12px 24px',
+        borderRadius: '25px',
+        boxShadow: `0 4px 20px ${feedPrimary}50`,
         cursor: 'pointer',
         zIndex: 1000,
-        fontSize: '13px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT,
+        fontSize: '0.9rem',
+        fontWeight: '600',
         transition: 'all 0.3s ease',
-        border: '1px solid rgba(255,255,255,0.1)'
+        border: 'none',
+        animation: 'feedGlow 2s ease-in-out infinite'
     },
-    checkboxContainer: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        maxHeight: '200px',
-        overflowY: 'auto',
-        backgroundColor: theme.colors.primaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '4px',
-        padding: '8px'
-    },
-    checkboxLabel: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        cursor: 'pointer',
-        padding: '4px',
-        borderRadius: '4px',
-        transition: 'background-color 0.2s ease'
-    },
-    checkbox: {
-        cursor: 'pointer',
-        accentColor: theme.colors.accent,
-        gridColumn: '1'
-    },
-    checkboxText: {
-        color: theme.colors.secondaryText,
-        fontSize: '12px',
-        fontFamily: SYSTEM_FONT,
-        userSelect: 'none',
-        gridColumn: '3'
-    },
-    filterLayout: {
-        display: 'flex',
-        gap: '16px',
-        alignItems: 'flex-start',
-        '@media (max-width: 768px)': {
-            flexDirection: 'column'
-        }
-    },
+    // Filter Layout
     filterLayoutResponsive: {
         display: 'flex',
-        gap: '16px',
+        gap: '20px',
         alignItems: 'flex-start',
         flexDirection: 'row'
     },
     filterLayoutStacked: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '16px'
+        gap: '20px'
     },
     filterLeftColumn: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
+        gap: '14px',
         flex: '1',
         minWidth: '0'
     },
@@ -420,77 +430,98 @@ const getStyles = (theme) => ({
         flex: '1',
         minWidth: '0'
     },
+    // SNS Filter Section
     snsFilterHeader: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '8px'
+        marginBottom: '10px'
     },
     snsToggleButton: {
         backgroundColor: 'transparent',
         border: 'none',
-        color: theme.colors.accent,
+        color: feedPrimary,
         cursor: 'pointer',
-        fontSize: '11px',
-        fontFamily: SYSTEM_FONT,
-        padding: '2px 4px'
-    },
-    clearAllButton: {
-        backgroundColor: theme.colors.mutedText,
-        color: 'white',
-        border: 'none',
-        borderRadius: '4px',
+        fontSize: '0.75rem',
+        fontWeight: '600',
         padding: '4px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+    },
+    checkboxContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        maxHeight: '220px',
+        overflowY: 'auto',
+        backgroundColor: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '10px',
+        padding: '10px'
+    },
+    checkbox: {
         cursor: 'pointer',
-        fontSize: '11px',
-        fontWeight: '500',
-        fontFamily: SYSTEM_FONT,
-        transition: 'background-color 0.2s ease'
+        accentColor: feedPrimary,
+        width: '16px',
+        height: '16px',
+        gridColumn: '1'
+    },
+    checkboxText: {
+        color: theme.colors.secondaryText,
+        fontSize: '0.8rem',
+        userSelect: 'none',
+        gridColumn: '3'
     },
     snsCheckboxWithLogo: {
         display: 'grid',
-        gridTemplateColumns: '20px 20px 1fr',
-        gap: '6px',
+        gridTemplateColumns: '20px 22px 1fr',
+        gap: '8px',
         alignItems: 'center',
         cursor: 'pointer',
-        padding: '2px 4px',
-        borderRadius: '4px',
+        padding: '6px 8px',
+        borderRadius: '8px',
         transition: 'background-color 0.2s ease',
         width: '100%'
     },
     clearSnsButton: {
-        backgroundColor: theme.colors.mutedText,
+        backgroundColor: theme.colors.tertiaryBg,
         color: theme.colors.secondaryText,
-        border: 'none',
-        borderRadius: '4px',
-        padding: '6px 12px',
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        padding: '8px 12px',
         cursor: 'pointer',
-        fontSize: '11px',
-        fontWeight: '400',
-        fontFamily: SYSTEM_FONT,
-        marginTop: '8px',
-        transition: 'background-color 0.2s ease',
+        fontSize: '0.75rem',
+        fontWeight: '500',
+        marginTop: '10px',
+        transition: 'all 0.2s ease',
         width: '100%'
     },
     snsLogoSmall: {
-        width: '18px',
-        height: '18px',
-        borderRadius: '50%',
+        width: '20px',
+        height: '20px',
+        minWidth: '20px',
+        maxWidth: '20px',
+        flexShrink: 0,
+        borderRadius: '6px',
         objectFit: 'cover',
         border: `1px solid ${theme.colors.border}`,
         gridColumn: '2'
     },
     snsLogoPlaceholderSmall: {
-        width: '18px',
-        height: '18px',
-        borderRadius: '50%',
-        backgroundColor: theme.colors.border,
+        width: '20px',
+        height: '20px',
+        minWidth: '20px',
+        maxWidth: '20px',
+        flexShrink: 0,
+        borderRadius: '6px',
+        backgroundColor: theme.colors.tertiaryBg,
         border: `1px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '9px',
-        fontFamily: SYSTEM_FONT,
+        fontSize: '0.6rem',
+        fontWeight: '700',
         color: theme.colors.mutedText,
         gridColumn: '2'
     }
@@ -550,6 +581,11 @@ function Feed() {
     
     // Ref to store the randomized SNS display list - only computed once per data change
     const randomizedSnsDisplayRef = useRef({ key: '', list: [] });
+
+    // Inject CSS animations on mount
+    useEffect(() => {
+        injectFeedStyles();
+    }, []);
 
     // Create forum actor
     const createForumActor = () => {
@@ -1480,10 +1516,26 @@ function Feed() {
         return getFallbackTitle(item);
     };
 
+    // Type badge colors and icons
+    const getTypeStyle = (type) => {
+        switch (type) {
+            case 'Forum':
+                return { bg: feedBlue, icon: <FaComments size={10} /> };
+            case 'Topic':
+                return { bg: feedGreen, icon: <FaLayerGroup size={10} /> };
+            case 'Thread':
+                return { bg: feedPurple, icon: <FaStream size={10} /> };
+            case 'Post':
+                return { bg: feedPrimary, icon: <FaReply size={10} /> };
+            default:
+                return { bg: theme.colors.accent, icon: null };
+        }
+    };
+
     // Render feed item
-    const renderFeedItem = (item) => {
-        const typeColor = getTypeColor(item.item_type);
+    const renderFeedItem = (item, index) => {
         const typeDisplayText = getTypeDisplayText(item.item_type);
+        const typeStyle = getTypeStyle(typeDisplayText);
         
         // Get SNS info and logo
         const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
@@ -1512,71 +1564,56 @@ function Feed() {
         };
         
         return (
-            <div key={item.id} style={getStyles(theme).feedItem} data-feed-item-id={item.id.toString()}>
+            <div 
+                key={item.id} 
+                className="feed-card feed-item-animate" 
+                style={{
+                    ...getStyles(theme).feedItem,
+                    animationDelay: `${Math.min(index * 0.05, 0.5)}s`
+                }} 
+                data-feed-item-id={item.id.toString()}
+            >
                 {/* SNS Logo - Clickable link to forum */}
                 {snsInfo && (
-                    <>
+                    <div
+                        style={getStyles(theme).snsLogoPlaceholder}
+                        onClick={handleSnsLogoClick}
+                        title={`Go to ${snsInfo.name} Forum`}
+                    >
                         {isLoadingLogo ? (
-                            <div 
-                                style={getStyles(theme).snsLogoPlaceholder}
-                                onClick={handleSnsLogoClick}
-                                title={`Go to ${snsInfo.name} Forum`}
-                            >
-                                ...
-                            </div>
+                            <span style={{ animation: 'feedPulse 1.5s ease-in-out infinite' }}>...</span>
                         ) : snsLogo ? (
                             <img
                                 src={snsLogo}
                                 alt={snsInfo.name}
-                                style={getStyles(theme).snsLogo}
-                                title={`Go to ${snsInfo.name} Forum`}
-                                onClick={handleSnsLogoClick}
-                                onMouseEnter={(e) => {
-                                    e.target.style.border = '2px solid #3498db';
-                                    e.target.style.transform = 'scale(1.05)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.border = '2px solid #3a3a3a';
-                                    e.target.style.transform = 'scale(1)';
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    borderRadius: '10px'
                                 }}
                             />
                         ) : (
-                            <div 
-                                style={getStyles(theme).snsLogoPlaceholder} 
-                                title={`Go to ${snsInfo.name} Forum`}
-                                onClick={handleSnsLogoClick}
-                                onMouseEnter={(e) => {
-                                    e.target.style.border = '2px solid #3498db';
-                                    e.target.style.transform = 'scale(1.05)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.border = '2px solid #3a3a3a';
-                                    e.target.style.transform = 'scale(1)';
-                                }}
-                            >
-                                {snsInfo.name.substring(0, 2).toUpperCase()}
-                            </div>
+                            <span>{snsInfo.name.substring(0, 2).toUpperCase()}</span>
                         )}
-                    </>
+                    </div>
                 )}
                 
-                {/* Content with margin for logo */}
+                {/* Content */}
                 <div style={getStyles(theme).feedItemContent}>
                     <div style={getStyles(theme).feedItemHeader}>
                         <div style={getStyles(theme).feedItemHeaderLeft}>
                             <span 
-                                style={{...getStyles(theme).feedItemType, backgroundColor: typeColor}}
+                                className="feed-type-badge"
+                                style={{
+                                    ...getStyles(theme).feedItemType, 
+                                    backgroundColor: typeStyle.bg,
+                                    color: 'white'
+                                }}
                                 onClick={handleItemClick}
-                                onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = theme.colors.accentHover;
-                                    e.target.style.transform = 'translateY(-1px)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.backgroundColor = typeColor;
-                                    e.target.style.transform = 'translateY(0)';
-                                }}
                                 title={`Go to ${typeDisplayText.toLowerCase()}`}
                             >
+                                {typeStyle.icon}
                                 {typeDisplayText}
                             </span>
                             {creatorPrincipal && (
@@ -1584,9 +1621,20 @@ function Feed() {
                                     principal={creatorPrincipal}
                                     displayInfo={creatorDisplayInfo}
                                     short={true}
-                                    style={{ fontSize: '12px' }}
+                                    style={{ fontSize: '0.8rem' }}
                                     isAuthenticated={isAuthenticated}
                                 />
+                            )}
+                            {snsInfo && (
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    color: theme.colors.mutedText,
+                                    backgroundColor: theme.colors.tertiaryBg,
+                                    padding: '3px 8px',
+                                    borderRadius: '6px'
+                                }}>
+                                    {snsInfo.name}
+                                </span>
                             )}
                         </div>
                         <span 
@@ -1597,48 +1645,58 @@ function Feed() {
                         </span>
                     </div>
                     
-                    {/* Always show title (actual or fallback) */}
+                    {/* Title */}
                     <h3 
+                        className="feed-title-link"
                         style={getStyles(theme).feedItemTitle}
                         onClick={handleItemClick}
-                        onMouseEnter={(e) => {
-                            e.target.style.color = theme.colors.accent;
-                        }}
-                        onMouseLeave={(e) => {
-                            e.target.style.color = theme.colors.primaryText;
-                        }}
                         title={`Go to ${typeDisplayText.toLowerCase()}`}
                     >
                         {displayTitle}
                     </h3>
                     
+                    {/* Body preview */}
                     {item.body && item.body.length > 0 && (
                         <div style={getStyles(theme).feedItemBody}>
                             <MarkdownBody 
                                 text={(() => {
                                 const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
-                                return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
+                                return bodyText.length > 250 ? `${bodyText.substring(0, 250)}...` : bodyText;
                             })()}
                             />
+                            {/* Fade overlay */}
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                height: '40px',
+                                background: `linear-gradient(transparent, ${theme.colors.secondaryBg})`,
+                                pointerEvents: 'none'
+                            }} />
                         </div>
                     )}
 
                     {/* Replied-to post information */}
                     {item.replied_to_post && item.replied_to_post.length > 0 && (
                         <div style={{
-                            backgroundColor: theme.colors.secondaryBg,
+                            backgroundColor: theme.colors.tertiaryBg,
                             border: `1px solid ${theme.colors.border}`,
-                            borderRadius: '8px',
-                            padding: '10px',
-                            margin: '10px 0',
-                            borderLeft: `4px solid ${theme.colors.accent}`
+                            borderRadius: '10px',
+                            padding: '12px',
+                            margin: '12px 0',
+                            borderLeft: `3px solid ${feedPrimary}`
                         }}>
                             <div style={{
-                                fontSize: '11px',
+                                fontSize: '0.75rem',
                                 color: theme.colors.mutedText,
-                                marginBottom: '4px'
+                                marginBottom: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
                             }}>
-                                💬 Replying to:
+                                <FaReply size={10} style={{ color: feedPrimary }} />
+                                Replying to:
                             </div>
                             {item.replied_to_post[0].title && item.replied_to_post[0].title.length > 0 && (
                                 <div style={{
@@ -1704,25 +1762,32 @@ function Feed() {
                         </div>
                     )}
                     
-                    <div style={getStyles(theme).feedItemContext}>
-                        {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
-                            <Link 
-                                to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
-                                style={getStyles(theme).contextLink}
-                            >
-                                Topic: {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
-                            </Link>
-                        )}
-                        
-                        {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
-                            <Link 
-                                to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
-                                style={getStyles(theme).contextLink}
-                            >
-                                Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
-                            </Link>
-                        )}
-                    </div>
+                    {/* Context links - topic and thread */}
+                    {(item.topic_title || item.thread_title) && (
+                        <div style={getStyles(theme).feedItemContext}>
+                            {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
+                                <Link 
+                                    to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
+                                    className="feed-context-tag"
+                                    style={getStyles(theme).contextLink}
+                                >
+                                    <FaLayerGroup size={10} />
+                                    {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
+                                </Link>
+                            )}
+                            
+                            {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
+                                <Link 
+                                    to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
+                                    className="feed-context-tag"
+                                    style={getStyles(theme).contextLink}
+                                >
+                                    <FaStream size={10} />
+                                    {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
+                                </Link>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -1737,15 +1802,8 @@ function Feed() {
                 <div 
                     style={getStyles(theme).newItemsNotification}
                     onClick={handleShowNewItems}
-                    onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = theme.colors.accentHover;
-                        e.target.style.transform = 'translateX(-50%) translateY(-2px)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = theme.colors.accent;
-                        e.target.style.transform = 'translateX(-50%) translateY(0)';
-                    }}
                 >
+                    <FaRss style={{ marginRight: '8px' }} />
                     {newItemsCount === 1 
                         ? '1 new item' 
                         : `${newItemsCount} new items`
@@ -1760,125 +1818,111 @@ function Feed() {
                     minHeight: '100vh'
                 }}
             >
-            <div ref={scrollContainerRef} style={getStyles(theme).container}>
-                {/* Header Card */}
+                {/* Hero Section */}
                 <div style={{
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '16px',
-                    padding: '24px',
-                    marginBottom: '24px',
-                    border: `1px solid ${theme.colors.border}`,
-                    boxShadow: theme.colors.cardShadow,
-                    background: theme.colors.cardGradient,
-                    position: 'relative'
+                    background: `linear-gradient(135deg, ${feedPrimary}15 0%, ${feedSecondary}10 50%, transparent 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    {/* Subtle joke quote in top right */}
+                    {/* Decorative elements */}
                     <div style={{
                         position: 'absolute',
-                        top: '12px',
-                        right: '16px',
-                        fontSize: '11px',
-                        color: theme.colors.mutedText,
-                        fontStyle: 'italic',
-                        opacity: '0.7'
-                    }}>
-                        "The name is a subtle joke."
-                    </div>
-                    {/* Header Content */}
+                        top: '-50%',
+                        right: '-10%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${feedPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
                     <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        textAlign: 'center',
-                        marginBottom: '20px'
-                    }}>
-                        {/* Logo and Title Row */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '12px',
-                            marginBottom: '16px',
-                            flexWrap: 'wrap'
-                        }}>
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '200px',
+                        height: '200px',
+                        background: `radial-gradient(circle, ${feedSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        {/* Title Row */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
                             <img
                                 src="sneed_logo.png"
                                 alt="Sneed Logo"
+                                className="feed-hero-logo"
                                 style={{
-                                    width: '48px',
-                                    height: '48px',
+                                    width: '56px',
+                                    height: '56px',
                                     objectFit: 'cover',
-                                    cursor: 'pointer',
-                                    borderRadius: '8px',
-                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
+                                    borderRadius: '14px',
+                                    boxShadow: `0 4px 20px ${feedPrimary}40`
                                 }}
                             />
-                            <h1 style={{
-                                ...getStyles(theme).title,
-                                margin: '0',
-                                color: theme.colors.primaryText,
-                                fontSize: 'clamp(1.5rem, 4vw, 1.8rem)'
-                            }}>
-                                Sneed's Feed
-                            </h1>
+                            <div>
+                                <h1 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1.75rem', 
+                                    fontWeight: '800', 
+                                    margin: 0,
+                                    background: `linear-gradient(135deg, ${theme.colors.primaryText}, ${feedPrimary})`,
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text'
+                                }}>
+                                    Sneed's Feed
+                                </h1>
+                                <p style={{ 
+                                    color: theme.colors.secondaryText, 
+                                    fontSize: '0.9rem', 
+                                    margin: '0.25rem 0 0 0',
+                                    fontStyle: 'italic'
+                                }}>
+                                    "The name is a subtle joke."
+                                </p>
+                            </div>
                         </div>
                         
-                        {/* Description */}
-                        <p style={{
-                            ...getStyles(theme).description,
-                            margin: '0',
-                            maxWidth: '600px',
-                            fontSize: '14px',
-                            lineHeight: '1.5'
+                        <p style={{ 
+                            color: theme.colors.mutedText, 
+                            fontSize: '0.9rem', 
+                            margin: '0 0 1.25rem 0',
+                            maxWidth: '500px'
                         }}>
-                            Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
+                            Latest activity across all SNS forums — forums, topics, threads, and posts as they happen.
                         </p>
-                    </div>
 
-                    {/* SNS Logos Section */}
-                    {(() => {
-                        // Determine which SNSes to show
-                        const selectedSnsIds = appliedFilters.selectedSnsList || [];
-                        const snsesToShow = selectedSnsIds.length > 0 
-                            ? snsInstances.filter(sns => selectedSnsIds.includes(sns.root_canister_id))
-                            : snsInstances; // Show all if none selected
-                        
-                        if (snsesToShow.length === 0) return null;
-                        
-                        return (
-                            <div style={{
-                                borderTop: `1px solid ${theme.colors.border}`,
-                                paddingTop: '20px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                gap: '12px'
-                            }}>
-
-                                
+                        {/* SNS Avatars Row */}
+                        {(() => {
+                            const selectedSnsIds = appliedFilters.selectedSnsList || [];
+                            const snsesToShow = selectedSnsIds.length > 0 
+                                ? snsInstances.filter(sns => selectedSnsIds.includes(sns.root_canister_id))
+                                : snsInstances;
+                            
+                            if (snsesToShow.length === 0) return null;
+                            
+                            // Create stable randomized list
+                            const snsKey = snsesToShow.map(s => s.root_canister_id).sort().join(',');
+                            if (randomizedSnsDisplayRef.current.key !== snsKey) {
+                                const displaySnses = snsesToShow.length > 12 
+                                    ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 12)
+                                    : snsesToShow;
+                                randomizedSnsDisplayRef.current = { key: snsKey, list: displaySnses };
+                            }
+                            const displaySnses = randomizedSnsDisplayRef.current.list;
+                            
+                            return (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexWrap: 'wrap',
-                                    gap: '8px',
-                                    maxWidth: '100%'
+                                    gap: '10px',
+                                    flexWrap: 'wrap'
                                 }}>
-                                    {(() => {
-                                        // Create a stable key from the SNS list to detect changes
-                                        const snsKey = snsesToShow.map(s => s.root_canister_id).sort().join(',');
-                                        
-                                        // Only re-randomize if the source data has changed
-                                        if (randomizedSnsDisplayRef.current.key !== snsKey) {
-                                            const displaySnses = snsesToShow.length > 10 
-                                                ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 10)
-                                                : snsesToShow;
-                                            randomizedSnsDisplayRef.current = { key: snsKey, list: displaySnses };
-                                        }
-                                        
-                                        const displaySnses = randomizedSnsDisplayRef.current.list;
-                                        
-                                        return displaySnses.map((sns, index) => {
+                                    {displaySnses.map((sns, index) => {
                                         const snsInfo = getSnsInfo(sns.root_canister_id);
                                         const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
                                         const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
@@ -1886,32 +1930,32 @@ function Feed() {
                                         return (
                                             <div
                                                 key={sns.root_canister_id}
+                                                className="feed-sns-avatar"
                                                 style={{
-                                                    position: 'relative',
-                                                    transition: 'transform 0.2s ease',
-                                                    cursor: 'pointer'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.currentTarget.style.transform = 'scale(1.1) translateY(-2px)';
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                                                    width: '36px',
+                                                    height: '36px',
+                                                    minWidth: '36px',
+                                                    maxWidth: '36px',
+                                                    flexShrink: 0,
+                                                    borderRadius: '10px',
+                                                    overflow: 'hidden',
+                                                    cursor: 'pointer',
+                                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                                                    border: `2px solid ${theme.colors.border}`
                                                 }}
                                                 title={snsInfo?.name || sns.name || 'SNS'}
                                             >
                                                 {isLoadingLogo ? (
                                                     <div style={{
-                                                        width: '40px',
-                                                        height: '40px',
-                                                        borderRadius: '50%',
-                                                        backgroundColor: theme.colors.border,
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        backgroundColor: theme.colors.tertiaryBg,
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        fontSize: '12px',
-                                                        color: theme.colors.secondaryText,
-                                                        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
-                                                        border: '2px solid #3a3a3a'
+                                                        fontSize: '10px',
+                                                        color: theme.colors.mutedText,
+                                                        animation: 'feedPulse 1.5s ease-in-out infinite'
                                                     }}>
                                                         ...
                                                     </div>
@@ -1920,137 +1964,159 @@ function Feed() {
                                                         src={snsLogo}
                                                         alt={snsInfo?.name || sns.name}
                                                         style={{
-                                                            width: '40px',
-                                                            height: '40px',
-                                                            borderRadius: '50%',
-                                                            objectFit: 'cover',
-                                                            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
-                                                            border: '2px solid #3a3a3a'
+                                                            width: '100%',
+                                                            height: '100%',
+                                                            objectFit: 'cover'
                                                         }}
                                                     />
                                                 ) : (
                                                     <div style={{
-                                                        width: '40px',
-                                                        height: '40px',
-                                                        borderRadius: '50%',
-                                                        backgroundColor: theme.colors.border,
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        backgroundColor: theme.colors.tertiaryBg,
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        fontSize: '11px',
-                                                        color: theme.colors.primaryText,
-                                                        fontWeight: 'bold',
-                                                        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
-                                                        border: '2px solid #3a3a3a'
+                                                        fontSize: '0.65rem',
+                                                        fontWeight: '700',
+                                                        color: theme.colors.secondaryText
                                                     }}>
                                                         {(snsInfo?.name || sns.name || 'SNS').substring(0, 2).toUpperCase()}
                                                     </div>
                                                 )}
                                             </div>
                                         );
-                                        });
-                                    })()}
+                                    })}
                                     
-                                    {/* Show "+X more" if there are more than 10 SNSes */}
-                                    {snsesToShow.length > 10 && (
+                                    {/* +X more badge */}
+                                    {snsesToShow.length > 12 && (
                                         <div style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '50%',
-                                            backgroundColor: theme.colors.mutedText,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '11px',
-                                            color: theme.colors.primaryText,
-                                            fontWeight: 'bold',
-                                            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
-                                            border: `2px solid ${theme.colors.border}`
-                                        }}>
-                                            +{snsesToShow.length - 10}
-                                        </div>
-                                    )}
-                                    
-                                    {/* Filter Toggle Button */}
-                                    <button 
-                                        onClick={() => setShowFilters(!showFilters)}
-                                        style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '50%',
-                                            backgroundColor: showFilters ? theme.colors.accent : theme.colors.secondaryBg,
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '10px',
+                                            backgroundColor: theme.colors.tertiaryBg,
                                             border: `2px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            fontSize: '16px',
-                                            color: showFilters ? theme.colors.primaryText : theme.colors.mutedText,
-                                            cursor: 'pointer',
-                                            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.backgroundColor = showFilters ? theme.colors.accentHover : theme.colors.border;
-                                            e.target.style.transform = 'scale(1.05)';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.backgroundColor = showFilters ? theme.colors.accent : theme.colors.secondaryBg;
-                                            e.target.style.transform = 'scale(1)';
+                                            fontSize: '0.7rem',
+                                            fontWeight: '700',
+                                            color: theme.colors.mutedText
+                                        }}>
+                                            +{snsesToShow.length - 12}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Filter Toggle */}
+                                    <button 
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        className="feed-filter-toggle"
+                                        style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '10px',
+                                            backgroundColor: showFilters ? feedPrimary : theme.colors.tertiaryBg,
+                                            border: `2px solid ${showFilters ? feedPrimary : theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: showFilters ? 'white' : theme.colors.mutedText,
+                                            cursor: 'pointer'
                                         }}
                                         title={showFilters ? 'Hide Filters' : 'Show Filters'}
                                     >
-                                        {showFilters ? '✕' : '⚙'}
+                                        {showFilters ? <FaTimes size={14} /> : <FaFilter size={14} />}
                                     </button>
                                 </div>
-                            </div>
-                        );
-                    })()}
+                            );
+                        })()}
+                    </div>
                 </div>
 
+            <div ref={scrollContainerRef} style={getStyles(theme).container}>
                 {/* Filter Section */}
                 {showFilters && (
                     <div style={getStyles(theme).filterSection}>
-                            <div style={isNarrowScreen ? getStyles(theme).filterLayoutStacked : getStyles(theme).filterLayoutResponsive}>
-                                {/* Left Column: User, Type, Text */}
-                                <div style={getStyles(theme).filterLeftColumn}>
-                                    <div style={getStyles(theme).filterGroup}>
-                                        <label style={getStyles(theme).filterLabel}>User</label>
-                                        <PrincipalInput
-                                            value={selectedCreator}
-                                            onChange={setSelectedCreator}
-                                            placeholder="Enter principal ID or search by name"
-                                            style={{ width: '100%' }}
-                                        />
-                                    </div>
-                                    
-                                    <div style={getStyles(theme).filterGroup}>
-                                        <label style={getStyles(theme).filterLabel}>Type</label>
-                                        <select
-                                            value={selectedType}
-                                            onChange={(e) => setSelectedType(e.target.value)}
-                                            style={getStyles(theme).filterSelect}
-                                        >
-                                            <option value="">All Types</option>
-                                            <option value="forum">Forums</option>
-                                            <option value="topic">Topics</option>
-                                            <option value="thread">Threads</option>
-                                            <option value="post">Posts</option>
-                                        </select>
-                                    </div>
-                                    
-                                    <div style={getStyles(theme).filterGroup}>
-                                        <label style={getStyles(theme).filterLabel}>Search Text</label>
-                                        <input
-                                            type="text"
-                                            value={searchText}
-                                            onChange={(e) => setSearchText(e.target.value)}
-                                            placeholder="Search in titles and content..."
-                                            style={getStyles(theme).filterInput}
-                                        />
-                                    </div>
-                                    
-                                    {/* Filter Buttons */}
-                                    <div style={getStyles(theme).filterRow}>
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px', 
+                            marginBottom: '16px',
+                            paddingBottom: '12px',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <FaFilter size={14} style={{ color: feedPrimary }} />
+                            <span style={{ 
+                                fontSize: '0.9rem', 
+                                fontWeight: '600', 
+                                color: theme.colors.primaryText 
+                            }}>
+                                Filters
+                            </span>
+                            {(searchText || selectedCreator || selectedType || selectedSnsList.length > 0) && (
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    backgroundColor: feedPrimary,
+                                    color: 'white',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    fontWeight: '600'
+                                }}>
+                                    Active
+                                </span>
+                            )}
+                        </div>
+                        
+                        <div style={isNarrowScreen ? getStyles(theme).filterLayoutStacked : getStyles(theme).filterLayoutResponsive}>
+                            {/* Left Column: User, Type, Text */}
+                            <div style={getStyles(theme).filterLeftColumn}>
+                                <div style={getStyles(theme).filterGroup}>
+                                    <label style={getStyles(theme).filterLabel}>
+                                        <FaUser size={10} style={{ marginRight: '6px' }} />
+                                        User
+                                    </label>
+                                    <PrincipalInput
+                                        value={selectedCreator}
+                                        onChange={setSelectedCreator}
+                                        placeholder="Enter principal ID or search by name"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                
+                                <div style={getStyles(theme).filterGroup}>
+                                    <label style={getStyles(theme).filterLabel}>
+                                        <FaList size={10} style={{ marginRight: '6px' }} />
+                                        Type
+                                    </label>
+                                    <select
+                                        value={selectedType}
+                                        onChange={(e) => setSelectedType(e.target.value)}
+                                        style={getStyles(theme).filterSelect}
+                                    >
+                                        <option value="">All Types</option>
+                                        <option value="forum">🏛️ Forums</option>
+                                        <option value="topic">📂 Topics</option>
+                                        <option value="thread">💬 Threads</option>
+                                        <option value="post">✉️ Posts</option>
+                                    </select>
+                                </div>
+                                
+                                <div style={getStyles(theme).filterGroup}>
+                                    <label style={getStyles(theme).filterLabel}>
+                                        <FaSearch size={10} style={{ marginRight: '6px' }} />
+                                        Search Text
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={searchText}
+                                        onChange={(e) => setSearchText(e.target.value)}
+                                        placeholder="Search in titles and content..."
+                                        style={getStyles(theme).filterInput}
+                                    />
+                                </div>
+                                
+                                {/* Filter Buttons */}
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
                                         <button onClick={applyFilters} style={getStyles(theme).applyButton}>
                                             Apply Filters
                                         </button>
@@ -2214,7 +2280,7 @@ function Feed() {
                                     </div>
                                 )}
 
-                                {feedItems && feedItems.map(renderFeedItem)}
+                                {feedItems && feedItems.map((item, index) => renderFeedItem(item, index))}
                                 
                                 {/* Load More Older Items - Loading indicator or manual button */}
                                 {(loadingMore || (hasMore && !canAutoLoadOlder)) && (
