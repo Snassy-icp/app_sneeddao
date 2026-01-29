@@ -1410,6 +1410,7 @@ function SneedexOffers() {
                             marginBottom: '1.5rem'
                         }}>
                             <button
+                                type="button"
                                 className="sneedex-action-btn"
                                 style={{
                                     background: theme.colors.tertiaryBg,
@@ -1487,6 +1488,7 @@ function SneedexOffers() {
                                 borderRadius: '12px',
                             }}>
                                 <button
+                                    type="button"
                                     style={{
                                         padding: '10px 20px',
                                         borderRadius: '8px',
@@ -1507,6 +1509,7 @@ function SneedexOffers() {
                                     <FaGlobe /> Public Offers
                                 </button>
                                 <button
+                                    type="button"
                                     style={{
                                         padding: '10px 20px',
                                         borderRadius: '8px',
