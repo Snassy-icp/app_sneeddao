@@ -5,7 +5,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import useNeuronsCache from '../hooks/useNeuronsCache';
-import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
+import { HttpAgent } from '@dfinity/agent';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -62,9 +63,13 @@ const usersAccent = '#a78bfa'; // Light violet
 function Users() {
     const { theme } = useTheme();
     const { identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, snsLogo } = useSns();
+    const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    
+    // SNS logo state
+    const [snsLogo, setSnsLogo] = useState(null);
+    const [loadingLogo, setLoadingLogo] = useState(false);
     
     // Use the shared neurons cache hook
     const {
@@ -93,6 +98,36 @@ function Users() {
         if (!selectedSnsRoot) return null;
         return getSnsById(selectedSnsRoot);
     }, [selectedSnsRoot]);
+
+    // Fetch SNS logo when SNS changes
+    useEffect(() => {
+        const loadLogo = async () => {
+            if (!snsInfo) {
+                setSnsLogo(null);
+                return;
+            }
+            
+            setLoadingLogo(true);
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ host, ...(identity && { identity }) });
+                if (process.env.DFX_NETWORK !== 'ic') {
+                    await agent.fetchRootKey();
+                }
+                const logo = await fetchSnsLogo(snsInfo.canisters.governance, agent);
+                setSnsLogo(logo);
+            } catch (err) {
+                console.error('Error loading SNS logo:', err);
+                setSnsLogo(null);
+            } finally {
+                setLoadingLogo(false);
+            }
+        };
+        
+        loadLogo();
+    }, [snsInfo, identity]);
 
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
@@ -362,8 +397,16 @@ function Users() {
                                 borderRadius: '14px',
                                 overflow: 'hidden'
                             }}>
-                                {snsLogo ? (
-                                    <img src={snsLogo} alt="SNS" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {loadingLogo ? (
+                                    <div style={{
+                                        width: '100%', height: '100%',
+                                        background: theme.colors.tertiaryBg,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <span style={{ color: theme.colors.mutedText, animation: 'pulse 1.5s ease-in-out infinite' }}>...</span>
+                                    </div>
+                                ) : snsLogo ? (
+                                    <img src={snsLogo} alt={snsInfo?.name || 'SNS'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                     <div style={{
                                         width: '100%', height: '100%',
