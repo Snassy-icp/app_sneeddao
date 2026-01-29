@@ -755,15 +755,25 @@ export default function Me() {
 
     // Quick navigation items
     const quickNavItems = [
-        { icon: <FaWallet size={20} />, label: 'Wallet', to: '/wallet', color: mePrimary },
-        { icon: <FaComments size={20} />, label: 'Posts', to: '/posts', color: '#10b981' },
-        { icon: <FaCoins size={20} />, label: 'Tips', to: '/tips', color: '#f59e0b' },
-        { icon: <FaEnvelope size={20} />, label: 'Messages', to: '/sms', color: '#ec4899' },
-        { icon: <FaGift size={20} />, label: 'Rewards', to: '/rewards', color: '#8b5cf6' },
+        { icon: <FaWallet size={20} />, label: 'My Wallet', to: '/wallet', color: mePrimary },
+        { icon: <FaComments size={20} />, label: 'My Posts', to: '/posts', color: '#10b981' },
+        { icon: <FaCoins size={20} />, label: 'My Tips', to: '/tips', color: '#f59e0b' },
+        { icon: <FaEnvelope size={20} />, label: 'My Messages', to: '/sms', color: '#ec4899' },
+        { icon: <FaGift size={20} />, label: 'My Rewards', to: '/rewards', color: '#8b5cf6' },
         { icon: <FaLock size={20} />, label: 'My Locks', to: `/sneedlock_info?owner=${identity?.getPrincipal().toString()}`, color: '#06b6d4' },
-        { icon: <FaServer size={20} />, label: 'Canisters', to: '/canisters', color: '#14b8a6' },
-        { icon: <FaAddressBook size={20} />, label: 'Address Book', to: '/names', color: '#f97316' },
+        { icon: <FaServer size={20} />, label: 'My Canisters', to: '/canisters', color: '#14b8a6' },
+        { icon: <FaAddressBook size={20} />, label: 'My Contacts', to: '/names', color: '#f97316' },
     ];
+    
+    // Quick access expanded state (persisted)
+    const [quickAccessExpanded, setQuickAccessExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('quickAccessExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            return true;
+        }
+    });
 
     return (
         <div className='page-container'>
@@ -1000,15 +1010,25 @@ export default function Me() {
                 }}>
                     {/* Quick Navigation Grid */}
                     <div style={{ marginBottom: '2rem' }}>
-                        <h2 style={{
-                            color: theme.colors.primaryText,
-                            fontSize: '1.25rem',
-                            fontWeight: '600',
-                            marginBottom: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.75rem'
-                        }}>
+                        <h2 
+                            onClick={() => {
+                                const newValue = !quickAccessExpanded;
+                                setQuickAccessExpanded(newValue);
+                                localStorage.setItem('quickAccessExpanded', JSON.stringify(newValue));
+                            }}
+                            style={{
+                                color: theme.colors.primaryText,
+                                fontSize: '1.25rem',
+                                fontWeight: '600',
+                                marginBottom: quickAccessExpanded ? '1rem' : '0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.75rem',
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                transition: 'margin-bottom 0.3s ease'
+                            }}
+                        >
                             <span style={{
                                 width: '32px',
                                 height: '32px',
@@ -1016,9 +1036,17 @@ export default function Me() {
                                 background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                justifyContent: 'center',
+                                transition: 'transform 0.3s ease'
                             }}>
-                                <FaChevronRight size={14} color="white" />
+                                <FaChevronRight 
+                                    size={14} 
+                                    color="white" 
+                                    style={{
+                                        transition: 'transform 0.3s ease',
+                                        transform: quickAccessExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                                    }}
+                                />
                             </span>
                             Quick Access
                         </h2>
@@ -1026,7 +1054,11 @@ export default function Me() {
                         <div style={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                            gap: '0.75rem'
+                            gap: '0.75rem',
+                            maxHeight: quickAccessExpanded ? '500px' : '0',
+                            overflow: 'hidden',
+                            opacity: quickAccessExpanded ? 1 : 0,
+                            transition: 'max-height 0.3s ease, opacity 0.3s ease'
                         }}>
                             {quickNavItems.map((item, idx) => (
                                 <Link
