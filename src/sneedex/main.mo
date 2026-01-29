@@ -3084,22 +3084,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     
     /// Get all private offers visible to a specific principal
     /// (offers where the principal is the creator or in the approved_bidders list)
-    /// For creators: shows all states (Draft, PendingEscrow, Active)
-    /// For approved bidders: shows only Active offers
+    /// For creators: shows all states (including Draft, PendingEscrow for management)
+    /// For approved bidders: shows all states except Draft/PendingEscrow (so they can see completed/expired auctions)
     public query func getPrivateOffersFor(viewer : Principal) : async [T.Offer] {
         Array.filter<T.Offer>(offers, func(o : T.Offer) : Bool {
             switch (o.approved_bidders) {
                 case null { false }; // Public offer, not included
                 case (?approvedList) {
-                    // If viewer is creator, show Draft, PendingEscrow, and Active offers
+                    // If viewer is creator, show all states
                     if (Principal.equal(o.creator, viewer)) {
-                        o.state == #Draft or o.state == #PendingEscrow or o.state == #Active;
-                    } else if (o.state == #Active) {
-                        // For approved bidders (not creator), only show Active offers
-                        let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
-                        isApproved != null;
+                        true;
                     } else {
-                        false;
+                        // For approved bidders: show all states except Draft/PendingEscrow
+                        // (Draft/PendingEscrow are pre-activation states only the creator should see)
+                        if (o.state == #Draft or o.state == #PendingEscrow) {
+                            false;
+                        } else {
+                            let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
+                            isApproved != null;
+                        };
                     };
                 };
             };
@@ -3238,8 +3241,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             if (Principal.equal(offer.creator, viewer)) {
                                                 // Creator can see their private offers in any state
                                             } else {
-                                                // For non-creators, only show Active offers they're approved for
-                                                if (offer.state != #Active) return false;
+                                                // Approved bidders can see private offers they're approved for
+                                                // But not Draft/PendingEscrow (pre-activation states only creator should see)
+                                                if (offer.state == #Draft or offer.state == #PendingEscrow) return false;
                                                 let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
                                                 if (isApproved == null) return false;
                                             };
