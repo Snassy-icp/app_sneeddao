@@ -1220,6 +1220,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                         return displayValue.toFixed(displayValue < 10 ? 1 : 0).replace(/\.0$/, '');
                                     };
                                     
+                                    // Calculate additional reachable neurons (not hotkeyed)
+                                    const additionalNeuronsCount = allNeurons.length - hotkeyNeurons.length;
+                                    const hasAdditionalReachable = reachableVP > hotkeyedVP;
+                                    
                                     return (
                                         <>
                                             {/* Brain icon with SNS logo overlay - Your neurons label (desktop only) */}
@@ -1255,14 +1259,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 </span>
                                             </div>
                                             
-                                            {/* Hotkeyed neurons */}
+                                            {/* Hotkeyed neurons (hotkeyed + owned) */}
                                             <div 
                                                 style={{ 
                                                     display: 'flex', 
                                                     alignItems: 'center', 
                                                     gap: '4px'
                                                 }}
-                                                title="Neurons where you have hotkey permission - can vote on SNS proposals"
+                                                title="Hotkeyed and owned neurons - can vote on SNS proposals"
                                             >
                                                 <FaKey size={12} style={{ color: theme.colors.secondaryText }} />
                                                 {/* Desktop: full labels */}
@@ -1278,28 +1282,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 </span>
                                             </div>
                                             
-                                            {/* Reachable neurons */}
-                                            <div 
-                                                style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    gap: '4px'
-                                                }}
-                                                title="All neurons you can access (owned + hotkeyed) - for forum voting"
-                                            >
-                                                <FaHandPaper size={12} style={{ color: theme.colors.secondaryText }} />
-                                                {/* Desktop: full labels */}
-                                                <span className="hide-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
-                                                    {formatCompactVP(reachableVP)} VP
-                                                </span>
-                                                <span className="hide-on-narrow" style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
-                                                    reachable ({allNeurons.length})
-                                                </span>
-                                                {/* Mobile: compact */}
-                                                <span className="show-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
-                                                    {formatCompactVP(reachableVP)} VP ({allNeurons.length})
-                                                </span>
-                                            </div>
+                                            {/* Reachable neurons - only show if there are additional neurons beyond hotkeyed */}
+                                            {hasAdditionalReachable && (
+                                                <div 
+                                                    style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '4px'
+                                                    }}
+                                                    title="Additional neurons found by the same owner but not hotkeyed - for forum voting"
+                                                >
+                                                    <FaHandPaper size={12} style={{ color: theme.colors.secondaryText }} />
+                                                    {/* Desktop: full labels */}
+                                                    <span className="hide-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
+                                                        {formatCompactVP(reachableVP)} VP
+                                                    </span>
+                                                    <span className="hide-on-narrow" style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                        reachable (+{additionalNeuronsCount})
+                                                    </span>
+                                                    {/* Mobile: compact */}
+                                                    <span className="show-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
+                                                        {formatCompactVP(reachableVP)} VP (+{additionalNeuronsCount})
+                                                    </span>
+                                                </div>
+                                            )}
                                         </>
                                     );
                                 })()}
