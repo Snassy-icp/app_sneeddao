@@ -2353,8 +2353,8 @@ function SneedexOffer() {
                             bannerText = 'CANCELLED';
                             bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
                         } else if ('Reclaimed' in offer.state) {
-                            bannerText = 'RECLAIMED';
-                            bannerColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                            bannerText = 'EXPIRED';
+                            bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
                         }
                         
                         return bannerText ? (
