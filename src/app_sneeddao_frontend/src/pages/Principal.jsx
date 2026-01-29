@@ -19,7 +19,13 @@ import TransactionList from '../components/TransactionList';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
-import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired } from 'react-icons/fa';
+import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt } from 'react-icons/fa';
+
+// Helper to determine if a principal is a canister (shorter) or user (longer)
+const isCanisterPrincipal = (principalStr) => {
+    if (!principalStr) return false;
+    return principalStr.length <= 30;
+};
 
 // Custom CSS for animations
 const customStyles = `
@@ -690,7 +696,7 @@ export default function PrincipalPage() {
                         fontSize: '1.25rem',
                         fontWeight: '600'
                     }}>
-                        Search Principal
+                        Search Users
                     </h2>
                 </div>
                 {identity && (
@@ -737,8 +743,9 @@ export default function PrincipalPage() {
                             }
                         }
                     }}
-                    placeholder="Enter principal ID or search by name"
+                    placeholder="Search users by name or principal ID"
                     isAuthenticated={isAuthenticated}
+                    defaultPrincipalType="users"
                 />
             </div>
         </div>
@@ -879,14 +886,14 @@ export default function PrincipalPage() {
                             gap: '12px',
                             flexWrap: 'wrap'
                         }}>
-                            {snsInfo ? `${snsInfo.name}` : ''} Principal Explorer
+                            {snsInfo ? `${snsInfo.name}` : ''} User Explorer
                         </h1>
                         <p style={{ 
                             color: theme.colors.secondaryText, 
                             fontSize: '0.95rem', 
                             margin: '0.35rem 0 0 0' 
                         }}>
-                            Search for any principal to view their profile, neurons, posts, and transactions
+                            Search for any user to view their profile, neurons, posts, and transactions
                         </p>
                     </div>
                 </div>
@@ -1023,28 +1030,30 @@ export default function PrincipalPage() {
                                 marginBottom: '1.5rem'
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
-                                    {/* Avatar */}
-                                    <div style={{
-                                        width: '72px',
-                                        height: '72px',
-                                        minWidth: '72px',
-                                        borderRadius: '18px',
-                                        background: `linear-gradient(135deg, ${getPrincipalColor(stablePrincipalId.current.toString())}, ${getPrincipalColor(stablePrincipalId.current.toString())}aa)`,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        color: 'white',
-                                        fontSize: '1.75rem',
-                                        fontWeight: '700',
-                                        boxShadow: `0 4px 20px ${getPrincipalColor(stablePrincipalId.current.toString())}40`
-                                    }}>
-                                        {(principalInfo?.name || principalInfo?.nickname) 
-                                            ? (principalInfo?.name || principalInfo?.nickname)[0].toUpperCase() 
-                                            : <FaUser size={32} />}
-                                    </div>
+                                    {/* Avatar - show user or canister icon based on principal type */}
+                                    {(() => {
+                                        const principalStr = stablePrincipalId.current.toString();
+                                        const isCanister = isCanisterPrincipal(principalStr);
+                                        return (
+                                            <div style={{
+                                                width: '72px',
+                                                height: '72px',
+                                                minWidth: '72px',
+                                                borderRadius: isCanister ? '12px' : '18px',
+                                                background: `linear-gradient(135deg, ${getPrincipalColor(principalStr)}, ${getPrincipalColor(principalStr)}aa)`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: 'white',
+                                                boxShadow: `0 4px 20px ${getPrincipalColor(principalStr)}40`
+                                            }}>
+                                                {isCanister ? <FaCube size={32} /> : <FaUser size={32} />}
+                                            </div>
+                                        );
+                                    })()}
                                     
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        {/* Public Name */}
+                                        {/* Public Name / Canister Type Badge */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
                                             <h2 style={{ 
                                                 color: theme.colors.primaryText,
@@ -1053,8 +1062,24 @@ export default function PrincipalPage() {
                                                 fontWeight: '700',
                                                 lineHeight: '1.2'
                                             }}>
-                                                {principalInfo?.name || 'Anonymous'}
+                                                {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current.toString()) ? 'Canister' : 'Anonymous')}
                                             </h2>
+                                            {isCanisterPrincipal(stablePrincipalId.current.toString()) && (
+                                                <span style={{
+                                                    background: `${principalAccent}20`,
+                                                    color: principalAccent,
+                                                    padding: '4px 10px',
+                                                    borderRadius: '12px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}>
+                                                    <FaCube size={10} />
+                                                    Canister
+                                                </span>
+                                            )}
                                             {viewedUserIsPremium && !premiumLoading && (
                                                 <PremiumBadge size="small" />
                                             )}
@@ -1062,6 +1087,26 @@ export default function PrincipalPage() {
                                                 <FaCheckCircle size={16} color={theme.colors.success} title="Verified" />
                                             )}
                                         </div>
+                                        
+                                        {/* Link to /canister page for canisters */}
+                                        {isCanisterPrincipal(stablePrincipalId.current.toString()) && (
+                                            <Link
+                                                to={`/canister?id=${stablePrincipalId.current.toString()}`}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: principalPrimary,
+                                                    fontSize: '0.85rem',
+                                                    textDecoration: 'none',
+                                                    marginBottom: '8px',
+                                                    padding: '4px 0'
+                                                }}
+                                            >
+                                                <FaExternalLinkAlt size={10} />
+                                                View Canister Details
+                                            </Link>
+                                        )}
                                         
                                         {/* Private Nickname - only show if different from name */}
                                         {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (

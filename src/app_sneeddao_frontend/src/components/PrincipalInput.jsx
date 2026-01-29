@@ -4,6 +4,18 @@ import { Principal } from '@dfinity/principal';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { FaUser, FaCube } from 'react-icons/fa';
+
+// Helper to determine if a principal is a canister (shorter) or user (longer)
+// Canister principals are typically 27 chars, user principals are 63 chars
+const isCanisterPrincipal = (principalStr) => {
+    if (!principalStr) return false;
+    // Remove hyphens for length check
+    const cleaned = principalStr.replace(/-/g, '');
+    // Canisters typically have 10 characters (without hyphens), users have 56
+    // With hyphens: canisters ~27 chars, users ~63 chars
+    return principalStr.length <= 30;
+};
 
 const PrincipalInput = ({ 
     value = '', 
@@ -15,7 +27,8 @@ const PrincipalInput = ({
     autoFocus = false,
     disabled = false,
     isAuthenticated = false,
-    defaultTab = 'private' // 'private' | 'public' | 'all'
+    defaultTab = 'private', // 'private' | 'public' | 'all'
+    defaultPrincipalType = 'both' // 'users' | 'canisters' | 'both'
 }) => {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -24,6 +37,8 @@ const PrincipalInput = ({
     const [isValid, setIsValid] = useState(false);
     const [resolvedInfo, setResolvedInfo] = useState(null);
     const [activeTab, setActiveTab] = useState(defaultTab);
+    const [showUsers, setShowUsers] = useState(defaultPrincipalType === 'users' || defaultPrincipalType === 'both');
+    const [showCanisters, setShowCanisters] = useState(defaultPrincipalType === 'canisters' || defaultPrincipalType === 'both');
     const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
@@ -75,6 +90,11 @@ const PrincipalInput = ({
 
         allPrincipals.forEach(principalStr => {
             if (!principalStr || !principalStr.trim()) return; // Skip empty principals
+            
+            // Filter by principal type (user vs canister)
+            const isCanister = isCanisterPrincipal(principalStr);
+            if (isCanister && !showCanisters) return;
+            if (!isCanister && !showUsers) return;
             
             try {
                 const principal = Principal.fromText(principalStr);
@@ -149,7 +169,7 @@ const PrincipalInput = ({
         return results
             .sort((a, b) => b.score - a.score)
             .slice(0, 20);
-    }, [inputValue, principalNames, principalNicknames, activeTab]);
+    }, [inputValue, principalNames, principalNicknames, activeTab, showUsers, showCanisters]);
 
     // Validate input and resolve info
     useEffect(() => {
@@ -327,10 +347,11 @@ const PrincipalInput = ({
                         boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                     }}
                 >
-                    {/* Tabs */}
+                    {/* Tabs and Type Filters */}
                     <div style={{
                         display: 'flex',
-                        gap: '6px',
+                        alignItems: 'center',
+                        gap: '8px',
                         padding: '8px',
                         borderBottom: `1px solid ${theme.colors.border}`,
                         position: 'sticky',
@@ -338,32 +359,82 @@ const PrincipalInput = ({
                         backgroundColor: theme.colors.tertiaryBg,
                         zIndex: 1
                     }}>
-                        {[
-                            { key: 'private', label: 'Private' },
-                            { key: 'public', label: 'Public' },
-                            { key: 'all', label: 'All' }
-                        ].map(tab => (
+                        {/* Name Tabs */}
+                        <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                            {[
+                                { key: 'private', label: 'Private' },
+                                { key: 'public', label: 'Public' },
+                                { key: 'all', label: 'All' }
+                            ].map(tab => (
+                                <button
+                                    key={tab.key}
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => setActiveTab(tab.key)}
+                                    style={{
+                                        flex: 1,
+                                        padding: '5px 6px',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${activeTab === tab.key ? theme.colors.accent : theme.colors.border}`,
+                                        backgroundColor: activeTab === tab.key ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                                        color: activeTab === tab.key ? theme.colors.accent : theme.colors.mutedText,
+                                        cursor: 'pointer',
+                                        fontSize: '11px',
+                                        fontWeight: 600
+                                    }}
+                                    title={tab.label}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                        
+                        {/* Separator */}
+                        <div style={{ width: '1px', height: '20px', backgroundColor: theme.colors.border }} />
+                        
+                        {/* Type Filter Toggles */}
+                        <div style={{ display: 'flex', gap: '4px' }}>
                             <button
-                                key={tab.key}
                                 type="button"
-                                onMouseDown={(e) => e.preventDefault()} // keep focus on input
-                                onClick={() => setActiveTab(tab.key)}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => setShowUsers(!showUsers)}
                                 style={{
-                                    flex: 1,
-                                    padding: '6px 8px',
+                                    padding: '5px 8px',
                                     borderRadius: '6px',
-                                    border: `1px solid ${activeTab === tab.key ? theme.colors.accent : theme.colors.border}`,
-                                    backgroundColor: activeTab === tab.key ? `${theme.colors.accent}20` : theme.colors.primaryBg,
-                                    color: activeTab === tab.key ? theme.colors.accent : theme.colors.mutedText,
+                                    border: `1px solid ${showUsers ? theme.colors.accent : theme.colors.border}`,
+                                    backgroundColor: showUsers ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                                    color: showUsers ? theme.colors.accent : theme.colors.mutedText,
                                     cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: 600
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px'
                                 }}
-                                title={tab.label}
+                                title="Show users"
                             >
-                                {tab.label}
+                                <FaUser size={10} />
                             </button>
-                        ))}
+                            <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => setShowCanisters(!showCanisters)}
+                                style={{
+                                    padding: '5px 8px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${showCanisters ? theme.colors.accent : theme.colors.border}`,
+                                    backgroundColor: showCanisters ? `${theme.colors.accent}20` : theme.colors.primaryBg,
+                                    color: showCanisters ? theme.colors.accent : theme.colors.mutedText,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px'
+                                }}
+                                title="Show canisters"
+                            >
+                                <FaCube size={10} />
+                            </button>
+                        </div>
                     </div>
                     {searchResults.map((item, index) => (
                         <div

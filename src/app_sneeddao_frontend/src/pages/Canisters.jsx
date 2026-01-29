@@ -1579,6 +1579,7 @@ export default function CanistersPage() {
                                     style={{ flex: 1, minWidth: 0, maxWidth: 'none' }}
                                     inputStyle={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace' }}
                                     disabled={addingCanister}
+                                    defaultPrincipalType="canisters"
                                 />
                                 <button
                                     onClick={() => handleAddCanisterToGroup(group.id)}
@@ -2730,6 +2731,7 @@ export default function CanistersPage() {
                                     style={{ flex: 1, maxWidth: 'none' }}
                                     inputStyle={{ fontFamily: 'monospace' }}
                                     disabled={addingCanister}
+                                    defaultPrincipalType="canisters"
                                 />
                                 <button
                                     onClick={() => handleAddCanister()}
@@ -3221,6 +3223,7 @@ export default function CanistersPage() {
                                             style={{ flex: 1, maxWidth: 'none' }}
                                             inputStyle={{ fontFamily: 'monospace' }}
                                             disabled={addingWalletCanister}
+                                            defaultPrincipalType="canisters"
                                         />
                                         <button
                                             onClick={handleAddWalletCanister}
@@ -3651,6 +3654,7 @@ export default function CanistersPage() {
                                             style={{ flex: 1, maxWidth: 'none' }}
                                             inputStyle={{ fontFamily: 'monospace' }}
                                             disabled={addingManager}
+                                            defaultPrincipalType="canisters"
                                         />
                                         <button
                                             onClick={handleAddManager}

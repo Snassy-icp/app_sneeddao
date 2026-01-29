@@ -1442,8 +1442,9 @@ function Sns() {
                                                                     }}>
                                                                         {(() => {
                                                                             // Handle both data formats like SnsJailbreak does
-                                                                            const grantablePerms = selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0]?.permissions || 
-                                                                                                   selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.permissions || [];
+                                                                            const rawGrantable = selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions;
+                                                                            const grantablePerms = rawGrantable?.[0]?.permissions || rawGrantable?.permissions || [];
+                                                                            
                                                                             if (!grantablePerms || grantablePerms.length === 0) return null;
                                                                             
                                                                             return (
@@ -1454,11 +1455,11 @@ function Sns() {
                                                                                     </div>
                                                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                                                                                         {grantablePerms.map((perm, idx) => {
-                                                                                            // Convert to number (handles BigInt and regular numbers)
-                                                                                            const permNum = Number(perm);
+                                                                                            // Convert to number - handle int32 which comes as regular number
+                                                                                            const permNum = typeof perm === 'bigint' ? Number(perm) : (typeof perm === 'number' ? perm : parseInt(perm, 10));
                                                                                             const permInfo = PERMISSION_INFO[permNum];
-                                                                                            // Skip permission 0 (Unspecified) as it's not useful to display
-                                                                                            if (permNum === 0) return null;
+                                                                                            // Skip permission 0 (Unspecified) as it's not meaningful
+                                                                                            if (permNum === 0 || isNaN(permNum)) return null;
                                                                                             return (
                                                                                                 <span key={idx} style={{
                                                                                                     padding: '0.35rem 0.7rem',
