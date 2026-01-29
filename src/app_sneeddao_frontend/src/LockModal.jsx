@@ -61,7 +61,7 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, token, amo
                         fontWeight: '700',
                         margin: '0 0 8px 0'
                     }}>
-                        🎉 Lock Created!
+                        🔒 Lock Created!
                     </h3>
                     <p style={{
                         color: theme.colors.primaryText,
@@ -181,6 +181,13 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, token, amo
                 @keyframes scaleIn {
                     from { transform: scale(0.5); opacity: 0; }
                     to { transform: scale(1); opacity: 1; }
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+                .spin {
+                    animation: spin 1s linear infinite;
                 }
             `}</style>
         </div>

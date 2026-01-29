@@ -3286,13 +3286,19 @@ function Wallet() {
         }
     };
 
-    const handleAddLockPosition = async (position, expiry) => {
+    const handleAddLockPosition = async (position, expiry, onProgress) => {
         var result = { "Ok": true };
 
         const swapActor = createIcpSwapActor(position.swapCanisterId, { agentOptions: { identity } });
         const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok;
         const frontendOwnership = userPositionIds.includes(position.id);
+        
+        // Report whether transfer is needed (for progress tracking)
+        if (onProgress) onProgress('checkOwnership', { frontendOwnership });
+        
         if (frontendOwnership) {
+            // Report progress: transferring position
+            if (onProgress) onProgress('transferring');
 
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
 
@@ -3304,6 +3310,9 @@ function Wallet() {
                     position.id);
 
                 if (!result["err"]) {
+                    // Report progress: locking
+                    if (onProgress) onProgress('locking');
+                    
                     const expiryBig = BigInt(expiry) * (10n ** 6n);
                     result = await sneedLockActor.create_position_lock(
                         position.swapCanisterId,
@@ -3321,6 +3330,8 @@ function Wallet() {
                 result = { "Err": { "message": "Unable to claim position." } };
             }
         } else {
+            // Report progress: locking (position already in vault)
+            if (onProgress) onProgress('locking');
 
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
 

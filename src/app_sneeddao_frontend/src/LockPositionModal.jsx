@@ -60,7 +60,7 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, position, 
                         fontWeight: '700',
                         margin: '0 0 8px 0'
                     }}>
-                        🎉 Position Locked!
+                        🔒 Position Locked!
                     </h3>
                     <p style={{
                         color: theme.colors.primaryText,
@@ -109,8 +109,9 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, position, 
                     
                     {steps.map((step, index) => {
                         const isActive = index === currentStep;
-                        const isCompleted = index < currentStep;
+                        const isCompleted = index < currentStep || (isActive && step.preCompleted);
                         const isPending = index > currentStep;
+                        const showSpinner = isActive && !step.preCompleted;
                         
                         return (
                             <div key={index} style={{
@@ -135,12 +136,13 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, position, 
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     flexShrink: 0,
-                                    boxShadow: isActive ? `0 4px 16px ${lockPrimary}40` : 'none',
+                                    boxShadow: isActive && !step.preCompleted ? `0 4px 16px ${lockPrimary}40` : 
+                                               isCompleted ? `0 4px 16px ${successGreen}40` : 'none',
                                     transition: 'all 0.3s ease'
                                 }}>
                                     {isCompleted ? (
                                         <FaCheck color="white" size={16} />
-                                    ) : isActive ? (
+                                    ) : showSpinner ? (
                                         <FaSpinner className="spin" color="white" size={16} />
                                     ) : (
                                         step.icon
@@ -148,15 +150,15 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, position, 
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <div style={{
-                                        color: isActive ? theme.colors.primaryText : theme.colors.secondaryText,
-                                        fontWeight: isActive ? '600' : '500',
+                                        color: isActive || isCompleted ? theme.colors.primaryText : theme.colors.secondaryText,
+                                        fontWeight: isActive || isCompleted ? '600' : '500',
                                         fontSize: '0.95rem'
                                     }}>
                                         {step.label}
                                     </div>
-                                    {isActive && step.sublabel && (
+                                    {(isActive || isCompleted) && step.sublabel && (
                                         <div style={{
-                                            color: theme.colors.mutedText,
+                                            color: isCompleted ? successGreen : theme.colors.mutedText,
                                             fontSize: '0.8rem',
                                             marginTop: '2px'
                                         }}>
@@ -178,6 +180,13 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, position, 
                 @keyframes scaleIn {
                     from { transform: scale(0.5); opacity: 0; }
                     to { transform: scale(1); opacity: 1; }
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+                .spin {
+                    animation: spin 1s linear infinite;
                 }
             `}</style>
         </div>
@@ -343,18 +352,33 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                 setIsLoading(true);
                 setErrorText('');
                 
-                // Build progress steps based on whether payment is needed
-                const steps = [];
+                // We'll build steps dynamically as we learn about ownership
+                // Start with payment step if needed, then add transfer/ready and lock steps
+                let steps = [];
+                let stepIndex = 0;
+                const stepIndices = { payment: -1, transfer: -1, lock: -1 };
+                
                 if (needsPayment) {
+                    stepIndices.payment = stepIndex++;
                     steps.push({
                         label: 'Processing Payment',
                         sublabel: `Paying ${formatIcp(requiredFee)} fee`,
                         icon: <FaCreditCard color={theme.colors.mutedText} size={16} />
                     });
                 }
+                
+                // Add placeholder for transfer step - will be updated when we know ownership
+                stepIndices.transfer = stepIndex++;
+                steps.push({
+                    label: 'Checking Position...',
+                    sublabel: 'Verifying ownership',
+                    icon: <FaWallet color={theme.colors.mutedText} size={16} />
+                });
+                
+                stepIndices.lock = stepIndex++;
                 steps.push({
                     label: 'Creating Lock',
-                    sublabel: `Locking position #${liquidityPosition.id.toString()}`,
+                    sublabel: `Locking until ${dateToReadable(new Date(newLockPositionExpiry))}`,
                     icon: <FaLock color={theme.colors.mutedText} size={16} />
                 });
                 
@@ -371,11 +395,40 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                         setShowProgress(false);
                         return;
                     }
-                    // Move to next step
-                    setProgressStep(1);
+                    // Move to transfer step
+                    setProgressStep(stepIndices.transfer);
                 }
                 
-                const result = await onAddLockPosition(liquidityPosition, new Date(newLockPositionExpiry).getTime());
+                // Progress callback
+                const onProgress = (stage, data) => {
+                    if (stage === 'checkOwnership') {
+                        // Update the transfer step based on ownership
+                        const newSteps = [...steps];
+                        if (data.frontendOwnership) {
+                            newSteps[stepIndices.transfer] = {
+                                label: 'Transferring Position',
+                                sublabel: 'Moving to secure vault',
+                                icon: <FaWallet color={theme.colors.mutedText} size={16} />
+                            };
+                        } else {
+                            newSteps[stepIndices.transfer] = {
+                                label: 'Position Ready',
+                                sublabel: 'Already in vault',
+                                icon: <FaCheck color={theme.colors.mutedText} size={16} />,
+                                preCompleted: true
+                            };
+                        }
+                        steps = newSteps;
+                        setProgressSteps(newSteps);
+                        setProgressStep(stepIndices.transfer);
+                    } else if (stage === 'transferring') {
+                        setProgressStep(stepIndices.transfer);
+                    } else if (stage === 'locking') {
+                        setProgressStep(stepIndices.lock);
+                    }
+                };
+                
+                const result = await onAddLockPosition(liquidityPosition, new Date(newLockPositionExpiry).getTime(), onProgress);
                 if (result["Err"]) {
                     const error_text = result["Err"].message;
                     setErrorText(error_text);
