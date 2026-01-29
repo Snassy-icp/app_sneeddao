@@ -19,51 +19,6 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
 
-// Migration expression to add notify_on_private_invite field to existing notification settings
-(with migration = func (old : { 
-    var userNotificationSettings : [(Principal, {
-        notify_on_bid : Bool;
-        notify_on_outbid : Bool;
-        notify_on_sale : Bool;
-        notify_on_expiration : Bool;
-        notify_on_win : Bool;
-        notify_on_cancellation : Bool;
-    })] 
-}) : { var userNotificationSettings : [(Principal, T.NotificationSettings)] } {
-    {
-        var userNotificationSettings = Array.map<
-            (Principal, {
-                notify_on_bid : Bool;
-                notify_on_outbid : Bool;
-                notify_on_sale : Bool;
-                notify_on_expiration : Bool;
-                notify_on_win : Bool;
-                notify_on_cancellation : Bool;
-            }),
-            (Principal, T.NotificationSettings)
-        >(
-            old.userNotificationSettings,
-            func ((principal, settings) : (Principal, {
-                notify_on_bid : Bool;
-                notify_on_outbid : Bool;
-                notify_on_sale : Bool;
-                notify_on_expiration : Bool;
-                notify_on_win : Bool;
-                notify_on_cancellation : Bool;
-            })) : (Principal, T.NotificationSettings) {
-                (principal, {
-                    notify_on_bid = settings.notify_on_bid;
-                    notify_on_outbid = settings.notify_on_outbid;
-                    notify_on_sale = settings.notify_on_sale;
-                    notify_on_expiration = settings.notify_on_expiration;
-                    notify_on_win = settings.notify_on_win;
-                    notify_on_cancellation = settings.notify_on_cancellation;
-                    notify_on_private_invite = true; // Default new field to true
-                })
-            }
-        );
-    }
-})
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
