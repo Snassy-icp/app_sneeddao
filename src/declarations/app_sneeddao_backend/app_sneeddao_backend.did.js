@@ -29,11 +29,11 @@ export const idlFactory = ({ IDL }) => {
     'reason' : IDL.Text,
     'ban_timestamp' : IDL.Int,
   });
-  const Result_4 = IDL.Variant({
+  const Result_5 = IDL.Variant({
     'ok' : IDL.Vec(BanLogEntry),
     'err' : IDL.Text,
   });
-  const Result_8 = IDL.Variant({
+  const Result_9 = IDL.Variant({
     'ok' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Int)),
     'err' : IDL.Text,
   });
@@ -59,7 +59,7 @@ export const idlFactory = ({ IDL }) => {
     'groups' : IDL.Vec(CanisterGroup),
     'ungrouped' : IDL.Vec(IDL.Principal),
   });
-  const Result_7 = IDL.Variant({
+  const Result_8 = IDL.Variant({
     'ok' : IDL.Record({
       'controllers' : IDL.Vec(IDL.Principal),
       'module_hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
@@ -77,14 +77,14 @@ export const idlFactory = ({ IDL }) => {
     'neuron_id_hex' : IDL.Text,
     'config_id' : IDL.Nat,
   });
-  const Result_6 = IDL.Variant({
+  const Result_7 = IDL.Variant({
     'ok' : IDL.Record({
       'total' : IDL.Nat,
       'logs' : IDL.Vec(JailbreakPaymentLog),
     }),
     'err' : IDL.Text,
   });
-  const Result_5 = IDL.Variant({
+  const Result_6 = IDL.Variant({
     'ok' : IDL.Record({
       'total_scripts_created' : IDL.Nat,
       'premium_revenue_e8s' : IDL.Nat,
@@ -128,7 +128,8 @@ export const idlFactory = ({ IDL }) => {
     'id' : IDL.Opt(NeuronId),
     'permissions' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Vec(IDL.Int32))),
   });
-  const Result_3 = IDL.Variant({ 'ok' : IDL.Vec(Neuron), 'err' : IDL.Text });
+  const Result_4 = IDL.Variant({ 'ok' : IDL.Vec(Neuron), 'err' : IDL.Text });
+  const Result_3 = IDL.Variant({ 'ok' : WhitelistedToken, 'err' : IDL.Text });
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
   const Timestamp = IDL.Nat64;
@@ -211,8 +212,8 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Principal)],
         ['query'],
       ),
-    'get_ban_log' : IDL.Func([], [Result_4], ['query']),
-    'get_banned_users' : IDL.Func([], [Result_8], ['query']),
+    'get_ban_log' : IDL.Func([], [Result_5], ['query']),
+    'get_banned_users' : IDL.Func([], [Result_9], ['query']),
     'get_blacklisted_words' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'get_cached_token_meta' : IDL.Func(
         [IDL.Principal],
@@ -238,7 +239,7 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
-    'get_canister_info' : IDL.Func([IDL.Principal], [Result_7], []),
+    'get_canister_info' : IDL.Func([IDL.Principal], [Result_8], []),
     'get_jailbreak_fee_settings' : IDL.Func(
         [],
         [
@@ -254,10 +255,10 @@ export const idlFactory = ({ IDL }) => {
     'get_jailbreak_payment_balance' : IDL.Func([], [IDL.Nat], []),
     'get_jailbreak_payment_logs' : IDL.Func(
         [IDL.Nat, IDL.Nat],
-        [Result_6],
+        [Result_7],
         ['query'],
       ),
-    'get_jailbreak_payment_stats' : IDL.Func([], [Result_5], ['query']),
+    'get_jailbreak_payment_stats' : IDL.Func([], [Result_6], ['query']),
     'get_jailbreak_payment_subaccount' : IDL.Func(
         [],
         [IDL.Vec(IDL.Nat8)],
@@ -342,8 +343,8 @@ export const idlFactory = ({ IDL }) => {
     'get_projects' : IDL.Func([], [IDL.Vec(Project)], ['query']),
     'get_swap_canister_ids' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_tracked_canisters' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
-    'get_user_ban_history' : IDL.Func([IDL.Principal], [Result_4], ['query']),
-    'get_user_neurons' : IDL.Func([], [Result_3], []),
+    'get_user_ban_history' : IDL.Func([IDL.Principal], [Result_5], ['query']),
+    'get_user_neurons' : IDL.Func([], [Result_4], []),
     'get_user_tokens' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_whitelisted_tokens' : IDL.Func(
         [],
@@ -352,6 +353,18 @@ export const idlFactory = ({ IDL }) => {
       ),
     'import_whitelist_from_swaprunner' : IDL.Func([], [], []),
     'is_token_whitelisted' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+    'refresh_all_token_metadata' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'errors' : IDL.Vec(IDL.Text),
+            'success' : IDL.Nat,
+            'failed' : IDL.Nat,
+          }),
+        ],
+        [],
+      ),
+    'refresh_token_metadata' : IDL.Func([IDL.Principal], [Result_3], []),
     'register_ledger_canister_id' : IDL.Func([IDL.Principal], [], []),
     'register_swap_canister_id' : IDL.Func([IDL.Principal], [], []),
     'register_tracked_canister' : IDL.Func([IDL.Principal], [], []),

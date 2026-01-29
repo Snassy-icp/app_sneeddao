@@ -40,8 +40,8 @@ export interface AppSneedDaoBackend {
   >,
   'get_all_principal_nicknames' : ActorMethod<[], Array<[Principal, string]>>,
   'get_authorized_for_callers' : ActorMethod<[], Array<Principal>>,
-  'get_ban_log' : ActorMethod<[], Result_4>,
-  'get_banned_users' : ActorMethod<[], Result_8>,
+  'get_ban_log' : ActorMethod<[], Result_5>,
+  'get_banned_users' : ActorMethod<[], Result_9>,
   'get_blacklisted_words' : ActorMethod<[], Array<string>>,
   'get_cached_token_meta' : ActorMethod<[Principal], [] | [TokenMeta]>,
   'get_canister_groups' : ActorMethod<[], [] | [CanisterGroupsRoot]>,
@@ -56,7 +56,7 @@ export interface AppSneedDaoBackend {
       'max_canister_groups' : bigint,
     }
   >,
-  'get_canister_info' : ActorMethod<[Principal], Result_7>,
+  'get_canister_info' : ActorMethod<[Principal], Result_8>,
   'get_jailbreak_fee_settings' : ActorMethod<
     [],
     {
@@ -67,8 +67,8 @@ export interface AppSneedDaoBackend {
     }
   >,
   'get_jailbreak_payment_balance' : ActorMethod<[], bigint>,
-  'get_jailbreak_payment_logs' : ActorMethod<[bigint, bigint], Result_6>,
-  'get_jailbreak_payment_stats' : ActorMethod<[], Result_5>,
+  'get_jailbreak_payment_logs' : ActorMethod<[bigint, bigint], Result_7>,
+  'get_jailbreak_payment_stats' : ActorMethod<[], Result_6>,
   'get_jailbreak_payment_subaccount' : ActorMethod<[], Uint8Array | number[]>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_my_canister_groups_usage' : ActorMethod<
@@ -119,12 +119,17 @@ export interface AppSneedDaoBackend {
   'get_projects' : ActorMethod<[], Array<Project>>,
   'get_swap_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_tracked_canisters' : ActorMethod<[], Array<Principal>>,
-  'get_user_ban_history' : ActorMethod<[Principal], Result_4>,
-  'get_user_neurons' : ActorMethod<[], Result_3>,
+  'get_user_ban_history' : ActorMethod<[Principal], Result_5>,
+  'get_user_neurons' : ActorMethod<[], Result_4>,
   'get_user_tokens' : ActorMethod<[], Array<Principal>>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
+  'refresh_all_token_metadata' : ActorMethod<
+    [],
+    { 'errors' : Array<string>, 'success' : bigint, 'failed' : bigint }
+  >,
+  'refresh_token_metadata' : ActorMethod<[Principal], Result_3>,
   'register_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'register_swap_canister_id' : ActorMethod<[Principal], undefined>,
   'register_tracked_canister' : ActorMethod<[Principal], undefined>,
@@ -292,11 +297,13 @@ export type Result_1 = { 'ok' : string } |
   { 'err' : string };
 export type Result_2 = { 'ok' : null } |
   { 'err' : string };
-export type Result_3 = { 'ok' : Array<Neuron> } |
+export type Result_3 = { 'ok' : WhitelistedToken } |
   { 'err' : string };
-export type Result_4 = { 'ok' : Array<BanLogEntry> } |
+export type Result_4 = { 'ok' : Array<Neuron> } |
   { 'err' : string };
-export type Result_5 = {
+export type Result_5 = { 'ok' : Array<BanLogEntry> } |
+  { 'err' : string };
+export type Result_6 = {
     'ok' : {
       'total_scripts_created' : bigint,
       'premium_revenue_e8s' : bigint,
@@ -308,18 +315,18 @@ export type Result_5 = {
     }
   } |
   { 'err' : string };
-export type Result_6 = {
+export type Result_7 = {
     'ok' : { 'total' : bigint, 'logs' : Array<JailbreakPaymentLog> }
   } |
   { 'err' : string };
-export type Result_7 = {
+export type Result_8 = {
     'ok' : {
       'controllers' : Array<Principal>,
       'module_hash' : [] | [Uint8Array | number[]],
     }
   } |
   { 'err' : string };
-export type Result_8 = { 'ok' : Array<[Principal, bigint]> } |
+export type Result_9 = { 'ok' : Array<[Principal, bigint]> } |
   { 'err' : string };
 export type Timestamp = bigint;
 export interface TokenMeta {

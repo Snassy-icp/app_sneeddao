@@ -58,7 +58,7 @@ type TokenMeta =
                };
  };
 type Timestamp = nat64;
-type Result_8 = 
+type Result_9 = 
  variant {
    err: text;
    ok: vec record {
@@ -66,7 +66,7 @@ type Result_8 =
              int;
            };
  };
-type Result_7 = 
+type Result_8 = 
  variant {
    err: text;
    ok: record {
@@ -74,7 +74,7 @@ type Result_7 =
          module_hash: opt blob;
        };
  };
-type Result_6 = 
+type Result_7 = 
  variant {
    err: text;
    ok: record {
@@ -82,7 +82,7 @@ type Result_6 =
          total: nat;
        };
  };
-type Result_5 = 
+type Result_6 = 
  variant {
    err: text;
    ok:
@@ -96,15 +96,20 @@ type Result_5 =
       unique_users: nat;
     };
  };
-type Result_4 = 
+type Result_5 = 
  variant {
    err: text;
    ok: vec BanLogEntry;
  };
-type Result_3 = 
+type Result_4 = 
  variant {
    err: text;
    ok: vec Neuron;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: WhitelistedToken;
  };
 type Result_2 = 
  variant {
@@ -259,8 +264,8 @@ type AppSneedDaoBackend =
                                              text;
                                            }) query;
    get_authorized_for_callers: () -> (vec principal) query;
-   get_ban_log: () -> (Result_4) query;
-   get_banned_users: () -> (Result_8) query;
+   get_ban_log: () -> (Result_5) query;
+   get_banned_users: () -> (Result_9) query;
    get_blacklisted_words: () -> (vec text) query;
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
@@ -274,7 +279,7 @@ type AppSneedDaoBackend =
        premium_max_canisters_per_group: nat;
        premium_max_total_grouped_canisters: nat;
      }) query;
-   get_canister_info: (canister_id: principal) -> (Result_7);
+   get_canister_info: (canister_id: principal) -> (Result_8);
    get_jailbreak_fee_settings: () ->
     (record {
        fee_account_owner: opt principal;
@@ -283,8 +288,8 @@ type AppSneedDaoBackend =
        fee_regular_e8s: nat;
      }) query;
    get_jailbreak_payment_balance: () -> (nat);
-   get_jailbreak_payment_logs: (offset: nat, limit: nat) -> (Result_6) query;
-   get_jailbreak_payment_stats: () -> (Result_5) query;
+   get_jailbreak_payment_logs: (offset: nat, limit: nat) -> (Result_7) query;
+   get_jailbreak_payment_stats: () -> (Result_6) query;
    get_jailbreak_payment_subaccount: () -> (blob) query;
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->
@@ -335,12 +340,19 @@ type AppSneedDaoBackend =
    get_projects: () -> (vec Project) query;
    get_swap_canister_ids: () -> (vec principal) query;
    get_tracked_canisters: () -> (vec principal) query;
-   get_user_ban_history: (user: principal) -> (Result_4) query;
-   get_user_neurons: () -> (Result_3);
+   get_user_ban_history: (user: principal) -> (Result_5) query;
+   get_user_neurons: () -> (Result_4);
    get_user_tokens: () -> (vec principal) query;
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
+   refresh_all_token_metadata: () ->
+    (record {
+       errors: vec text;
+       failed: nat;
+       success: nat;
+     });
+   refresh_token_metadata: (ledger_id: principal) -> (Result_3);
    register_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    register_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
    register_tracked_canister: (canister_id: principal) -> ();

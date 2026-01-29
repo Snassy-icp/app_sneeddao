@@ -47,6 +47,16 @@ export default function TokensAdmin() {
     // Remove token state
     const [removingToken, setRemovingToken] = useState(null);
     
+    // Refresh single token state
+    const [selectedRefreshToken, setSelectedRefreshToken] = useState('');
+    const [customRefreshLedger, setCustomRefreshLedger] = useState('');
+    const [refreshingSingle, setRefreshingSingle] = useState(false);
+    const [singleRefreshResult, setSingleRefreshResult] = useState(null);
+    
+    // Refresh all tokens state
+    const [refreshingAll, setRefreshingAll] = useState(false);
+    const [refreshAllResult, setRefreshAllResult] = useState(null);
+    
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
@@ -269,6 +279,77 @@ export default function TokensAdmin() {
                 }
             }
         );
+    };
+    
+    // Refresh single token metadata
+    const handleRefreshSingleToken = async () => {
+        // Use custom ledger if provided, otherwise use selected token
+        const ledgerToRefresh = customRefreshLedger.trim() || selectedRefreshToken;
+        if (!ledgerToRefresh) return;
+        
+        setRefreshingSingle(true);
+        setSingleRefreshResult(null);
+        
+        try {
+            const principal = Principal.fromText(ledgerToRefresh);
+            const actor = getBackendActor();
+            const result = await actor.refresh_token_metadata(principal);
+            
+            if ('ok' in result) {
+                const token = result.ok;
+                setSingleRefreshResult({
+                    success: true,
+                    message: `Successfully refreshed metadata for ${token.symbol} (${token.name})`
+                });
+                // Refresh the list to show updated metadata
+                await fetchTokens();
+                // Clear inputs
+                setCustomRefreshLedger('');
+                setSelectedRefreshToken('');
+            } else {
+                setSingleRefreshResult({
+                    success: false,
+                    message: result.err || 'Unknown error'
+                });
+            }
+        } catch (err) {
+            console.error('Error refreshing token metadata:', err);
+            setSingleRefreshResult({
+                success: false,
+                message: err.message || 'Invalid canister ID or failed to refresh'
+            });
+        } finally {
+            setRefreshingSingle(false);
+        }
+    };
+    
+    // Refresh all whitelisted tokens metadata
+    const handleRefreshAllTokens = async () => {
+        setRefreshingAll(true);
+        setRefreshAllResult(null);
+        
+        try {
+            const actor = getBackendActor();
+            const result = await actor.refresh_all_token_metadata();
+            
+            setRefreshAllResult({
+                success: result.failed === 0n || result.failed === 0,
+                message: `Refreshed ${result.success} tokens successfully. ${result.failed} failed.`,
+                errors: result.errors || []
+            });
+            
+            // Refresh the list to show updated metadata
+            await fetchTokens();
+        } catch (err) {
+            console.error('Error refreshing all token metadata:', err);
+            setRefreshAllResult({
+                success: false,
+                message: `Failed to refresh: ${err.message || 'Unknown error'}`,
+                errors: []
+            });
+        } finally {
+            setRefreshingAll(false);
+        }
     };
     
     // Filter tokens by search term
@@ -543,6 +624,159 @@ export default function TokensAdmin() {
                             }}>
                                 {importResult.success ? <FaCheckCircle /> : <FaExclamationTriangle />}
                                 {importResult.message}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Refresh Token Metadata Section */}
+                    <div style={styles.section}>
+                        <h2 style={styles.sectionTitle}>
+                            <FaSync /> Refresh Token Metadata
+                        </h2>
+                        <p style={{ color: theme.colors.secondaryText, marginBottom: '16px' }}>
+                            Refresh metadata (name, symbol, decimals, fee) for a specific token by selecting from the whitelist or entering a custom ledger ID.
+                        </p>
+                        
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '16px' }}>
+                            <div style={{ flex: 1, minWidth: '250px' }}>
+                                <label style={{ display: 'block', color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '6px' }}>
+                                    Select from whitelist:
+                                </label>
+                                <select
+                                    value={selectedRefreshToken}
+                                    onChange={(e) => {
+                                        setSelectedRefreshToken(e.target.value);
+                                        setCustomRefreshLedger('');
+                                        setSingleRefreshResult(null);
+                                    }}
+                                    style={{
+                                        ...styles.input,
+                                        cursor: 'pointer',
+                                    }}
+                                    disabled={customRefreshLedger.trim()}
+                                >
+                                    <option value="">-- Select a token --</option>
+                                    {tokens.map((token) => (
+                                        <option key={token.ledger_id.toString()} value={token.ledger_id.toString()}>
+                                            {token.symbol} - {token.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', color: theme.colors.mutedText, paddingTop: '24px' }}>
+                                OR
+                            </div>
+                            <div style={{ flex: 1, minWidth: '250px' }}>
+                                <label style={{ display: 'block', color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '6px' }}>
+                                    Enter custom ledger ID:
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., ryjl3-tyaaa-aaaaa-aaaba-cai"
+                                    value={customRefreshLedger}
+                                    onChange={(e) => {
+                                        setCustomRefreshLedger(e.target.value);
+                                        setSelectedRefreshToken('');
+                                        setSingleRefreshResult(null);
+                                    }}
+                                    style={styles.input}
+                                />
+                            </div>
+                            <div style={{ paddingTop: '24px' }}>
+                                <button
+                                    onClick={handleRefreshSingleToken}
+                                    style={{ ...styles.button, ...styles.primaryButton }}
+                                    disabled={refreshingSingle || (!selectedRefreshToken && !customRefreshLedger.trim())}
+                                >
+                                    {refreshingSingle ? (
+                                        <>
+                                            <FaSpinner className="spin" /> Refreshing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FaSync /> Refresh Metadata
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {singleRefreshResult && (
+                            <div style={{
+                                ...styles.importResult,
+                                backgroundColor: singleRefreshResult.success 
+                                    ? 'rgba(46, 204, 113, 0.1)' 
+                                    : 'rgba(231, 76, 60, 0.1)',
+                                border: `1px solid ${singleRefreshResult.success ? '#2ecc71' : '#e74c3c'}`,
+                                color: singleRefreshResult.success ? '#2ecc71' : '#e74c3c',
+                            }}>
+                                {singleRefreshResult.success ? <FaCheckCircle /> : <FaExclamationTriangle />}
+                                {singleRefreshResult.message}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Refresh All Tokens Section */}
+                    <div style={styles.section}>
+                        <h2 style={styles.sectionTitle}>
+                            <FaSync /> Refresh All Token Metadata
+                        </h2>
+                        <p style={{ color: theme.colors.secondaryText, marginBottom: '16px' }}>
+                            Refresh metadata for all {tokens.length} whitelisted tokens. This may take some time depending on the number of tokens.
+                        </p>
+                        <button
+                            onClick={handleRefreshAllTokens}
+                            style={{ ...styles.button, ...styles.secondaryButton }}
+                            disabled={refreshingAll || tokens.length === 0}
+                        >
+                            {refreshingAll ? (
+                                <>
+                                    <FaSpinner className="spin" /> Refreshing {tokens.length} tokens...
+                                </>
+                            ) : (
+                                <>
+                                    <FaSync /> Refresh All Tokens
+                                </>
+                            )}
+                        </button>
+                        
+                        {refreshAllResult && (
+                            <div style={{
+                                ...styles.importResult,
+                                backgroundColor: refreshAllResult.success 
+                                    ? 'rgba(46, 204, 113, 0.1)' 
+                                    : 'rgba(231, 76, 60, 0.1)',
+                                border: `1px solid ${refreshAllResult.success ? '#2ecc71' : '#e74c3c'}`,
+                                color: refreshAllResult.success ? '#2ecc71' : '#e74c3c',
+                            }}>
+                                {refreshAllResult.success ? <FaCheckCircle /> : <FaExclamationTriangle />}
+                                {refreshAllResult.message}
+                            </div>
+                        )}
+                        
+                        {refreshAllResult && refreshAllResult.errors && refreshAllResult.errors.length > 0 && (
+                            <div style={{
+                                marginTop: '12px',
+                                padding: '12px',
+                                backgroundColor: theme.colors.tertiaryBg,
+                                borderRadius: '8px',
+                                maxHeight: '200px',
+                                overflow: 'auto',
+                            }}>
+                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '8px' }}>
+                                    Failed tokens:
+                                </div>
+                                {refreshAllResult.errors.map((error, idx) => (
+                                    <div key={idx} style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.8rem', 
+                                        fontFamily: 'monospace',
+                                        padding: '4px 0',
+                                        borderBottom: idx < refreshAllResult.errors.length - 1 ? `1px solid ${theme.colors.border}` : 'none'
+                                    }}>
+                                        {error}
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>

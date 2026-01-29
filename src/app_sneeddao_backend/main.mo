@@ -63,6 +63,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     standard: Text;
   };
 
+  // ICRC1 metadata types for ledger queries
+  type ICRC1MetadataValue = {
+    #Int : Int;
+    #Nat : Nat;
+    #Blob : Blob;
+    #Text : Text;
+  };
+
   // Ban types
   type BanLogEntry = {
     user: Principal;
@@ -680,6 +688,114 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case _ { /* Skip tokens with missing required metadata */ };
       };
     };
+  };
+
+  // Helper function to parse ICRC1 metadata
+  private func parseICRC1Metadata(metadata: [(Text, ICRC1MetadataValue)]) : { symbol: ?Text; name: ?Text; decimals: ?Nat8; fee: ?Nat } {
+    var symbol : ?Text = null;
+    var name : ?Text = null;
+    var decimals : ?Nat8 = null;
+    var fee : ?Nat = null;
+    
+    for ((key, value) in metadata.vals()) {
+      switch (key, value) {
+        case ("icrc1:symbol", #Text(v)) { symbol := ?v };
+        case ("icrc1:name", #Text(v)) { name := ?v };
+        case ("icrc1:decimals", #Nat(v)) { decimals := ?Nat8.fromNat(v) };
+        case ("icrc1:fee", #Nat(v)) { fee := ?v };
+        case _ {};
+      };
+    };
+    
+    { symbol; name; decimals; fee };
+  };
+
+  // Refresh metadata for a single token
+  public shared ({ caller }) func refresh_token_metadata(ledger_id: Principal) : async Result.Result<WhitelistedToken, Text> {
+    assert(is_admin(caller));
+    
+    // Create actor reference for the ledger
+    let ledger = actor(Principal.toText(ledger_id)) : actor {
+      icrc1_metadata : shared query () -> async [(Text, ICRC1MetadataValue)];
+    };
+    
+    try {
+      let metadata = await ledger.icrc1_metadata();
+      let parsed = parseICRC1Metadata(metadata);
+      
+      switch (parsed.decimals, parsed.fee, parsed.name, parsed.symbol) {
+        case (?decimals, ?fee, ?name, ?symbol) {
+          // Determine standard - check if already whitelisted to preserve, otherwise default to ICRC1
+          let existingToken = whitelisted_tokens.get(ledger_id);
+          let standard = switch (existingToken) {
+            case (?t) { t.standard };
+            case null { "ICRC1" };
+          };
+          
+          let token : WhitelistedToken = {
+            ledger_id = ledger_id;
+            decimals = decimals;
+            fee = fee;
+            name = name;
+            symbol = symbol;
+            standard = standard;
+          };
+          whitelisted_tokens.put(ledger_id, token);
+          #ok(token);
+        };
+        case _ {
+          #err("Failed to parse required metadata fields (symbol, name, decimals, fee)");
+        };
+      };
+    } catch (e) {
+      #err("Failed to fetch metadata: " # Error.message(e));
+    };
+  };
+
+  // Refresh metadata for all whitelisted tokens
+  public shared ({ caller }) func refresh_all_token_metadata() : async { success: Nat; failed: Nat; errors: [Text] } {
+    assert(is_admin(caller));
+    
+    var successCount : Nat = 0;
+    var failedCount : Nat = 0;
+    let errorBuffer = Buffer.Buffer<Text>(10);
+    
+    let tokensList = Iter.toArray(whitelisted_tokens.vals());
+    
+    for (token in tokensList.vals()) {
+      let ledger = actor(Principal.toText(token.ledger_id)) : actor {
+        icrc1_metadata : shared query () -> async [(Text, ICRC1MetadataValue)];
+      };
+      
+      try {
+        let metadata = await ledger.icrc1_metadata();
+        let parsed = parseICRC1Metadata(metadata);
+        
+        switch (parsed.decimals, parsed.fee, parsed.name, parsed.symbol) {
+          case (?decimals, ?fee, ?name, ?symbol) {
+            let updatedToken : WhitelistedToken = {
+              ledger_id = token.ledger_id;
+              decimals = decimals;
+              fee = fee;
+              name = name;
+              symbol = symbol;
+              standard = token.standard;
+            };
+            whitelisted_tokens.put(token.ledger_id, updatedToken);
+            successCount += 1;
+          };
+          case _ {
+            failedCount += 1;
+            errorBuffer.add(Principal.toText(token.ledger_id) # ": Missing required metadata fields");
+          };
+        };
+      } catch (e) {
+        failedCount += 1;
+        errorBuffer.add(Principal.toText(token.ledger_id) # ": " # Error.message(e));
+      };
+    };
+    
+    { success = successCount; failed = failedCount; errors = Buffer.toArray(errorBuffer) };
   };
 
   public shared ({ caller }) func send_tokens(icrc1_ledger_canister_id: Principal, amount: Nat, to: Principal) : async T.TransferResult {
