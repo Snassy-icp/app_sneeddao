@@ -76,6 +76,7 @@ function Neuron() {
     const [currentNeuronId, setCurrentNeuronId] = useState(searchParams.get('neuronid') || '');
     const [snsList, setSnsList] = useState([]);
     const [neuronData, setNeuronData] = useState(null);
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [votingHistory, setVotingHistory] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -1036,39 +1037,44 @@ function Neuron() {
 
                 {/* Main Content */}
                 <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem' }}>
-                    {/* Search Section */}
-                    <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.1s' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                            <div style={{
-                                width: '36px', height: '36px', borderRadius: '10px',
-                                background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: neuronPrimary
-                            }}>
-                                <FaSearch size={16} />
+                    {/* Search Section - only show when searching or no neuron data */}
+                    {(isSearchFocused || !neuronData) && (
+                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.1s' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                                <div style={{
+                                    width: '36px', height: '36px', borderRadius: '10px',
+                                    background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: neuronPrimary
+                                }}>
+                                    <FaSearch size={16} />
+                                </div>
+                                <h2 style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600', margin: 0 }}>
+                                    Search Neuron
+                                </h2>
                             </div>
-                            <h2 style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600', margin: 0 }}>
-                                Search Neuron
-                            </h2>
-                        </div>
-                        <div style={{ maxWidth: '500px' }}>
-                            <NeuronInput
-                                value={neuronIdInput}
-                                onChange={setNeuronIdInput}
-                                placeholder="Enter neuron ID or search by name/nickname"
-                                snsRoot={selectedSnsRoot}
-                                defaultTab="all"
-                            />
-                        </div>
-                        {error && (
-                            <div style={{
-                                marginTop: '1rem', padding: '0.75rem 1rem', borderRadius: '8px',
-                                background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`,
-                                color: theme.colors.error, fontSize: '0.9rem'
-                            }}>
-                                {error}
+                            <div style={{ maxWidth: '500px' }}>
+                                <NeuronInput
+                                    value={neuronIdInput}
+                                    onChange={setNeuronIdInput}
+                                    placeholder="Enter neuron ID or search by name/nickname"
+                                    snsRoot={selectedSnsRoot}
+                                    defaultTab="all"
+                                    onFocus={() => setIsSearchFocused(true)}
+                                    onBlur={() => setIsSearchFocused(false)}
+                                    autoFocus={isSearchFocused && !!neuronData}
+                                />
                             </div>
-                        )}
-                    </div>
+                            {error && (
+                                <div style={{
+                                    marginTop: '1rem', padding: '0.75rem 1rem', borderRadius: '8px',
+                                    background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`,
+                                    color: theme.colors.error, fontSize: '0.9rem'
+                                }}>
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Loading State */}
                     {loading && (
@@ -1086,11 +1092,34 @@ function Neuron() {
                         </div>
                     )}
 
-                    {/* Neuron Data */}
-                    {neuronData && !loading && (
+                    {/* Neuron Data - hide when search is focused */}
+                    {neuronData && !loading && !isSearchFocused && (
                         <>
                             {/* Neuron Identity Card */}
                             <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.2s' }}>
+                                {/* Search different neuron button */}
+                                <button
+                                    onClick={() => setIsSearchFocused(true)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                        background: 'none', border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px', padding: '0.5rem 0.75rem',
+                                        color: theme.colors.secondaryText, cursor: 'pointer',
+                                        fontSize: '0.85rem', marginBottom: '1rem',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.borderColor = neuronPrimary;
+                                        e.target.style.color = neuronPrimary;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.borderColor = theme.colors.border;
+                                        e.target.style.color = theme.colors.secondaryText;
+                                    }}
+                                >
+                                    <FaSearch size={12} /> Search different neuron
+                                </button>
+                                
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
                                     <div style={{ flex: 1, minWidth: '200px' }}>
                                         {/* Name/Nickname */}

@@ -12,7 +12,10 @@ const NeuronInput = ({
     style = {},
     disabled = false,
     snsRoot = null,
-    defaultTab = 'private' // 'private' | 'public' | 'all'
+    defaultTab = 'private', // 'private' | 'public' | 'all'
+    onFocus: onFocusCallback,
+    onBlur: onBlurCallback,
+    autoFocus = false
 }) => {
     const { theme } = useTheme();
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
@@ -245,6 +248,7 @@ const NeuronInput = ({
         if (inputValue.trim()) {
             setShowDropdown(true);
         }
+        onFocusCallback?.();
     };
 
     // Handle input blur
@@ -253,6 +257,7 @@ const NeuronInput = ({
         setTimeout(() => {
             if (!dropdownRef.current?.contains(e.relatedTarget)) {
                 setShowDropdown(false);
+                onBlurCallback?.();
             }
         }, 150);
     };
@@ -291,6 +296,7 @@ const NeuronInput = ({
                 onBlur={handleBlur}
                 placeholder={placeholder}
                 disabled={disabled}
+                autoFocus={autoFocus}
                 style={{
                     width: '100%',
                     padding: '8px 12px',
