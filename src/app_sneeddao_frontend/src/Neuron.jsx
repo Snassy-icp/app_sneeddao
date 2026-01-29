@@ -1170,6 +1170,15 @@ function Neuron() {
                                 const symbol = tokenSymbol || selectedSns?.name || 'SNS';
                                 const now = Math.floor(Date.now() / 1000);
                                 
+                                // Smart number formatter - removes unnecessary trailing zeros
+                                const formatTokenAmount = (e8s) => {
+                                    const value = Number(e8s) / 100_000_000;
+                                    if (value === 0) return '0';
+                                    // Use up to 8 decimals, but trim trailing zeros
+                                    const formatted = value.toFixed(8);
+                                    return formatted.replace(/\.?0+$/, '');
+                                };
+                                
                                 // Calculate age from aging_since_timestamp_seconds
                                 const agingSince = Number(neuronData.aging_since_timestamp_seconds || 0);
                                 const ageSeconds = agingSince > 0 && agingSince < now ? now - agingSince : 0;
@@ -1213,28 +1222,38 @@ function Neuron() {
                                     }
                                 }
                                 
-                                const totalBonusPct = dissolveBonusPct + ageBonusPct;
+                                // Total bonus is MULTIPLICATIVE: (1 + dissolve%) * (1 + age%) - 1
+                                // NOT additive like dissolve% + age%
+                                const totalBonusPct = ((1 + dissolveBonusPct / 100) * (1 + ageBonusPct / 100) - 1) * 100;
+                                const maxTotalBonusPct = ((1 + maxDissolveBonusPct / 100) * (1 + maxAgeBonusPct / 100) - 1) * 100;
                                 
-                                // Maturity breakdown
-                                const normalMaturity = Number(neuronData.maturity_e8s_equivalent || 0);
+                                // Neuron fees (from failed proposals, etc.) - deducted from stake when disbursing
+                                const neuronFees = Number(neuronData.neuron_fees_e8s || 0);
+                                
+                                // Actual stake after fees (this is what you'll receive when disbursing)
+                                const cachedStakeE8s = Number(neuronData.cached_neuron_stake_e8s || 0);
+                                const actualStakeE8s = cachedStakeE8s - neuronFees;
+                                
+                                // Maturity breakdown - always show all three types
+                                const availableMaturity = Number(neuronData.maturity_e8s_equivalent || 0);
                                 const stakedMaturity = neuronData.staked_maturity_e8s_equivalent?.[0] ? Number(neuronData.staked_maturity_e8s_equivalent[0]) : 0;
                                 const disbursingMaturity = (neuronData.disburse_maturity_in_progress || [])
                                     .reduce((sum, d) => sum + Number(d.amount_e8s || 0), 0);
-                                const totalMaturity = normalMaturity + stakedMaturity + disbursingMaturity;
+                                const totalMaturity = availableMaturity + stakedMaturity + disbursingMaturity;
                                 
-                                // Total value
-                                const stakedE8s = Number(neuronData.cached_neuron_stake_e8s || 0);
-                                const totalValue = stakedE8s + totalMaturity;
+                                // Total value (actual stake + all maturity)
+                                const totalValue = actualStakeE8s + totalMaturity;
                                 
-                                // Voting power multiplier
-                                const vpMultiplier = Number(neuronData.voting_power_percentage_multiplier || 100);
+                                // Voting power multiplier (base multiplier, usually 100%)
+                                const baseVpMultiplier = Number(neuronData.voting_power_percentage_multiplier || 100);
+                                // Effective multiplier including bonuses
+                                const effectiveMultiplier = (baseVpMultiplier / 100) * (1 + totalBonusPct / 100) * 100;
                                 
                                 // Creation date
                                 const createdTimestamp = neuronData.created_timestamp_seconds ? Number(neuronData.created_timestamp_seconds) : null;
                                 const createdDate = createdTimestamp ? new Date(createdTimestamp * 1000) : null;
                                 
                                 // Additional neuron properties
-                                const neuronFees = Number(neuronData.neuron_fees_e8s || 0);
                                 const autoStakeMaturity = neuronData.auto_stake_maturity?.[0] || false;
                                 const vestingPeriod = neuronData.vesting_period_seconds?.[0] ? Number(neuronData.vesting_period_seconds[0]) : 0;
                                 const sourceNnsNeuronId = neuronData.source_nns_neuron_id?.[0] ? neuronData.source_nns_neuron_id[0].toString() : null;
@@ -1265,29 +1284,32 @@ function Neuron() {
                                                 ) : (
                                                     <FaCoins size={14} style={{ color: neuronGold }} />
                                                 )}
-                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stake</span>
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Staked</span>
                                             </div>
                                             <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
-                                                {formatE8s(stakedE8s)} <span style={{ fontSize: '0.9rem', fontWeight: '500', color: theme.colors.secondaryText }}>{symbol}</span>
+                                                {formatTokenAmount(actualStakeE8s)} <span style={{ fontSize: '0.9rem', fontWeight: '500', color: theme.colors.secondaryText }}>{symbol}</span>
                                             </div>
+                                            {neuronFees > 0 && (
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    Fees deducted: {formatTokenAmount(neuronFees)}
+                                                </div>
+                                            )}
                                         </div>
 
-                                        {/* Total Maturity */}
+                                        {/* Maturity Breakdown */}
                                         <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.3s', marginBottom: 0 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                                                 <FaChartLine size={14} style={{ color: '#10b981' }} />
-                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Maturity</span>
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Maturity</span>
                                             </div>
                                             <div style={{ color: '#10b981', fontSize: '1.25rem', fontWeight: '700' }}>
-                                                {formatE8s(totalMaturity)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{symbol}</span>
+                                                {formatTokenAmount(totalMaturity)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{symbol}</span>
                                             </div>
-                                            {(stakedMaturity > 0 || disbursingMaturity > 0) && (
-                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                    {normalMaturity > 0 && <span>Available: {formatE8s(normalMaturity)}</span>}
-                                                    {stakedMaturity > 0 && <span style={{ marginLeft: normalMaturity > 0 ? '0.5rem' : 0 }}>Staked: {formatE8s(stakedMaturity)}</span>}
-                                                    {disbursingMaturity > 0 && <span style={{ marginLeft: '0.5rem', color: '#f59e0b' }}>Disbursing: {formatE8s(disbursingMaturity)}</span>}
-                                                </div>
-                                            )}
+                                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                <span>Available: {formatTokenAmount(availableMaturity)}</span>
+                                                <span>Staked: {formatTokenAmount(stakedMaturity)}</span>
+                                                {disbursingMaturity > 0 && <span style={{ color: '#f59e0b' }}>Disbursing: {formatTokenAmount(disbursingMaturity)}</span>}
+                                            </div>
                                         </div>
 
                                         {/* Total Value */}
@@ -1297,7 +1319,7 @@ function Neuron() {
                                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Value</span>
                                             </div>
                                             <div style={{ color: neuronGold, fontSize: '1.25rem', fontWeight: '700' }}>
-                                                {formatE8s(totalValue)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{symbol}</span>
+                                                {formatTokenAmount(totalValue)} <span style={{ fontSize: '0.9rem', fontWeight: '500', opacity: 0.8 }}>{symbol}</span>
                                             </div>
                                             <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
                                                 Stake + Maturity
@@ -1313,10 +1335,10 @@ function Neuron() {
                                             <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
                                                 {nervousSystemParameters 
                                                     ? formatVotingPower(calculateVotingPower(neuronData, nervousSystemParameters))
-                                                    : formatE8s(neuronData.voting_power || 0)}
+                                                    : formatTokenAmount(neuronData.voting_power || 0)}
                                             </div>
                                             <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                Multiplier: {vpMultiplier}%
+                                                Effective: {effectiveMultiplier.toFixed(0)}% {baseVpMultiplier !== 100 && <span>(base {baseVpMultiplier}%)</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -1367,10 +1389,10 @@ function Neuron() {
                                                     <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Bonus</span>
                                                 </div>
                                                 <div style={{ color: totalBonusPct > 0 ? '#10b981' : theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
-                                                    +{totalBonusPct.toFixed(1)}%
+                                                    +{totalBonusPct.toFixed(0)}%
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                    Max: {maxAgeBonusPct + maxDissolveBonusPct}%
+                                                    Max: {maxTotalBonusPct.toFixed(0)}%
                                                 </div>
                                             </div>
                                         )}
@@ -1392,72 +1414,54 @@ function Neuron() {
                                         )}
                                     </div>
 
-                                    {/* Additional Info Row - only show if there's relevant data */}
-                                    {(neuronFees > 0 || autoStakeMaturity || vestingPeriod > 0 || sourceNnsNeuronId) && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                                            {/* Neuron Fees */}
-                                            {neuronFees > 0 && (
-                                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.65s', marginBottom: 0 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                        <FaCoins size={14} style={{ color: '#ef4444' }} />
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Neuron Fees</span>
-                                                    </div>
-                                                    <div style={{ color: '#ef4444', fontSize: '1rem', fontWeight: '600' }}>
-                                                        {formatE8s(neuronFees)} <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>{symbol}</span>
-                                                    </div>
-                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                        Accumulated fees
-                                                    </div>
-                                                </div>
-                                            )}
+                                    {/* Additional Info Row - always show auto-stake, optionally others */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                                        {/* Auto-Stake Maturity - always show */}
+                                        <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.65s', marginBottom: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                <FaChartLine size={14} style={{ color: autoStakeMaturity ? '#10b981' : theme.colors.mutedText }} />
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Auto-Stake</span>
+                                            </div>
+                                            <div style={{ color: autoStakeMaturity ? '#10b981' : theme.colors.secondaryText, fontSize: '1rem', fontWeight: '600' }}>
+                                                {autoStakeMaturity ? 'Enabled' : 'Disabled'}
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                Maturity auto-staking
+                                            </div>
+                                        </div>
 
-                                            {/* Auto-Stake Maturity */}
+                                        {/* Vesting Period - show if set */}
+                                        {vestingPeriod > 0 && (
                                             <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.7s', marginBottom: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                    <FaChartLine size={14} style={{ color: autoStakeMaturity ? '#10b981' : theme.colors.mutedText }} />
-                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Auto-Stake</span>
+                                                    <FaClock size={14} style={{ color: '#8b5cf6' }} />
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vesting</span>
                                                 </div>
-                                                <div style={{ color: autoStakeMaturity ? '#10b981' : theme.colors.secondaryText, fontSize: '1rem', fontWeight: '600' }}>
-                                                    {autoStakeMaturity ? 'Enabled' : 'Disabled'}
+                                                <div style={{ color: '#8b5cf6', fontSize: '1rem', fontWeight: '600' }}>
+                                                    {formatDuration(vestingPeriod)}
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                    Maturity auto-staking
+                                                    Vesting period
                                                 </div>
                                             </div>
+                                        )}
 
-                                            {/* Vesting Period */}
-                                            {vestingPeriod > 0 && (
-                                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.75s', marginBottom: 0 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                        <FaClock size={14} style={{ color: '#8b5cf6' }} />
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vesting</span>
-                                                    </div>
-                                                    <div style={{ color: '#8b5cf6', fontSize: '1rem', fontWeight: '600' }}>
-                                                        {formatDuration(vestingPeriod)}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                        Vesting period
-                                                    </div>
+                                        {/* Source NNS Neuron - show if exists */}
+                                        {sourceNnsNeuronId && (
+                                            <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.75s', marginBottom: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                    <FaKey size={14} style={{ color: neuronPrimary }} />
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Source NNS</span>
                                                 </div>
-                                            )}
-
-                                            {/* Source NNS Neuron */}
-                                            {sourceNnsNeuronId && (
-                                                <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.8s', marginBottom: 0 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                        <FaKey size={14} style={{ color: neuronPrimary }} />
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Source NNS</span>
-                                                    </div>
-                                                    <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600', fontFamily: 'monospace' }}>
-                                                        {sourceNnsNeuronId.slice(0, 8)}...
-                                                    </div>
-                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                        From NNS neuron
-                                                    </div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                                                    {sourceNnsNeuronId.slice(0, 8)}...
                                                 </div>
-                                            )}
-                                        </div>
-                                    )}
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                    From NNS neuron
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
 
                                     {/* Dissolve State Actions */}
                                     <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.85s', marginBottom: '1rem' }}>
