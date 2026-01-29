@@ -19,7 +19,7 @@ import TransactionList from '../components/TransactionList';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
-import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain } from 'react-icons/fa';
 
 // Helper to determine if a principal is a canister (shorter) or user (longer)
 const isCanisterPrincipal = (principalStr) => {
@@ -755,8 +755,49 @@ export default function PrincipalPage() {
         </div>
     );
 
+    // Render icon with SNS logo overlay
+    const renderOverlappedIcon = (icon, size = 36, iconSize = 16, color = principalPrimary) => (
+        <div style={{ position: 'relative', width: `${size}px`, height: `${size}px` }}>
+            {/* SNS Logo background */}
+            {snsLogo ? (
+                <img 
+                    src={snsLogo} 
+                    alt="" 
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: `${size}px`,
+                        height: `${size}px`,
+                        borderRadius: '10px',
+                        objectFit: 'cover',
+                        opacity: 0.3
+                    }}
+                />
+            ) : null}
+            {/* Icon foreground */}
+            <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: `${size}px`,
+                height: `${size}px`,
+                borderRadius: '10px',
+                background: snsLogo ? `${color}60` : `linear-gradient(135deg, ${color}30, ${color}15)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: color
+            }}>
+                {icon}
+            </div>
+        </div>
+    );
+
     // Render collapsible section header
-    const renderSectionHeader = (title, icon, isCollapsed, onToggle, count = null, color = principalPrimary) => (
+    // If icon is a React element with position:relative (overlapped icon), render it directly
+    // Otherwise wrap it in a styled container
+    const renderSectionHeader = (title, icon, isCollapsed, onToggle, count = null, color = principalPrimary, isOverlappedIcon = false) => (
         <button
             onClick={onToggle}
             style={{
@@ -774,18 +815,20 @@ export default function PrincipalPage() {
             }}
         >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '10px',
-                    background: `linear-gradient(135deg, ${color}30, ${color}15)`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: color
-                }}>
-                    {icon}
-                </div>
+                {isOverlappedIcon ? icon : (
+                    <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '10px',
+                        background: `linear-gradient(135deg, ${color}30, ${color}15)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: color
+                    }}>
+                        {icon}
+                    </div>
+                )}
                 <div style={{ textAlign: 'left' }}>
                     <div style={{ fontWeight: '600', fontSize: '1rem' }}>{title}</div>
                     {count !== null && (
@@ -1709,11 +1752,12 @@ export default function PrincipalPage() {
                 <div className="principal-card-animate" style={{ marginBottom: '1.5rem', animationDelay: '0.4s' }}>
                     {renderSectionHeader(
                         'Hotkeyed Neurons',
-                        <FaCoins size={16} />,
+                        renderOverlappedIcon(<FaBrain size={16} />, 36, 16, principalAccent),
                         isNeuronsCollapsed,
                         () => setIsNeuronsCollapsed(!isNeuronsCollapsed),
                         neurons.length,
-                        principalAccent
+                        principalAccent,
+                        true // isOverlappedIcon
                     )}
                     
                     {!isNeuronsCollapsed && (
@@ -1866,6 +1910,7 @@ export default function PrincipalPage() {
                         principalId={stablePrincipalId.current?.toString()}
                         isCollapsed={isTransactionsCollapsed}
                         onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                        headerIcon={renderOverlappedIcon(<FaExchangeAlt size={14} color="white" />, 32, 14, '#6366f1')}
                     />
                 </div>
                 </div>

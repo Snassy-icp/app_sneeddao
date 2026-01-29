@@ -49,7 +49,8 @@ function TransactionList({
     isCollapsed = false, 
     onToggleCollapse = () => {},
     showHeader = true,
-    embedded = false
+    embedded = false,
+    headerIcon = null // Optional custom icon to override the default FaExchangeAlt
 }) {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
@@ -792,17 +793,19 @@ function TransactionList({
                         alignItems: 'center',
                         gap: '0.75rem'
                     }}>
-                        <span style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '8px',
-                            background: `linear-gradient(135deg, ${txPrimary}, ${txSecondary})`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}>
-                            <FaExchangeAlt size={14} color="white" />
-                        </span>
+                        {headerIcon || (
+                            <span style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: `linear-gradient(135deg, ${txPrimary}, ${txSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaExchangeAlt size={14} color="white" />
+                            </span>
+                        )}
                         Transactions
                     </h2>
                     <span style={{
