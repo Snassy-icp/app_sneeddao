@@ -116,9 +116,10 @@ function Users() {
             ownerPrincipals.forEach(p => principals.add(p));
             
             // Add all principals with any permissions (hotkeys)
+            // Note: p.principal is an optional array [Principal], so we access [0]
             neuron.permissions?.forEach(p => {
-                if (p.principal) {
-                    principals.add(p.principal.toString());
+                if (p.principal && p.principal[0]) {
+                    principals.add(p.principal[0].toString());
                 }
             });
             

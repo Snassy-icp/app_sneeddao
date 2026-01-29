@@ -2515,77 +2515,70 @@ function Feed() {
             >
                 {/* Hero Section */}
                 <div style={{
-                    background: `linear-gradient(180deg, ${feedPrimary}12 0%, transparent 100%)`,
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${feedPrimary}15 50%, ${feedSecondary}10 100%)`,
                     borderBottom: `1px solid ${theme.colors.border}`,
-                    padding: '1.5rem 1rem',
+                    padding: '2rem 1.5rem',
                     position: 'relative',
                     overflow: 'hidden'
                 }}>
-                    {/* Subtle decorative glow */}
+                    {/* Background decorations */}
                     <div style={{
                         position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        width: '600px',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${feedPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
                         height: '300px',
-                        background: `radial-gradient(ellipse, ${feedPrimary}15 0%, transparent 70%)`,
+                        background: `radial-gradient(circle, ${feedSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
                         pointerEvents: 'none'
                     }} />
                     
                     <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
-                        {/* Centered Hero Content */}
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        textAlign: 'center',
-                            marginBottom: '1.25rem'
-                    }}>
-                            {/* Logo and Title */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                                gap: '0.75rem',
-                                marginBottom: '0.5rem'
-                        }}>
-                            <img
-                                src="sneed_logo.png"
-                                alt="Sneed Logo"
-                                    className="feed-hero-logo"
-                                style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    objectFit: 'cover',
-                                        borderRadius: '12px',
-                                        boxShadow: `0 4px 16px ${feedPrimary}40`
-                                }}
-                            />
-                            <h1 style={{
-                                    fontSize: '1.6rem', 
-                                    fontWeight: '800', 
-                                    margin: 0,
-                                    background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${feedPrimary})`,
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    backgroundClip: 'text'
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{
+                                width: '56px',
+                                height: '56px',
+                                borderRadius: '14px',
+                                background: `linear-gradient(135deg, ${feedPrimary}, ${feedSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 4px 20px ${feedPrimary}40`,
+                                flexShrink: 0
                             }}>
-                                Sneed's Feed
-                            </h1>
+                                <FaRss size={24} color="white" />
+                            </div>
+                            <div>
+                                <h1 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1.75rem', 
+                                    fontWeight: '700', 
+                                    margin: 0 
+                                }}>
+                                    Activity Feed
+                                </h1>
+                                <p style={{ 
+                                    color: theme.colors.secondaryText, 
+                                    fontSize: '0.95rem', 
+                                    margin: '0.25rem 0 0 0' 
+                                }}>
+                                    {selectedSnsList.length > 0 
+                                        ? `Filtering ${selectedSnsList.length} of ${snsInstances.length} SNS forums`
+                                        : `Real-time activity from ${snsInstances.length} SNS forums`
+                                    }
+                                </p>
+                            </div>
                         </div>
-                        
-                        <p style={{
-                                color: theme.colors.mutedText, 
-                                fontSize: '0.85rem', 
-                                margin: 0,
-                                maxWidth: '400px'
-                            }}>
-                                {selectedSnsList.length > 0 
-                                    ? `Filtering ${selectedSnsList.length} of ${snsInstances.length} SNS forums`
-                                    : `Real-time activity from ${snsInstances.length} SNS forums`
-                                }
-                        </p>
-                    </div>
 
                         {/* SNS Avatars Row - Clickable to toggle filter */}
                     {(() => {
