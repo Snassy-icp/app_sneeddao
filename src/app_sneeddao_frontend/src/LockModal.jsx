@@ -31,7 +31,6 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
     const [paymentBalance, setPaymentBalance] = useState(0n);
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
     const [loadingPayment, setLoadingPayment] = useState(false);
-    const [isPayingFee, setIsPayingFee] = useState(false);
     const [icpWalletBalance, setIcpWalletBalance] = useState(0n);
 
     useEffect(() => {
@@ -76,60 +75,6 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
             console.error('Error fetching payment info:', error);
         } finally {
             setLoadingPayment(false);
-        }
-    };
-
-    const handlePayFee = async () => {
-        if (!identity || !paymentSubaccount) return;
-        
-        setIsPayingFee(true);
-        setErrorText('');
-        
-        try {
-            const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
-            
-            // Calculate amount to send
-            const existingBalance = paymentBalance;
-            const amountNeeded = BigInt(requiredFee) - existingBalance;
-            const icpTxFee = 10_000n;
-            const amountToSend = amountNeeded + icpTxFee;
-            
-            if (icpWalletBalance < amountToSend) {
-                setErrorText(`Insufficient ICP balance. Need ${formatIcp(amountToSend)}, have ${formatIcp(icpWalletBalance)}`);
-                setIsPayingFee(false);
-                return;
-            }
-            
-            // Transfer ICP to payment subaccount
-            const result = await icpLedgerActor.icrc1_transfer({
-                to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [paymentSubaccount] },
-                fee: [],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-                amount: amountToSend - icpTxFee
-            });
-            
-            if (result.Err) {
-                throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
-            }
-            
-            // Refresh payment balance
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const newBalance = await sneedLockActor.getPaymentBalance(identity.getPrincipal());
-            setPaymentBalance(BigInt(newBalance));
-            
-            // Refresh wallet balance
-            const walletBal = await icpLedgerActor.icrc1_balance_of({
-                owner: identity.getPrincipal(),
-                subaccount: []
-            });
-            setIcpWalletBalance(BigInt(walletBal));
-        } catch (error) {
-            console.error('Payment error:', error);
-            setErrorText(error.message || 'Failed to send payment');
-        } finally {
-            setIsPayingFee(false);
         }
     };
 
@@ -554,43 +499,7 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                                     </span>
                                 </div>
                                 
-                                {paymentBalance < BigInt(requiredFee) && (
-                                    <div style={{ marginTop: '12px' }}>
-                                        <button
-                                            onClick={handlePayFee}
-                                            disabled={isPayingFee || icpWalletBalance < (BigInt(requiredFee) - paymentBalance + 10_000n)}
-                                            style={{
-                                                width: '100%',
-                                                background: theme.colors.accent,
-                                                color: theme.colors.primaryBg,
-                                                border: 'none',
-                                                borderRadius: '8px',
-                                                padding: '10px 16px',
-                                                fontWeight: '600',
-                                                cursor: isPayingFee ? 'not-allowed' : 'pointer',
-                                                opacity: isPayingFee ? 0.7 : 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: '8px'
-                                            }}
-                                        >
-                                            {isPayingFee ? (
-                                                <>
-                                                    <FaSpinner className="spin" />
-                                                    Sending...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <FaWallet />
-                                                    Pay {formatIcp(BigInt(requiredFee) - paymentBalance + 10_000n)}
-                                                </>
-                                            )}
-                                        </button>
-                                    </div>
-                                )}
-                                
-                                {paymentBalance >= BigInt(requiredFee) && (
+                                {paymentBalance >= BigInt(requiredFee) ? (
                                     <div style={{ 
                                         marginTop: '12px', 
                                         display: 'flex', 
@@ -599,7 +508,16 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                                         color: theme.colors.success 
                                     }}>
                                         <FaCheck />
-                                        <span>Payment ready!</span>
+                                        <span>Fee already deposited</span>
+                                    </div>
+                                ) : (
+                                    <div style={{ 
+                                        marginTop: '8px', 
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.secondaryText,
+                                        fontStyle: 'italic'
+                                    }}>
+                                        Fee will be paid automatically when you click "Pay & Lock"
                                     </div>
                                 )}
                             </>
