@@ -1138,7 +1138,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     return (
         <div className="card">
             <div className="card-header" onClick={handleHeaderClick}>
-                <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="header-logo-column" style={{ 
+                    alignSelf: 'flex-start', 
+                    minWidth: '48px', 
+                    minHeight: isSnsToken ? '56px' : '48px', 
+                    display: 'flex', 
+                    alignItems: 'flex-start', 
+                    justifyContent: 'center',
+                    position: 'relative'
+                }}>
                     {!logoLoaded ? (
                         <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
                     ) : logoError || !token.logo ? (
@@ -1166,6 +1174,28 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             className="token-logo-card"
                             style={{ height: '48px', width: 'auto' }}
                         />
+                    )}
+                    {/* SNS Badge - overlapping bottom of logo */}
+                    {isSnsToken && (
+                        <span style={{
+                            position: 'absolute',
+                            bottom: '0',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+                            color: '#fff',
+                            padding: '1px 8px',
+                            borderRadius: '8px',
+                            fontSize: '0.6rem',
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            boxShadow: `0 2px 8px ${theme.colors.accent}40`,
+                            border: `1.5px solid ${theme.colors.primaryBg}`,
+                            whiteSpace: 'nowrap'
+                        }}>
+                            SNS
+                        </span>
                     )}
                 </div>
                 <div className="header-content-column">
@@ -1216,22 +1246,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </button>
                         )}
                     </div>
-                    {/* Row 3: SNS pill and status icons (left) */}
+                    {/* Row 3: Status icons (left) */}
                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {isSnsToken && (
-                            <span style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontSize: '0.7rem',
-                                fontWeight: '600',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.5px'
-                            }}>
-                                SNS
-                            </span>
-                        )}
                         {/* Locks icon */}
                         {token.locked > 0n && (
                             <span 
