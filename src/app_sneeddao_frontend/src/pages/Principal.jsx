@@ -1035,24 +1035,34 @@ export default function PrincipalPage() {
                                 marginBottom: '1.5rem'
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
-                                    {/* Avatar - show user or canister icon based on principal type */}
+                                    {/* Avatar - show crown for premium, user icon, or canister icon */}
                                     {(() => {
                                         const principalStr = stablePrincipalId.current.toString();
                                         const isCanister = isCanisterPrincipal(principalStr);
+                                        const isPremium = viewedUserIsPremium && !premiumLoading;
+                                        
+                                        // Premium users get a golden gradient
+                                        const bgGradient = isPremium && !isCanister
+                                            ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                                            : `linear-gradient(135deg, ${getPrincipalColor(principalStr)}, ${getPrincipalColor(principalStr)}aa)`;
+                                        const shadowColor = isPremium && !isCanister
+                                            ? 'rgba(245, 158, 11, 0.4)'
+                                            : `${getPrincipalColor(principalStr)}40`;
+                                        
                                         return (
                                             <div style={{
                                                 width: '72px',
                                                 height: '72px',
                                                 minWidth: '72px',
                                                 borderRadius: isCanister ? '12px' : '18px',
-                                                background: `linear-gradient(135deg, ${getPrincipalColor(principalStr)}, ${getPrincipalColor(principalStr)}aa)`,
+                                                background: bgGradient,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 color: 'white',
-                                                boxShadow: `0 4px 20px ${getPrincipalColor(principalStr)}40`
+                                                boxShadow: `0 4px 20px ${shadowColor}`
                                             }}>
-                                                {isCanister ? <FaCube size={32} /> : <FaUser size={32} />}
+                                                {isCanister ? <FaCube size={32} /> : (isPremium ? <FaCrown size={32} /> : <FaUser size={32} />)}
                                             </div>
                                         );
                                     })()}

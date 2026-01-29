@@ -1,0 +1,1 @@
+This file lists the different icons we use for different concepts in the app, for consistency purposes. We update this file as we go when we notice there are icons that have not been listed. At the end of the file we log conflicts in how icons are used that we discover as we go, and that we can resolve eventually. 
