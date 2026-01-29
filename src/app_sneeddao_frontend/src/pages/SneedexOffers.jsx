@@ -1320,7 +1320,6 @@ function SneedexOffers() {
                     </Link>
                 </div>
                 <div style={styles.header}>
-                    <h1 style={styles.title}>Marketplace</h1>
                     <div style={styles.headerButtons}>
                         <button
                             style={styles.refreshButton}
@@ -1844,11 +1843,11 @@ function SneedexOffers() {
                                         return bannerText ? (
                                             <div style={{
                                                 position: 'absolute',
-                                                top: '8px',
-                                                right: '-28px',
+                                                top: '12px',
+                                                right: '-35px',
                                                 background: bannerColor,
                                                 color: '#fff',
-                                                padding: '3px 32px',
+                                                padding: '3px 40px',
                                                 fontWeight: '700',
                                                 fontSize: '0.65rem',
                                                 transform: 'rotate(45deg)',
