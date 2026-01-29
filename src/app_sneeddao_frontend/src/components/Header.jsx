@@ -1154,33 +1154,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         color: theme.colors.mutedText,
                         flexWrap: 'wrap'
                     }}>
-                        {neuronsLoading ? (
-                            <div style={{ color: theme.colors.mutedText, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
-                                    <FaBrain size={14} style={{ color: theme.colors.mutedText }} />
-                                    {snsLogo && (
-                                        <img 
-                                            src={snsLogo} 
-                                            alt="SNS" 
-                                            style={{ 
-                                                position: 'absolute', 
-                                                left: '8px', 
-                                                top: '50%', 
-                                                transform: 'translateY(-50%)', 
-                                                width: '14px', 
-                                                height: '14px', 
-                                                borderRadius: '50%', 
-                                                objectFit: 'cover',
-                                                border: `1px solid ${theme.colors.secondaryBg}`
-                                            }} 
-                                        />
-                                    )}
-                                </span>
-                                <span>Loading...</span>
-                            </div>
-                        ) : (
-                            <>
-                                {(() => {
+                        {(() => {
                                     const allNeurons = getAllNeurons();
                                     const hotkeyNeurons = getHotkeyNeurons();
                                     
@@ -1313,9 +1287,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                             )}
                                         </>
                                     );
-                                })()}
-                            </>
-                        )}
+                        })()}
                     </div>
                     
                     {/* Close button */}
