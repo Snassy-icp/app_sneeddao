@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -1157,7 +1157,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         {neuronsLoading ? (
                             <div style={{ color: theme.colors.mutedText, fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
-                                    <span>🧠</span>
+                                    <FaBrain size={14} style={{ color: theme.colors.mutedText }} />
                                     {snsLogo && (
                                         <img 
                                             src={snsLogo} 
@@ -1234,7 +1234,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                             >
                                                 <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '24px', height: '16px' }}>
-                                                    <span>🧠</span>
+                                                    <FaBrain size={14} style={{ color: theme.colors.mutedText }} />
                                                     {snsLogo && (
                                                         <img 
                                                             src={snsLogo} 
@@ -1264,16 +1264,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                                 title="Neurons where you have hotkey permission - can vote on SNS proposals"
                                             >
-                                                <span>🔑</span>
+                                                <FaKey size={12} style={{ color: theme.colors.secondaryText }} />
                                                 {/* Desktop: full labels */}
-                                                <span className="hide-on-narrow" style={{ color: theme.colors.accent, fontSize: '11px' }}>
+                                                <span className="hide-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
                                                     {formatCompactVP(hotkeyedVP)} VP
                                                 </span>
                                                 <span className="hide-on-narrow" style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
                                                     hotkeys ({hotkeyNeurons.length})
                                                 </span>
                                                 {/* Mobile: compact */}
-                                                <span className="show-on-narrow" style={{ color: theme.colors.accent, fontSize: '11px' }}>
+                                                <span className="show-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
                                                     {formatCompactVP(hotkeyedVP)} VP ({hotkeyNeurons.length})
                                                 </span>
                                             </div>
@@ -1287,16 +1287,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                                 title="All neurons you can access (owned + hotkeyed) - for forum voting"
                                             >
-                                                <span>🤚</span>
+                                                <FaHandPaper size={12} style={{ color: theme.colors.secondaryText }} />
                                                 {/* Desktop: full labels */}
-                                                <span className="hide-on-narrow" style={{ color: theme.colors.success, fontSize: '11px' }}>
+                                                <span className="hide-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
                                                     {formatCompactVP(reachableVP)} VP
                                                 </span>
                                                 <span className="hide-on-narrow" style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
                                                     reachable ({allNeurons.length})
                                                 </span>
                                                 {/* Mobile: compact */}
-                                                <span className="show-on-narrow" style={{ color: theme.colors.success, fontSize: '11px' }}>
+                                                <span className="show-on-narrow" style={{ color: theme.colors.secondaryText, fontSize: '11px' }}>
                                                     {formatCompactVP(reachableVP)} VP ({allNeurons.length})
                                                 </span>
                                             </div>
