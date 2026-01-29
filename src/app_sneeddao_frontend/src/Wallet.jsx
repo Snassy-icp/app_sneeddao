@@ -50,6 +50,7 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
+import { PERM } from './utils/NeuronPermissionUtils';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle } from 'react-icons/fa';
@@ -472,13 +473,15 @@ function Wallet() {
         liquid: 0.0,
         liquidity: 0.0,
         maturity: 0.0,
+        collectableMaturity: 0.0, // Maturity user can actually collect (has DISBURSE_MATURITY permission)
         rewards: 0.0,
         fees: 0.0,
         staked: 0.0,
         locked: 0.0,
         hasAnyFees: false,
         hasAnyRewards: false,
-        hasAnyMaturity: false
+        hasAnyMaturity: false,
+        hasAnyCollectableMaturity: false // User can collect some maturity
     });
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
@@ -2376,8 +2379,10 @@ function Wallet() {
         var rewardsTotal = 0.0;
         var stakedTotal = 0.0;
         var maturityTotal = 0.0;
+        var collectableMaturityTotal = 0.0;
         var hasAnyRewards = false; // Track if there are any rewards regardless of USD value
         var hasAnyMaturity = false; // Track if there are any maturity regardless of USD value
+        var hasAnyCollectableMaturity = false; // Track if user can collect any maturity
         
         for (const token of tokens) {
             const divisor = 10 ** token.decimals;
@@ -2407,6 +2412,11 @@ function Wallet() {
                     if (neuronData.maturity && neuronData.maturity > 0) {
                         hasAnyMaturity = true;
                         maturityTotal += neuronData.maturity;
+                    }
+                    // Track collectable maturity (user has DISBURSE_MATURITY permission)
+                    if (neuronData.collectableMaturity && neuronData.collectableMaturity > 0) {
+                        hasAnyCollectableMaturity = true;
+                        collectableMaturityTotal += neuronData.collectableMaturity;
                     }
                 } else {
                     // Legacy support: if it's just a number, add to staked
@@ -2480,13 +2490,15 @@ function Wallet() {
             liquid: liquidTotal,
             liquidity: liquidityTotal,
             maturity: maturityTotal,
+            collectableMaturity: collectableMaturityTotal,
             rewards: rewardsTotal,
             fees: feesTotal,
             staked: stakedTotal,
             locked: lockedTotal,
             hasAnyFees: hasAnyFees, // Track if there are any fees in tokens
             hasAnyRewards: hasAnyRewards, // Track if there are any rewards in tokens
-            hasAnyMaturity: hasAnyMaturity // Track if there are any maturity in tokens
+            hasAnyMaturity: hasAnyMaturity, // Track if there are any maturity in tokens
+            hasAnyCollectableMaturity: hasAnyCollectableMaturity // Track if user can collect any maturity
         });
         
         // Calculate tokens total (liquid + locked + staked + maturity + rewards)
@@ -4064,6 +4076,16 @@ function Wallet() {
         return items;
     };
 
+    // Helper to check if user has a specific permission on a neuron
+    const userHasNeuronPermission = (neuron, permissionType) => {
+        if (!identity || !neuron.permissions) return false;
+        const userPrincipal = identity.getPrincipal().toString();
+        const userPerms = neuron.permissions.find(p => 
+            p.principal?.[0]?.toString() === userPrincipal
+        );
+        return userPerms?.permission_type?.includes(permissionType) || false;
+    };
+
     const getMaturityItems = () => {
         const items = [];
         // Only SNS tokens have neurons with maturity
@@ -4073,7 +4095,8 @@ function Wallet() {
             const neurons = token.neurons || [];
             neurons.forEach(neuron => {
                 const maturity = BigInt(neuron.maturity_e8s_equivalent || 0n);
-                if (maturity > 0n) {
+                // Only include neurons where user has DISBURSE_MATURITY permission
+                if (maturity > 0n && userHasNeuronPermission(neuron, PERM.DISBURSE_MATURITY)) {
                     const maturityUSD = token.conversion_rate 
                         ? Number(maturity) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
                         : 0;
@@ -4488,8 +4511,8 @@ function Wallet() {
                                 </div>
                             )}
                             
-                            {/* Collect Card */}
-                            {(totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyMaturity) && (
+                            {/* Collect Card - only show if there's something collectable (maturity requires permission) */}
+                            {(totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyCollectableMaturity) && (
                                 <div style={{
                                     background: `linear-gradient(135deg, ${walletPrimary}15 0%, ${walletAccent}10 100%)`,
                                     border: `1px solid ${walletPrimary}30`,
@@ -4520,7 +4543,7 @@ function Wallet() {
                                                 fontSize: '1.25rem', 
                                                 fontWeight: '700'
                                             }}>
-                                                ${(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.maturity).toLocaleString(undefined, { 
+                                                ${(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.collectableMaturity).toLocaleString(undefined, { 
                                                     minimumFractionDigits: 2, 
                                                     maximumFractionDigits: 2 
                                                 })}
@@ -4589,7 +4612,7 @@ function Wallet() {
                                                 🎁 ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         )}
-                                        {totalBreakdown.hasAnyMaturity && (
+                                        {totalBreakdown.hasAnyCollectableMaturity && (
                                             <span 
                                                 onClick={() => handleOpenConsolidateModal('maturity')}
                                                 style={{ 
@@ -4605,7 +4628,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                🌱 ${totalBreakdown.maturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                🌱 ${totalBreakdown.collectableMaturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         )}
                                     </div>

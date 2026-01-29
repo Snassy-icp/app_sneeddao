@@ -235,32 +235,54 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }, 0n);
     };
 
+    // Get collectable maturity (only from neurons where user has DISBURSE_MATURITY permission)
+    const getCollectableMaturity = () => {
+        if (!identity) return 0n;
+        const userPrincipal = identity.getPrincipal().toString();
+        return neurons.reduce((total, neuron) => {
+            // Check if user has DISBURSE_MATURITY permission (permission 8)
+            const userPerms = neuron.permissions?.find(p => 
+                p.principal?.[0]?.toString() === userPrincipal
+            );
+            const canDisburseMaturity = userPerms?.permission_type?.includes(PERM.DISBURSE_MATURITY) || false;
+            
+            if (canDisburseMaturity) {
+                return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
+            }
+            return total;
+        }, 0n);
+    };
+
     // Report neuron totals (stake + maturity) in USD to parent component
     useEffect(() => {
         if (onNeuronTotalsChange && isSnsToken && token.conversion_rate) {
             const totalStake = getTotalNeuronStake();
             const totalMaturity = getTotalNeuronMaturity();
+            const collectableMaturity = getCollectableMaturity();
             
             // Convert to USD (do raw calculation without formatting)
             const divisor = 10n ** BigInt(token.decimals);
             const stakedValue = Number(totalStake) / Number(divisor) * token.conversion_rate;
             const maturityValue = Number(totalMaturity) / Number(divisor) * token.conversion_rate;
+            const collectableMaturityValue = Number(collectableMaturity) / Number(divisor) * token.conversion_rate;
             const totalUsdValue = stakedValue + maturityValue;
             
             onNeuronTotalsChange({
                 total: totalUsdValue,
                 staked: stakedValue,
-                maturity: maturityValue
+                maturity: maturityValue,
+                collectableMaturity: collectableMaturityValue
             });
         } else if (onNeuronTotalsChange && !isSnsToken) {
             // If not an SNS token, report 0
             onNeuronTotalsChange({
                 total: 0,
                 staked: 0,
-                maturity: 0
+                maturity: 0,
+                collectableMaturity: 0
             });
         }
-    }, [neurons, token.conversion_rate, token.decimals, isSnsToken, onNeuronTotalsChange]);
+    }, [neurons, token.conversion_rate, token.decimals, isSnsToken, onNeuronTotalsChange, identity]);
 
     // Auto-expand Liquid section when deposited balance comes in (if currently collapsed)
     useEffect(() => {
