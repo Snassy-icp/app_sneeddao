@@ -139,6 +139,11 @@ function SneedexOffers() {
         injectSneedexStyles();
     }, []);
     
+    // Pre-fetch ICP metadata immediately (used by almost all offers)
+    useEffect(() => {
+        fetchGlobalTokenMetadata(ICP_LEDGER_ID);
+    }, [fetchGlobalTokenMetadata]);
+    
     // Fetch SNS list on mount
     useEffect(() => {
         // First check if we already have cached data
@@ -386,21 +391,44 @@ function SneedexOffers() {
             
             setOffers(fetchedOffers);
             
-            // Fetch bid info for each offer
-            const bidInfo = {};
-            for (const offer of fetchedOffers) {
+            // Start fetching token metadata immediately (don't wait for useEffect)
+            // This runs in parallel with bid info fetching for faster logo loading
+            const uniqueTokenIds = new Set();
+            fetchedOffers.forEach(offer => {
+                uniqueTokenIds.add(offer.price_token_ledger.toString());
+                offer.assets.forEach(assetEntry => {
+                    const details = getAssetDetails(assetEntry);
+                    if (details.type === 'ICRC1Token') {
+                        uniqueTokenIds.add(details.ledger_id);
+                    }
+                });
+            });
+            // Fire off all token metadata fetches in parallel (don't await)
+            uniqueTokenIds.forEach(tokenId => fetchGlobalTokenMetadata(tokenId));
+            
+            // Fetch bid info for each offer in parallel (faster than sequential)
+            const bidInfoPromises = fetchedOffers.map(async (offer) => {
                 try {
                     const offerView = await actor.getOfferView(offer.id);
                     if (offerView && offerView.length > 0) {
-                        bidInfo[Number(offer.id)] = {
+                        return [Number(offer.id), {
                             bids: offerView[0].bids,
                             highest_bid: offerView[0].highest_bid[0] || null,
-                        };
+                        }];
                     }
                 } catch (e) {
                     console.warn(`Failed to fetch bid info for offer ${offer.id}:`, e);
                 }
-            }
+                return null;
+            });
+            
+            const bidResults = await Promise.all(bidInfoPromises);
+            const bidInfo = {};
+            bidResults.forEach(result => {
+                if (result) {
+                    bidInfo[result[0]] = result[1];
+                }
+            });
             setOffersWithBids(bidInfo);
         } catch (e) {
             console.error('Failed to fetch offers:', e);
@@ -408,7 +436,7 @@ function SneedexOffers() {
         } finally {
             setLoading(false);
         }
-    }, [identity, offerTab, principal, showInactiveOffers]);
+    }, [identity, offerTab, principal, showInactiveOffers, fetchGlobalTokenMetadata]);
     
     useEffect(() => {
         fetchOffers();
