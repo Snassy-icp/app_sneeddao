@@ -865,7 +865,7 @@ function Sns() {
                     {/* Details Panel - Shows first on mobile */}
                     <div style={{
                         flex: 1,
-                        minWidth: 0,
+                        minWidth: isMobile ? 0 : '350px', /* Prevent collapse during loading */
                         order: isMobile ? 1 : 2
                     }}>
                         {/* Collapsible Header for Details */}
@@ -951,14 +951,14 @@ function Sns() {
                                 {selectedSnsRoot ? (
                                     <>
                                         {loadingDetails ? (
-                                            <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+                                            <div style={{ textAlign: 'center', padding: '3rem 2rem', minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                                                 <div className="sns-spin" style={{
                                                     width: '40px',
                                                     height: '40px',
                                                     border: `3px solid ${theme.colors.border}`,
                                                     borderTopColor: snsPrimary,
                                                     borderRadius: '50%',
-                                                    margin: '0 auto 1rem'
+                                                    marginBottom: '1rem'
                                                 }} />
                                                 <p style={{ color: theme.colors.mutedText }}>Loading SNS details...</p>
                                             </div>
