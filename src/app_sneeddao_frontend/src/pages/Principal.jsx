@@ -12,7 +12,7 @@ import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext
 import ConfirmationModal from '../ConfirmationModal';
 import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
-import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
+import { getSnsById, fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
@@ -131,6 +131,11 @@ export default function PrincipalPage() {
     const [expandedPosts, setExpandedPosts] = useState(new Set());
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
     const [copiedPrincipal, setCopiedPrincipal] = useState(false);
+    
+    // SNS Banner state
+    const [snsInfo, setSnsInfo] = useState(null);
+    const [snsLogo, setSnsLogo] = useState(null);
+    const [loadingLogo, setLoadingLogo] = useState(false);
     
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -292,6 +297,47 @@ export default function PrincipalPage() {
     useEffect(() => {
         stableIdentity.current = identity;
     }, [identity]);
+
+    // Load SNS info and logo for banner
+    useEffect(() => {
+        const loadSnsInfo = async () => {
+            if (!selectedSnsRoot) {
+                setSnsInfo(null);
+                setSnsLogo(null);
+                return;
+            }
+
+            try {
+                const allSnses = getAllSnses();
+                const currentSns = allSnses.find(sns => sns.rootCanisterId === selectedSnsRoot);
+                
+                if (currentSns) {
+                    setSnsInfo(currentSns);
+                    
+                    if (currentSns.canisters?.governance) {
+                        setLoadingLogo(true);
+                        try {
+                            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
+                            const agent = new HttpAgent({ host, ...(identity && { identity }) });
+                            if (process.env.DFX_NETWORK !== 'ic') {
+                                await agent.fetchRootKey();
+                            }
+                            const logo = await fetchSnsLogo(currentSns.canisters.governance, agent);
+                            setSnsLogo(logo);
+                        } catch (err) {
+                            console.error('Error loading SNS logo:', err);
+                        } finally {
+                            setLoadingLogo(false);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading SNS info:', error);
+            }
+        };
+
+        loadSnsInfo();
+    }, [selectedSnsRoot, identity]);
 
     // Fetch initial principal info
     useEffect(() => {
@@ -747,81 +793,159 @@ export default function PrincipalPage() {
         </button>
     );
 
+    // Render the hero banner
+    const renderHeroBanner = () => (
+        <div style={{
+            background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${principalPrimary}15 50%, ${principalSecondary}10 100%)`,
+            borderBottom: `1px solid ${theme.colors.border}`,
+            padding: '2rem',
+            position: 'relative',
+            overflow: 'hidden'
+        }}>
+            {/* Background decorations */}
+            <div style={{
+                position: 'absolute',
+                top: '-50%',
+                right: '-10%',
+                width: '400px',
+                height: '400px',
+                background: `radial-gradient(circle, ${principalPrimary}20 0%, transparent 70%)`,
+                borderRadius: '50%',
+                pointerEvents: 'none'
+            }} />
+            <div style={{
+                position: 'absolute',
+                bottom: '-30%',
+                left: '-5%',
+                width: '300px',
+                height: '300px',
+                background: `radial-gradient(circle, ${principalSecondary}15 0%, transparent 70%)`,
+                borderRadius: '50%',
+                pointerEvents: 'none'
+            }} />
+            
+            <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                    {/* SNS Logo */}
+                    <div style={{
+                        width: '56px',
+                        height: '56px',
+                        minWidth: '56px',
+                        maxWidth: '56px',
+                        flexShrink: 0,
+                        borderRadius: '14px',
+                        overflow: 'hidden'
+                    }}>
+                        {loadingLogo ? (
+                            <div style={{
+                                width: '100%',
+                                height: '100%',
+                                background: theme.colors.tertiaryBg,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <span className="principal-pulse" style={{ color: theme.colors.mutedText }}>...</span>
+                            </div>
+                        ) : snsLogo ? (
+                            <img 
+                                src={snsLogo} 
+                                alt={snsInfo?.name || 'SNS'} 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                            />
+                        ) : (
+                            <div style={{
+                                width: '100%',
+                                height: '100%',
+                                background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 4px 20px ${principalPrimary}40`
+                            }}>
+                                <FaUser size={24} color="white" />
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <h1 style={{ 
+                            color: theme.colors.primaryText, 
+                            fontSize: '1.75rem', 
+                            fontWeight: '700', 
+                            margin: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            flexWrap: 'wrap'
+                        }}>
+                            {snsInfo ? `${snsInfo.name}` : ''} Principal Explorer
+                        </h1>
+                        <p style={{ 
+                            color: theme.colors.secondaryText, 
+                            fontSize: '0.95rem', 
+                            margin: '0.35rem 0 0 0' 
+                        }}>
+                            Search for any principal to view their profile, neurons, posts, and transactions
+                        </p>
+                    </div>
+                </div>
+                
+                {/* Quick Stats Row */}
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                    {snsInfo && (
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            color: theme.colors.secondaryText,
+                            fontSize: '0.9rem'
+                        }}>
+                            <FaNetworkWired style={{ color: principalPrimary }} />
+                            <span>Viewing <strong style={{ color: theme.colors.primaryText }}>{snsInfo.name}</strong> context</span>
+                        </div>
+                    )}
+                    {tokenSymbol && tokenSymbol !== 'SNS' && (
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            color: theme.colors.secondaryText,
+                            fontSize: '0.9rem'
+                        }}>
+                            <FaCoins style={{ color: principalAccent }} />
+                            <span><strong style={{ color: theme.colors.primaryText }}>{tokenSymbol}</strong> token</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+
     // No principal selected view
     if (!stablePrincipalId.current) {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <style>{customStyles}</style>
                 <Header showSnsDropdown={true} />
-                <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-                    {/* Hero Section */}
-                    <div style={{
-                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${principalPrimary}15 50%, ${principalSecondary}10 100%)`,
-                        borderRadius: '24px',
-                        padding: '3rem 2rem',
-                        marginBottom: '2rem',
-                        border: `1px solid ${theme.colors.border}`,
-                        position: 'relative',
-                        overflow: 'hidden',
-                        textAlign: 'center'
-                    }}>
+                
+                <main style={{ minHeight: '100vh' }}>
+                    {renderHeroBanner()}
+                    
+                    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+                        {renderSearchSection()}
+
                         <div style={{
-                            position: 'absolute',
-                            top: '-50%',
-                            right: '-10%',
-                            width: '400px',
-                            height: '400px',
-                            background: `radial-gradient(circle, ${principalPrimary}20 0%, transparent 70%)`,
-                            borderRadius: '50%',
-                            pointerEvents: 'none'
-                        }} />
-                        
-                        <div className="principal-float" style={{
-                            width: '80px',
-                            height: '80px',
-                            borderRadius: '20px',
-                            background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            margin: '0 auto 1.5rem auto',
-                            boxShadow: `0 8px 30px ${principalPrimary}40`
+                            textAlign: 'center',
+                            padding: '3rem',
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            border: `1px solid ${theme.colors.border}`
                         }}>
-                            <FaUser size={36} color="white" />
+                            <FaSearch size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem', opacity: 0.5 }} />
+                            <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem', fontSize: '1.25rem' }}>No Principal Selected</h2>
+                            <p style={{ color: theme.colors.mutedText }}>Use the search box above to find a principal.</p>
                         </div>
-
-                        <h1 style={{
-                            fontSize: 'clamp(1.75rem, 4vw, 2.5rem)',
-                            color: theme.colors.primaryText,
-                            marginBottom: '1rem',
-                            fontWeight: '700'
-                        }}>
-                            Principal Explorer
-                        </h1>
-
-                        <p style={{
-                            color: theme.colors.secondaryText,
-                            fontSize: '1.1rem',
-                            maxWidth: '600px',
-                            margin: '0 auto 1.5rem auto',
-                            lineHeight: '1.6'
-                        }}>
-                            Search for any principal to view their profile, neurons, posts, and transaction history.
-                        </p>
-                    </div>
-
-                    {renderSearchSection()}
-
-                    <div style={{
-                        textAlign: 'center',
-                        padding: '3rem',
-                        background: theme.colors.secondaryBg,
-                        borderRadius: '16px',
-                        border: `1px solid ${theme.colors.border}`
-                    }}>
-                        <FaSearch size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem', opacity: 0.5 }} />
-                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem', fontSize: '1.25rem' }}>No Principal Selected</h2>
-                        <p style={{ color: theme.colors.mutedText }}>Use the search box above to find a principal.</p>
                     </div>
                 </main>
             </div>
@@ -832,8 +956,12 @@ export default function PrincipalPage() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <style>{customStyles}</style>
             <Header showSnsDropdown={true} />
-            <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-                {renderSearchSection()}
+            
+            <main style={{ minHeight: '100vh' }}>
+                {renderHeroBanner()}
+                
+                <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+                    {renderSearchSection()}
 
                 {/* Principal Profile Card */}
                 <div
@@ -1653,6 +1781,7 @@ export default function PrincipalPage() {
                         isCollapsed={isTransactionsCollapsed}
                         onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
                     />
+                </div>
                 </div>
             </main>
             

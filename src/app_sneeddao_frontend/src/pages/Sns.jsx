@@ -104,6 +104,9 @@ function Sns() {
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     const [sortBy, setSortBy] = useState('price-high');
+    // Current SNS banner state
+    const [currentSnsInfo, setCurrentSnsInfo] = useState(null);
+    const [currentSnsLogo, setCurrentSnsLogo] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredCard, setHoveredCard] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
@@ -148,6 +151,23 @@ function Sns() {
         loadSnsData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Load current SNS info for banner
+    useEffect(() => {
+        if (!selectedSnsRoot || snsList.length === 0) {
+            setCurrentSnsInfo(null);
+            setCurrentSnsLogo(null);
+            return;
+        }
+
+        const currentSns = snsList.find(sns => sns.rootCanisterId === selectedSnsRoot);
+        if (currentSns) {
+            setCurrentSnsInfo(currentSns);
+            // Get logo from the logos map
+            const logo = snsLogos.get(currentSns.canisters?.governance);
+            setCurrentSnsLogo(logo || null);
+        }
+    }, [selectedSnsRoot, snsList, snsLogos]);
 
     // Load detailed information when selected SNS changes
     useEffect(() => {
@@ -690,173 +710,148 @@ function Sns() {
                 margin: '0 auto',
                 padding: '2rem'
             }}>
-                {/* Hero Section */}
+                {/* Hero Banner */}
                 <div style={{
-                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${snsPrimary}15 50%, ${snsSecondary}10 100%)`,
-                    borderRadius: '24px',
-                    padding: '3rem 2rem',
-                    marginBottom: '2rem',
-                    border: `1px solid ${theme.colors.border}`,
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${snsPrimary}15 50%, ${snsSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    marginBottom: '2rem'
                 }}>
                     {/* Background decorations */}
                     <div style={{
                         position: 'absolute',
                         top: '-50%',
                         right: '-10%',
-                        width: '450px',
-                        height: '450px',
+                        width: '400px',
+                        height: '400px',
                         background: `radial-gradient(circle, ${snsPrimary}20 0%, transparent 70%)`,
                         borderRadius: '50%',
                         pointerEvents: 'none'
                     }} />
                     <div style={{
                         position: 'absolute',
-                        bottom: '-40%',
+                        bottom: '-30%',
                         left: '-5%',
-                        width: '350px',
-                        height: '350px',
+                        width: '300px',
+                        height: '300px',
                         background: `radial-gradient(circle, ${snsSecondary}15 0%, transparent 70%)`,
                         borderRadius: '50%',
                         pointerEvents: 'none'
                     }} />
 
-                    <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-                        {/* Animated Icon */}
-                        <div
-                            className="sns-float"
-                            style={{
-                                width: '80px',
-                                height: '80px',
-                                borderRadius: '20px',
-                                background: `linear-gradient(135deg, ${snsPrimary}, ${snsSecondary})`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                margin: '0 auto 1.5rem auto',
-                                boxShadow: `0 8px 30px ${snsPrimary}40`
-                            }}
-                        >
-                            <FaGlobe size={36} color="white" />
-                        </div>
-
-                        <h1 style={{
-                            fontSize: 'clamp(2rem, 5vw, 2.75rem)',
-                            color: theme.colors.primaryText,
-                            marginBottom: '1rem',
-                            fontWeight: '800',
-                            letterSpacing: '-0.02em'
-                        }}>
-                            SNS Directory
-                        </h1>
-
-                        <p style={{
-                            color: theme.colors.secondaryText,
-                            fontSize: '1.1rem',
-                            lineHeight: '1.7',
-                            maxWidth: '700px',
-                            margin: '0 auto 1rem auto'
-                        }}>
-                            Browse the SNS ecosystem, pick a DAO, and jump straight into proposals, neurons, transactions, and the forum.
-                        </p>
-
-                        <p style={{
-                            color: theme.colors.mutedText,
-                            fontSize: '0.95rem',
-                            marginBottom: '2rem'
-                        }}>
-                            💡 Use the SNS dropdown in the header to switch context anywhere on the site.
-                        </p>
-
-                        {/* Quick Stats */}
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            gap: '2rem',
-                            flexWrap: 'wrap',
-                            marginBottom: '2rem'
-                        }}>
+                    <div style={{ maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                            {/* SNS Logo */}
                             <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
+                                width: '56px',
+                                height: '56px',
+                                minWidth: '56px',
+                                maxWidth: '56px',
+                                flexShrink: 0,
+                                borderRadius: '14px',
+                                overflow: 'hidden'
+                            }}>
+                                {currentSnsLogo ? (
+                                    <img 
+                                        src={currentSnsLogo} 
+                                        alt={currentSnsInfo?.name || 'SNS'} 
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                    />
+                                ) : (
+                                    <div style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        background: `linear-gradient(135deg, ${snsPrimary}, ${snsSecondary})`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: `0 4px 20px ${snsPrimary}40`
+                                    }}>
+                                        <FaGlobe size={24} color="white" />
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1.75rem', 
+                                    fontWeight: '700', 
+                                    margin: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    {currentSnsInfo ? `${currentSnsInfo.name}` : 'SNS Directory'}
+                                    {currentSnsInfo && (
+                                        <span style={{
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            color: theme.colors.mutedText,
+                                            background: theme.colors.primaryBg,
+                                            padding: '4px 12px',
+                                            borderRadius: '20px'
+                                        }}>
+                                            Currently Selected
+                                        </span>
+                                    )}
+                                </h1>
+                                <p style={{ 
+                                    color: theme.colors.secondaryText, 
+                                    fontSize: '0.95rem', 
+                                    margin: '0.35rem 0 0 0' 
+                                }}>
+                                    {currentSnsInfo 
+                                        ? 'Browse all SNS DAOs or explore the selected project' 
+                                        : 'Browse the SNS ecosystem, pick a DAO, and jump straight into proposals, neurons, and the forum'
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Stats Row */}
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
                                 gap: '8px',
-                                color: theme.colors.secondaryText
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.9rem'
                             }}>
                                 <FaUsers style={{ color: snsPrimary }} />
                                 <span><strong style={{ color: theme.colors.primaryText }}>{snsList.length}</strong> SNS DAOs</span>
                             </div>
-                        </div>
-
-                        {/* CTA Buttons */}
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            gap: '1rem',
-                            flexWrap: 'wrap'
-                        }}>
-                            <Link
-                                to={withSnsParam('/feed')}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    background: `linear-gradient(135deg, ${snsPrimary}, ${snsSecondary})`,
-                                    color: 'white',
-                                    padding: '12px 24px',
-                                    borderRadius: '12px',
-                                    textDecoration: 'none',
-                                    fontWeight: '600',
-                                    fontSize: '0.95rem',
-                                    boxShadow: `0 4px 20px ${snsPrimary}40`,
-                                    transition: 'all 0.3s ease'
-                                }}
-                            >
-                                <FaRss />
-                                Open Feed
-                            </Link>
-
-                            <Link
-                                to={withSnsParam('/forum')}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    background: theme.colors.success,
-                                    color: 'white',
-                                    padding: '12px 24px',
-                                    borderRadius: '12px',
-                                    textDecoration: 'none',
-                                    fontWeight: '600',
-                                    fontSize: '0.95rem',
-                                    boxShadow: `0 4px 20px ${theme.colors.success}40`,
-                                    transition: 'all 0.3s ease'
-                                }}
-                            >
-                                <FaComments />
-                                Open Forum
-                            </Link>
-
-                            <Link
-                                to={withSnsParam('/proposals')}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    background: '#f59e0b',
-                                    color: 'white',
-                                    padding: '12px 24px',
-                                    borderRadius: '12px',
-                                    textDecoration: 'none',
-                                    fontWeight: '600',
-                                    fontSize: '0.95rem',
-                                    boxShadow: '0 4px 20px rgba(245, 158, 11, 0.4)',
-                                    transition: 'all 0.3s ease'
-                                }}
-                            >
-                                <FaVoteYea />
-                                Open Proposals
-                            </Link>
+                            {currentSnsInfo && selectedSnsDetails && (
+                                <>
+                                    {selectedSnsDetails.tokenSymbol && (
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '8px',
+                                            color: theme.colors.secondaryText,
+                                            fontSize: '0.9rem'
+                                        }}>
+                                            <FaCoins style={{ color: snsAccent }} />
+                                            <span><strong style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</strong> token</span>
+                                        </div>
+                                    )}
+                                    {tokenPriceUSD !== null && (
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '8px',
+                                            color: theme.colors.success,
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            <span>${tokenPriceUSD < 0.01 ? tokenPriceUSD.toFixed(4) : tokenPriceUSD.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
