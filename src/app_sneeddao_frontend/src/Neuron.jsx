@@ -20,7 +20,7 @@ import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
 import PrincipalInput from './components/PrincipalInput';
 import ConfirmDialog from './components/ConfirmDialog';
-import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion, FaCalendarAlt, FaPercent, FaChartLine, FaWallet } from 'react-icons/fa';
+import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion, FaCalendarAlt, FaPercent, FaChartLine, FaWallet, FaCheckCircle } from 'react-icons/fa';
 
 // Accent colors
 const neuronPrimary = '#6366f1';
@@ -1287,6 +1287,13 @@ function Neuron() {
                                 const vestingPeriod = neuronData.vesting_period_seconds?.[0] ? Number(neuronData.vesting_period_seconds[0]) : 0;
                                 const sourceNnsNeuronId = neuronData.source_nns_neuron_id?.[0] ? neuronData.source_nns_neuron_id[0].toString() : null;
                                 
+                                // Calculate vesting status
+                                const nowSeconds = Math.floor(Date.now() / 1000);
+                                const vestingElapsed = createdTimestamp ? nowSeconds - createdTimestamp : 0;
+                                const vestingRemaining = vestingPeriod > 0 ? Math.max(0, vestingPeriod - vestingElapsed) : 0;
+                                const vestingComplete = vestingPeriod > 0 && vestingRemaining <= 0;
+                                const vestingProgress = vestingPeriod > 0 ? Math.min(100, (vestingElapsed / vestingPeriod) * 100) : 0;
+                                
                                 // Duration formatter
                                 const formatDuration = (seconds) => {
                                     if (seconds <= 0) return '0d';
@@ -1463,15 +1470,48 @@ function Neuron() {
                                         {vestingPeriod > 0 && (
                                             <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.7s', marginBottom: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                    <FaClock size={14} style={{ color: '#8b5cf6' }} />
+                                                    {vestingComplete ? (
+                                                        <FaCheckCircle size={14} style={{ color: '#10b981' }} />
+                                                    ) : (
+                                                        <FaClock size={14} style={{ color: '#8b5cf6' }} />
+                                                    )}
                                                     <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vesting</span>
                                                 </div>
-                                                <div style={{ color: '#8b5cf6', fontSize: '1rem', fontWeight: '600' }}>
-                                                    {formatDuration(vestingPeriod)}
-                                                </div>
-                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
-                                                    Vesting period
-                                                </div>
+                                                {vestingComplete ? (
+                                                    <>
+                                                        <div style={{ color: '#10b981', fontSize: '1rem', fontWeight: '600' }}>
+                                                            Complete ✓
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                            {formatDuration(vestingPeriod)} vesting period ended
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div style={{ color: '#8b5cf6', fontSize: '1rem', fontWeight: '600' }}>
+                                                            {formatDuration(vestingRemaining)} left
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '0.35rem' }}>
+                                                            {vestingProgress.toFixed(0)}% of {formatDuration(vestingPeriod)}
+                                                        </div>
+                                                        {/* Progress bar */}
+                                                        <div style={{ 
+                                                            marginTop: '0.5rem', 
+                                                            height: '4px', 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            borderRadius: '2px',
+                                                            overflow: 'hidden'
+                                                        }}>
+                                                            <div style={{ 
+                                                                width: `${vestingProgress}%`, 
+                                                                height: '100%', 
+                                                                backgroundColor: '#8b5cf6',
+                                                                borderRadius: '2px',
+                                                                transition: 'width 0.3s ease'
+                                                            }} />
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                         )}
 
