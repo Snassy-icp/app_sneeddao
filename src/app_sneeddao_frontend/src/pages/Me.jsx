@@ -45,13 +45,67 @@ import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
+import { FaUser, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette } from 'react-icons/fa';
 
-const spinKeyframes = `
+// Custom CSS for animations
+const customStyles = `
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+.me-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.me-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+}
+
+.me-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.quick-nav-item {
+    transition: all 0.3s ease;
+}
+
+.quick-nav-item:hover {
+    transform: translateY(-3px);
+}
+
+.settings-card:hover {
+    transform: translateY(-2px);
+}
 `;
+
+// Accent colors
+const mePrimary = '#6366f1'; // Indigo
+const meSecondary = '#8b5cf6'; // Purple
+const meAccent = '#06b6d4'; // Cyan
 
 export default function Me() {
     const { theme } = useTheme();
@@ -65,7 +119,7 @@ export default function Me() {
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [neuronsExpanded, setNeuronsExpanded] = useState(true);
-    const [expandedGroups, setExpandedGroups] = useState(new Set(['self'])); // Default expand self group
+    const [expandedGroups, setExpandedGroups] = useState(new Set(['self']));
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
@@ -116,7 +170,7 @@ export default function Me() {
     const [principalColorCoding, setPrincipalColorCoding] = useState(() => {
         try {
             const saved = localStorage.getItem('principalColorCoding');
-            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+            return saved !== null ? JSON.parse(saved) : true;
         } catch (error) {
             return true;
         }
@@ -124,7 +178,7 @@ export default function Me() {
     const [neuronColorCoding, setNeuronColorCoding] = useState(() => {
         try {
             const saved = localStorage.getItem('neuronColorCoding');
-            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+            return saved !== null ? JSON.parse(saved) : true;
         } catch (error) {
             return true;
         }
@@ -132,7 +186,7 @@ export default function Me() {
     const [showVpBar, setShowVpBar] = useState(() => {
         try {
             const saved = localStorage.getItem('showVpBar');
-            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+            return saved !== null ? JSON.parse(saved) : true;
         } catch (error) {
             return true;
         }
@@ -140,7 +194,7 @@ export default function Me() {
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
             const saved = localStorage.getItem('expandQuickLinksOnDesktop');
-            return saved !== null ? JSON.parse(saved) : false; // Default to false (show hamburger everywhere)
+            return saved !== null ? JSON.parse(saved) : false;
         } catch (error) {
             return false;
         }
@@ -183,7 +237,6 @@ export default function Me() {
                 setNotifyOnPrivateInvite(settings.notify_on_private_invite ?? true);
             } catch (err) {
                 console.error('Failed to load notification settings:', err);
-                // Use defaults on error
             } finally {
                 setLoadingNotificationSettings(false);
             }
@@ -244,7 +297,6 @@ export default function Me() {
         if (tabParam === 'settings') {
             setSettingsExpanded(true);
             setCanisterManagerSettingsExpanded(true);
-            // Scroll to settings section after a brief delay
             setTimeout(() => {
                 const settingsElement = document.getElementById('settings-section');
                 if (settingsElement) {
@@ -331,13 +383,11 @@ export default function Me() {
         const groups = new Map();
         const userPrincipal = identity?.getPrincipal().toString();
 
-        // First, group neurons by their owner
         const neuronsByOwner = new Map();
         neurons.forEach(neuron => {
-            // Find the owner (principal with most permissions)
             const ownerPrincipals = getOwnerPrincipals(neuron);
             if (ownerPrincipals.length > 0) {
-                const owner = ownerPrincipals[0]; // Take the first owner
+                const owner = ownerPrincipals[0];
                 if (!neuronsByOwner.has(owner)) {
                     neuronsByOwner.set(owner, []);
                 }
@@ -345,16 +395,12 @@ export default function Me() {
             }
         });
 
-        // Now, if the user has any permissions on any neuron owned by a principal,
-        // add all neurons from that owner to the group
         neuronsByOwner.forEach((ownerNeurons, owner) => {
-            // Check if user has permissions on any neuron from this owner
             const hasAccess = ownerNeurons.some(neuron => 
                 neuron.permissions.some(p => p.principal?.toString() === userPrincipal)
             );
 
             if (hasAccess) {
-                // Filter out empty neurons if hideEmptyNeurons is true
                 const filteredNeurons = hideEmptyNeurons 
                     ? ownerNeurons.filter(n => !isNeuronEmpty(n))
                     : ownerNeurons;
@@ -408,7 +454,6 @@ export default function Me() {
                 const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
                 setNeurons(neuronsList);
 
-                // Fetch token metadata for the selected SNS
                 const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
                     agentOptions: { identity }
                 });
@@ -427,7 +472,6 @@ export default function Me() {
         fetchNeurons();
     }, [identity, selectedSnsRoot]);
 
-    // Add after other useEffect hooks
     useEffect(() => {
         if (identity) {
             const fetchPrincipalName = async () => {
@@ -452,9 +496,7 @@ export default function Me() {
 
             const uniquePrincipals = new Set();
             neurons.forEach(neuron => {
-                // Add owner principals
                 getOwnerPrincipals(neuron).forEach(p => uniquePrincipals.add(p));
-                // Add all principals with permissions
                 neuron.permissions.forEach(p => {
                     if (p.principal) uniquePrincipals.add(p.principal.toString());
                 });
@@ -495,43 +537,8 @@ export default function Me() {
         fetchNervousSystemParameters();
     }, [selectedSnsRoot, identity]);
 
-    // Add responsive CSS for principal and quick links layout
-    useEffect(() => {
-        const responsiveCSS = `
-            <style id="me-page-responsive-css">
-                @media (max-width: 768px) {
-                    .principal-quick-links-container {
-                        flex-direction: column !important;
-                    }
-                    .principal-quick-links-container > div:last-child {
-                        width: 100% !important;
-                        max-width: 300px !important;
-                    }
-                }
-            </style>
-        `;
-        
-        // Remove existing style if it exists
-        const existingStyle = document.getElementById('me-page-responsive-css');
-        if (existingStyle) {
-            existingStyle.remove();
-        }
-        
-        // Add new style
-        document.head.insertAdjacentHTML('beforeend', responsiveCSS);
-        
-        // Cleanup function to remove the style when component unmounts
-        return () => {
-            const styleElement = document.getElementById('me-page-responsive-css');
-            if (styleElement) {
-                styleElement.remove();
-            }
-        };
-    }, []);
-
     const handleSnsChange = (newSnsRoot) => {
         // The global context and URL sync is handled by SnsDropdown component
-        // This callback is mainly for any page-specific logic
     };
 
     const toggleGroup = (groupId) => {
@@ -556,7 +563,6 @@ export default function Me() {
         if (!nameInput.trim()) return;
 
         if (!isNickname) {
-            // Show confirmation dialog for public names
             setConfirmAction(() => async () => {
                 setIsSubmitting(true);
                 try {
@@ -587,7 +593,6 @@ export default function Me() {
             return;
         }
 
-        // For nicknames, proceed without confirmation
         setIsSubmitting(true);
         try {
             const response = await setNeuronNickname(identity, selectedSnsRoot, neuronId, nameInput);
@@ -615,7 +620,6 @@ export default function Me() {
         return { name, nickname, isVerified };
     };
 
-    // Add after other handlers
     const handlePrincipalNameSubmit = async () => {
         const error = validateNameInput(principalNameInput);
         if (error) {
@@ -625,7 +629,6 @@ export default function Me() {
 
         if (!principalNameInput.trim()) return;
 
-        // Show confirmation dialog for public names
         setConfirmAction(() => async () => {
             setIsSubmittingPrincipalName(true);
             try {
@@ -659,2217 +662,1014 @@ export default function Me() {
         setShowConfirmModal(true);
     };
 
+    // Toggle switch component
+    const ToggleSwitch = ({ checked, onChange, disabled = false }) => (
+        <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={onChange}
+                disabled={disabled}
+                style={{ opacity: 0, width: 0, height: 0 }}
+            />
+            <span style={{
+                position: 'absolute',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: checked ? mePrimary : theme.colors.border,
+                transition: '0.3s',
+                borderRadius: '28px',
+                opacity: disabled ? 0.5 : 1,
+            }}>
+                <span style={{
+                    position: 'absolute',
+                    content: '',
+                    height: '22px',
+                    width: '22px',
+                    left: checked ? '25px' : '3px',
+                    bottom: '3px',
+                    backgroundColor: 'white',
+                    transition: '0.3s',
+                    borderRadius: '50%',
+                }}></span>
+            </span>
+        </label>
+    );
+
     if (!identity) {
         return (
-            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className='page-container'>
+                <style>{customStyles}</style>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-                <main className="wallet-container">
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Please Connect Your Wallet</h1>
-                        <p style={{ color: theme.colors.mutedText }}>You need to connect your wallet to view your neurons.</p>
+                <main style={{
+                    background: theme.colors.primaryGradient,
+                    minHeight: '100vh',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}>
+                    <div style={{
+                        textAlign: 'center',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '24px',
+                        padding: '3rem',
+                        border: `1px solid ${theme.colors.border}`,
+                        maxWidth: '500px',
+                        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
+                    }}>
+                        <div className="me-pulse" style={{
+                            width: '80px',
+                            height: '80px',
+                            borderRadius: '50%',
+                            background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                            margin: '0 auto 1.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <FaUser size={32} color="white" />
+                        </div>
+                        <h1 style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '2rem',
+                            fontWeight: '700',
+                            marginBottom: '1rem'
+                        }}>
+                            Connect Your Wallet
+                        </h1>
+                        <p style={{
+                            color: theme.colors.secondaryText,
+                            fontSize: '1.1rem',
+                            lineHeight: '1.6'
+                        }}>
+                            Connect your wallet to view your profile, manage neurons, and access settings.
+                        </p>
                     </div>
                 </main>
             </div>
         );
     }
 
+    // Quick navigation items
+    const quickNavItems = [
+        { icon: <FaWallet size={20} />, label: 'Wallet', to: '/wallet', color: mePrimary },
+        { icon: <FaComments size={20} />, label: 'Posts', to: '/posts', color: '#10b981' },
+        { icon: <FaCoins size={20} />, label: 'Tips', to: '/tips', color: '#f59e0b' },
+        { icon: <FaEnvelope size={20} />, label: 'Messages', to: '/sms', color: '#ec4899' },
+        { icon: <FaGift size={20} />, label: 'Rewards', to: '/rewards', color: '#8b5cf6' },
+        { icon: <FaLock size={20} />, label: 'My Locks', to: `/sneedlock_info?owner=${identity?.getPrincipal().toString()}`, color: '#06b6d4' },
+        { icon: <FaServer size={20} />, label: 'Canisters', to: '/canisters', color: '#14b8a6' },
+        { icon: <FaAddressBook size={20} />, label: 'Address Book', to: '/names', color: '#f97316' },
+    ];
+
     return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className='page-container'>
+            <style>{customStyles}</style>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-            <main className="wallet-container">
-                {/* Principal ID section */}
+            
+            <main style={{
+                background: theme.colors.primaryGradient,
+                minHeight: '100vh'
+            }}>
+                {/* Hero Section */}
                 <div style={{
-                    marginBottom: '30px'
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${mePrimary}15 50%, ${meSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2.5rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    {/* Principal ID card */}
-                    <div style={{ 
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        padding: '20px',
-                        border: `1px solid ${theme.colors.border}`
+                    {/* Background decoration */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${mePrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${meSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{
+                        maxWidth: '1000px',
+                        margin: '0 auto',
+                        position: 'relative',
+                        zIndex: 1
                     }}>
-                        <div style={{ marginBottom: '15px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
-                                <h2 style={{ 
-                                    color: theme.colors.primaryText,
-                                    margin: '0',
-                                    fontSize: '18px',
-                                    fontWeight: '500'
-                                }}>
-                                    Your Principal ID
-                                </h2>
-                                {isPremium && !premiumLoading && (
-                                    <PremiumBadge size="small" />
-                                )}
-                            </div>
-                            <div style={{ 
-                                fontFamily: 'monospace',
-                                color: theme.colors.mutedText,
-                                fontSize: '14px'
-                            }}>
-                                {identity?.getPrincipal().toString()}
-                            </div>
-                        </div>
-
-                        {principalName && !editingPrincipalName && (
-                            <div style={{ 
-                                color: theme.colors.accent,
-                                fontSize: '18px',
-                                fontWeight: 'bold',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                marginBottom: '10px'
-                            }}>
-                                {principalName}
-                                {isVerified && (
-                                    <span 
-                                        style={{ 
-                                            fontSize: '14px',
-                                            cursor: 'help'
-                                        }}
-                                        title="Verified name"
-                                    >
-                                        ✓
-                                    </span>
-                                )}
-                            </div>
-                        )}
-
-                        {!editingPrincipalName && (
-                            <button
-                                onClick={() => setEditingPrincipalName(true)}
-                                style={{
-                                    backgroundColor: theme.colors.accent,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    marginBottom: '15px'
-                                }}
-                            >
-                                {principalName ? 'Change Name' : 'Set Name'}
-                            </button>
-                        )}
-
-                        {/* Quick Links as flowing paragraph */}
-                        <div style={{
-                            marginTop: '15px',
-                            marginBottom: '15px',
-                            color: theme.colors.secondaryText,
-                            fontSize: '14px',
-                            lineHeight: '1.6'
+                        {/* Profile Card */}
+                        <div className="me-card-animate" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '20px',
+                            padding: '1.5rem 2rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)'
                         }}>
-
-                            <Link
-                                to="/wallet"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                💼 My Wallet
-                            </Link>
-                            {' • '}
-                            <Link
-                                to="/posts"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                📝 Posts
-                            </Link>
-                            {' • '}
-                            <Link
-                                to="/tips"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                💰 Tips
-                            </Link>
-                            {' • '}
-                            <Link
-                                to="/sms"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                💬 Messages
-                            </Link>
-                            {' • '}
-                            <Link
-                                to="/rewards"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                🎁 Rewards
-                            </Link>
-                            {' • '}
-                            <Link
-                                to={`/sneedlock_info?owner=${identity?.getPrincipal().toString()}`}
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                🔒 My Locks
-                            </Link>
-                            {' • '}
-                            <Link
-                                to="/canisters"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                🗄️ My Canisters
-                            </Link>
-                            {' • '}
-                            <Link
-                                to="/names"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                📒 Address Book
-                            </Link>
-                        </div>
-
-                        {editingPrincipalName && (
-                            <div style={{ 
-                                marginTop: '10px',
+                            <div style={{
                                 display: 'flex',
-                                flexDirection: 'column',
-                                gap: '10px'
+                                alignItems: 'flex-start',
+                                gap: '1.5rem',
+                                flexWrap: 'wrap'
                             }}>
-                                <div>
-                                    <input
-                                        type="text"
-                                        value={principalNameInput}
-                                        onChange={(e) => {
-                                            const newValue = e.target.value;
-                                            setPrincipalNameInput(newValue);
-                                            setPrincipalNameError(validateNameInput(newValue));
-                                        }}
-                                        maxLength={32}
-                                        placeholder="Enter your name (max 32 chars)"
-                                        style={{
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            border: `1px solid ${principalNameError ? theme.colors.error : theme.colors.border}`,
-                                            borderRadius: '4px',
-                                            color: theme.colors.primaryText,
-                                            padding: '8px',
-                                            width: '100%'
-                                        }}
-                                    />
-                                    {principalNameError && (
+                                {/* Avatar */}
+                                <div style={{
+                                    width: '72px',
+                                    height: '72px',
+                                    borderRadius: '18px',
+                                    background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    boxShadow: `0 4px 20px ${mePrimary}40`
+                                }}>
+                                    <FaUser size={32} color="white" />
+                                </div>
+                                
+                                {/* Profile Info */}
+                                <div style={{ flex: 1, minWidth: '250px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                                        {principalName && !editingPrincipalName ? (
+                                            <h1 style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1.75rem',
+                                                fontWeight: '700',
+                                                margin: 0,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
+                                            }}>
+                                                {principalName}
+                                                {isVerified && (
+                                                    <FaCheckCircle size={18} color={mePrimary} title="Verified name" />
+                                                )}
+                                            </h1>
+                                        ) : (
+                                            <h1 style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1.75rem',
+                                                fontWeight: '700',
+                                                margin: 0
+                                            }}>
+                                                My Profile
+                                            </h1>
+                                        )}
+                                        {isPremium && !premiumLoading && (
+                                            <PremiumBadge size="small" />
+                                        )}
+                                    </div>
+                                    
+                                    <div style={{
+                                        fontFamily: 'monospace',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.9rem',
+                                        wordBreak: 'break-all',
+                                        marginBottom: '1rem'
+                                    }}>
+                                        {identity?.getPrincipal().toString()}
+                                    </div>
+
+                                    {!editingPrincipalName ? (
+                                        <button
+                                            onClick={() => setEditingPrincipalName(true)}
+                                            style={{
+                                                background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                padding: '0.6rem 1.25rem',
+                                                cursor: 'pointer',
+                                                fontWeight: '600',
+                                                fontSize: '0.9rem',
+                                                transition: 'all 0.3s ease',
+                                                boxShadow: `0 4px 15px ${mePrimary}30`
+                                            }}
+                                        >
+                                            {principalName ? '✏️ Change Name' : '✏️ Set Name'}
+                                        </button>
+                                    ) : (
                                         <div style={{
-                                            color: theme.colors.error,
-                                            fontSize: '12px',
-                                            marginTop: '4px'
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.75rem'
                                         }}>
-                                            {principalNameError}
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={principalNameInput}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.value;
+                                                        setPrincipalNameInput(newValue);
+                                                        setPrincipalNameError(validateNameInput(newValue));
+                                                    }}
+                                                    maxLength={32}
+                                                    placeholder="Enter your name (max 32 chars)"
+                                                    style={{
+                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                        border: `1px solid ${principalNameError ? theme.colors.error : theme.colors.border}`,
+                                                        borderRadius: '10px',
+                                                        color: theme.colors.primaryText,
+                                                        padding: '0.75rem 1rem',
+                                                        width: '100%',
+                                                        maxWidth: '300px',
+                                                        fontSize: '0.95rem'
+                                                    }}
+                                                />
+                                                {principalNameError && (
+                                                    <div style={{
+                                                        color: theme.colors.error,
+                                                        fontSize: '0.8rem',
+                                                        marginTop: '0.35rem'
+                                                    }}>
+                                                        {principalNameError}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    onClick={handlePrincipalNameSubmit}
+                                                    disabled={isSubmittingPrincipalName}
+                                                    style={{
+                                                        background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '8px',
+                                                        padding: '0.5rem 1rem',
+                                                        cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.85rem',
+                                                        opacity: isSubmittingPrincipalName ? 0.7 : 1
+                                                    }}
+                                                >
+                                                    {isSubmittingPrincipalName ? 'Setting...' : 'Set Name'}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingPrincipalName(false);
+                                                        setPrincipalNameInput('');
+                                                    }}
+                                                    disabled={isSubmittingPrincipalName}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        color: theme.colors.mutedText,
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '8px',
+                                                        padding: '0.5rem 1rem',
+                                                        cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
+                                                        fontWeight: '500',
+                                                        fontSize: '0.85rem'
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
-                                    <div style={{
-                                        color: theme.colors.mutedText,
-                                        fontSize: '12px',
-                                        marginTop: '4px'
-                                    }}>
-                                        Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
-                                    </div>
-                                </div>
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '8px',
-                                    justifyContent: 'flex-end'
-                                }}>
-                                    <button
-                                        onClick={handlePrincipalNameSubmit}
-                                        disabled={isSubmittingPrincipalName}
-                                        style={{
-                                            backgroundColor: theme.colors.accent,
-                                            color: theme.colors.primaryText,
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '8px 12px',
-                                            cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            opacity: isSubmittingPrincipalName ? 0.7 : 1,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}
-                                    >
-                                        {isSubmittingPrincipalName ? (
-                                            <>
-                                                <span style={{ 
-                                                    display: 'inline-block',
-                                                    animation: 'spin 1s linear infinite',
-                                                    fontSize: '14px'
-                                                }}>⟳</span>
-                                                Setting...
-                                            </>
-                                        ) : (
-                                            'Set Name'
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setEditingPrincipalName(false);
-                                            setPrincipalNameInput('');
-                                        }}
-                                        disabled={isSubmittingPrincipalName}
-                                        style={{
-                                            backgroundColor: theme.colors.error,
-                                            color: theme.colors.primaryText,
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '8px 12px',
-                                            cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            opacity: isSubmittingPrincipalName ? 0.7 : 1
-                                        }}
-                                    >
-                                        Cancel
-                                    </button>
                                 </div>
                             </div>
-                        )}
-                    </div>
-
-
-                </div>
-
-                {/* Settings Section */}
-                <div 
-                    id="settings-section"
-                    style={{
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
-                    border: `1px solid ${theme.colors.border}`,
-                    marginTop: '20px',
-                    overflow: 'hidden',
-                    }}
-                >
-                    {/* Parent Settings Header */}
-                    <div 
-                        onClick={() => setSettingsExpanded(!settingsExpanded)}
-                        style={{
-                            padding: '15px 20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            cursor: 'pointer',
-                            borderBottom: settingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                        }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ 
-                                fontSize: '16px',
-                                color: theme.colors.mutedText,
-                                transition: 'transform 0.2s',
-                                transform: settingsExpanded ? 'none' : 'rotate(-90deg)'
-                            }}>▼</span>
-                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                ⚙️ Settings
-                            </span>
                         </div>
                     </div>
-                    
-                    {settingsExpanded && (
-                        <div style={{ padding: '10px 20px 20px 20px' }}>
-                            {/* General Settings Child Section */}
-                            <div style={{
-                                backgroundColor: theme.colors.tertiaryBg,
-                                borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`,
-                                marginBottom: '15px',
-                                overflow: 'hidden',
-                            }}>
-                                <div 
-                                    onClick={() => setGeneralSettingsExpanded(!generalSettingsExpanded)}
-                                    style={{
-                                        padding: '12px 15px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        cursor: 'pointer',
-                                        borderBottom: generalSettingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <span style={{ 
-                                            fontSize: '14px',
-                                            color: theme.colors.mutedText,
-                                            transition: 'transform 0.2s',
-                                            transform: generalSettingsExpanded ? 'none' : 'rotate(-90deg)'
-                                        }}>▼</span>
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                            🎨 General Settings
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                {generalSettingsExpanded && (
-                                    <div style={{ padding: '15px' }}>
-                                        {/* Theme Setting */}
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between',
-                                            padding: '10px 0',
-                                            borderBottom: `1px solid ${theme.colors.border}`
-                                        }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
-                                                    Theme
-                                                </div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                    Switch between dark and light mode
-                                                </div>
-                                            </div>
-                                            <ThemeToggle size="medium" showLabel={true} />
-                                        </div>
-                                        
-                                        {/* Principal Color Coding Setting */}
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between',
-                                            padding: '10px 0',
-                                            borderBottom: `1px solid ${theme.colors.border}`
-                                        }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
-                                                    Principal Color Coding
-                                                </div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                    Display principals with unique colors based on their ID
-                                                </div>
-                                            </div>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                cursor: 'pointer',
-                                                gap: '8px'
-                                            }}>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={principalColorCoding}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.checked;
-                                                        setPrincipalColorCoding(newValue);
-                                                        localStorage.setItem('principalColorCoding', JSON.stringify(newValue));
-                                                    }}
-                                                    style={{ 
-                                                        width: '18px', 
-                                                        height: '18px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                />
-                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
-                                                    {principalColorCoding ? 'Enabled' : 'Disabled'}
-                                                </span>
-                                            </label>
-                                        </div>
-                                        
-                                        {/* Neuron Color Coding Setting */}
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between',
-                                            padding: '10px 0',
-                                        }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
-                                                    Neuron Color Coding
-                                                </div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                    Display neurons with unique colors based on their ID
-                                                </div>
-                                            </div>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                cursor: 'pointer',
-                                                gap: '8px'
-                                            }}>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={neuronColorCoding}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.checked;
-                                                        setNeuronColorCoding(newValue);
-                                                        localStorage.setItem('neuronColorCoding', JSON.stringify(newValue));
-                                                    }}
-                                                    style={{ 
-                                                        width: '18px', 
-                                                        height: '18px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                />
-                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
-                                                    {neuronColorCoding ? 'Enabled' : 'Disabled'}
-                                                </span>
-                                            </label>
-                                        </div>
-                                        
-                                        {/* Show VP Bar in Header Setting */}
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between',
-                                            padding: '10px 0',
-                                            borderBottom: `1px solid ${theme.colors.border}`
-                                        }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
-                                                    Show Voting Power Bar
-                                                </div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                    Display the voting power bar in the header (hides/shows on scroll)
-                                                </div>
-                                            </div>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                cursor: 'pointer',
-                                                gap: '8px'
-                                            }}>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={showVpBar}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.checked;
-                                                        setShowVpBar(newValue);
-                                                        localStorage.setItem('showVpBar', JSON.stringify(newValue));
-                                                        // Dispatch custom event for same-page updates
-                                                        window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: newValue }));
-                                                    }}
-                                                    style={{ 
-                                                        width: '18px', 
-                                                        height: '18px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                />
-                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
-                                                    {showVpBar ? 'Enabled' : 'Disabled'}
-                                                </span>
-                                            </label>
-                                        </div>
-                                        
-                                        {/* Expand Quick Links on Desktop Setting */}
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between',
-                                            padding: '10px 0',
-                                        }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '4px' }}>
-                                                    Expand Quick Links on Desktop
-                                                </div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                    Show individual quick link buttons on desktop instead of hamburger menu
-                                                </div>
-                                            </div>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                cursor: 'pointer',
-                                                gap: '8px'
-                                            }}>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={expandQuickLinksOnDesktop}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.checked;
-                                                        setExpandQuickLinksOnDesktop(newValue);
-                                                        localStorage.setItem('expandQuickLinksOnDesktop', JSON.stringify(newValue));
-                                                        // Dispatch custom event for same-page updates
-                                                        window.dispatchEvent(new CustomEvent('expandQuickLinksOnDesktopChanged', { detail: newValue }));
-                                                    }}
-                                                    style={{ 
-                                                        width: '18px', 
-                                                        height: '18px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                />
-                                                <span style={{ color: theme.colors.secondaryText, fontSize: '14px' }}>
-                                                    {expandQuickLinksOnDesktop ? 'Expanded' : 'Hamburger'}
-                                                </span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* ICP Neuron Manager Settings Child Section */}
-                            <div style={{
-                                backgroundColor: theme.colors.tertiaryBg,
-                                borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`,
-                                overflow: 'hidden',
-                            }}>
-                                <div 
-                                    onClick={() => setNeuronManagerSettingsExpanded(!neuronManagerSettingsExpanded)}
-                                    style={{
-                                        padding: '12px 15px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        cursor: 'pointer',
-                                        borderBottom: neuronManagerSettingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <span style={{ 
-                                            fontSize: '14px',
-                                            color: theme.colors.mutedText,
-                                            transition: 'transform 0.2s',
-                                            transform: neuronManagerSettingsExpanded ? 'none' : 'rotate(-90deg)'
-                                        }}>▼</span>
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                            🧠 ICP Neuron Manager Settings
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                {neuronManagerSettingsExpanded && (
-                                    <div style={{ padding: '15px' }}>
-                                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
-                                            Configure cycle warning thresholds for your ICP Neuron Manager canisters. 
-                                            These thresholds determine when cycle balances are shown in red (critical), orange (warning), or green (healthy).
-                                        </p>
-                                        
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                            <div>
-                                                <label style={{ 
-                                                    color: theme.colors.mutedText, 
-                                                    fontSize: '12px', 
-                                                    display: 'block', 
-                                                    marginBottom: '6px' 
-                                                }}>
-                                                    🔴 Critical Threshold (Red) - cycles below this are critical
-                                                </label>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <input
-                                                        type="text"
-                                                        value={cycleThresholdRed}
-                                                        onChange={(e) => {
-                                                            setCycleThresholdRed(e.target.value);
-                                                            setSettingsSaved(false);
-                                                        }}
-                                                        placeholder="e.g., 1T, 500B"
-                                                        style={{
-                                                            backgroundColor: theme.colors.secondaryBg,
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            borderRadius: '4px',
-                                                            color: theme.colors.primaryText,
-                                                            padding: '8px 12px',
-                                                            width: '150px',
-                                                        }}
-                                                    />
-                                                    <span style={{ 
-                                                        color: '#ef4444', 
-                                                        fontSize: '20px',
-                                                        padding: '4px 12px',
-                                                        background: '#ef444420',
-                                                        borderRadius: '4px',
-                                                    }}>
-                                                        ⚡
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div>
-                                                <label style={{ 
-                                                    color: theme.colors.mutedText, 
-                                                    fontSize: '12px', 
-                                                    display: 'block', 
-                                                    marginBottom: '6px' 
-                                                }}>
-                                                    🟠 Warning Threshold (Orange) - cycles below this show a warning
-                                                </label>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <input
-                                                        type="text"
-                                                        value={cycleThresholdOrange}
-                                                        onChange={(e) => {
-                                                            setCycleThresholdOrange(e.target.value);
-                                                            setSettingsSaved(false);
-                                                        }}
-                                                        placeholder="e.g., 5T, 2T"
-                                                        style={{
-                                                            backgroundColor: theme.colors.secondaryBg,
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            borderRadius: '4px',
-                                                            color: theme.colors.primaryText,
-                                                            padding: '8px 12px',
-                                                            width: '150px',
-                                                        }}
-                                                    />
-                                                    <span style={{ 
-                                                        color: '#f59e0b', 
-                                                        fontSize: '20px',
-                                                        padding: '4px 12px',
-                                                        background: '#f59e0b20',
-                                                        borderRadius: '4px',
-                                                    }}>
-                                                        ⚡
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div style={{ 
-                                                color: theme.colors.mutedText, 
-                                                fontSize: '11px', 
-                                                padding: '10px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '4px',
-                                            }}>
-                                                💡 Use suffixes: <strong>T</strong> (trillion), <strong>B</strong> (billion), <strong>M</strong> (million). 
-                                                Example: "1T" = 1,000,000,000,000 cycles
-                                            </div>
-                                            
-                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                <button
-                                                    onClick={() => {
-                                                        const redValue = parseCyclesInput(cycleThresholdRed);
-                                                        const orangeValue = parseCyclesInput(cycleThresholdOrange);
-                                                        
-                                                        if (redValue === null || orangeValue === null) {
-                                                            alert('Invalid input. Please use format like "1T", "500B", or "1000000000000"');
-                                                            return;
-                                                        }
-                                                        
-                                                        if (redValue >= orangeValue) {
-                                                            alert('Critical threshold must be lower than warning threshold');
-                                                            return;
-                                                        }
-                                                        
-                                                        saveNeuronManagerSettings({
-                                                            cycleThresholdRed: redValue,
-                                                            cycleThresholdOrange: orangeValue,
-                                                        });
-                                                        
-                                                        // Update display to normalized format
-                                                        setCycleThresholdRed(formatCyclesCompact(redValue));
-                                                        setCycleThresholdOrange(formatCyclesCompact(orangeValue));
-                                                        setSettingsSaved(true);
-                                                        
-                                                        setTimeout(() => setSettingsSaved(false), 3000);
-                                                    }}
-                                                    style={{
-                                                        backgroundColor: theme.colors.accent,
-                                                        color: theme.colors.primaryText,
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '10px 20px',
-                                                        cursor: 'pointer',
-                                                        fontWeight: '500',
-                                                    }}
-                                                >
-                                                    Save Settings
-                                                </button>
-                                                
-                                                <button
-                                                    onClick={() => {
-                                                        setCycleThresholdRed('1.0T');
-                                                        setCycleThresholdOrange('5.0T');
-                                                        saveNeuronManagerSettings({
-                                                            cycleThresholdRed: 1_000_000_000_000,
-                                                            cycleThresholdOrange: 5_000_000_000_000,
-                                                        });
-                                                        setSettingsSaved(true);
-                                                        setTimeout(() => setSettingsSaved(false), 3000);
-                                                    }}
-                                                    style={{
-                                                        backgroundColor: 'transparent',
-                                                        color: theme.colors.mutedText,
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        borderRadius: '4px',
-                                                        padding: '10px 20px',
-                                                        cursor: 'pointer',
-                                                    }}
-                                                >
-                                                    Reset to Defaults
-                                                </button>
-                                                
-                                                {settingsSaved && (
-                                                    <span style={{ color: theme.colors.success || '#22c55e', fontSize: '13px' }}>
-                                                        ✓ Settings saved!
-                                                    </span>
-                                                )}
-                                            </div>
-                                            
-                                            {/* Preview */}
-                                            <div style={{ 
-                                                marginTop: '10px',
-                                                padding: '15px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '10px' }}>
-                                                    Preview:
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                                                    {(() => {
-                                                        const redValue = parseCyclesInput(cycleThresholdRed) || 1_000_000_000_000;
-                                                        const orangeValue = parseCyclesInput(cycleThresholdOrange) || 5_000_000_000_000;
-                                                        const settings = { cycleThresholdRed: redValue, cycleThresholdOrange: orangeValue };
-                                                        
-                                                        const examples = [
-                                                            { value: redValue / 2, label: 'Critical' },
-                                                            { value: (redValue + orangeValue) / 2, label: 'Warning' },
-                                                            { value: orangeValue * 2, label: 'Healthy' },
-                                                        ];
-                                                        
-                                                        return examples.map((ex, i) => (
-                                                            <div key={i} style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '6px',
-                                                                padding: '6px 12px',
-                                                                background: `${getCyclesColor(ex.value, settings)}20`,
-                                                                borderRadius: '20px',
-                                                            }}>
-                                                                <span style={{ color: getCyclesColor(ex.value, settings), fontWeight: '500' }}>
-                                                                    ⚡ {formatCyclesCompact(ex.value)}
-                                                                </span>
-                                                                <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
-                                                                    ({ex.label})
-                                                                </span>
-                                                            </div>
-                                                        ));
-                                                    })()}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Canister Manager Settings Child Section */}
-                            <div style={{
-                                backgroundColor: theme.colors.tertiaryBg,
-                                borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`,
-                                marginBottom: '15px',
-                                overflow: 'hidden',
-                            }}>
-                                <div 
-                                    onClick={() => setCanisterManagerSettingsExpanded(!canisterManagerSettingsExpanded)}
-                                    style={{
-                                        padding: '12px 15px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        cursor: 'pointer',
-                                        borderBottom: canisterManagerSettingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <span style={{ 
-                                            fontSize: '14px',
-                                            color: theme.colors.mutedText,
-                                            transition: 'transform 0.2s',
-                                            transform: canisterManagerSettingsExpanded ? 'none' : 'rotate(-90deg)'
-                                        }}>▼</span>
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                            🗄️ Canister Manager Settings
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                {canisterManagerSettingsExpanded && (
-                                    <div style={{ padding: '15px' }}>
-                                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
-                                            Configure cycle warning thresholds for canisters in Wallet and Canister Manager (non-neuron-manager canisters).
-                                        </p>
-                                        
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                            <div>
-                                                <label style={{ 
-                                                    color: theme.colors.mutedText, 
-                                                    fontSize: '12px', 
-                                                    display: 'block', 
-                                                    marginBottom: '6px' 
-                                                }}>
-                                                    🔴 Critical Threshold (Red) - cycles below this are critical
-                                                </label>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <input
-                                                        type="text"
-                                                        value={canisterCycleThresholdRed}
-                                                        onChange={(e) => {
-                                                            setCanisterCycleThresholdRed(e.target.value);
-                                                            setCanisterSettingsSaved(false);
-                                                        }}
-                                                        placeholder="e.g., 1T, 500B"
-                                                        style={{
-                                                            backgroundColor: theme.colors.secondaryBg,
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            borderRadius: '4px',
-                                                            color: theme.colors.primaryText,
-                                                            padding: '8px 12px',
-                                                            width: '150px',
-                                                        }}
-                                                    />
-                                                    <span style={{ 
-                                                        color: '#ef4444', 
-                                                        fontSize: '20px',
-                                                        padding: '4px 12px',
-                                                        background: '#ef444420',
-                                                        borderRadius: '4px',
-                                                    }}>
-                                                        ⚡
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div>
-                                                <label style={{ 
-                                                    color: theme.colors.mutedText, 
-                                                    fontSize: '12px', 
-                                                    display: 'block', 
-                                                    marginBottom: '6px' 
-                                                }}>
-                                                    🟠 Warning Threshold (Orange) - cycles below this show a warning
-                                                </label>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                    <input
-                                                        type="text"
-                                                        value={canisterCycleThresholdOrange}
-                                                        onChange={(e) => {
-                                                            setCanisterCycleThresholdOrange(e.target.value);
-                                                            setCanisterSettingsSaved(false);
-                                                        }}
-                                                        placeholder="e.g., 5T, 2T"
-                                                        style={{
-                                                            backgroundColor: theme.colors.secondaryBg,
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            borderRadius: '4px',
-                                                            color: theme.colors.primaryText,
-                                                            padding: '8px 12px',
-                                                            width: '150px',
-                                                        }}
-                                                    />
-                                                    <span style={{ 
-                                                        color: '#f59e0b', 
-                                                        fontSize: '20px',
-                                                        padding: '4px 12px',
-                                                        background: '#f59e0b20',
-                                                        borderRadius: '4px',
-                                                    }}>
-                                                        ⚡
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div style={{ 
-                                                color: theme.colors.mutedText, 
-                                                fontSize: '11px', 
-                                                padding: '10px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '4px',
-                                            }}>
-                                                💡 Use suffixes: <strong>T</strong> (trillion), <strong>B</strong> (billion), <strong>M</strong> (million). 
-                                                Example: "1T" = 1,000,000,000,000 cycles
-                                            </div>
-                                            
-                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                <button
-                                                    onClick={() => {
-                                                        const redValue = parseCyclesInput(canisterCycleThresholdRed);
-                                                        const orangeValue = parseCyclesInput(canisterCycleThresholdOrange);
-                                                        
-                                                        if (redValue === null || orangeValue === null) {
-                                                            alert('Invalid input. Please use format like "1T", "500B", or "1000000000000"');
-                                                            return;
-                                                        }
-                                                        
-                                                        if (redValue >= orangeValue) {
-                                                            alert('Critical threshold must be lower than warning threshold');
-                                                            return;
-                                                        }
-                                                        
-                                                        saveCanisterManagerSettings({
-                                                            cycleThresholdRed: redValue,
-                                                            cycleThresholdOrange: orangeValue,
-                                                        });
-                                                        
-                                                        // Update display to normalized format
-                                                        setCanisterCycleThresholdRed(formatCyclesCompact(redValue));
-                                                        setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
-                                                        setCanisterSettingsSaved(true);
-                                                        
-                                                        setTimeout(() => setCanisterSettingsSaved(false), 3000);
-                                                    }}
-                                                    style={{
-                                                        backgroundColor: theme.colors.accent,
-                                                        color: theme.colors.primaryText,
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '10px 20px',
-                                                        cursor: 'pointer',
-                                                        fontWeight: '500',
-                                                    }}
-                                                >
-                                                    Save Settings
-                                                </button>
-                                                
-                                                <button
-                                                    onClick={() => {
-                                                        setCanisterCycleThresholdRed('1.0T');
-                                                        setCanisterCycleThresholdOrange('5.0T');
-                                                        saveCanisterManagerSettings({
-                                                            cycleThresholdRed: 1_000_000_000_000,
-                                                            cycleThresholdOrange: 5_000_000_000_000,
-                                                        });
-                                                        setCanisterSettingsSaved(true);
-                                                        setTimeout(() => setCanisterSettingsSaved(false), 3000);
-                                                    }}
-                                                    style={{
-                                                        backgroundColor: 'transparent',
-                                                        color: theme.colors.mutedText,
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        borderRadius: '4px',
-                                                        padding: '10px 20px',
-                                                        cursor: 'pointer',
-                                                    }}
-                                                >
-                                                    Reset to Defaults
-                                                </button>
-                                                
-                                                {canisterSettingsSaved && (
-                                                    <span style={{ color: theme.colors.success || '#22c55e', fontSize: '13px' }}>
-                                                        ✓ Settings saved!
-                                                    </span>
-                                                )}
-                                            </div>
-                                            
-                                            {/* Preview */}
-                                            <div style={{ 
-                                                marginTop: '10px',
-                                                padding: '15px',
-                                                background: theme.colors.secondaryBg,
-                                                borderRadius: '8px',
-                                            }}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '10px' }}>
-                                                    Preview:
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                                                    {(() => {
-                                                        const redValue = parseCyclesInput(canisterCycleThresholdRed) || 1_000_000_000_000;
-                                                        const orangeValue = parseCyclesInput(canisterCycleThresholdOrange) || 5_000_000_000_000;
-                                                        const settings = { cycleThresholdRed: redValue, cycleThresholdOrange: orangeValue };
-                                                        
-                                                        const examples = [
-                                                            { value: redValue / 2, label: 'Critical' },
-                                                            { value: (redValue + orangeValue) / 2, label: 'Warning' },
-                                                            { value: orangeValue * 2, label: 'Healthy' },
-                                                        ];
-                                                        
-                                                        return examples.map((ex, i) => (
-                                                            <div key={i} style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '6px',
-                                                                padding: '6px 12px',
-                                                                background: `${getCyclesColor(ex.value, settings)}20`,
-                                                                borderRadius: '20px',
-                                                            }}>
-                                                                <span style={{ color: getCyclesColor(ex.value, settings), fontWeight: '500' }}>
-                                                                    ⚡ {formatCyclesCompact(ex.value)}
-                                                                </span>
-                                                                <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
-                                                                    ({ex.label})
-                                                                </span>
-                                                            </div>
-                                                        ));
-                                                    })()}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Sneedex Notification Settings Child Section */}
-                            <div style={{
-                                backgroundColor: theme.colors.tertiaryBg,
-                                borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`,
-                                marginBottom: '15px',
-                                overflow: 'hidden',
-                            }}>
-                                <div 
-                                    onClick={() => setSneedexNotificationsExpanded(!sneedexNotificationsExpanded)}
-                                    style={{
-                                        padding: '12px 15px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        cursor: 'pointer',
-                                        borderBottom: sneedexNotificationsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <span style={{ 
-                                            fontSize: '14px',
-                                            color: theme.colors.mutedText,
-                                            transition: 'transform 0.2s',
-                                            transform: sneedexNotificationsExpanded ? 'none' : 'rotate(-90deg)'
-                                        }}>▼</span>
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                            🔔 Sneedex Notifications
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                {sneedexNotificationsExpanded && (
-                                    <div style={{ padding: '15px' }}>
-                                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
-                                            Choose which Sneedex events you want to receive notifications for via direct message. 
-                                            These notifications will appear in your <Link to="/sms" style={{ color: theme.colors.accent }}>Messages</Link>.
-                                        </p>
-                                        
-                                        {loadingNotificationSettings ? (
-                                            <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                                Loading notification settings...
-                                            </div>
-                                        ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                {/* Toggle for each notification type */}
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    padding: '10px',
-                                                    background: theme.colors.secondaryBg,
-                                                    borderRadius: '6px',
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            🔔 New Bids
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when someone bids on my offers
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnBid}
-                                                            onChange={(e) => setNotifyOnBid(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnBid ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnBid ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    padding: '10px',
-                                                    background: theme.colors.secondaryBg,
-                                                    borderRadius: '6px',
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            ⚠️ Outbid
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when I've been outbid on an auction
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnOutbid}
-                                                            onChange={(e) => setNotifyOnOutbid(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnOutbid ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnOutbid ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    padding: '10px',
-                                                    background: theme.colors.secondaryBg,
-                                                    borderRadius: '6px',
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            🎉 Offer Sold
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when my offer is completed (sold)
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnSale}
-                                                            onChange={(e) => setNotifyOnSale(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnSale ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnSale ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    padding: '10px',
-                                                    background: theme.colors.secondaryBg,
-                                                    borderRadius: '6px',
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            🏆 Auction Won
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when I win an auction
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnWin}
-                                                            onChange={(e) => setNotifyOnWin(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnWin ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnWin ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    padding: '10px',
-                                                    background: theme.colors.secondaryBg,
-                                                    borderRadius: '6px',
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            ⏰ Offer Expired
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when my offer expires without bids
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnExpiration}
-                                                            onChange={(e) => setNotifyOnExpiration(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnExpiration ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnExpiration ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    padding: '10px',
-                                                    background: theme.colors.secondaryBg,
-                                                    borderRadius: '6px',
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            ❌ Offer Cancelled
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when an offer I bid on is cancelled
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnCancellation}
-                                                            onChange={(e) => setNotifyOnCancellation(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnCancellation ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnCancellation ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                {/* Private Auction Invite */}
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    justifyContent: 'space-between', 
-                                                    alignItems: 'center',
-                                                    padding: '12px 0',
-                                                    borderTop: `1px solid ${theme.colors.border}`,
-                                                }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
-                                                            🔒 Private Auction Invite
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            Notify me when I'm invited to a private auction
-                                                        </div>
-                                                    </div>
-                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={notifyOnPrivateInvite}
-                                                            onChange={(e) => setNotifyOnPrivateInvite(e.target.checked)}
-                                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                                        />
-                                                        <span style={{
-                                                            position: 'absolute',
-                                                            cursor: 'pointer',
-                                                            top: 0,
-                                                            left: 0,
-                                                            right: 0,
-                                                            bottom: 0,
-                                                            backgroundColor: notifyOnPrivateInvite ? theme.colors.accent : theme.colors.border,
-                                                            transition: '0.3s',
-                                                            borderRadius: '28px',
-                                                        }}>
-                                                            <span style={{
-                                                                position: 'absolute',
-                                                                content: '',
-                                                                height: '22px',
-                                                                width: '22px',
-                                                                left: notifyOnPrivateInvite ? '25px' : '3px',
-                                                                bottom: '3px',
-                                                                backgroundColor: 'white',
-                                                                transition: '0.3s',
-                                                                borderRadius: '50%',
-                                                            }}></span>
-                                                        </span>
-                                                    </label>
-                                                </div>
-
-                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px' }}>
-                                                    <button
-                                                        onClick={saveNotificationSettings}
-                                                        disabled={loadingNotificationSettings}
-                                                        style={{
-                                                            backgroundColor: theme.colors.accent,
-                                                            color: theme.colors.primaryText,
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            padding: '10px 20px',
-                                                            cursor: loadingNotificationSettings ? 'not-allowed' : 'pointer',
-                                                            fontWeight: '500',
-                                                            opacity: loadingNotificationSettings ? 0.6 : 1,
-                                                        }}
-                                                    >
-                                                        {loadingNotificationSettings ? 'Saving...' : 'Save Settings'}
-                                                    </button>
-                                                    
-                                                    {notificationSettingsSaved && (
-                                                        <span style={{ color: theme.colors.success || '#22c55e', fontSize: '13px' }}>
-                                                            ✓ Settings saved!
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
 
-                {error && (
-                    <div style={{ 
-                        backgroundColor: `${theme.colors.error}20`, 
-                        border: `1px solid ${theme.colors.error}`,
-                        color: theme.colors.error,
-                        padding: '15px',
-                        borderRadius: '6px',
-                        marginBottom: '20px'
-                    }}>
-                        {error}
-                    </div>
-                )}
-
-                {/* Neurons Section - styled like Settings */}
+                {/* Main Content */}
                 <div style={{
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
-                    border: `1px solid ${theme.colors.border}`,
-                    marginTop: '20px',
-                    overflow: 'hidden',
+                    maxWidth: '1000px',
+                    margin: '0 auto',
+                    padding: '2rem 1.5rem'
                 }}>
-                    {/* Parent Neurons Header */}
-                    <div
-                        onClick={() => setNeuronsExpanded(!neuronsExpanded)}
-                        style={{
-                            padding: '15px 20px',
+                    {/* Quick Navigation Grid */}
+                    <div style={{ marginBottom: '2rem' }}>
+                        <h2 style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '1.25rem',
+                            fontWeight: '600',
+                            marginBottom: '1rem',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
-                            cursor: 'pointer',
-                            borderBottom: neuronsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                        }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                            gap: '0.75rem'
+                        }}>
                             <span style={{
-                                fontSize: '16px',
-                                color: theme.colors.mutedText,
-                                transition: 'transform 0.2s',
-                                transform: neuronsExpanded ? 'none' : 'rotate(-90deg)'
-                            }}>▼</span>
-                            <span style={{ position: 'relative', width: '30px', height: '20px', flex: '0 0 auto' }}>
-                                <span
-                                    style={{
-                                        position: 'absolute',
-                                        left: 0,
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        fontSize: '16px',
-                                        zIndex: 1
-                                    }}
-                                >
-                                    🧠
-                                </span>
-                                {selectedSnsLogo ? (
-                                    <img
-                                        src={selectedSnsLogo}
-                                        alt="DAO logo"
-                                        style={{
-                                            position: 'absolute',
-                                            left: '10px', // shifted right a bit
-                                            top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            width: '18px',
-                                            height: '18px',
-                                            borderRadius: '50%',
-                                            objectFit: 'cover',
-                                            background: theme.colors.tertiaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
-                                            zIndex: 2
-                                        }}
-                                    />
-                                ) : (
-                                    <span
-                                        style={{
-                                            position: 'absolute',
-                                            left: '10px',
-                                            top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            width: '18px',
-                                            height: '18px',
-                                            borderRadius: '50%',
-                                            background: theme.colors.tertiaryBg,
-                                            border: `1px solid ${theme.colors.border}`,
-                                            zIndex: 2
-                                        }}
-                                    />
-                                )}
-                            </span>
-                            <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: 0 }}>
-                                <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    My {(selectedSnsInfo?.name || 'DAO')} Neurons
-                                </span>
-                            </span>
-                        </div>
-                        <Link
-                            to="/help/neurons"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                                color: theme.colors.error,
-                                textDecoration: 'none',
-                                fontSize: '1.2rem',
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
                                 display: 'flex',
                                 alignItems: 'center',
-                                padding: '4px 8px',
-                                borderRadius: '6px',
-                                transition: 'all 0.2s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = `${theme.colors.error}15`;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = 'transparent';
-                            }}
-                            title="Learn about SNS Neurons"
-                        >
-                            ❓
-                        </Link>
-                    </div>
-
-                    {neuronsExpanded && (
-                        <div style={{ padding: '10px 20px 20px 20px' }}>
-                            {neurons.length > 0 && (
-                                <div style={{ marginBottom: '15px' }}>
-                                    <label style={{
+                                justifyContent: 'center'
+                            }}>
+                                <FaChevronRight size={14} color="white" />
+                            </span>
+                            Quick Access
+                        </h2>
+                        
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                            gap: '0.75rem'
+                        }}>
+                            {quickNavItems.map((item, idx) => (
+                                <Link
+                                    key={idx}
+                                    to={item.to}
+                                    className="quick-nav-item"
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '14px',
+                                        padding: '1rem',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        textDecoration: 'none',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        textAlign: 'center'
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '44px',
+                                        height: '44px',
+                                        borderRadius: '12px',
+                                        background: `${item.color}15`,
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px',
-                                        cursor: 'pointer',
-                                        color: theme.colors.secondaryText,
-                                        fontSize: '0.9rem',
-                                        userSelect: 'none',
+                                        justifyContent: 'center',
+                                        color: item.color
                                     }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={hideEmptyNeurons}
-                                            onChange={(e) => setHideEmptyNeurons(e.target.checked)}
-                                            style={{ cursor: 'pointer' }}
-                                        />
-                                        Hide empty neurons
-                                    </label>
-                                </div>
-                            )}
-                            {loading ? (
-                                <div style={{ textAlign: 'center', padding: '30px 10px', color: theme.colors.primaryText }}>
-                                    Loading...
-                                </div>
-                            ) : neurons.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '30px 10px', color: theme.colors.mutedText }}>
-                                    <p>No neurons found for this SNS.</p>
-                                </div>
-                            ) : (
-                                <div>
-                                    {Array.from(groupedNeurons.entries()).map(([groupId, group], index) => {
-                                        const isMyNeurons = Boolean(group.isMy);
-                                        const isExpanded = expandedGroups.has(groupId);
-                                        return (
-                                            <div
-                                                key={groupId}
-                                                style={{
-                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    marginBottom: '15px',
-                                                    overflow: 'hidden',
-                                                }}
-                                            >
-                                                <div
-                                                    onClick={() => toggleGroup(groupId)}
-                                                    style={{
-                                                        padding: '12px 15px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        cursor: 'pointer',
-                                                        borderBottom: isExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                                                        userSelect: 'none',
-                                                    }}
-                                                >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                                                        <span style={{
-                                                            fontSize: '14px',
-                                                            color: theme.colors.mutedText,
-                                                            transition: 'transform 0.2s',
-                                                            transform: isExpanded ? 'none' : 'rotate(-90deg)'
-                                                        }}>▼</span>
-                                                        {isMyNeurons ? (
-                                                            <span
-                                                                style={{
-                                                                    color: theme.colors.primaryText,
-                                                                    fontWeight: '500',
-                                                                    fontSize: '14px',
-                                                                    whiteSpace: 'nowrap',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis',
-                                                                }}
-                                                            >
-                                                                Owned Neurons ({group.neurons.length})
-                                                            </span>
-                                                        ) : (
-                                                            <span
-                                                                style={{
-                                                                    color: theme.colors.primaryText,
-                                                                    fontWeight: '500',
-                                                                    fontSize: '14px',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '6px',
-                                                                    minWidth: 0,
-                                                                }}
-                                                            >
-                                                                <span style={{ whiteSpace: 'nowrap' }}>Owned by</span>
-                                                                <span title={group.ownerPrincipal} style={{ minWidth: 0 }}>
-                                                                    <PrincipalDisplay
-                                                                        principal={Principal.fromText(group.ownerPrincipal)}
-                                                                        displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
-                                                                        showCopyButton={false}
-                                                                        short={true}
-                                                                        noLink={true}
-                                                                        isAuthenticated={true}
-                                                                    />
-                                                                </span>
-                                                                <span style={{ color: theme.colors.mutedText }}>({group.neurons.length})</span>
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                        {item.icon}
+                                    </div>
+                                    <span style={{
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500'
+                                    }}>
+                                        {item.label}
+                                    </span>
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
 
-                                                    <div style={{
-                                                        color: theme.colors.accent,
-                                                        fontSize: '14px',
-                                                        fontWeight: '700',
-                                                        whiteSpace: 'nowrap'
-                                                    }}>
-                                                        {formatE8s(group.totalStake)} {tokenSymbol}
-                                                    </div>
-                                                </div>
-
-                                                {isExpanded && (
-                                                    <div style={{ padding: '15px' }}>
-                                                        <div style={{
-                                                            display: 'grid',
-                                                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                                                            gap: '20px'
-                                                        }}>
-                                                            {group.neurons.map((neuron) => {
-                                            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-                                            if (!neuronId) return null;
-
-                                            const hasHotkeyAccess = neuron.permissions.some(p => 
-                                                p.principal?.toString() === identity.getPrincipal().toString() &&
-                                                p.permission_type.includes(4)
-                                            );
-
-                                            const { name, nickname, isVerified } = getDisplayName(neuronId);
-                                            const displayName = name || nickname;
-
-                                            return (
-                                                <div
-                                                    key={neuronId}
-                                                    style={{
-                                                        backgroundColor: theme.colors.secondaryBg,
-                                                        borderRadius: '8px',
-                                                        padding: '20px',
-                                                        border: '1px solid #3a3a3a'
-                                                    }}
-                                                >
-                                                    <div style={{ marginBottom: '15px' }}>
-                                                        <div style={{ marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <Link
-                                                                to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
-                                                                style={{ 
-                                                                    display: 'flex', 
-                                                                    alignItems: 'center',
-                                                                    fontFamily: 'monospace',
-                                                                    color: theme.colors.mutedText,
-                                                                    fontSize: '14px',
-                                                                    textDecoration: 'none'
-                                                                }}
-                                                                title={neuronId}
-                                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                            >
-                                                                {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
-                                                            </Link>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    navigator.clipboard.writeText(neuronId);
-                                                                }}
-                                                                style={{
-                                                                    background: 'none',
-                                                                    border: 'none',
-                                                                    padding: '4px',
-                                                                    cursor: 'pointer',
-                                                                    color: theme.colors.mutedText,
-                                                                    display: 'flex',
-                                                                    alignItems: 'center'
-                                                                }}
-                                                                title="Copy neuron ID to clipboard"
-                                                            >
-                                                                📋
-                                                            </button>
-                                                            {hasHotkeyAccess && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setEditingName(neuronId);
-                                                                        setNameInput(displayName || '');
-                                                                    }}
-                                                                    style={{
-                                                                        background: 'none',
-                                                                        border: 'none',
-                                                                        padding: '4px',
-                                                                        cursor: 'pointer',
-                                                                        color: theme.colors.mutedText,
-                                                                        display: 'flex',
-                                                                        alignItems: 'center'
-                                                                    }}
-                                                                    title="Edit neuron name/nickname"
-                                                                >
-                                                                    ✏️
-                                                                </button>
-                                                            )}
-                                                            <Link
-                                                                to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
-                                                                style={{
-                                                                    background: theme.colors.secondaryBg,
-                                                                    color: theme.colors.primaryText,
-                                                                    border: `1px solid ${theme.colors.border}`,
-                                                                    borderRadius: '6px',
-                                                                    padding: '6px 10px',
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '0.8rem',
-                                                                    fontWeight: '500',
-                                                                    textDecoration: 'none',
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '4px',
-                                                                    transition: 'background 0.2s ease',
-                                                                    marginLeft: 'auto'
-                                                                }}
-                                                                onMouseEnter={(e) => e.target.style.background = theme.colors.border}
-                                                                onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
-                                                                title="Manage neuron"
-                                                            >
-                                                                ⚙️ Manage
-                                                            </Link>
-                                                        </div>
-                                                        {name && (
-                                                            <div style={{ 
-                                                                color: theme.colors.accent,
-                                                                fontSize: '18px',
-                                                                fontWeight: 'bold',
-                                                                marginBottom: '5px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px'
-                                                            }}>
-                                                                {name}
-                                                                {isVerified && (
-                                                                    <span 
-                                                                        style={{ 
-                                                                            fontSize: '14px',
-                                                                            cursor: 'help'
-                                                                        }}
-                                                                        title="Verified name"
-                                                                    >
-                                                                        ✓
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {nickname && (
-                                                            <div style={{ 
-                                                                color: '#95a5a6',
-                                                                fontSize: '16px',
-                                                                fontStyle: 'italic',
-                                                                marginBottom: '5px'
-                                                            }}>
-                                                                {nickname}
-                                                            </div>
-                                                        )}
-                                                        <div
-                                                            style={{
-                                                                color: theme.colors.mutedText,
-                                                                cursor: 'help',
-                                                                fontSize: '14px'
-                                                            }}
-                                                            title="Names (blue) are public and visible to everyone, but can only be set if you have hotkey access. Nicknames (gray) are private and can be set for any neuron you can see."
-                                                        >
-                                                            ℹ️
-                                                        </div>
-                                                        {editingName === neuronId && (
-                                                            <div style={{ 
-                                                                marginTop: '10px',
-                                                                display: 'flex',
-                                                                flexDirection: 'column',
-                                                                gap: '10px'
-                                                            }}>
-                                                                <div>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={nameInput}
-                                                                        onChange={(e) => {
-                                                                            const newValue = e.target.value;
-                                                                            setNameInput(newValue);
-                                                                            setInputError(validateNameInput(newValue));
-                                                                        }}
-                                                                        maxLength={32}
-                                                                        placeholder="Enter neuron name (max 32 chars)"
-                                                                        style={{
-                                                                            backgroundColor: theme.colors.tertiaryBg,
-                                                                            border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
-                                                                            borderRadius: '4px',
-                                                                            color: theme.colors.primaryText,
-                                                                            padding: '8px',
-                                                                            width: '100%'
-                                                                        }}
-                                                                    />
-                                                                    {inputError && (
-                                                                        <div style={{
-                                                                            color: theme.colors.error,
-                                                                            fontSize: '12px',
-                                                                            marginTop: '4px'
-                                                                        }}>
-                                                                            {inputError}
-                                                                        </div>
-                                                                    )}
-                                                                    <div style={{
-                                                                        color: theme.colors.mutedText,
-                                                                        fontSize: '12px',
-                                                                        marginTop: '4px'
-                                                                    }}>
-                                                                        Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
-                                                                    </div>
-                                                                </div>
-                                                                <div style={{
-                                                                    display: 'flex',
-                                                                    gap: '8px',
-                                                                    justifyContent: 'flex-end'
-                                                                }}>
-                                                                    <button
-                                                                        onClick={() => handleNameSubmit(neuronId, true)}
-                                                                        disabled={isSubmitting}
-                                                                        style={{
-                                                                            backgroundColor: '#95a5a6',
-                                                                            color: theme.colors.primaryText,
-                                                                            border: 'none',
-                                                                            borderRadius: '4px',
-                                                                            padding: '8px 12px',
-                                                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                                            whiteSpace: 'nowrap',
-                                                                            opacity: isSubmitting ? 0.7 : 1,
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '6px'
-                                                                        }}
-                                                                        title="Set as private nickname"
-                                                                    >
-                                                                        {isSubmitting ? (
-                                                                            <>
-                                                                                <span style={{ 
-                                                                                    display: 'inline-block',
-                                                                                    animation: 'spin 1s linear infinite',
-                                                                                    fontSize: '14px'
-                                                                                }}>⟳</span>
-                                                                                Setting...
-                                                                            </>
-                                                                        ) : (
-                                                                            'Set Nickname'
-                                                                        )}
-                                                                    </button>
-                                                                    {hasHotkeyAccess && (
-                                                                        <button
-                                                                            onClick={() => handleNameSubmit(neuronId, false)}
-                                                                            disabled={isSubmitting}
-                                                                            style={{
-                                                                                backgroundColor: theme.colors.accent,
-                                                                                color: theme.colors.primaryText,
-                                                                                border: 'none',
-                                                                                borderRadius: '4px',
-                                                                                padding: '8px 12px',
-                                                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                                                whiteSpace: 'nowrap',
-                                                                                opacity: isSubmitting ? 0.7 : 1,
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '6px'
-                                                                            }}
-                                                                            title="Set as public name"
-                                                                        >
-                                                                            {isSubmitting ? (
-                                                                                <>
-                                                                                    <span style={{ 
-                                                                                        display: 'inline-block',
-                                                                                        animation: 'spin 1s linear infinite',
-                                                                                        fontSize: '14px'
-                                                                                    }}>⟳</span>
-                                                                                    Setting...
-                                                                                </>
-                                                                            ) : (
-                                                                                'Set Name'
-                                                                            )}
-                                                                        </button>
-                                                                    )}
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setEditingName(null);
-                                                                            setNameInput('');
-                                                                        }}
-                                                                        disabled={isSubmitting}
-                                                                        style={{
-                                                                            backgroundColor: theme.colors.error,
-                                                                            color: theme.colors.primaryText,
-                                                                            border: 'none',
-                                                                            borderRadius: '4px',
-                                                                            padding: '8px 12px',
-                                                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                                            whiteSpace: 'nowrap',
-                                                                            opacity: isSubmitting ? 0.7 : 1
-                                                                        }}
-                                                                    >
-                                                                        Cancel
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        <div style={{ 
-                                                            fontSize: '24px',
-                                                            fontWeight: 'bold',
-                                                            color: theme.colors.accent
-                                                        }}>
-                                                            {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                                                        </div>
-                                                    </div>
-
-                                                    <div style={{ 
-                                                        display: 'grid',
-                                                        gridTemplateColumns: '1fr 1fr',
-                                                        gap: '15px',
-                                                        fontSize: '14px'
-                                                    }}>
-                                                        <div>
-                                                            <div style={{ color: theme.colors.mutedText }}>Created</div>
-                                                            <div style={{ color: theme.colors.primaryText }}>
-                                                                {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ color: theme.colors.mutedText }}>Dissolve State</div>
-                                                            <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ color: theme.colors.mutedText }}>Maturity</div>
-                                                            <div style={{ color: theme.colors.primaryText }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ color: theme.colors.mutedText }}>Voting Power</div>
-                                                            <div style={{ color: theme.colors.primaryText }}>
-                                                                {nervousSystemParameters ? 
-                                                                    formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
-                                                                    (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                        {/* Replace debug info with permissions */}
-                                                        <div style={{ gridColumn: '1 / -1' }}>
-                                                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Permissions</div>
-                                                            {/* Owners */}
-                                                            {getOwnerPrincipals(neuron).length > 0 && (
-                                                                <div style={{
-                                                                    marginBottom: '10px',
-                                                                    display: 'flex',
-                                                                    flexDirection: 'column',
-                                                                    gap: '6px'
-                                                                }}>
-                                                                    {getOwnerPrincipals(neuron).map((ownerStr) => (
-                                                                        <div
-                                                                            key={ownerStr}
-                                                                            style={{
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '8px'
-                                                                            }}
-                                                                        >
-                                                                            <span title="Owner" style={{ color: theme.colors.mutedText }}>👑</span>
-                                                                            <PrincipalDisplay
-                                                                                principal={Principal.fromText(ownerStr)}
-                                                                                displayInfo={principalDisplayInfo.get(ownerStr)}
-                                                                                showCopyButton={false}
-                                                                            />
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                            {/* Hotkeys */}
-                                                            {neuron.permissions
-                                                                .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
-                                                                .map((p, index) => (
-                                                                    <div key={index} style={{ 
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '8px',
-                                                                        marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
-                                                                    }}>
-                                                                        <span title="Hotkey" style={{ color: theme.colors.mutedText }}>🔑</span>
-                                                                        <PrincipalDisplay 
-                                                                            principal={p.principal}
-                                                                            displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                                                            showCopyButton={false}
-                                                                        />
-                                                                    </div>
-                                                                ))
-                                                            }
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                    {/* Error Display */}
+                    {error && (
+                        <div style={{
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '12px',
+                            padding: '1rem 1.25rem',
+                            marginBottom: '1.5rem',
+                            color: theme.colors.error,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem'
+                        }}>
+                            ⚠️ {error}
                         </div>
                     )}
-                </div>
 
-                {/* Transactions Section */}
-                {selectedSnsRoot && (
-                    <div style={{
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        border: `1px solid ${theme.colors.border}`,
-                        marginTop: '20px',
-                        overflow: 'hidden',
-                    }}>
-                        <div
-                            onClick={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                    {/* Settings Section */}
+                    <div 
+                        id="settings-section"
+                        className="me-card-animate settings-card"
+                        style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            border: `1px solid ${theme.colors.border}`,
+                            marginBottom: '1.5rem',
+                            overflow: 'hidden',
+                            transition: 'all 0.3s ease'
+                        }}
+                    >
+                        <div 
+                            onClick={() => setSettingsExpanded(!settingsExpanded)}
                             style={{
-                                padding: '15px 20px',
+                                padding: '1.25rem 1.5rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 cursor: 'pointer',
-                                borderBottom: !isTransactionsCollapsed ? `1px solid ${theme.colors.border}` : 'none',
+                                borderBottom: settingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
                             }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                                <span style={{ 
-                                    fontSize: '16px',
-                                    color: theme.colors.mutedText,
-                                    transition: 'transform 0.2s',
-                                    transform: !isTransactionsCollapsed ? 'none' : 'rotate(-90deg)'
-                                }}>▼</span>
-                                <span style={{ position: 'relative', width: '30px', height: '20px', flex: '0 0 auto' }}>
-                                    <span
-                                        style={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            fontSize: '16px',
-                                            zIndex: 1
-                                        }}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '10px',
+                                    background: `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: mePrimary
+                                }}>
+                                    <FaCog size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                    Settings
+                                </span>
+                            </div>
+                            <FaChevronDown 
+                                size={16} 
+                                color={theme.colors.mutedText}
+                                style={{
+                                    transition: 'transform 0.3s ease',
+                                    transform: settingsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+                                }}
+                            />
+                        </div>
+                        
+                        {settingsExpanded && (
+                            <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                                {/* General Settings */}
+                                <SettingsSection
+                                    title="General Settings"
+                                    icon={<FaPalette size={16} />}
+                                    expanded={generalSettingsExpanded}
+                                    onToggle={() => setGeneralSettingsExpanded(!generalSettingsExpanded)}
+                                    theme={theme}
+                                >
+                                    <SettingItem
+                                        title="Theme"
+                                        description="Switch between dark and light mode"
+                                        theme={theme}
                                     >
-                                        🧾
-                                    </span>
-                                    {selectedSnsLogo ? (
-                                        <img
-                                            src={selectedSnsLogo}
-                                            alt="DAO logo"
-                                            style={{
-                                                position: 'absolute',
-                                                left: '10px',
-                                                top: '50%',
-                                                transform: 'translateY(-50%)',
-                                                width: '18px',
-                                                height: '18px',
-                                                borderRadius: '50%',
-                                                objectFit: 'cover',
-                                                background: theme.colors.tertiaryBg,
-                                                border: `1px solid ${theme.colors.border}`,
-                                                zIndex: 2
+                                        <ThemeToggle size="medium" showLabel={true} />
+                                    </SettingItem>
+                                    
+                                    <SettingItem
+                                        title="Principal Color Coding"
+                                        description="Display principals with unique colors based on their ID"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={principalColorCoding}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setPrincipalColorCoding(newValue);
+                                                localStorage.setItem('principalColorCoding', JSON.stringify(newValue));
                                             }}
                                         />
+                                    </SettingItem>
+                                    
+                                    <SettingItem
+                                        title="Neuron Color Coding"
+                                        description="Display neurons with unique colors based on their ID"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={neuronColorCoding}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNeuronColorCoding(newValue);
+                                                localStorage.setItem('neuronColorCoding', JSON.stringify(newValue));
+                                            }}
+                                        />
+                                    </SettingItem>
+                                    
+                                    <SettingItem
+                                        title="Show Voting Power Bar"
+                                        description="Display the voting power bar in the header"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={showVpBar}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setShowVpBar(newValue);
+                                                localStorage.setItem('showVpBar', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: newValue }));
+                                            }}
+                                        />
+                                    </SettingItem>
+                                    
+                                    <SettingItem
+                                        title="Expand Quick Links on Desktop"
+                                        description="Show individual quick link buttons on desktop instead of hamburger menu"
+                                        theme={theme}
+                                        isLast={true}
+                                    >
+                                        <ToggleSwitch
+                                            checked={expandQuickLinksOnDesktop}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setExpandQuickLinksOnDesktop(newValue);
+                                                localStorage.setItem('expandQuickLinksOnDesktop', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('expandQuickLinksOnDesktopChanged', { detail: newValue }));
+                                            }}
+                                        />
+                                    </SettingItem>
+                                </SettingsSection>
+
+                                {/* ICP Neuron Manager Settings */}
+                                <SettingsSection
+                                    title="ICP Neuron Manager Settings"
+                                    icon={<FaBrain size={16} />}
+                                    expanded={neuronManagerSettingsExpanded}
+                                    onToggle={() => setNeuronManagerSettingsExpanded(!neuronManagerSettingsExpanded)}
+                                    theme={theme}
+                                >
+                                    <CycleThresholdSettings
+                                        theme={theme}
+                                        title="ICP Neuron Manager Cycle Thresholds"
+                                        description="Configure cycle warning thresholds for your ICP Neuron Manager canisters."
+                                        redValue={cycleThresholdRed}
+                                        orangeValue={cycleThresholdOrange}
+                                        onRedChange={(v) => { setCycleThresholdRed(v); setSettingsSaved(false); }}
+                                        onOrangeChange={(v) => { setCycleThresholdOrange(v); setSettingsSaved(false); }}
+                                        onSave={() => {
+                                            const redValue = parseCyclesInput(cycleThresholdRed);
+                                            const orangeValue = parseCyclesInput(cycleThresholdOrange);
+                                            
+                                            if (redValue === null || orangeValue === null) {
+                                                alert('Invalid input. Please use format like "1T", "500B", or "1000000000000"');
+                                                return;
+                                            }
+                                            
+                                            if (redValue >= orangeValue) {
+                                                alert('Critical threshold must be lower than warning threshold');
+                                                return;
+                                            }
+                                            
+                                            saveNeuronManagerSettings({
+                                                cycleThresholdRed: redValue,
+                                                cycleThresholdOrange: orangeValue,
+                                            });
+                                            
+                                            setCycleThresholdRed(formatCyclesCompact(redValue));
+                                            setCycleThresholdOrange(formatCyclesCompact(orangeValue));
+                                            setSettingsSaved(true);
+                                            setTimeout(() => setSettingsSaved(false), 3000);
+                                        }}
+                                        onReset={() => {
+                                            setCycleThresholdRed('1.0T');
+                                            setCycleThresholdOrange('5.0T');
+                                            saveNeuronManagerSettings({
+                                                cycleThresholdRed: 1_000_000_000_000,
+                                                cycleThresholdOrange: 5_000_000_000_000,
+                                            });
+                                            setSettingsSaved(true);
+                                            setTimeout(() => setSettingsSaved(false), 3000);
+                                        }}
+                                        saved={settingsSaved}
+                                    />
+                                </SettingsSection>
+
+                                {/* Canister Manager Settings */}
+                                <SettingsSection
+                                    title="Canister Manager Settings"
+                                    icon={<FaServer size={16} />}
+                                    expanded={canisterManagerSettingsExpanded}
+                                    onToggle={() => setCanisterManagerSettingsExpanded(!canisterManagerSettingsExpanded)}
+                                    theme={theme}
+                                >
+                                    <CycleThresholdSettings
+                                        theme={theme}
+                                        title="Canister Cycle Thresholds"
+                                        description="Configure cycle warning thresholds for canisters in Wallet and Canister Manager."
+                                        redValue={canisterCycleThresholdRed}
+                                        orangeValue={canisterCycleThresholdOrange}
+                                        onRedChange={(v) => { setCanisterCycleThresholdRed(v); setCanisterSettingsSaved(false); }}
+                                        onOrangeChange={(v) => { setCanisterCycleThresholdOrange(v); setCanisterSettingsSaved(false); }}
+                                        onSave={() => {
+                                            const redValue = parseCyclesInput(canisterCycleThresholdRed);
+                                            const orangeValue = parseCyclesInput(canisterCycleThresholdOrange);
+                                            
+                                            if (redValue === null || orangeValue === null) {
+                                                alert('Invalid input. Please use format like "1T", "500B", or "1000000000000"');
+                                                return;
+                                            }
+                                            
+                                            if (redValue >= orangeValue) {
+                                                alert('Critical threshold must be lower than warning threshold');
+                                                return;
+                                            }
+                                            
+                                            saveCanisterManagerSettings({
+                                                cycleThresholdRed: redValue,
+                                                cycleThresholdOrange: orangeValue,
+                                            });
+                                            
+                                            setCanisterCycleThresholdRed(formatCyclesCompact(redValue));
+                                            setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
+                                            setCanisterSettingsSaved(true);
+                                            setTimeout(() => setCanisterSettingsSaved(false), 3000);
+                                        }}
+                                        onReset={() => {
+                                            setCanisterCycleThresholdRed('1.0T');
+                                            setCanisterCycleThresholdOrange('5.0T');
+                                            saveCanisterManagerSettings({
+                                                cycleThresholdRed: 1_000_000_000_000,
+                                                cycleThresholdOrange: 5_000_000_000_000,
+                                            });
+                                            setCanisterSettingsSaved(true);
+                                            setTimeout(() => setCanisterSettingsSaved(false), 3000);
+                                        }}
+                                        saved={canisterSettingsSaved}
+                                    />
+                                </SettingsSection>
+
+                                {/* Sneedex Notifications */}
+                                <SettingsSection
+                                    title="Sneedex Notifications"
+                                    icon={<FaBell size={16} />}
+                                    expanded={sneedexNotificationsExpanded}
+                                    onToggle={() => setSneedexNotificationsExpanded(!sneedexNotificationsExpanded)}
+                                    theme={theme}
+                                >
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', marginBottom: '1rem' }}>
+                                        Choose which Sneedex events you want to receive notifications for via <Link to="/sms" style={{ color: mePrimary }}>direct message</Link>.
+                                    </p>
+                                    
+                                    {loadingNotificationSettings ? (
+                                        <div style={{ textAlign: 'center', padding: '1.5rem', color: theme.colors.mutedText }}>
+                                            Loading notification settings...
+                                        </div>
                                     ) : (
-                                        <span
-                                            style={{
-                                                position: 'absolute',
-                                                left: '10px',
-                                                top: '50%',
-                                                transform: 'translateY(-50%)',
-                                                width: '18px',
-                                                height: '18px',
-                                                borderRadius: '50%',
-                                                background: theme.colors.tertiaryBg,
-                                                border: `1px solid ${theme.colors.border}`,
-                                                zIndex: 2
-                                            }}
-                                        />
+                                        <>
+                                            <NotificationToggle
+                                                icon="🔔"
+                                                title="New Bids"
+                                                description="Notify me when someone bids on my offers"
+                                                checked={notifyOnBid}
+                                                onChange={(e) => setNotifyOnBid(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            <NotificationToggle
+                                                icon="⚠️"
+                                                title="Outbid"
+                                                description="Notify me when I've been outbid on an auction"
+                                                checked={notifyOnOutbid}
+                                                onChange={(e) => setNotifyOnOutbid(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            <NotificationToggle
+                                                icon="🎉"
+                                                title="Offer Sold"
+                                                description="Notify me when my offer is completed (sold)"
+                                                checked={notifyOnSale}
+                                                onChange={(e) => setNotifyOnSale(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            <NotificationToggle
+                                                icon="🏆"
+                                                title="Auction Won"
+                                                description="Notify me when I win an auction"
+                                                checked={notifyOnWin}
+                                                onChange={(e) => setNotifyOnWin(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            <NotificationToggle
+                                                icon="⏰"
+                                                title="Offer Expired"
+                                                description="Notify me when my offer expires without bids"
+                                                checked={notifyOnExpiration}
+                                                onChange={(e) => setNotifyOnExpiration(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            <NotificationToggle
+                                                icon="❌"
+                                                title="Offer Cancelled"
+                                                description="Notify me when an offer I bid on is cancelled"
+                                                checked={notifyOnCancellation}
+                                                onChange={(e) => setNotifyOnCancellation(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            <NotificationToggle
+                                                icon="🔒"
+                                                title="Private Auction Invite"
+                                                description="Notify me when I'm invited to a private auction"
+                                                checked={notifyOnPrivateInvite}
+                                                onChange={(e) => setNotifyOnPrivateInvite(e.target.checked)}
+                                                theme={theme}
+                                            />
+                                            
+                                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '1rem' }}>
+                                                <button
+                                                    onClick={saveNotificationSettings}
+                                                    disabled={loadingNotificationSettings}
+                                                    style={{
+                                                        background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '10px',
+                                                        padding: '0.75rem 1.5rem',
+                                                        cursor: loadingNotificationSettings ? 'not-allowed' : 'pointer',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.9rem',
+                                                        opacity: loadingNotificationSettings ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {loadingNotificationSettings ? 'Saving...' : 'Save Settings'}
+                                                </button>
+                                                
+                                                {notificationSettingsSaved && (
+                                                    <span style={{ color: '#22c55e', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                        <FaCheckCircle size={14} /> Settings saved!
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </>
                                     )}
+                                </SettingsSection>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Neurons Section */}
+                    <div 
+                        className="me-card-animate settings-card"
+                        style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            border: `1px solid ${theme.colors.border}`,
+                            marginBottom: '1.5rem',
+                            overflow: 'hidden',
+                            transition: 'all 0.3s ease',
+                            animationDelay: '0.1s'
+                        }}
+                    >
+                        <div
+                            onClick={() => setNeuronsExpanded(!neuronsExpanded)}
+                            style={{
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                borderBottom: neuronsExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '10px',
+                                    background: selectedSnsLogo ? 'transparent' : `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: mePrimary,
+                                    overflow: 'hidden',
+                                    position: 'relative'
+                                }}>
+                                    {selectedSnsLogo ? (
+                                        <img src={selectedSnsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+                                    ) : (
+                                        <FaBrain size={18} />
+                                    )}
+                                </div>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                    My {selectedSnsInfo?.name || 'DAO'} Neurons
                                 </span>
-                                <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: 0 }}>
-                                    <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        My {(selectedSnsInfo?.name || 'DAO')} Transactions
-                                    </span>
-                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <Link
+                                    to="/help/neurons"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                        color: mePrimary,
+                                        textDecoration: 'none',
+                                        fontSize: '0.85rem',
+                                        padding: '0.35rem 0.75rem',
+                                        borderRadius: '6px',
+                                        background: `${mePrimary}15`,
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    ❓ Help
+                                </Link>
+                                <FaChevronDown 
+                                    size={16} 
+                                    color={theme.colors.mutedText}
+                                    style={{
+                                        transition: 'transform 0.3s ease',
+                                        transform: neuronsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+                                    }}
+                                />
                             </div>
                         </div>
 
-                        <div style={{ padding: isTransactionsCollapsed ? 0 : '10px 20px 20px 20px' }}>
-                            <TransactionList 
-                                snsRootCanisterId={selectedSnsRoot}
-                                principalId={identity?.getPrincipal().toString()}
-                                isCollapsed={isTransactionsCollapsed}
-                                onToggleCollapse={() => {}}
-                                showHeader={false}
-                                embedded={true}
-                            />
-                        </div>
+                        {neuronsExpanded && (
+                            <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                                {neurons.length > 0 && (
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            cursor: 'pointer',
+                                            color: theme.colors.secondaryText,
+                                            fontSize: '0.9rem',
+                                            userSelect: 'none',
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={hideEmptyNeurons}
+                                                onChange={(e) => setHideEmptyNeurons(e.target.checked)}
+                                                style={{ cursor: 'pointer', accentColor: mePrimary, width: '16px', height: '16px' }}
+                                            />
+                                            Hide empty neurons
+                                        </label>
+                                    </div>
+                                )}
+                                
+                                {loading ? (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                        <div className="me-pulse" style={{
+                                            width: '48px',
+                                            height: '48px',
+                                            borderRadius: '50%',
+                                            background: `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
+                                            margin: '0 auto 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: mePrimary
+                                        }}>
+                                            <FaBrain size={20} />
+                                        </div>
+                                        Loading neurons...
+                                    </div>
+                                ) : neurons.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                        <div style={{
+                                            width: '60px',
+                                            height: '60px',
+                                            borderRadius: '50%',
+                                            background: `${mePrimary}15`,
+                                            margin: '0 auto 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: mePrimary
+                                        }}>
+                                            <FaBrain size={24} />
+                                        </div>
+                                        <p style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>No neurons found for this SNS.</p>
+                                        <p style={{ fontSize: '0.9rem', color: theme.colors.mutedText }}>
+                                            Try selecting a different SNS or stake tokens to create neurons.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        {Array.from(groupedNeurons.entries()).map(([groupId, group]) => {
+                                            const isMyNeurons = Boolean(group.isMy);
+                                            const isExpanded = expandedGroups.has(groupId);
+                                            return (
+                                                <NeuronGroup
+                                                    key={groupId}
+                                                    group={group}
+                                                    isExpanded={isExpanded}
+                                                    isMyNeurons={isMyNeurons}
+                                                    onToggle={() => toggleGroup(groupId)}
+                                                    theme={theme}
+                                                    tokenSymbol={tokenSymbol}
+                                                    principalDisplayInfo={principalDisplayInfo}
+                                                    selectedSnsRoot={selectedSnsRoot}
+                                                    identity={identity}
+                                                    getDisplayName={getDisplayName}
+                                                    editingName={editingName}
+                                                    setEditingName={setEditingName}
+                                                    nameInput={nameInput}
+                                                    setNameInput={setNameInput}
+                                                    inputError={inputError}
+                                                    setInputError={setInputError}
+                                                    validateNameInput={validateNameInput}
+                                                    handleNameSubmit={handleNameSubmit}
+                                                    isSubmitting={isSubmitting}
+                                                    nervousSystemParameters={nervousSystemParameters}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
-                )}
+
+                    {/* Transactions Section */}
+                    {selectedSnsRoot && (
+                        <div 
+                            className="me-card-animate settings-card"
+                            style={{
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '16px',
+                                border: `1px solid ${theme.colors.border}`,
+                                overflow: 'hidden',
+                                transition: 'all 0.3s ease',
+                                animationDelay: '0.2s'
+                            }}
+                        >
+                            <div
+                                onClick={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                                style={{
+                                    padding: '1.25rem 1.5rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    borderBottom: !isTransactionsCollapsed ? `1px solid ${theme.colors.border}` : 'none',
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '10px',
+                                        background: selectedSnsLogo ? 'transparent' : `linear-gradient(135deg, ${meAccent}30, ${mePrimary}20)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: meAccent,
+                                        overflow: 'hidden'
+                                    }}>
+                                        {selectedSnsLogo ? (
+                                            <img src={selectedSnsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+                                        ) : (
+                                            <FaExchangeAlt size={18} />
+                                        )}
+                                    </div>
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                        My {selectedSnsInfo?.name || 'DAO'} Transactions
+                                    </span>
+                                </div>
+                                <FaChevronDown 
+                                    size={16} 
+                                    color={theme.colors.mutedText}
+                                    style={{
+                                        transition: 'transform 0.3s ease',
+                                        transform: !isTransactionsCollapsed ? 'rotate(0deg)' : 'rotate(-90deg)'
+                                    }}
+                                />
+                            </div>
+
+                            <div style={{ padding: isTransactionsCollapsed ? 0 : '0.5rem 1.5rem 1.5rem' }}>
+                                <TransactionList 
+                                    snsRootCanisterId={selectedSnsRoot}
+                                    principalId={identity?.getPrincipal().toString()}
+                                    isCollapsed={isTransactionsCollapsed}
+                                    onToggleCollapse={() => {}}
+                                    showHeader={false}
+                                    embedded={true}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
             </main>
-            <style>{spinKeyframes}</style>
+            
             <ConfirmationModal
                 show={showConfirmModal}
                 onClose={() => setShowConfirmModal(false)}
@@ -2879,4 +1679,709 @@ export default function Me() {
             />
         </div>
     );
-} 
+}
+
+// Helper Components
+function SettingsSection({ title, icon, expanded, onToggle, children, theme }) {
+    return (
+        <div style={{
+            background: theme.colors.tertiaryBg,
+            borderRadius: '12px',
+            border: `1px solid ${theme.colors.border}`,
+            marginBottom: '1rem',
+            overflow: 'hidden',
+        }}>
+            <div 
+                onClick={onToggle}
+                style={{
+                    padding: '1rem 1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    borderBottom: expanded ? `1px solid ${theme.colors.border}` : 'none',
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ color: mePrimary }}>{icon}</span>
+                    <span style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '0.95rem' }}>
+                        {title}
+                    </span>
+                </div>
+                <FaChevronDown 
+                    size={14} 
+                    color={theme.colors.mutedText}
+                    style={{
+                        transition: 'transform 0.3s ease',
+                        transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+                    }}
+                />
+            </div>
+            
+            {expanded && (
+                <div style={{ padding: '1rem 1.25rem' }}>
+                    {children}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function SettingItem({ title, description, children, theme, isLast = false }) {
+    return (
+        <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            padding: '0.75rem 0',
+            borderBottom: isLast ? 'none' : `1px solid ${theme.colors.border}`,
+            gap: '1rem',
+            flexWrap: 'wrap'
+        }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+                <div style={{ color: theme.colors.primaryText, fontWeight: '500', marginBottom: '0.25rem', fontSize: '0.95rem' }}>
+                    {title}
+                </div>
+                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                    {description}
+                </div>
+            </div>
+            {children}
+        </div>
+    );
+}
+
+function NotificationToggle({ icon, title, description, checked, onChange, theme }) {
+    return (
+        <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            padding: '0.75rem 1rem',
+            background: theme.colors.secondaryBg,
+            borderRadius: '10px',
+            marginBottom: '0.5rem',
+            gap: '1rem'
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                <span style={{ fontSize: '1.1rem' }}>{icon}</span>
+                <div>
+                    <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '0.9rem' }}>
+                        {title}
+                    </div>
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                        {description}
+                    </div>
+                </div>
+            </div>
+            <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px', flexShrink: 0 }}>
+                <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={onChange}
+                    style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span style={{
+                    position: 'absolute',
+                    cursor: 'pointer',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: checked ? mePrimary : theme.colors.border,
+                    transition: '0.3s',
+                    borderRadius: '28px',
+                }}>
+                    <span style={{
+                        position: 'absolute',
+                        content: '',
+                        height: '22px',
+                        width: '22px',
+                        left: checked ? '25px' : '3px',
+                        bottom: '3px',
+                        backgroundColor: 'white',
+                        transition: '0.3s',
+                        borderRadius: '50%',
+                    }}></span>
+                </span>
+            </label>
+        </div>
+    );
+}
+
+function CycleThresholdSettings({ theme, title, description, redValue, orangeValue, onRedChange, onOrangeChange, onSave, onReset, saved }) {
+    return (
+        <div>
+            <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+                {description}
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                    <label style={{ 
+                        color: theme.colors.mutedText, 
+                        fontSize: '0.85rem', 
+                        display: 'block', 
+                        marginBottom: '0.5rem' 
+                    }}>
+                        🔴 Critical Threshold (Red)
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <input
+                            type="text"
+                            value={redValue}
+                            onChange={(e) => onRedChange(e.target.value)}
+                            placeholder="e.g., 1T, 500B"
+                            style={{
+                                backgroundColor: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '8px',
+                                color: theme.colors.primaryText,
+                                padding: '0.6rem 1rem',
+                                width: '140px',
+                                fontSize: '0.9rem'
+                            }}
+                        />
+                        <span style={{ 
+                            color: '#ef4444', 
+                            fontSize: '1.25rem',
+                            padding: '0.35rem 0.75rem',
+                            background: '#ef444420',
+                            borderRadius: '8px',
+                        }}>
+                            ⚡
+                        </span>
+                    </div>
+                </div>
+                
+                <div>
+                    <label style={{ 
+                        color: theme.colors.mutedText, 
+                        fontSize: '0.85rem', 
+                        display: 'block', 
+                        marginBottom: '0.5rem' 
+                    }}>
+                        🟠 Warning Threshold (Orange)
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <input
+                            type="text"
+                            value={orangeValue}
+                            onChange={(e) => onOrangeChange(e.target.value)}
+                            placeholder="e.g., 5T, 2T"
+                            style={{
+                                backgroundColor: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '8px',
+                                color: theme.colors.primaryText,
+                                padding: '0.6rem 1rem',
+                                width: '140px',
+                                fontSize: '0.9rem'
+                            }}
+                        />
+                        <span style={{ 
+                            color: '#f59e0b', 
+                            fontSize: '1.25rem',
+                            padding: '0.35rem 0.75rem',
+                            background: '#f59e0b20',
+                            borderRadius: '8px',
+                        }}>
+                            ⚡
+                        </span>
+                    </div>
+                </div>
+                
+                <div style={{ 
+                    color: theme.colors.mutedText, 
+                    fontSize: '0.8rem', 
+                    padding: '0.75rem',
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '8px',
+                }}>
+                    💡 Use suffixes: <strong>T</strong> (trillion), <strong>B</strong> (billion), <strong>M</strong> (million)
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={onSave}
+                        style={{
+                            background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '10px',
+                            padding: '0.75rem 1.5rem',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                        }}
+                    >
+                        Save Settings
+                    </button>
+                    
+                    <button
+                        onClick={onReset}
+                        style={{
+                            backgroundColor: 'transparent',
+                            color: theme.colors.mutedText,
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '10px',
+                            padding: '0.75rem 1.5rem',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                        }}
+                    >
+                        Reset to Defaults
+                    </button>
+                    
+                    {saved && (
+                        <span style={{ color: '#22c55e', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <FaCheckCircle size={14} /> Settings saved!
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function NeuronGroup({ 
+    group, 
+    isExpanded, 
+    isMyNeurons, 
+    onToggle, 
+    theme, 
+    tokenSymbol, 
+    principalDisplayInfo, 
+    selectedSnsRoot, 
+    identity, 
+    getDisplayName, 
+    editingName, 
+    setEditingName, 
+    nameInput, 
+    setNameInput, 
+    inputError, 
+    setInputError, 
+    validateNameInput, 
+    handleNameSubmit, 
+    isSubmitting,
+    nervousSystemParameters 
+}) {
+    return (
+        <div style={{
+            background: theme.colors.tertiaryBg,
+            borderRadius: '14px',
+            border: `1px solid ${theme.colors.border}`,
+            overflow: 'hidden',
+        }}>
+            <div
+                onClick={onToggle}
+                style={{
+                    padding: '1rem 1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    borderBottom: isExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                    <FaChevronDown 
+                        size={14} 
+                        color={theme.colors.mutedText}
+                        style={{
+                            transition: 'transform 0.3s ease',
+                            transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+                        }}
+                    />
+                    {isMyNeurons ? (
+                        <span style={{
+                            color: theme.colors.primaryText,
+                            fontWeight: '600',
+                            fontSize: '0.95rem',
+                        }}>
+                            👑 Owned Neurons ({group.neurons.length})
+                        </span>
+                    ) : (
+                        <span style={{
+                            color: theme.colors.primaryText,
+                            fontWeight: '500',
+                            fontSize: '0.95rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            flexWrap: 'wrap'
+                        }}>
+                            <span>🔑 Hotkey access to</span>
+                            <PrincipalDisplay
+                                principal={Principal.fromText(group.ownerPrincipal)}
+                                displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
+                                showCopyButton={false}
+                                short={true}
+                                noLink={true}
+                                isAuthenticated={true}
+                            />
+                            <span style={{ color: theme.colors.mutedText }}>({group.neurons.length})</span>
+                        </span>
+                    )}
+                </div>
+
+                <div style={{
+                    color: mePrimary,
+                    fontSize: '1rem',
+                    fontWeight: '700',
+                    whiteSpace: 'nowrap'
+                }}>
+                    {formatE8s(group.totalStake)} {tokenSymbol}
+                </div>
+            </div>
+
+            {isExpanded && (
+                <div style={{ padding: '1rem 1.25rem' }}>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                        gap: '1rem'
+                    }}>
+                        {group.neurons.map((neuron) => {
+                            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                            if (!neuronId) return null;
+
+                            const hasHotkeyAccess = neuron.permissions.some(p => 
+                                p.principal?.toString() === identity.getPrincipal().toString() &&
+                                p.permission_type.includes(4)
+                            );
+
+                            const { name, nickname, isVerified } = getDisplayName(neuronId);
+
+                            return (
+                                <NeuronCard
+                                    key={neuronId}
+                                    neuron={neuron}
+                                    neuronId={neuronId}
+                                    name={name}
+                                    nickname={nickname}
+                                    isVerified={isVerified}
+                                    hasHotkeyAccess={hasHotkeyAccess}
+                                    theme={theme}
+                                    tokenSymbol={tokenSymbol}
+                                    selectedSnsRoot={selectedSnsRoot}
+                                    identity={identity}
+                                    principalDisplayInfo={principalDisplayInfo}
+                                    editingName={editingName}
+                                    setEditingName={setEditingName}
+                                    nameInput={nameInput}
+                                    setNameInput={setNameInput}
+                                    inputError={inputError}
+                                    setInputError={setInputError}
+                                    validateNameInput={validateNameInput}
+                                    handleNameSubmit={handleNameSubmit}
+                                    isSubmitting={isSubmitting}
+                                    nervousSystemParameters={nervousSystemParameters}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function NeuronCard({ 
+    neuron, 
+    neuronId, 
+    name, 
+    nickname, 
+    isVerified, 
+    hasHotkeyAccess, 
+    theme, 
+    tokenSymbol, 
+    selectedSnsRoot, 
+    identity, 
+    principalDisplayInfo, 
+    editingName, 
+    setEditingName, 
+    nameInput, 
+    setNameInput, 
+    inputError, 
+    setInputError, 
+    validateNameInput, 
+    handleNameSubmit, 
+    isSubmitting,
+    nervousSystemParameters 
+}) {
+    const displayName = name || nickname;
+
+    return (
+        <div style={{
+            background: theme.colors.secondaryBg,
+            borderRadius: '12px',
+            padding: '1.25rem',
+            border: `1px solid ${theme.colors.border}`,
+            transition: 'all 0.3s ease'
+        }}>
+            {/* Header */}
+            <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                    <Link
+                        to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                        style={{ 
+                            fontFamily: 'monospace',
+                            color: theme.colors.mutedText,
+                            fontSize: '0.85rem',
+                            textDecoration: 'none'
+                        }}
+                        title={neuronId}
+                    >
+                        {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
+                    </Link>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(neuronId);
+                        }}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: '0.25rem',
+                            cursor: 'pointer',
+                            color: theme.colors.mutedText,
+                            fontSize: '0.85rem'
+                        }}
+                        title="Copy neuron ID"
+                    >
+                        📋
+                    </button>
+                    {hasHotkeyAccess && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingName(neuronId);
+                                setNameInput(displayName || '');
+                            }}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: '0.25rem',
+                                cursor: 'pointer',
+                                color: theme.colors.mutedText,
+                                fontSize: '0.85rem'
+                            }}
+                            title="Edit neuron name"
+                        >
+                            ✏️
+                        </button>
+                    )}
+                    <Link
+                        to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                        style={{
+                            marginLeft: 'auto',
+                            background: `${mePrimary}15`,
+                            color: mePrimary,
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.4rem 0.75rem',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                        }}
+                    >
+                        ⚙️ Manage
+                    </Link>
+                </div>
+                
+                {name && (
+                    <div style={{ 
+                        color: mePrimary,
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        marginBottom: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                    }}>
+                        {name}
+                        {isVerified && <FaCheckCircle size={14} color={mePrimary} title="Verified name" />}
+                    </div>
+                )}
+                {nickname && (
+                    <div style={{ 
+                        color: theme.colors.mutedText,
+                        fontSize: '0.95rem',
+                        fontStyle: 'italic',
+                        marginBottom: '0.25rem'
+                    }}>
+                        {nickname}
+                    </div>
+                )}
+                
+                {editingName === neuronId && (
+                    <div style={{ 
+                        marginTop: '0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem'
+                    }}>
+                        <input
+                            type="text"
+                            value={nameInput}
+                            onChange={(e) => {
+                                const newValue = e.target.value;
+                                setNameInput(newValue);
+                                setInputError(validateNameInput(newValue));
+                            }}
+                            maxLength={32}
+                            placeholder="Enter neuron name (max 32 chars)"
+                            style={{
+                                backgroundColor: theme.colors.tertiaryBg,
+                                border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
+                                borderRadius: '8px',
+                                color: theme.colors.primaryText,
+                                padding: '0.6rem 0.75rem',
+                                width: '100%',
+                                fontSize: '0.9rem'
+                            }}
+                        />
+                        {inputError && (
+                            <div style={{ color: theme.colors.error, fontSize: '0.8rem' }}>
+                                {inputError}
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button
+                                onClick={() => handleNameSubmit(neuronId, true)}
+                                disabled={isSubmitting}
+                                style={{
+                                    backgroundColor: theme.colors.mutedText,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '0.4rem 0.75rem',
+                                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500',
+                                    opacity: isSubmitting ? 0.7 : 1
+                                }}
+                            >
+                                Set Nickname
+                            </button>
+                            {hasHotkeyAccess && (
+                                <button
+                                    onClick={() => handleNameSubmit(neuronId, false)}
+                                    disabled={isSubmitting}
+                                    style={{
+                                        background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '0.4rem 0.75rem',
+                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '500',
+                                        opacity: isSubmitting ? 0.7 : 1
+                                    }}
+                                >
+                                    Set Name
+                                </button>
+                            )}
+                            <button
+                                onClick={() => {
+                                    setEditingName(null);
+                                    setNameInput('');
+                                }}
+                                disabled={isSubmitting}
+                                style={{
+                                    backgroundColor: theme.colors.error,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '0.4rem 0.75rem',
+                                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+                
+                <div style={{ 
+                    fontSize: '1.5rem',
+                    fontWeight: '700',
+                    color: mePrimary,
+                    marginTop: '0.5rem'
+                }}>
+                    {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div style={{ 
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '0.75rem',
+                fontSize: '0.85rem'
+            }}>
+                <div>
+                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Created</div>
+                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                        {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                    </div>
+                </div>
+                <div>
+                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Dissolve State</div>
+                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
+                </div>
+                <div>
+                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Maturity</div>
+                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                </div>
+                <div>
+                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Voting Power</div>
+                    <div style={{ color: mePrimary, fontWeight: '600' }}>
+                        {nervousSystemParameters ? 
+                            formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
+                            (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
+                        }
+                    </div>
+                </div>
+            </div>
+
+            {/* Permissions */}
+            <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: `1px solid ${theme.colors.border}` }}>
+                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {getOwnerPrincipals(neuron).map((ownerStr) => (
+                        <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                            <span title="Owner">👑</span>
+                            <PrincipalDisplay
+                                principal={Principal.fromText(ownerStr)}
+                                displayInfo={principalDisplayInfo.get(ownerStr)}
+                                showCopyButton={false}
+                            />
+                        </div>
+                    ))}
+                    {neuron.permissions
+                        .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
+                        .map((p, index) => (
+                            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                <span title="Hotkey">🔑</span>
+                                <PrincipalDisplay 
+                                    principal={p.principal}
+                                    displayInfo={principalDisplayInfo.get(p.principal?.toString())}
+                                    showCopyButton={false}
+                                />
+                            </div>
+                        ))
+                    }
+                </div>
+            </div>
+        </div>
+    );
+}
