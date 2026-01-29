@@ -649,7 +649,8 @@ function Feed() {
                 start_id: [], // Start from newest
                 length: 20,
                 filter: [{
-                    states: [[{ Active: null }]], // Only active offers
+                    // Include Active, Completed, and Claimed offers
+                    states: [[{ Active: null }, { Completed: null }, { Claimed: null }]],
                     asset_types: [],
                     creator: [],
                     has_bids: [],
@@ -693,6 +694,9 @@ function Feed() {
         // Get price token ledger ID
         const priceTokenLedger = offer.price_token_ledger?.toString() || null;
         
+        // Check if offer is sold (Completed or Claimed state)
+        const isSold = offer.state && ('Completed' in offer.state || 'Claimed' in offer.state);
+        
         return {
             id: `auction_${offer.id}`, // Prefix to avoid ID collision with forum items
             item_type: { auction: null }, // Custom type
@@ -709,6 +713,8 @@ function Feed() {
             _buyoutPrice: offer.buyout_price?.[0] || null,
             _minBidPrice: offer.min_bid_price?.[0] || null,
             _expiration: offer.expiration?.[0] || null,
+            _isSold: isSold,
+            _offerState: getOfferStateString(offer.state),
             // Compatibility fields (null/empty for auctions)
             sns_root_canister_id: null,
             forum_id: null,
@@ -1873,12 +1879,34 @@ function Feed() {
                 }} 
                 data-feed-item-id={item.id.toString()}
             >
+                {/* SOLD banner for sold auctions */}
+                {item._isAuction && item._isSold && (
+                    <div style={{
+                        position: 'absolute',
+                        top: '12px',
+                        right: '-30px',
+                        background: 'linear-gradient(135deg, #e74c3c, #c0392b)',
+                        color: '#fff',
+                        padding: '4px 40px',
+                        fontWeight: '700',
+                        fontSize: '0.7rem',
+                        transform: 'rotate(45deg)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                        zIndex: 10,
+                        letterSpacing: '1px',
+                    }}>
+                        SOLD
+                    </div>
+                )}
+                
                 {/* Logo - SNS logo for forum items, Sneedex icon for auctions */}
                 {item._isAuction ? (
                     <div
                         style={{
                             ...getStyles(theme).snsLogoPlaceholder,
-                            background: `linear-gradient(135deg, ${feedAuction}, #db2777)`,
+                            background: item._isSold 
+                                ? `linear-gradient(135deg, #6b7280, #4b5563)` // Gray for sold
+                                : `linear-gradient(135deg, ${feedAuction}, #7c3aed)`,
                             cursor: 'pointer'
                         }}
                         onClick={handleItemClick}
