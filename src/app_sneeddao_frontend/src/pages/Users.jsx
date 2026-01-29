@@ -6,7 +6,7 @@ import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import useNeuronsCache from '../hooks/useNeuronsCache';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
-import { formatE8s, uint8ArrayToHex, getOwnerPrincipals } from '../utils/NeuronUtils';
+import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
@@ -142,6 +142,25 @@ function Users() {
         return null;
     };
 
+    // Format stake with K/M/B suffixes for large numbers
+    const formatStakeCompact = (e8sValue) => {
+        if (!e8sValue) return '0';
+        const value = Number(e8sValue) / 100000000;
+        if (value >= 1000000000) {
+            return (value / 1000000000).toFixed(2).replace(/\.?0+$/, '') + 'B';
+        }
+        if (value >= 1000000) {
+            return (value / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+        }
+        if (value >= 1000) {
+            return (value / 1000).toFixed(1).replace(/\.?0+$/, '') + 'K';
+        }
+        return Math.floor(value).toLocaleString();
+    };
+
+    // MANAGE_PRINCIPALS permission type (owner permission)
+    const MANAGE_PRINCIPALS = 2;
+
     // Index neurons by principal (both owners and hotkeys)
     const usersData = useMemo(() => {
         const userMap = new Map();
@@ -153,27 +172,26 @@ function Users() {
             const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
             const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
             
-            // Get all principals with permissions on this neuron
-            const principals = new Set();
-            const ownerPrincipals = getOwnerPrincipals(neuron);
+            // Build owner set by checking MANAGE_PRINCIPALS permission directly
+            // This handles both fresh and cached neurons correctly
+            const ownerPrincipals = new Set();
+            const allPrincipals = new Set();
             
-            // Add owners (getOwnerPrincipals already returns strings)
-            ownerPrincipals.forEach(p => {
-                if (p && typeof p === 'string' && !p.includes('[object')) {
-                    principals.add(p);
-                }
-            });
-            
-            // Add all principals with any permissions (hotkeys)
             neuron.permissions?.forEach(p => {
                 const principalStr = extractPrincipalString(p.principal);
-                if (principalStr) {
-                    principals.add(principalStr);
+                if (!principalStr) return;
+                
+                allPrincipals.add(principalStr);
+                
+                // Check if this principal has MANAGE_PRINCIPALS permission (owner)
+                const permTypes = p.permission_type || [];
+                if (permTypes.includes(MANAGE_PRINCIPALS)) {
+                    ownerPrincipals.add(principalStr);
                 }
             });
             
             // Update user data for each principal
-            principals.forEach(principal => {
+            allPrincipals.forEach(principal => {
                 if (!userMap.has(principal)) {
                     userMap.set(principal, {
                         principal,
@@ -193,7 +211,7 @@ function Users() {
                 userData.totalMaturity += maturity;
                 
                 // Track if this is owned or hotkey access
-                if (ownerPrincipals.includes(principal)) {
+                if (ownerPrincipals.has(principal)) {
                     userData.ownedNeurons.push(neuron);
                     userData.ownedStake += stake;
                 } else {
@@ -477,7 +495,7 @@ function Users() {
                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Staked</span>
                             </div>
                             <div style={{ color: '#f59e0b', fontSize: '1.5rem', fontWeight: '700' }}>
-                                {Math.floor(Number(stats.totalStake) / 100000000).toLocaleString()}
+                                {formatStakeCompact(stats.totalStake)}
                             </div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
                                 {tokenSymbol}
@@ -542,7 +560,7 @@ function Users() {
                             alignItems: 'flex-start',
                             marginBottom: '1rem'
                         }}>
-                            <div style={{ flex: '1 1 300px', minWidth: '200px', position: 'relative' }}>
+                            <div style={{ flex: '1 1 300px', minWidth: '200px', maxWidth: '400px', position: 'relative' }}>
                                 <FaSearch size={14} style={{
                                     position: 'absolute',
                                     left: '12px',
@@ -810,7 +828,7 @@ function Users() {
                                                         Total Stake
                                                     </div>
                                                     <div style={{ color: usersPrimary, fontSize: '1.1rem', fontWeight: '600' }}>
-                                                        {formatE8s(user.totalStake)}
+                                                        {formatStakeCompact(user.totalStake)}
                                                         <span style={{ fontSize: '0.8rem', fontWeight: '400', color: theme.colors.secondaryText, marginLeft: '0.35rem' }}>
                                                             {tokenSymbol}
                                                         </span>
@@ -823,7 +841,7 @@ function Users() {
                                                         Owned Stake
                                                     </div>
                                                     <div style={{ color: '#10b981', fontSize: '1rem', fontWeight: '600' }}>
-                                                        {formatE8s(user.ownedStake)}
+                                                        {formatStakeCompact(user.ownedStake)}
                                                     </div>
                                                 </div>
 
