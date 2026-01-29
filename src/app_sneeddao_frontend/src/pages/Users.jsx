@@ -62,7 +62,7 @@ const usersAccent = '#a78bfa'; // Light violet
 
 function Users() {
     const { theme } = useTheme();
-    const { identity } = useAuth();
+    const { identity, isAuthenticated } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -848,39 +848,15 @@ function Users() {
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                                         User
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                                        {displayInfo?.name ? (
-                                                            <span style={{
-                                                                color: usersPrimary,
-                                                                fontSize: '1.1rem',
-                                                                fontWeight: '600',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '0.35rem'
-                                                            }}>
-                                                                {displayInfo.name}
-                                                                {displayInfo.verified && (
-                                                                    <FaCheckCircle size={14} color={usersPrimary} title="Verified" />
-                                                                )}
-                                                            </span>
-                                                        ) : displayInfo?.nickname ? (
-                                                            <span style={{
-                                                                color: theme.colors.secondaryText,
-                                                                fontSize: '1.1rem',
-                                                                fontWeight: '500',
-                                                                fontStyle: 'italic'
-                                                            }}>
-                                                                {displayInfo.nickname}
-                                                            </span>
-                                                        ) : null}
-                                                        <span style={{
-                                                            color: theme.colors.mutedText,
-                                                            fontSize: '0.85rem',
-                                                            fontFamily: 'monospace'
-                                                        }}>
-                                                            {user.principal.slice(0, 8)}...{user.principal.slice(-6)}
-                                                        </span>
-                                                    </div>
+                                                    <PrincipalDisplay
+                                                        principal={user.principal}
+                                                        displayInfo={displayInfo}
+                                                        short={false}
+                                                        noLink={true}
+                                                        isAuthenticated={isAuthenticated}
+                                                        showViewProfile={false}
+                                                        style={{ fontSize: '1rem' }}
+                                                    />
                                                 </div>
 
                                                 {/* Total Neurons */}
