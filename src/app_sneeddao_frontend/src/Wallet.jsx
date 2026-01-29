@@ -4070,7 +4070,7 @@ function Wallet() {
         }
         
         if (items.length === 0) {
-            alert('No items available to consolidate at this time. Please ensure data is loaded and try again.');
+            alert('No items available to collect at this time. Please ensure data is loaded and try again.');
             return;
         }
         
@@ -4440,7 +4440,7 @@ function Wallet() {
                                 </div>
                             )}
                             
-                            {/* Consolidate Card */}
+                            {/* Collect Card */}
                             {(totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyMaturity) && (
                                 <div style={{
                                     background: `linear-gradient(135deg, ${walletPrimary}15 0%, ${walletAccent}10 100%)`,
@@ -4465,7 +4465,7 @@ function Wallet() {
                                                 letterSpacing: '0.5px',
                                                 fontWeight: '500'
                                             }}>
-                                                Consolidate
+                                                Collect
                                             </div>
                                             <div style={{ 
                                                 color: walletPrimary, 
@@ -4884,9 +4884,8 @@ function Wallet() {
                     ))}
                 </div>
 
-                {/* Tokens Tab Content */}
-                {activeWalletTab === 'tokens' && (
-                    <>
+                {/* Tokens Tab Content - Always render to ensure neurons load, but hide when not active */}
+                <div style={{ display: activeWalletTab === 'tokens' ? 'block' : 'none' }}>
                     <div style={{ 
                         display: 'flex', 
                         justifyContent: 'space-between',
@@ -4955,18 +4954,11 @@ function Wallet() {
                     </div>
                     <div className="card-grid">
                     {tokens.map((token, index) => {
-                        // Debug logging for each token
                         // Convert Principal to string for comparison
                         const ledgerIdString = typeof token.ledger_canister_id === 'string' 
                             ? token.ledger_canister_id 
                             : token.ledger_canister_id?.toString();
                         const isSns = snsTokens.has(ledgerIdString);
-                        //console.log(`[Wallet] Token ${token.symbol}:`, {
-                        //    ledger_canister_id: token.ledger_canister_id,
-                        //    ledger_canister_id_string: ledgerIdString,
-                        //    isSnsToken: isSns,
-                        //    snsTokensSet: Array.from(snsTokens)
-                        //});
                         
                         return (
                             <TokenCard
@@ -5006,8 +4998,7 @@ function Wallet() {
                         <div/>
                     )}
                 </div>
-                </>
-                )}
+                </div>
 
                 {/* Liquidity Positions Tab Content */}
                 {activeWalletTab === 'positions' && (
