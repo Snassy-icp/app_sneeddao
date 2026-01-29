@@ -138,6 +138,22 @@ export const formatPrincipal = (principal, displayInfo = null) => {
     };
 };
 
+// Detect if a principal is a canister (shorter bytes) vs a user (self-authenticating, longer)
+// Canister principals have 10 or fewer bytes, user principals have 29 bytes
+// Anonymous principal "2vxsx-fae" is treated as a user
+export const isCanisterPrincipal = (principal) => {
+    if (!principal) return false;
+    try {
+        const bytes = principal.toUint8Array();
+        // Anonymous principal has 1 byte (0x04), treat as user
+        if (bytes.length === 1 && bytes[0] === 0x04) return false;
+        // Canister principals have 10 or fewer bytes
+        return bytes.length <= 10;
+    } catch {
+        return false;
+    }
+};
+
 // Premium crown icon component
 const PremiumCrownIcon = ({ size = 14 }) => {
     return React.createElement('svg', {
@@ -155,6 +171,59 @@ const PremiumCrownIcon = ({ size = 14 }) => {
     }, React.createElement('path', {
         d: 'M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5m14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z'
     }));
+};
+
+// User icon component (anonymous/person silhouette)
+const UserIcon = ({ size = 14, color = '#888' }) => {
+    return React.createElement('svg', {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: color,
+        title: 'User Principal',
+        style: {
+            verticalAlign: 'middle',
+            marginRight: '2px',
+            flexShrink: 0,
+            opacity: 0.7
+        }
+    }, React.createElement('path', {
+        d: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'
+    }));
+};
+
+// Canister icon component (box/cube)
+const CanisterIcon = ({ size = 14, color = '#888' }) => {
+    return React.createElement('svg', {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: color,
+        title: 'Canister Principal',
+        style: {
+            verticalAlign: 'middle',
+            marginRight: '2px',
+            flexShrink: 0,
+            opacity: 0.7
+        }
+    }, React.createElement('path', {
+        d: 'M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 013 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z'
+    }));
+};
+
+// Principal type icon - shows crown for premium, user/canister icon otherwise
+export const PrincipalTypeIcon = ({ principal, isPremium = false, size = 14, color = '#888' }) => {
+    // Premium always shows crown
+    if (isPremium) {
+        return React.createElement(PremiumCrownIcon, { size });
+    }
+    
+    // Otherwise show user or canister icon
+    const isCanister = isCanisterPrincipal(principal);
+    if (isCanister) {
+        return React.createElement(CanisterIcon, { size, color });
+    }
+    return React.createElement(UserIcon, { size, color });
 };
 
 // React component for displaying a principal with context menu
@@ -354,7 +423,7 @@ export const PrincipalDisplay = React.memo(({
                             style: { display: 'inline-flex', alignItems: 'center' },
                             title: principalId 
                         },
-                        isPremium && React.createElement(PremiumCrownIcon, { size: 14 }),
+                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor }),
                         formatted
                     )
                 ),
@@ -428,8 +497,8 @@ export const PrincipalDisplay = React.memo(({
                         },
                         title: formatted.fullId
                     },
-                    // Premium crown badge (shown first)
-                    isPremium && React.createElement(PremiumCrownIcon, { size: 14 }),
+                    // Principal type icon (crown for premium, user/canister otherwise)
+                    React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor }),
                     formatted.name && React.createElement('span',
                         {
                             style: {
