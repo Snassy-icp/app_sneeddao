@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
 import { useSns } from './contexts/SnsContext';
@@ -88,6 +89,7 @@ function Neuron() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const [tokenSymbol, setTokenSymbol] = useState('');
     const [actionBusy, setActionBusy] = useState(false);
     const [actionMsg, setActionMsg] = useState('');
     const [managePrincipalInput, setManagePrincipalInput] = useState('');
@@ -869,6 +871,35 @@ function Neuron() {
         fetchNervousSystemParameters();
     }, [selectedSnsRoot, identity]);
 
+    // Fetch token symbol from ledger
+    useEffect(() => {
+        const fetchTokenSymbol = async () => {
+            if (!selectedSnsRoot) return;
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns?.canisters?.ledger) return;
+                
+                const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger, {});
+                const metadata = await ledgerActor.icrc1_metadata();
+                
+                // Find the symbol in metadata
+                const symbolEntry = metadata.find(([key]) => key === 'icrc1:symbol');
+                if (symbolEntry && symbolEntry[1]?.Text) {
+                    setTokenSymbol(symbolEntry[1].Text);
+                } else {
+                    // Fallback to SNS name
+                    setTokenSymbol(selectedSns.name || 'SNS');
+                }
+            } catch (error) {
+                console.error('Error fetching token symbol:', error);
+                // Fallback to SNS name on error
+                const selectedSns = getSnsById(selectedSnsRoot);
+                setTokenSymbol(selectedSns?.name || 'SNS');
+            }
+        };
+        fetchTokenSymbol();
+    }, [selectedSnsRoot]);
+
     // Card style helper
     const cardStyle = {
         background: theme.colors.secondaryBg,
@@ -1136,7 +1167,7 @@ function Neuron() {
 
                             {/* Stats Grid - Comprehensive Neuron Information */}
                             {(() => {
-                                const symbol = selectedSns?.symbol || 'SNS';
+                                const symbol = tokenSymbol || selectedSns?.name || 'SNS';
                                 const now = Math.floor(Date.now() / 1000);
                                 
                                 // Calculate age from aging_since_timestamp_seconds
