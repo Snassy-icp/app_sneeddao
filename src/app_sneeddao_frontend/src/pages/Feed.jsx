@@ -581,13 +581,12 @@ function Feed() {
     const [selectedTypes, setSelectedTypes] = useState([]); // Array of selected types: 'forum', 'topic', 'thread', 'post', 'auction'
     const [appliedFilters, setAppliedFilters] = useState({});
     
-    // All available feed item types
+    // All available feed item types (forum items only - auctions have separate toggle)
     const allFeedTypes = [
         { id: 'forum', label: 'Forum', icon: <FaComments size={12} />, color: feedBlue },
         { id: 'topic', label: 'Topic', icon: <FaLayerGroup size={12} />, color: feedGreen },
         { id: 'thread', label: 'Thread', icon: <FaStream size={12} />, color: feedPurple },
         { id: 'post', label: 'Post', icon: <FaReply size={12} />, color: feedPrimary },
-        { id: 'auction', label: 'Auction', icon: <FaGavel size={12} />, color: feedAuction },
     ];
     
     // Toggle a type selection
@@ -1378,13 +1377,16 @@ function Feed() {
                 }
             } else if (direction === 'newer') {
                 if (filteredItems.length > 0) {
-                    // Filter out items we already have (items with ID <= current first item ID)
-                    // Only compare forum items (not auctions which have string IDs)
+                    // Filter out items we already have using a Set of existing IDs
+                    const existingIds = new Set(feedItems.map(item => item.id.toString()));
                     const forumItems = feedItems.filter(item => !item._isAuction);
                     const currentFirstId = forumItems.length > 0 ? forumItems[0].id : 0n;
+                    
                     const newerItems = filteredItems.filter(item => {
                         // Skip auction items in this comparison (they're handled separately)
                         if (item._isAuction) return false;
+                        // Skip items we already have
+                        if (existingIds.has(item.id.toString())) return false;
                         // Handle BigInt comparison for forum items
                         const itemId = typeof item.id === 'bigint' ? item.id : BigInt(item.id);
                         const currentId = typeof currentFirstId === 'bigint' ? currentFirstId : BigInt(currentFirstId);
@@ -1591,8 +1593,13 @@ function Feed() {
                     
                     if (closestItem) {
                         const itemId = closestItem.getAttribute('data-feed-item-id');
-                        if (itemId) {
-                            saveScrollPositionId(BigInt(itemId));
+                        // Only save scroll position for forum items (not auctions which have string IDs)
+                        if (itemId && !itemId.startsWith('auction_')) {
+                            try {
+                                saveScrollPositionId(BigInt(itemId));
+                            } catch (e) {
+                                // Ignore conversion errors for non-numeric IDs
+                            }
                         }
                     }
                 }
@@ -1986,69 +1993,139 @@ function Feed() {
                         {displayTitle}
                     </h3>
                     
-                    {/* Auction pricing info */}
+                    {/* Auction info - what's being sold and pricing */}
                     {item._isAuction && (
                         <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '12px',
                             marginBottom: '12px',
                             padding: '12px',
                             backgroundColor: theme.colors.tertiaryBg,
                             borderRadius: '10px',
                             border: `1px solid ${theme.colors.border}`
                         }}>
-                            {(() => {
-                                const tokenMeta = item._priceTokenLedger ? auctionTokenMetadata.get(item._priceTokenLedger) : null;
-                                const isLoadingToken = item._priceTokenLedger ? loadingAuctionTokens.has(item._priceTokenLedger) : false;
-                                const symbol = tokenMeta?.symbol || '...';
-                                const decimals = tokenMeta?.decimals ?? 8;
-                                const logo = tokenMeta?.logo;
-                                
-                                const formatPrice = (price) => {
-                                    if (!price) return null;
-                                    return formatAmount(price, decimals);
-                                };
-                                
-                                return (
-                                    <>
-                                        {item._buyoutPrice && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Buyout:</span>
-                                                {logo && (
-                                                    <TokenIcon logo={logo} size={16} borderRadius="4px" />
+                            {/* Assets being sold */}
+                            {item._assets && item._assets.length > 0 && (
+                                <div style={{ marginBottom: '10px' }}>
+                                    <div style={{ 
+                                        fontSize: '0.7rem', 
+                                        color: theme.colors.mutedText, 
+                                        marginBottom: '6px',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                    }}>
+                                        For Sale:
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        {item._assets.map((asset, idx) => (
+                                            <div key={idx} style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '4px 10px',
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                borderRadius: '6px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                fontSize: '0.8rem'
+                                            }}>
+                                                {asset.type === 'SNSNeuron' && (
+                                                    <>
+                                                        <span style={{ color: feedPurple }}>🧠</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            SNS Neuron
+                                                            {asset.cached_stake_e8s && (
+                                                                <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
+                                                                    ({formatAmount(asset.cached_stake_e8s)} staked)
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    </>
                                                 )}
-                                                <span style={{ fontSize: '0.85rem', fontWeight: '600', color: feedGreen }}>
-                                                    {isLoadingToken ? '...' : formatPrice(item._buyoutPrice)} {symbol}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {item._minBidPrice && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Min bid:</span>
-                                                {logo && !item._buyoutPrice && (
-                                                    <TokenIcon logo={logo} size={16} borderRadius="4px" />
+                                                {asset.type === 'Canister' && (
+                                                    <>
+                                                        <span style={{ color: feedBlue }}>📦</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            {asset.title || 'Canister'}
+                                                            {asset.cached_total_stake_e8s && (
+                                                                <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
+                                                                    ({formatAmount(asset.cached_total_stake_e8s)} ICP staked)
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    </>
                                                 )}
-                                                <span style={{ fontSize: '0.85rem', fontWeight: '500', color: theme.colors.primaryText }}>
-                                                    {isLoadingToken ? '...' : formatPrice(item._minBidPrice)} {symbol}
-                                                </span>
+                                                {asset.type === 'ICRC1Token' && (
+                                                    <>
+                                                        <span style={{ color: feedAccent }}>🪙</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            {formatAmount(asset.amount)} tokens
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
-                                        )}
-                                        {item._expiration && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Ends:</span>
-                                                <span style={{ 
-                                                    fontSize: '0.85rem', 
-                                                    fontWeight: '500', 
-                                                    color: formatTimeRemaining(item._expiration) === 'Expired' ? '#ef4444' : feedPrimary 
-                                                }}>
-                                                    {formatTimeRemaining(item._expiration)}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </>
-                                );
-                            })()}
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Pricing info */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                                {(() => {
+                                    const tokenMeta = item._priceTokenLedger ? auctionTokenMetadata.get(item._priceTokenLedger) : null;
+                                    const isLoadingToken = item._priceTokenLedger ? loadingAuctionTokens.has(item._priceTokenLedger) : false;
+                                    const symbol = tokenMeta?.symbol || (isLoadingToken ? '...' : 'tokens');
+                                    const decimals = tokenMeta?.decimals ?? 8;
+                                    const logo = tokenMeta?.logo;
+                                    
+                                    // ICP ledger ID for fallback logo
+                                    const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+                                    const isIcp = item._priceTokenLedger === ICP_LEDGER;
+                                    const icpLogo = 'https://nns.ic0.app/img/icp.8a03cbcd.svg';
+                                    const displayLogo = logo || (isIcp ? icpLogo : null);
+                                    
+                                    const formatPrice = (price) => {
+                                        if (!price) return null;
+                                        return formatAmount(price, decimals);
+                                    };
+                                    
+                                    return (
+                                        <>
+                                            {item._buyoutPrice && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Buyout:</span>
+                                                    {displayLogo && (
+                                                        <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
+                                                    )}
+                                                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: feedGreen }}>
+                                                        {isLoadingToken ? '...' : formatPrice(item._buyoutPrice)} {symbol}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {item._minBidPrice && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Min bid:</span>
+                                                    {displayLogo && !item._buyoutPrice && (
+                                                        <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
+                                                    )}
+                                                    <span style={{ fontSize: '0.85rem', fontWeight: '500', color: theme.colors.primaryText }}>
+                                                        {isLoadingToken ? '...' : formatPrice(item._minBidPrice)} {symbol}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {item._expiration && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Ends:</span>
+                                                    <span style={{ 
+                                                        fontSize: '0.85rem', 
+                                                        fontWeight: '500', 
+                                                        color: formatTimeRemaining(item._expiration) === 'Expired' ? '#ef4444' : feedPrimary 
+                                                    }}>
+                                                        {formatTimeRemaining(item._expiration)}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
                         </div>
                     )}
                     
@@ -2561,7 +2638,89 @@ function Feed() {
                         </div>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            {/* Filter inputs */}
+                            {/* Types filter - full width */}
+                            <div style={getStyles(theme).filterGroup}>
+                                <label style={getStyles(theme).filterLabel}>
+                                    <FaList size={10} style={{ marginRight: '6px' }} />
+                                    Filter by Type {selectedTypes.length > 0 && `(${selectedTypes.length} selected)`}
+                                </label>
+                                <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    padding: '10px',
+                                    backgroundColor: theme.colors.primaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    {allFeedTypes.map(type => {
+                                        const isSelected = selectedTypes.includes(type.id);
+                                        return (
+                                            <button
+                                                key={type.id}
+                                                onClick={() => toggleTypeSelection(type.id)}
+                                                className="feed-sns-avatar"
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '6px 12px',
+                                                    borderRadius: '8px',
+                                                    border: `1.5px solid ${isSelected ? type.color : theme.colors.border}`,
+                                                    backgroundColor: isSelected ? `${type.color}20` : theme.colors.secondaryBg,
+                                                    color: isSelected ? type.color : theme.colors.mutedText,
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: '500',
+                                                    opacity: isSelected ? 1 : 0.6,
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                                title={isSelected ? `Hide ${type.label}s` : `Show ${type.label}s`}
+                                            >
+                                                <span style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center',
+                                                    color: isSelected ? type.color : theme.colors.mutedText
+                                                }}>
+                                                    {type.icon}
+                                                </span>
+                                                {type.label}
+                                            </button>
+                                        );
+                                    })}
+                                    {selectedTypes.length > 0 && (
+                                        <button
+                                            onClick={() => setSelectedTypes([])}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                padding: '6px 10px',
+                                                borderRadius: '8px',
+                                                border: `1px dashed ${theme.colors.border}`,
+                                                backgroundColor: 'transparent',
+                                                color: theme.colors.mutedText,
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '400'
+                                            }}
+                                            title="Show all types"
+                                        >
+                                            <FaTimes size={10} />
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                                <div style={{ 
+                                    fontSize: '0.7rem', 
+                                    color: theme.colors.mutedText, 
+                                    marginTop: '4px' 
+                                }}>
+                                    {selectedTypes.length === 0 ? 'Showing all forum item types (auctions controlled by toggle above)' : `Showing: ${selectedTypes.map(t => allFeedTypes.find(ft => ft.id === t)?.label).join(', ')}`}
+                                </div>
+                            </div>
+                            
+                            {/* User and Search filters - side by side on larger screens */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
                                 <div style={getStyles(theme).filterGroup}>
                                     <label style={getStyles(theme).filterLabel}>
@@ -2574,87 +2733,6 @@ function Feed() {
                                         placeholder="Enter principal ID or search by name"
                                         style={{ width: '100%' }}
                                     />
-                                </div>
-                                
-                                <div style={getStyles(theme).filterGroup}>
-                                    <label style={getStyles(theme).filterLabel}>
-                                        <FaList size={10} style={{ marginRight: '6px' }} />
-                                        Types {selectedTypes.length > 0 && `(${selectedTypes.length})`}
-                                    </label>
-                                    <div style={{
-                                        display: 'flex',
-                                        flexWrap: 'wrap',
-                                        gap: '8px',
-                                        padding: '8px',
-                                        backgroundColor: theme.colors.primaryBg,
-                                        borderRadius: '10px',
-                                        border: `1px solid ${theme.colors.border}`
-                                    }}>
-                                        {allFeedTypes.map(type => {
-                                            const isSelected = selectedTypes.includes(type.id);
-                                            return (
-                                                <button
-                                                    key={type.id}
-                                                    onClick={() => toggleTypeSelection(type.id)}
-                                                    className="feed-sns-avatar"
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        padding: '6px 12px',
-                                                        borderRadius: '8px',
-                                                        border: `1.5px solid ${isSelected ? type.color : theme.colors.border}`,
-                                                        backgroundColor: isSelected ? `${type.color}20` : theme.colors.secondaryBg,
-                                                        color: isSelected ? type.color : theme.colors.mutedText,
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.8rem',
-                                                        fontWeight: '500',
-                                                        opacity: isSelected ? 1 : 0.6,
-                                                        transition: 'all 0.2s ease'
-                                                    }}
-                                                    title={isSelected ? `Hide ${type.label}s` : `Show ${type.label}s`}
-                                                >
-                                                    <span style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center',
-                                                        color: isSelected ? type.color : theme.colors.mutedText
-                                                    }}>
-                                                        {type.icon}
-                                                    </span>
-                                                    {type.label}
-                                                </button>
-                                            );
-                                        })}
-                                        {selectedTypes.length > 0 && (
-                                            <button
-                                                onClick={() => setSelectedTypes([])}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px',
-                                                    padding: '6px 10px',
-                                                    borderRadius: '8px',
-                                                    border: `1px dashed ${theme.colors.border}`,
-                                                    backgroundColor: 'transparent',
-                                                    color: theme.colors.mutedText,
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '400'
-                                                }}
-                                                title="Show all types"
-                                            >
-                                                <FaTimes size={10} />
-                                                Clear
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div style={{ 
-                                        fontSize: '0.7rem', 
-                                        color: theme.colors.mutedText, 
-                                        marginTop: '4px' 
-                                    }}>
-                                        {selectedTypes.length === 0 ? 'Showing all types' : `Showing: ${selectedTypes.map(t => allFeedTypes.find(ft => ft.id === t)?.label).join(', ')}`}
-                                    </div>
                                 </div>
                                 
                                 <div style={getStyles(theme).filterGroup}>
