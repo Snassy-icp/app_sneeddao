@@ -10,7 +10,8 @@ import { PrincipalDisplay } from '../../utils/PrincipalUtils';
 import { 
     FaUserShield, FaSpinner, FaSync, FaPlus, FaTrash, 
     FaChevronDown, FaChevronUp, FaCheck, FaTimes, FaDatabase,
-    FaLock, FaComments, FaEnvelope, FaCrown, FaExchangeAlt, FaCopy
+    FaLock, FaComments, FaEnvelope, FaCrown, FaExchangeAlt, FaCopy,
+    FaBrain, FaMinus
 } from 'react-icons/fa';
 
 // Import actors
@@ -20,6 +21,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 import { createActor as createPremiumActor, canisterId as premiumCanisterId } from 'declarations/sneed_premium';
 import { createActor as createSneedexActorDecl, canisterId as sneedexCanisterId } from 'declarations/sneedex';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
@@ -137,6 +139,17 @@ const CANISTERS = {
         },
         formatAdmins: (admins) => admins.map(p => ({ principal: p })),
     },
+    neuron_manager_factory: {
+        id: factoryCanisterId,
+        name: 'Neuron Manager Factory',
+        icon: FaBrain,
+        color: '#8b5cf6',
+        getActor: (identity) => createFactoryActor(factoryCanisterId, { agentOptions: { identity, host: getHost() } }),
+        getAdmins: async (actor) => await actor.getAdmins(),
+        addAdmin: async (actor, principal) => await actor.addAdmin(principal),
+        removeAdmin: async (actor, principal) => await actor.removeAdmin(principal),
+        formatAdmins: (admins) => admins.map(p => ({ principal: p })),
+    },
 };
 
 export default function AdminsAdmin() {
@@ -173,10 +186,11 @@ export default function AdminsAdmin() {
     const [addingAdmin, setAddingAdmin] = useState({}); // canisterKey -> boolean
     const [removingAdmin, setRemovingAdmin] = useState({}); // canisterKey:principal -> boolean
     
-    // Bulk add state
-    const [bulkAddInput, setBulkAddInput] = useState('');
-    const [bulkAddExpanded, setBulkAddExpanded] = useState(false);
+    // Bulk operations state
+    const [bulkInput, setBulkInput] = useState('');
+    const [bulkExpanded, setBulkExpanded] = useState(true);
     const [bulkAdding, setBulkAdding] = useState(false);
+    const [bulkRemoving, setBulkRemoving] = useState(false);
     const [selectedCanisters, setSelectedCanisters] = useState(
         Object.fromEntries(Object.keys(CANISTERS).map(key => [key, true]))
     );
@@ -321,9 +335,18 @@ export default function AdminsAdmin() {
         );
     };
     
+    // Select all / deselect all canisters
+    const selectAllCanisters = () => {
+        setSelectedCanisters(Object.fromEntries(Object.keys(CANISTERS).map(key => [key, true])));
+    };
+    
+    const deselectAllCanisters = () => {
+        setSelectedCanisters(Object.fromEntries(Object.keys(CANISTERS).map(key => [key, false])));
+    };
+    
     // Bulk add admin to selected canisters
     const handleBulkAddAdmin = async () => {
-        const principalText = bulkAddInput?.trim();
+        const principalText = bulkInput?.trim();
         if (!principalText) {
             showInfo('Error', 'Please enter a principal ID', 'error');
             return;
@@ -363,7 +386,7 @@ export default function AdminsAdmin() {
         }
         
         setBulkAdding(false);
-        setBulkAddInput('');
+        setBulkInput('');
         
         // Refresh all affected canisters
         await Promise.all(selectedKeys.map(key => fetchCanisterAdmins(key)));
@@ -378,6 +401,72 @@ export default function AdminsAdmin() {
                 'warning'
             );
         }
+    };
+    
+    // Bulk remove admin from selected canisters
+    const handleBulkRemoveAdmin = async () => {
+        const principalText = bulkInput?.trim();
+        if (!principalText) {
+            showInfo('Error', 'Please enter a principal ID', 'error');
+            return;
+        }
+        
+        let principal;
+        try {
+            principal = Principal.fromText(principalText);
+        } catch (err) {
+            showInfo('Error', 'Invalid principal ID', 'error');
+            return;
+        }
+        
+        const selectedKeys = Object.entries(selectedCanisters)
+            .filter(([_, selected]) => selected)
+            .map(([key]) => key);
+        
+        if (selectedKeys.length === 0) {
+            showInfo('Error', 'Please select at least one canister', 'error');
+            return;
+        }
+        
+        showConfirm(
+            'Remove Admin from All Selected',
+            `Are you sure you want to remove this admin from ${selectedKeys.length} canister(s)?\n\nCanisters: ${selectedKeys.map(k => CANISTERS[k].name).join(', ')}`,
+            async () => {
+                closeConfirmModal();
+                setBulkRemoving(true);
+                
+                const results = { success: [], failed: [] };
+                
+                for (const canisterKey of selectedKeys) {
+                    const canister = CANISTERS[canisterKey];
+                    try {
+                        const actor = canister.getActor(identity);
+                        await canister.removeAdmin(actor, principal);
+                        results.success.push(canister.name);
+                    } catch (err) {
+                        console.error(`Error removing admin from ${canisterKey}:`, err);
+                        results.failed.push({ name: canister.name, error: err.message });
+                    }
+                }
+                
+                setBulkRemoving(false);
+                setBulkInput('');
+                
+                // Refresh all affected canisters
+                await Promise.all(selectedKeys.map(key => fetchCanisterAdmins(key)));
+                
+                if (results.failed.length === 0) {
+                    showInfo('Success', `Admin removed from: ${results.success.join(', ')}`, 'success');
+                } else if (results.success.length === 0) {
+                    showInfo('Error', `Failed to remove admin from all canisters`, 'error');
+                } else {
+                    showInfo('Partial Success', 
+                        `Removed from: ${results.success.join(', ')}\n\nFailed: ${results.failed.map(f => f.name).join(', ')}`, 
+                        'warning'
+                    );
+                }
+            }
+        );
     };
     
     // Toggle canister expansion
@@ -612,30 +701,78 @@ export default function AdminsAdmin() {
                     </div>
                 )}
                 
-                {/* Bulk Add Section */}
+                {/* Bulk Operations Section */}
                 <div style={{ ...styles.card, ...styles.bulkAddCard }}>
                     <div
                         style={styles.cardHeader}
-                        onClick={() => setBulkAddExpanded(!bulkAddExpanded)}
+                        onClick={() => setBulkExpanded(!bulkExpanded)}
                     >
                         <h2 style={styles.cardTitle}>
-                            <FaPlus style={{ color: theme.colors.accent }} />
-                            Add Admin to Multiple Canisters
+                            <FaUserShield style={{ color: theme.colors.accent }} />
+                            Bulk Admin Operations
                         </h2>
-                        {bulkAddExpanded ? <FaChevronUp /> : <FaChevronDown />}
+                        {bulkExpanded ? <FaChevronUp /> : <FaChevronDown />}
                     </div>
                     
-                    {bulkAddExpanded && (
+                    {bulkExpanded && (
                         <div style={styles.cardContent}>
                             <p style={{ color: theme.colors.secondaryText, marginBottom: '12px', fontSize: '14px' }}>
-                                Select which canisters to add the admin to, then enter the principal ID.
+                                Add or remove an admin to/from multiple canisters at once. Select which canisters to affect, then enter the principal ID.
                             </p>
+                            
+                            {/* Select All / Deselect All buttons */}
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                                <button
+                                    onClick={selectAllCanisters}
+                                    style={{
+                                        padding: '6px 12px',
+                                        background: theme.colors.accent,
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        fontWeight: '500',
+                                    }}
+                                >
+                                    <FaCheck style={{ marginRight: '4px' }} />
+                                    Select All
+                                </button>
+                                <button
+                                    onClick={deselectAllCanisters}
+                                    style={{
+                                        padding: '6px 12px',
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        fontWeight: '500',
+                                    }}
+                                >
+                                    <FaTimes style={{ marginRight: '4px' }} />
+                                    Deselect All
+                                </button>
+                                <span style={{ 
+                                    marginLeft: 'auto', 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}>
+                                    {Object.values(selectedCanisters).filter(Boolean).length} of {Object.keys(CANISTERS).length} selected
+                                </span>
+                            </div>
                             
                             <div style={styles.checkboxGrid}>
                                 {Object.entries(CANISTERS).map(([key, canister]) => {
                                     const Icon = canister.icon;
                                     return (
-                                        <label key={key} style={styles.checkboxLabel}>
+                                        <label key={key} style={{
+                                            ...styles.checkboxLabel,
+                                            border: selectedCanisters[key] ? `1px solid ${canister.color}` : `1px solid transparent`,
+                                        }}>
                                             <input
                                                 type="checkbox"
                                                 checked={selectedCanisters[key]}
@@ -651,19 +788,24 @@ export default function AdminsAdmin() {
                                 })}
                             </div>
                             
-                            <div style={styles.addAdminRow}>
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '8px', 
+                                marginTop: '16px',
+                                flexWrap: 'wrap'
+                            }}>
                                 <input
                                     type="text"
-                                    style={styles.input}
+                                    style={{ ...styles.input, flex: '1 1 300px' }}
                                     placeholder="Enter principal ID..."
-                                    value={bulkAddInput}
-                                    onChange={(e) => setBulkAddInput(e.target.value)}
+                                    value={bulkInput}
+                                    onChange={(e) => setBulkInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleBulkAddAdmin()}
                                 />
                                 <button
                                     style={styles.addButton}
                                     onClick={handleBulkAddAdmin}
-                                    disabled={bulkAdding}
+                                    disabled={bulkAdding || bulkRemoving}
                                 >
                                     {bulkAdding ? (
                                         <FaSpinner className="spin" />
@@ -671,6 +813,22 @@ export default function AdminsAdmin() {
                                         <FaPlus />
                                     )}
                                     Add to Selected
+                                </button>
+                                <button
+                                    style={{
+                                        ...styles.removeButton,
+                                        padding: '10px 16px',
+                                        fontSize: '14px',
+                                    }}
+                                    onClick={handleBulkRemoveAdmin}
+                                    disabled={bulkAdding || bulkRemoving}
+                                >
+                                    {bulkRemoving ? (
+                                        <FaSpinner className="spin" />
+                                    ) : (
+                                        <FaMinus />
+                                    )}
+                                    Remove from Selected
                                 </button>
                             </div>
                         </div>
