@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet, FaCopy, FaChartBar, FaList, FaChevronDown, FaChevronUp, FaSync } from 'react-icons/fa';
+import { FaArrowLeft, FaSave, FaSpinner, FaCheck, FaUnlock, FaCrown, FaUser, FaWallet, FaCopy, FaChartBar, FaList, FaChevronDown, FaChevronUp, FaSync, FaExternalLinkAlt } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
@@ -982,6 +982,19 @@ function AdminSnsJailbreak() {
                                                                                     </div>
                                                                                 )}
                                                                                 <span>{snsInfo.name}</span>
+                                                                                <Link
+                                                                                    to={`/neuron?neuronid=${log.neuron_id_hex}&sns=${log.sns_root_canister_id.toString()}`}
+                                                                                    target="_blank"
+                                                                                    style={{ 
+                                                                                        color: theme.colors.accent, 
+                                                                                        marginLeft: '4px',
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'center'
+                                                                                    }}
+                                                                                    title="View neuron"
+                                                                                >
+                                                                                    <FaExternalLinkAlt size={12} />
+                                                                                </Link>
                                                                             </div>
                                                                         );
                                                                     })()}
