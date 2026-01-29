@@ -66,6 +66,7 @@ function SneedexOffers() {
     
     // Advanced filter state
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+    const [showInactiveOffers, setShowInactiveOffers] = useState(true); // Default to showing all offers including inactive
     const [bidTokenFilter, setBidTokenFilter] = useState(''); // Filter by payment token
     const [minPriceFilter, setMinPriceFilter] = useState(''); // Min price filter (in token)
     const [maxPriceFilter, setMaxPriceFilter] = useState(''); // Max price filter (in token)
@@ -318,25 +319,68 @@ function SneedexOffers() {
         setError('');
         try {
             const actor = createSneedexActor(identity);
-            let activeOffers;
+            let fetchedOffers = [];
             
-            if (offerTab === 'public') {
-                // Fetch public offers (no approved bidders list)
-                activeOffers = await actor.getPublicOffers();
-            } else {
-                // Fetch private offers where user is creator or in approved bidders list
-                if (principal) {
-                    activeOffers = await actor.getPrivateOffersFor(principal);
-                } else {
-                    activeOffers = [];
+            // Build state filter based on showInactiveOffers toggle
+            const stateFilter = showInactiveOffers 
+                ? [
+                    { Active: null }, 
+                    { Completed: { winning_bid_id: 0n, completion_time: 0n } }, 
+                    { Claimed: null },
+                    { Expired: null },
+                    { Cancelled: null },
+                    { Reclaimed: null }
+                  ]
+                : [{ Active: null }]; // Only active offers
+            
+            // Use getOfferFeed to get offers with state filtering
+            const feedInput = {
+                start_id: [], // Start from newest
+                length: 1000, // Get a large number
+                filter: [{
+                    states: [stateFilter],
+                    asset_types: [],
+                    creator: [],
+                    has_bids: [],
+                    public_only: offerTab === 'public' ? [true] : []
+                }]
+            };
+            
+            try {
+                const feedResult = await actor.getOfferFeed(feedInput);
+                fetchedOffers = feedResult.offers;
+            } catch (feedError) {
+                // Fallback to old methods if getOfferFeed fails
+                console.warn('getOfferFeed failed, falling back to old methods:', feedError);
+                if (offerTab === 'public') {
+                    fetchedOffers = await actor.getPublicOffers();
+                } else if (principal) {
+                    fetchedOffers = await actor.getPrivateOffersFor(principal);
+                }
+                
+                // Filter by state client-side if using fallback
+                if (!showInactiveOffers) {
+                    fetchedOffers = fetchedOffers.filter(o => 'Active' in o.state);
                 }
             }
             
-            setOffers(activeOffers);
+            // For private tab, also filter to only offers where user is creator or in approved bidders
+            if (offerTab === 'private' && principal) {
+                const principalStr = principal.toString();
+                fetchedOffers = fetchedOffers.filter(offer => {
+                    const isCreator = offer.creator.toString() === principalStr;
+                    const isApprovedBidder = offer.approved_bidders?.[0]?.some(
+                        p => p.toString() === principalStr
+                    );
+                    return isCreator || isApprovedBidder;
+                });
+            }
+            
+            setOffers(fetchedOffers);
             
             // Fetch bid info for each offer
             const bidInfo = {};
-            for (const offer of activeOffers) {
+            for (const offer of fetchedOffers) {
                 try {
                     const offerView = await actor.getOfferView(offer.id);
                     if (offerView && offerView.length > 0) {
@@ -356,7 +400,7 @@ function SneedexOffers() {
         } finally {
             setLoading(false);
         }
-    }, [identity, offerTab, principal]);
+    }, [identity, offerTab, principal, showInactiveOffers]);
     
     useEffect(() => {
         fetchOffers();
@@ -1384,6 +1428,34 @@ function SneedexOffers() {
                         </div>
                         
                         <div className="sneedex-advanced-filter-grid" style={styles.advancedFilterGrid}>
+                            {/* Show Inactive Offers Toggle */}
+                            <div style={styles.filterGroup}>
+                                <label style={styles.filterLabel}>Offer Status</label>
+                                <button
+                                    onClick={() => setShowInactiveOffers(prev => !prev)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                        padding: '10px 12px',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${showInactiveOffers ? theme.colors.accent : theme.colors.border}`,
+                                        backgroundColor: showInactiveOffers ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
+                                        color: showInactiveOffers ? theme.colors.accent : theme.colors.mutedText,
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        transition: 'all 0.2s ease',
+                                        width: '100%',
+                                    }}
+                                    title={showInactiveOffers ? 'Showing all offers including sold, expired, cancelled' : 'Showing only active offers'}
+                                >
+                                    {showInactiveOffers ? <FaUnlock size={14} /> : <FaLock size={14} />}
+                                    {showInactiveOffers ? 'Show All (incl. Inactive)' : 'Active Only'}
+                                </button>
+                            </div>
+                            
                             {/* Asset Type Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Asset Type</label>
@@ -1737,7 +1809,7 @@ function SneedexOffers() {
                             return (
                                 <div
                                     key={Number(offer.id)}
-                                    style={styles.card}
+                                    style={{...styles.card, position: 'relative', overflow: 'hidden'}}
                                     onClick={() => navigate(`/sneedex_offer/${offer.id}`)}
                                     onMouseEnter={(e) => {
                                         e.currentTarget.style.transform = 'translateY(-4px)';
@@ -1750,6 +1822,44 @@ function SneedexOffers() {
                                         e.currentTarget.style.boxShadow = 'none';
                                     }}
                                 >
+                                    {/* Status Banner for inactive offers */}
+                                    {(() => {
+                                        let bannerText = null;
+                                        let bannerColor = null;
+                                        
+                                        if ('Completed' in offer.state || 'Claimed' in offer.state) {
+                                            bannerText = 'SOLD';
+                                            bannerColor = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+                                        } else if ('Expired' in offer.state) {
+                                            bannerText = 'EXPIRED';
+                                            bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                        } else if ('Cancelled' in offer.state) {
+                                            bannerText = 'CANCELLED';
+                                            bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                                        } else if ('Reclaimed' in offer.state) {
+                                            bannerText = 'RECLAIMED';
+                                            bannerColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                                        }
+                                        
+                                        return bannerText ? (
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '8px',
+                                                right: '-28px',
+                                                background: bannerColor,
+                                                color: '#fff',
+                                                padding: '3px 32px',
+                                                fontWeight: '700',
+                                                fontSize: '0.65rem',
+                                                transform: 'rotate(45deg)',
+                                                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                                zIndex: 10,
+                                                letterSpacing: '0.5px',
+                                            }}>
+                                                {bannerText}
+                                            </div>
+                                        ) : null;
+                                    })()}
                                     <div style={styles.cardHeader}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                             <span style={styles.offerId}>Offer #{Number(offer.id)}</span>

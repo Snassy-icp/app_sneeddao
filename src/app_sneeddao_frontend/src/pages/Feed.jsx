@@ -638,7 +638,7 @@ function Feed() {
     
     // ICP ledger ID and logo
     const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
-    const ICP_LOGO = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQ3IiBoZWlnaHQ9IjE0NCIgdmlld0JveD0iMCAwIDE0NyAxNDQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxNDciIGhlaWdodD0iMTQ0IiByeD0iNzIiIGZpbGw9IiMyOTJBMkUiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik02MC4xMjUgNDUuNjc0OEM0NC45OTk1IDQ4LjM5MyAzMy4yNjA3IDYwLjU3OTEgMzAuMzYxNiA3NS40NDA0QzMwLjEyNjcgNzYuNjQyIDMwLjAwMDYgNzcuODc1OCAzMCA3OS4xMjYxTDMwIDc5LjE2MzlDMzAuMDA0MiA5NC4yNzI2IDQyLjI0NzYgMTA2LjUxNSA1Ny4zNTg4IDEwNi41MTVDNjAuNTM4MSAxMDYuNTE1IDYzLjU4NjkgMTA1Ljk5OSA2Ni40MjU3IDEwNS4wNTFDNjYuODk2NyAxMDQuODgzIDY3LjQxMiAxMDQuODg2IDY3Ljg3NiAxMDUuMDU5QzcwLjk3NTEgMTA2LjEzNyA3NC4yOTQ1IDEwNi43MjkgNzcuNzU2NCAxMDYuNzI5QzgxLjIzODIgMTA2LjcyOSA4NC41NzU3IDEwNi4xMzYgODcuNjkwOCAxMDUuMDVDODguMTUxMSAxMDQuODc4IDg4LjY2MzcgMTA0Ljg3NCA4OS4xMzE2IDEwNS4wMzlDOTEuOTk0MiAxMDYuMDAxIDk1LjA3IDEwNi41MjMgOTguMjc3NiAxMDYuNTIzQzExMy4zODggMTA2LjUyMyAxMjUuNjMxIDk0LjI4MTMgMTI1LjYzNiA3OS4xNzI1TDEyNS42MzYgNzkuMTM0N0MxMjUuNjQxIDY0LjAxMDMgMTEzLjM4NyA1MS43NTcyIDk4LjI2MzggNTEuNzU3Mkw5OC4yNjI2IDUxLjc1NzJDOTUuMDgzNSA1MS43NTcyIDkyLjAzNDkgNTIuMjcyOSA4OS4xOTYzIDUzLjIyMTNDODguNzI4OSA1My4zODgxIDg4LjIxODMgNTMuMzg4MSA4Ny43NTA5IDUzLjIyMTFDODQuNjI5OSA1Mi4xMzA3IDgxLjI4NTQgNTEuNTMxNSA3Ny43OTU4IDUxLjUzMTVDNzQuMjkwMyA1MS41MzE1IDcwLjkzMjggNTIuMTM3MyA2Ny44MDQ3IDUzLjIzN0M2Ny4zMzU5IDUzLjQwNTEgNjYuODIzMSA1My40MDUgNjYuMzU0NSA1My4yMzY4QzYzLjUxNyA1Mi4yODg3IDYwLjQ2ODcgNTEuNzcyOSA1Ny4yODk4IDUxLjc3MjlDNTcuMjg5NiA1MS43NzI5IDU3LjI4OTMgNTEuNzcyOSA1Ny4yODkxIDUxLjc3MjlDNTcuMjU0NSA1MS43NzI5IDU3LjIyIDUxLjc3MjUgNTcuMTg1NiA1MS43NzE3QzUxLjQ2MTMgNTEuNjM2NCA0Ni4xNDU2IDQ5LjcxMDYgNDEuOTk0NyA0Ni41MjI2QzQxLjUzMiA0Ni4xNjU5IDQxLjM0ODQgNDUuNTM4NiA0MS41NTcxIDQ0Ljk2NjlDNDMuMTk4IDQwLjQzNjkgNDUuNzAzNSAzNi4zMDE0IDQ4LjkxNDYgMzIuNzcyQzQ5LjIyMDYgMzIuNDM5OSA0OS42ODA3IDMyLjMwNzUgNTAuMTA4NCAzMi40MzY2QzUyLjkwNjkgMzMuMjc4NiA1NS44OTM0IDMzLjcyODMgNTguOTg4NSAzMy43MjgzQzU5LjAzMTIgMzMuNzI4MyA1OS4wNzQgMzMuNzI4NCA1OS4xMTY3IDMzLjcyODdDNjYuMDU1NiAzMy43NjM3IDcyLjQ5OTMgMzEuNzE3NiA3Ny45NTAxIDI4LjE4M0M4My40MDQ3IDMxLjcxODEgODkuODU0NiAzMy43NjQzIDk2Ljc5NzkgMzMuNzI4OEM5Ni44NDA2IDMzLjcyODQgOTYuODgzNCAzMy43MjgzIDk2LjkyNjEgMzMuNzI4M0MxMDAuMDA0IDMzLjcyODMgMTAyLjk3NiAzMy4yODMxIDEwNS43NjIgMzIuNDUxMUMxMDYuMTkyIDMyLjMyMjggMTA2LjY1MiAzMi40NTkyIDEwNi45NTYgMzIuNzk0NkMxMTAuMjE2IDM2LjM3NzggMTEyLjc2MiA0MC41ODI0IDExNC40MjQgNDUuMTg5NUMxMTQuNjI2IDQ1Ljc2MjYgMTE0LjQzNCA0Ni4zODg2IDExMy45NjggNDYuNzQxNkMxMDkuOTI3IDQ5LjgzOTYgMTA0Ljc3MSA1MS42NzQ4IDk5LjE4MzMgNTEuNzc0MUM5NC4xNjA3IDQ4LjEwODIgODguMDI1IDQ1Ljk1NTIgODEuMzk2MiA0NS45NTUyQzc0LjQwNTMgNDUuOTU1MiA2Ny45NjQyIDQ4LjM0NDMgNjIuODE0MyA1Mi4zNTQ3QzYxLjkzOTUgNTAuMjU1NSA2MS4xMTY2IDQ4LjAwNDIgNjAuMTI1IDQ1LjY3NDhaIiBmaWxsPSJ1cmwoI3BhaW50MF9saW5lYXJfNTEzOV8xMjkzKSIvPgo8ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDBfbGluZWFyXzUxMzlfMTI5MyIgeDE9IjM3LjUiIHkxPSIzNy41IiB4Mj0iMTI4IiB5Mj0iMTExIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNGMTVBMjQiLz4KPHN0b3Agb2Zmc2V0PSIwLjIwODk3MSIgc3RvcC1jb2xvcj0iI0ZCQjAzQiIvPgo8c3RvcCBvZmZzZXQ9IjAuMjkxNjYyIiBzdG9wLWNvbG9yPSIjRTQ1RTM3Ii8+CjxzdG9wIG9mZnNldD0iMC41MDE4NDIiIHN0b3AtY29sb3I9IiNFRDFFNzkiLz4KPHN0b3Agb2Zmc2V0PSIwLjYwMzI2NSIgc3RvcC1jb2xvcj0iIzUyMjc4NSIvPgo8c3RvcCBvZmZzZXQ9IjAuODE3Mjk5IiBzdG9wLWNvbG9yPSIjMjlBQkUyIi8+CjwvbGluZWFyR3JhZGllbnQ+CjwvZGVmcz4KPC9zdmc+Cg=='; // ICP infinity logo as base64
+    const ICP_LOGO = 'https://swaprunner.com/icp_symbol.svg';
     
     // Ref to store the randomized SNS display list - only computed once per data change
     const randomizedSnsDisplayRef = useRef({ key: '', list: [] });
@@ -1663,7 +1663,7 @@ function Feed() {
                         // Only save scroll position for forum items (not auctions which have string IDs)
                         if (itemId && !itemId.startsWith('auction_')) {
                             try {
-                                saveScrollPositionId(BigInt(itemId));
+                            saveScrollPositionId(BigInt(itemId));
                             } catch (e) {
                                 // Ignore conversion errors for non-numeric IDs
                             }
@@ -1940,34 +1940,60 @@ function Feed() {
                 }} 
                 data-feed-item-id={item.id.toString()}
             >
-                {/* SOLD banner for sold auctions */}
-                {item._isAuction && item._isSold && (
-                    <div style={{
-                        position: 'absolute',
-                        top: '12px',
-                        right: '-30px',
-                        background: 'linear-gradient(135deg, #e74c3c, #c0392b)',
-                        color: '#fff',
-                        padding: '4px 40px',
-                        fontWeight: '700',
-                        fontSize: '0.7rem',
-                        transform: 'rotate(45deg)',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                        zIndex: 10,
-                        letterSpacing: '1px',
-                    }}>
-                        SOLD
-                    </div>
-                )}
+                {/* Status banners for auctions */}
+                {item._isAuction && (() => {
+                    const state = item._offerState;
+                    let bannerText = null;
+                    let bannerColor = null;
+                    
+                    if (state === 'Completed' || state === 'Claimed') {
+                        bannerText = 'SOLD';
+                        bannerColor = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+                    } else if (state === 'Expired') {
+                        bannerText = 'EXPIRED';
+                        bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                    } else if (state === 'Cancelled') {
+                        bannerText = 'CANCELLED';
+                        bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                    } else if (state === 'Reclaimed') {
+                        bannerText = 'RECLAIMED';
+                        bannerColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                    }
+                    
+                    return bannerText ? (
+                        <div style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '-30px',
+                            background: bannerColor,
+                            color: '#fff',
+                            padding: '4px 40px',
+                            fontWeight: '700',
+                            fontSize: '0.7rem',
+                            transform: 'rotate(45deg)',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                            zIndex: 10,
+                            letterSpacing: '1px',
+                        }}>
+                            {bannerText}
+                        </div>
+                    ) : null;
+                })()}
                 
                 {/* Logo - SNS logo for forum items, Sneedex icon for auctions */}
                 {item._isAuction ? (
                     <div
                         style={{
                             ...getStyles(theme).snsLogoPlaceholder,
-                            background: item._isSold 
-                                ? `linear-gradient(135deg, #6b7280, #4b5563)` // Gray for sold
-                                : `linear-gradient(135deg, ${feedAuction}, #7c3aed)`,
+                            background: (() => {
+                                const state = item._offerState;
+                                if (state === 'Completed' || state === 'Claimed') {
+                                    return 'linear-gradient(135deg, #6b7280, #4b5563)'; // Gray for sold
+                                } else if (state === 'Expired' || state === 'Cancelled' || state === 'Reclaimed') {
+                                    return 'linear-gradient(135deg, #9ca3af, #6b7280)'; // Lighter gray for inactive
+                                }
+                                return `linear-gradient(135deg, ${feedAuction}, #7c3aed)`; // Purple for active
+                            })(),
                             cursor: 'pointer'
                         }}
                         onClick={handleItemClick}
@@ -1976,11 +2002,11 @@ function Feed() {
                         <FaGavel size={20} style={{ color: 'white' }} />
                     </div>
                 ) : snsInfo && (
-                    <div
-                        style={getStyles(theme).snsLogoPlaceholder}
-                        onClick={handleSnsLogoClick}
-                        title={`Go to ${snsInfo.name} Forum`}
-                    >
+                            <div 
+                                style={getStyles(theme).snsLogoPlaceholder}
+                                onClick={handleSnsLogoClick}
+                                title={`Go to ${snsInfo.name} Forum`}
+                            >
                         {isLoadingLogo ? (
                             <span style={{ animation: 'feedPulse 1.5s ease-in-out infinite' }}>...</span>
                         ) : snsLogo ? (
@@ -1997,7 +2023,7 @@ function Feed() {
                         ) : (
                             <span>{snsInfo.name.substring(0, 2).toUpperCase()}</span>
                         )}
-                    </div>
+                            </div>
                 )}
                 
                 {/* Content */}
@@ -2378,29 +2404,29 @@ function Feed() {
                     
                     {/* Context links - topic and thread */}
                     {(item.topic_title || item.thread_title) && (
-                        <div style={getStyles(theme).feedItemContext}>
-                            {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
-                                <Link 
-                                    to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
+                    <div style={getStyles(theme).feedItemContext}>
+                        {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
+                            <Link 
+                                to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
                                     className="feed-context-tag"
-                                    style={getStyles(theme).contextLink}
-                                >
+                                style={getStyles(theme).contextLink}
+                            >
                                     <FaLayerGroup size={10} />
                                     {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
-                                </Link>
-                            )}
-                            
-                            {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
-                                <Link 
-                                    to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
+                            </Link>
+                        )}
+                        
+                        {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
+                            <Link 
+                                to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
                                     className="feed-context-tag"
-                                    style={getStyles(theme).contextLink}
-                                >
+                                style={getStyles(theme).contextLink}
+                            >
                                     <FaStream size={10} />
                                     {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
-                                </Link>
-                            )}
-                        </div>
+                            </Link>
+                        )}
+                    </div>
                     )}
                 </div>
             </div>
@@ -2454,33 +2480,33 @@ function Feed() {
                     
                     <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
                         {/* Centered Hero Content */}
-                        <div style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center', 
-                            textAlign: 'center',
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        textAlign: 'center',
                             marginBottom: '1.25rem'
-                        }}>
+                    }}>
                             {/* Logo and Title */}
-                            <div style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
                                 gap: '0.75rem',
                                 marginBottom: '0.5rem'
-                            }}>
-                                <img
-                                    src="sneed_logo.png"
-                                    alt="Sneed Logo"
+                        }}>
+                            <img
+                                src="sneed_logo.png"
+                                alt="Sneed Logo"
                                     className="feed-hero-logo"
-                                    style={{
-                                        width: '48px',
-                                        height: '48px',
-                                        objectFit: 'cover',
+                                style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    objectFit: 'cover',
                                         borderRadius: '12px',
                                         boxShadow: `0 4px 16px ${feedPrimary}40`
-                                    }}
-                                />
-                                <h1 style={{ 
+                                }}
+                            />
+                            <h1 style={{
                                     fontSize: '1.6rem', 
                                     fontWeight: '800', 
                                     margin: 0,
@@ -2488,12 +2514,12 @@ function Feed() {
                                     WebkitBackgroundClip: 'text',
                                     WebkitTextFillColor: 'transparent',
                                     backgroundClip: 'text'
-                                }}>
-                                    Sneed's Feed
-                                </h1>
-                            </div>
-                            
-                            <p style={{ 
+                            }}>
+                                Sneed's Feed
+                            </h1>
+                        </div>
+                        
+                        <p style={{
                                 color: theme.colors.mutedText, 
                                 fontSize: '0.85rem', 
                                 margin: 0,
@@ -2503,11 +2529,11 @@ function Feed() {
                                     ? `Filtering ${selectedSnsList.length} of ${snsInstances.length} SNS forums`
                                     : `Real-time activity from ${snsInstances.length} SNS forums`
                                 }
-                            </p>
-                        </div>
+                        </p>
+                    </div>
 
                         {/* SNS Avatars Row - Clickable to toggle filter */}
-                        {(() => {
+                    {(() => {
                             if (snsInstances.length === 0) return null;
                             
                             // Determine which SNSes to display
@@ -2644,9 +2670,9 @@ function Feed() {
                                                 borderRadius: '8px',
                                                 backgroundColor: theme.colors.tertiaryBg,
                                                 border: `1.5px solid ${theme.colors.border}`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
                                                 fontSize: '0.6rem',
                                                 fontWeight: '700',
                                                 color: theme.colors.secondaryText,
@@ -2661,21 +2687,21 @@ function Feed() {
                                     
                                     {/* Clear selection button - only show when there's a selection */}
                                     {hasSelection && (
-                                        <button
+                                    <button 
                                             onClick={() => setSelectedSnsList([])}
-                                            style={{
+                                        style={{
                                                 width: '32px',
                                                 height: '32px',
                                                 borderRadius: '8px',
                                                 backgroundColor: theme.colors.tertiaryBg,
                                                 border: `1.5px solid ${theme.colors.border}`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
                                                 color: theme.colors.mutedText,
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s ease'
-                                            }}
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
                                             title="Clear SNS filter (show all)"
                                         >
                                             <FaTimes size={10} />
@@ -2725,9 +2751,9 @@ function Feed() {
                                     >
                                         <FaFilter size={10} />
                                     </button>
-                                </div>
-                            );
-                        })()}
+                            </div>
+                        );
+                    })()}
                     </div>
                 </div>
 
@@ -2767,7 +2793,7 @@ function Feed() {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                             {/* Types filter - full width */}
-                            <div style={getStyles(theme).filterGroup}>
+                                    <div style={getStyles(theme).filterGroup}>
                                 <label style={getStyles(theme).filterLabel}>
                                     <FaList size={10} style={{ marginRight: '6px' }} />
                                     Filter by Type {selectedTypes.length > 0 && `(${selectedTypes.length} selected)`}
@@ -2863,39 +2889,39 @@ function Feed() {
                                         <FaUser size={10} style={{ marginRight: '6px' }} />
                                         User
                                     </label>
-                                    <PrincipalInput
-                                        value={selectedCreator}
-                                        onChange={setSelectedCreator}
-                                        placeholder="Enter principal ID or search by name"
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                
-                                <div style={getStyles(theme).filterGroup}>
+                                        <PrincipalInput
+                                            value={selectedCreator}
+                                            onChange={setSelectedCreator}
+                                            placeholder="Enter principal ID or search by name"
+                                            style={{ width: '100%' }}
+                                        />
+                                    </div>
+                                    
+                                    <div style={getStyles(theme).filterGroup}>
                                     <label style={getStyles(theme).filterLabel}>
                                         <FaSearch size={10} style={{ marginRight: '6px' }} />
                                         Search Text
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={searchText}
-                                        onChange={(e) => setSearchText(e.target.value)}
-                                        placeholder="Search in titles and content..."
-                                        style={getStyles(theme).filterInput}
-                                    />
+                                        <input
+                                            type="text"
+                                            value={searchText}
+                                            onChange={(e) => setSearchText(e.target.value)}
+                                            placeholder="Search in titles and content..."
+                                            style={getStyles(theme).filterInput}
+                                        />
                                 </div>
-                            </div>
-                            
-                            {/* Filter Buttons */}
+                                    </div>
+                                    
+                                    {/* Filter Buttons */}
                             <div style={{ display: 'flex', gap: '10px' }}>
-                                <button onClick={applyFilters} style={getStyles(theme).applyButton}>
-                                    Apply Filters
-                                </button>
-                                <button onClick={clearFilters} style={getStyles(theme).clearButton}>
-                                    Clear Filters
-                                </button>
-                            </div>
-                        </div>
+                                        <button onClick={applyFilters} style={getStyles(theme).applyButton}>
+                                            Apply Filters
+                                        </button>
+                                        <button onClick={clearFilters} style={getStyles(theme).clearButton}>
+                                            Clear Filters
+                                        </button>
+                                    </div>
+                                </div>
                     </div>
                 )}
 

@@ -2337,6 +2337,50 @@ function SneedexOffer() {
                     <FaArrowLeft /> Back to Marketplace
                 </Link>
                 
+                {/* Status Banner for inactive offers */}
+                {(() => {
+                    let bannerText = null;
+                    let bannerBg = null;
+                    let bannerIcon = null;
+                    
+                    if ('Completed' in offer.state || 'Claimed' in offer.state) {
+                        bannerText = 'This offer has been sold';
+                        bannerBg = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+                        bannerIcon = <FaCheck />;
+                    } else if ('Expired' in offer.state) {
+                        bannerText = 'This offer has expired';
+                        bannerBg = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                        bannerIcon = <FaClock />;
+                    } else if ('Cancelled' in offer.state) {
+                        bannerText = 'This offer has been cancelled';
+                        bannerBg = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                        bannerIcon = <FaTimes />;
+                    } else if ('Reclaimed' in offer.state) {
+                        bannerText = 'Assets have been reclaimed';
+                        bannerBg = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                        bannerIcon = <FaArrowLeft />;
+                    }
+                    
+                    return bannerText ? (
+                        <div style={{
+                            background: bannerBg,
+                            color: '#fff',
+                            padding: '12px 20px',
+                            borderRadius: '12px',
+                            marginBottom: '1.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            fontWeight: '600',
+                            fontSize: '1rem',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                        }}>
+                            {bannerIcon}
+                            {bannerText}
+                        </div>
+                    ) : null;
+                })()}
+
                 <div style={styles.header}>
                     <div style={styles.titleSection}>
                         <h1 style={styles.title}>Offer #{Number(offer.id)}</h1>
