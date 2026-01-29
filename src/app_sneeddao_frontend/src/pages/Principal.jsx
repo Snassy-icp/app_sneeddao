@@ -148,6 +148,7 @@ export default function PrincipalPage() {
     const [searchLoading, setSearchLoading] = useState(false);
     const [searchResults, setSearchResults] = useState([]);
     const [showSearchResults, setShowSearchResults] = useState(false);
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
     
     // Stable references
     const stableIdentity = useRef(identity);
@@ -738,6 +739,7 @@ export default function PrincipalPage() {
                                 Principal.fromText(value.trim());
                                 setSearchParams({ id: value.trim() });
                                 setShowSearchResults(false);
+                                setIsSearchFocused(false);
                             } catch (e) {
                                 // Invalid principal, let user continue typing
                             }
@@ -746,6 +748,8 @@ export default function PrincipalPage() {
                     placeholder="Search users by name or principal ID"
                     isAuthenticated={isAuthenticated}
                     defaultPrincipalType="users"
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                 />
             </div>
         </div>
@@ -968,7 +972,8 @@ export default function PrincipalPage() {
                 {renderHeroBanner()}
                 
                 <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-                    {renderSearchSection()}
+                    {/* Search Section - only show when focused or no principal selected */}
+                    {(isSearchFocused || !stablePrincipalId.current) && renderSearchSection()}
 
                 {/* Principal Profile Card */}
                 <div

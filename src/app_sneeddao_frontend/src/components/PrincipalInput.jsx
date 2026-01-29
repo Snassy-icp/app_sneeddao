@@ -28,7 +28,9 @@ const PrincipalInput = ({
     disabled = false,
     isAuthenticated = false,
     defaultTab = 'private', // 'private' | 'public' | 'all'
-    defaultPrincipalType = 'both' // 'users' | 'canisters' | 'both'
+    defaultPrincipalType = 'both', // 'users' | 'canisters' | 'both'
+    onFocus: onFocusProp,
+    onBlur: onBlurProp
 }) => {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -234,6 +236,7 @@ const PrincipalInput = ({
         if (inputValue.trim()) {
             setShowDropdown(true);
         }
+        if (onFocusProp) onFocusProp();
     };
 
     // Handle input blur
@@ -244,6 +247,7 @@ const PrincipalInput = ({
                 setShowDropdown(false);
             }
         }, 150);
+        if (onBlurProp) onBlurProp();
     };
 
     // Handle clicks outside
