@@ -1397,36 +1397,43 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         {(() => {
                                             const shouldShowButton = token.balance > BigInt(token.fee) && !hideButtons;
                                             
-                                            return shouldShowButton ? (
-                                                <div
-                                                    onClick={(e) => {
-                                                        console.log('Deposit button clicked!');
-                                                        e.stopPropagation();
-                                                        handleDepositToBackend(token);
-                                                    }}
-                                                    style={{
-                                                        padding: '6px 10px',
-                                                        fontSize: '12px',
-                                                        background: theme.colors.success || theme.colors.accent,
-                                                        color: theme.colors.primaryBg,
-                                                        border: `1px solid ${theme.colors.success || theme.colors.accentHover}`,
-                                                        borderRadius: '3px',
-                                                        cursor: 'pointer',
-                                                        marginTop: '4px',
-                                                        display: 'inline-block',
-                                                        textAlign: 'center',
-                                                        userSelect: 'none'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.target.style.opacity = '0.8';
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.target.style.opacity = '1';
-                                                    }}
-                                                >
-                                                    Deposit
-                                                </div>
-                                            ) : null;
+                                        return shouldShowButton ? (
+                                            <button
+                                                onClick={(e) => {
+                                                    console.log('Deposit button clicked!');
+                                                    e.stopPropagation();
+                                                    handleDepositToBackend(token);
+                                                }}
+                                                style={{
+                                                    padding: '0.4rem 0.75rem',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    marginTop: '0.5rem',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.35rem',
+                                                    textAlign: 'center',
+                                                    userSelect: 'none',
+                                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.target.style.transform = 'translateY(-1px)';
+                                                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.target.style.transform = 'translateY(0)';
+                                                    e.target.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
+                                                }}
+                                            >
+                                                ↓ Deposit
+                                            </button>
+                                        ) : null;
                                         })()}
                                     </div>
                                 </div>
@@ -1440,34 +1447,41 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         const shouldShowButton = token.available_backend > 0n && !hideButtons;
                                         
                                         return shouldShowButton ? (
-                                            <div
+                                            <button
                                                 onClick={(e) => {
                                                     console.log('Withdraw button clicked!');
                                                     e.stopPropagation();
                                                     handleWithdrawFromBackend(token);
                                                 }}
                                                 style={{
-                                                    padding: '6px 10px',
-                                                    fontSize: '12px',
-                                                    background: theme.colors.accent,
-                                                    color: theme.colors.primaryBg,
-                                                    border: `1px solid ${theme.colors.accentHover}`,
-                                                    borderRadius: '3px',
+                                                    padding: '0.4rem 0.75rem',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
                                                     cursor: 'pointer',
-                                                    marginTop: '4px',
-                                                    display: 'inline-block',
+                                                    marginTop: '0.5rem',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.35rem',
                                                     textAlign: 'center',
-                                                    userSelect: 'none'
+                                                    userSelect: 'none',
+                                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                                                    transition: 'all 0.2s ease'
                                                 }}
                                                 onMouseEnter={(e) => {
-                                                    e.target.style.background = theme.colors.accentHover;
+                                                    e.target.style.transform = 'translateY(-1px)';
+                                                    e.target.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.4)';
                                                 }}
                                                 onMouseLeave={(e) => {
-                                                    e.target.style.background = theme.colors.accent;
+                                                    e.target.style.transform = 'translateY(0)';
+                                                    e.target.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.3)';
                                                 }}
                                             >
-                                                Withdraw
-                                            </div>
+                                                ↑ Withdraw
+                                            </button>
                                         ) : null;
                                     })()}
                                 </div>

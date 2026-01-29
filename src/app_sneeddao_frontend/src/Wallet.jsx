@@ -4184,79 +4184,259 @@ function Wallet() {
             <style>{walletCustomStyles}</style>
             <Header />
             
-            {/* Hero Section */}
+            {/* Hero Section - Streamlined */}
             <div style={{
-                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}15 50%, ${walletSecondary}10 100%)`,
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}12 50%, ${walletSecondary}08 100%)`,
                 borderBottom: `1px solid ${theme.colors.border}`,
-                padding: '2rem 1.5rem',
+                padding: '1.5rem',
                 position: 'relative',
                 overflow: 'hidden'
             }}>
                 {/* Background decorations */}
                 <div style={{
                     position: 'absolute',
-                    top: '-50%',
-                    right: '-10%',
-                    width: '400px',
-                    height: '400px',
-                    background: `radial-gradient(circle, ${walletPrimary}20 0%, transparent 70%)`,
-                    borderRadius: '50%',
-                    pointerEvents: 'none'
-                }} />
-                <div style={{
-                    position: 'absolute',
-                    bottom: '-30%',
-                    left: '-5%',
-                    width: '300px',
-                    height: '300px',
-                    background: `radial-gradient(circle, ${walletSecondary}15 0%, transparent 70%)`,
+                    top: '-60%',
+                    right: '-5%',
+                    width: '350px',
+                    height: '350px',
+                    background: `radial-gradient(circle, ${walletPrimary}15 0%, transparent 70%)`,
                     borderRadius: '50%',
                     pointerEvents: 'none'
                 }} />
                 
                 <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                        <div style={{
-                            width: '56px',
-                            height: '56px',
-                            borderRadius: '14px',
-                            background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: `0 4px 20px ${walletPrimary}40`,
-                            flexShrink: 0
-                        }}>
-                            <FaWallet size={24} color="white" />
+                    {/* Top Row: Title + Refresh */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '1rem',
+                        marginBottom: '1.25rem'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                            <div style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '12px',
+                                background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 4px 16px ${walletPrimary}40`,
+                                flexShrink: 0
+                            }}>
+                                <FaWallet size={22} color="white" />
+                            </div>
+                            <div>
+                                <h1 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1.5rem', 
+                                    fontWeight: '700', 
+                                    margin: 0 
+                                }}>
+                                    Sneed Wallet
+                                </h1>
+                                <p style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '0.85rem', 
+                                    margin: '0.15rem 0 0 0' 
+                                }}>
+                                    Tokens, liquidity & locked assets
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 style={{ 
-                                color: theme.colors.primaryText, 
-                                fontSize: '1.75rem', 
-                                fontWeight: '700', 
-                                margin: 0 
-                            }}>
-                                Sneed Wallet
-                            </h1>
-                            <p style={{ 
-                                color: theme.colors.secondaryText, 
-                                fontSize: '0.95rem', 
-                                margin: '0.25rem 0 0 0' 
-                            }}>
-                                Manage your tokens, liquidity positions, and locked assets
-                            </p>
+                        
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Link 
+                                to="/help/wallet"
+                                style={{
+                                    color: theme.colors.mutedText,
+                                    textDecoration: 'none',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    padding: '0.5rem 0.75rem',
+                                    borderRadius: '8px',
+                                    transition: 'all 0.2s ease',
+                                    background: `${theme.colors.secondaryBg}`,
+                                    border: `1px solid ${theme.colors.border}`
+                                }}
+                            >
+                                <FaQuestionCircle size={12} />
+                                <span>Help</span>
+                            </Link>
+                            {isAuthenticated && (
+                                <button
+                                    onClick={handleRefreshAllWallet}
+                                    disabled={refreshingAllWallet}
+                                    style={{
+                                        background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                                        border: 'none',
+                                        cursor: refreshingAllWallet ? 'default' : 'pointer',
+                                        padding: '0.5rem 0.875rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        color: 'white',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
+                                        borderRadius: '8px',
+                                        transition: 'all 0.2s ease',
+                                        opacity: refreshingAllWallet ? 0.7 : 1,
+                                        boxShadow: `0 2px 10px ${walletPrimary}30`
+                                    }}
+                                    title="Refresh entire wallet"
+                                >
+                                    <FaSync size={11} style={{ animation: refreshingAllWallet ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                    Refresh
+                                </button>
+                            )}
                         </div>
                     </div>
                     
-                    {/* Quick Stats Row */}
-                    {isAuthenticated && totalDollarValue && (
-                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                Portfolio: <span style={{ color: walletPrimary, fontWeight: '600' }}>${totalDollarValue}</span>
-                            </div>
+                    {/* Stats Row - Integrated cards */}
+                    {isAuthenticated && (
+                        <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                            gap: '0.75rem'
+                        }}>
+                            {/* Total Portfolio */}
+                            {totalDollarValue && (
+                                <div style={{
+                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${walletPrimary}08 100%)`,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '12px',
+                                    padding: '1rem 1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.25rem'
+                                }}>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.7rem', 
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: '500'
+                                    }}>
+                                        Total Portfolio
+                                    </div>
+                                    <div style={{ 
+                                        color: walletPrimary, 
+                                        fontSize: '1.5rem', 
+                                        fontWeight: '700'
+                                    }}>
+                                        ${totalDollarValue}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* ICP Price */}
                             {icpPrice && (
-                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    ICP: <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>${icpPrice.toFixed(2)}</span>
+                                <div style={{
+                                    background: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '12px',
+                                    padding: '1rem 1.25rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.25rem'
+                                }}>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.7rem', 
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem'
+                                    }}>
+                                        <FaCoins size={10} color={walletAccent} />
+                                        ICP Price
+                                    </div>
+                                    <div style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontSize: '1.5rem', 
+                                        fontWeight: '700'
+                                    }}>
+                                        ${icpPrice.toFixed(2)}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Breakdown badges */}
+                            {totalBreakdown && (totalBreakdown.liquid > 0 || totalBreakdown.staked > 0 || totalBreakdown.locked > 0) && (
+                                <div style={{
+                                    background: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '12px',
+                                    padding: '0.75rem 1rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'center',
+                                    gap: '0.35rem'
+                                }}>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.7rem', 
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        fontWeight: '500'
+                                    }}>
+                                        Breakdown
+                                    </div>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        flexWrap: 'wrap', 
+                                        gap: '0.5rem',
+                                        fontSize: '0.75rem'
+                                    }}>
+                                        {totalBreakdown.liquid > 0 && (
+                                            <span style={{ 
+                                                color: theme.colors.secondaryText,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.2rem'
+                                            }}>
+                                                💧 ${totalBreakdown.liquid.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                        {totalBreakdown.staked > 0 && (
+                                            <span style={{ 
+                                                color: theme.colors.secondaryText,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.2rem'
+                                            }}>
+                                                🧠 ${totalBreakdown.staked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                        {totalBreakdown.locked > 0 && (
+                                            <span style={{ 
+                                                color: theme.colors.secondaryText,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.2rem'
+                                            }}>
+                                                🔐 ${totalBreakdown.locked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                        {totalBreakdown.liquidity > 0 && (
+                                            <span style={{ 
+                                                color: theme.colors.secondaryText,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.2rem'
+                                            }}>
+                                                🌊 ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -4270,188 +4450,165 @@ function Wallet() {
                     backgroundColor: 'transparent'
                 }}
             >
-                {/* Your Sneed Wallet Principal */}
+                {/* Your Wallet Identity - Compact */}
                 {isAuthenticated && identity && (
                     <div className="wallet-section-animate" style={{
-                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${walletPrimary}05 100%)`,
+                        background: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '16px',
-                        marginBottom: '1.5rem',
+                        borderRadius: '12px',
+                        marginBottom: '1rem',
                         overflow: 'hidden',
                         animationDelay: '0.1s'
                     }}>
-                        {/* Collapsible Header */}
+                        {/* Compact Header */}
                         <div 
                             onClick={() => setPrincipalExpanded(!principalExpanded)}
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '1rem',
-                                padding: '1rem 1.25rem',
+                                gap: '0.75rem',
+                                padding: '0.75rem 1rem',
                                 cursor: 'pointer',
                                 borderBottom: principalExpanded ? `1px solid ${theme.colors.border}` : 'none',
                                 transition: 'background 0.2s ease'
                             }}
                         >
                             <div style={{
-                                width: '40px',
-                                height: '40px',
-                                borderRadius: '10px',
-                                background: `linear-gradient(135deg, ${walletPrimary}30, ${walletSecondary}20)`,
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: `linear-gradient(135deg, ${walletPrimary}25, ${walletSecondary}15)`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                color: walletPrimary
+                                color: walletPrimary,
+                                flexShrink: 0
                             }}>
-                                <FaWallet size={18} />
+                                <FaWallet size={14} />
                             </div>
-                            <div style={{ flex: 1 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{
                                     color: theme.colors.primaryText,
-                                    fontSize: '1rem',
-                                    fontWeight: '600'
-                                }}>
-                                    <span className="principal-full-text">Your Sneed Wallet Principal</span>
-                                    <span className="principal-short-text" style={{ display: 'none' }}>Your Principal</span>
-                                </div>
-                                <div style={{
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.8rem',
-                                    marginTop: '0.15rem'
-                                }}>
-                                    {principalExpanded ? 'Click to collapse' : 'Click to expand'}
-                                </div>
-                            </div>
-                            <Link 
-                                to="/help/wallet"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                    color: walletPrimary,
-                                    textDecoration: 'none',
                                     fontSize: '0.85rem',
-                                    fontWeight: '500',
+                                    fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.4rem',
-                                    padding: '0.5rem 0.75rem',
-                                    borderRadius: '8px',
-                                    transition: 'all 0.2s ease',
+                                    gap: '0.5rem'
+                                }}>
+                                    <span>Your Identity</span>
+                                    <span style={{
+                                        color: theme.colors.mutedText,
+                                        fontWeight: '400',
+                                        fontFamily: 'monospace',
+                                        fontSize: '0.75rem',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {identity.getPrincipal().toText().slice(0, 15)}...
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        await navigator.clipboard.writeText(identity.getPrincipal().toText());
+                                    } catch (err) {
+                                        console.error('Failed to copy:', err);
+                                    }
+                                }}
+                                style={{
                                     background: `${walletPrimary}15`,
-                                    border: `1px solid ${walletPrimary}30`
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '6px',
+                                    padding: '0.35rem 0.6rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '500',
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap'
                                 }}
                             >
-                                <FaQuestionCircle size={14} />
-                                <span className="wallet-help-text" style={{ whiteSpace: 'nowrap' }}>Help</span>
-                            </Link>
+                                Copy
+                            </button>
                             <span style={{
                                 color: theme.colors.mutedText,
                                 transition: 'transform 0.2s ease',
-                                transform: principalExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                                transform: principalExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                flexShrink: 0
                             }}>
-                                <FaChevronRight size={14} />
+                                <FaChevronRight size={12} />
                             </span>
                         </div>
 
-                        {/* Collapsible Content */}
+                        {/* Expanded Content */}
                         {principalExpanded && (
-                            <div style={{ padding: '20px' }}>
+                            <div style={{ padding: '1rem' }}>
                                 {/* Principal ID */}
-                                <div style={{ marginBottom: '16px' }}>
+                                <div style={{ marginBottom: '1rem' }}>
                                     <div style={{ 
                                         color: theme.colors.mutedText, 
-                                        fontSize: '11px', 
+                                        fontSize: '0.65rem', 
                                         textTransform: 'uppercase',
                                         letterSpacing: '0.5px',
-                                        marginBottom: '6px'
+                                        marginBottom: '0.35rem',
+                                        fontWeight: '500'
                                     }}>
                                         Principal ID
                                     </div>
                                     <div style={{
                                         color: theme.colors.primaryText,
-                                        fontSize: '14px',
+                                        fontSize: '0.8rem',
                                         fontWeight: '500',
                                         wordBreak: 'break-all',
                                         fontFamily: 'monospace',
                                         background: theme.colors.tertiaryBg,
-                                        padding: '12px',
-                                        borderRadius: '8px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        gap: '12px',
-                                        flexWrap: 'wrap'
+                                        padding: '0.75rem',
+                                        borderRadius: '8px'
                                     }}>
-                                        <span style={{ flex: 1, minWidth: '200px' }}>
-                                            {identity.getPrincipal().toText()}
-                                        </span>
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    await navigator.clipboard.writeText(identity.getPrincipal().toText());
-                                                } catch (err) {
-                                                    console.error('Failed to copy:', err);
-                                                }
-                                            }}
-                                            style={{
-                                                background: theme.colors.accent,
-                                                color: theme.colors.primaryBg,
-                                                border: 'none',
-                                                borderRadius: '6px',
-                                                padding: '8px 16px',
-                                                cursor: 'pointer',
-                                                fontSize: '0.85rem',
-                                                fontWeight: '500',
-                                                transition: 'all 0.2s ease',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.target.style.background = theme.colors.accent;
-                                            }}
-                                        >
-                                            Copy
-                                        </button>
+                                        {identity.getPrincipal().toText()}
                                     </div>
                                 </div>
                                 
                                 {/* Account ID */}
                                 {userAccountId && (
-                                    <div style={{ marginBottom: '16px' }}>
+                                    <div style={{ marginBottom: '1rem' }}>
                                         <div style={{ 
                                             color: theme.colors.mutedText, 
-                                            fontSize: '11px', 
+                                            fontSize: '0.65rem', 
                                             textTransform: 'uppercase',
                                             letterSpacing: '0.5px',
-                                            marginBottom: '6px',
+                                            marginBottom: '0.35rem',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px'
+                                            fontWeight: '500',
+                                            gap: '0.5rem'
                                         }}>
                                             Account ID 
                                             <span style={{ 
-                                                color: theme.colors.accent, 
-                                                fontSize: '10px',
-                                                fontWeight: 'normal',
+                                                color: walletPrimary, 
+                                                fontSize: '0.6rem',
+                                                fontWeight: '500',
                                                 textTransform: 'none'
                                             }}>
-                                                (send ICP from CEX)
+                                                (for CEX transfers)
                                             </span>
                                         </div>
                                         <div style={{
                                             color: theme.colors.primaryText,
-                                            fontSize: '12px',
+                                            fontSize: '0.8rem',
                                             fontWeight: '500',
                                             wordBreak: 'break-all',
                                             fontFamily: 'monospace',
                                             background: theme.colors.tertiaryBg,
-                                            padding: '12px',
+                                            padding: '0.75rem',
                                             borderRadius: '8px',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
-                                            gap: '12px',
+                                            gap: '0.75rem',
                                             flexWrap: 'wrap'
                                         }}>
                                             <span style={{ flex: 1, minWidth: '200px' }}>
@@ -4466,22 +4623,16 @@ function Wallet() {
                                                     }
                                                 }}
                                                 style={{
-                                                    background: theme.colors.accent,
-                                                    color: theme.colors.primaryBg,
-                                                    border: 'none',
+                                                    background: `${walletPrimary}15`,
+                                                    color: walletPrimary,
+                                                    border: `1px solid ${walletPrimary}30`,
                                                     borderRadius: '6px',
-                                                    padding: '8px 16px',
+                                                    padding: '0.35rem 0.6rem',
                                                     cursor: 'pointer',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.75rem',
                                                     fontWeight: '500',
                                                     transition: 'all 0.2s ease',
                                                     whiteSpace: 'nowrap'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.target.style.background = theme.colors.accent;
                                                 }}
                                             >
                                                 Copy
@@ -4491,229 +4642,18 @@ function Wallet() {
                                 )}
                                 
                                 <div style={{
-                                    color: theme.colors.secondaryText,
-                                    fontSize: '14px',
-                                    lineHeight: '1.6'
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.75rem',
+                                    lineHeight: '1.5',
+                                    padding: '0.75rem',
+                                    background: `${walletPrimary}08`,
+                                    borderRadius: '8px',
+                                    border: `1px solid ${walletPrimary}15`
                                 }}>
-                                    Use the <strong>Principal ID</strong> to send tokens, LP positions, or neurons to your Sneed Wallet. 
-                                    Use the <strong>Account ID</strong> to send ICP from centralized exchanges (CEX).
-                                    You can also add this principal as a hotkey to your neurons on the NNS dApp to manage them from Sneed Hub.
+                                    <strong style={{ color: theme.colors.secondaryText }}>Principal ID</strong> for tokens, LPs, neurons. <strong style={{ color: theme.colors.secondaryText }}>Account ID</strong> for ICP from CEX.
                                 </div>
                             </div>
                         )}
-                    </div>
-                )}
-                
-                {/* Total Value Display */}
-                {totalDollarValue && (
-                    <div className="wallet-section-animate" style={{
-                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${walletPrimary}08 100%)`,
-                        border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '16px',
-                        padding: '1.5rem',
-                        marginBottom: '1.5rem',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1rem',
-                        position: 'relative',
-                        animationDelay: '0.2s'
-                    }}>
-                        {/* ICP Price - Top Left */}
-                        {icpPrice && (
-                            <div style={{
-                                position: 'absolute',
-                                top: '1rem',
-                                left: '1.25rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                color: theme.colors.mutedText,
-                                fontSize: '0.85rem',
-                                fontWeight: '500'
-                            }}>
-                                <FaCoins size={12} color={walletAccent} />
-                                <span>ICP:</span>
-                                <span style={{ color: theme.colors.primaryText }}>
-                                    ${icpPrice.toFixed(2)}
-                                </span>
-                            </div>
-                        )}
-                        
-                        {/* Refresh Wallet Button - Top Right */}
-                        <button
-                            onClick={handleRefreshAllWallet}
-                            disabled={refreshingAllWallet}
-                            style={{
-                                position: 'absolute',
-                                top: '1rem',
-                                right: '1.25rem',
-                                background: `${walletPrimary}15`,
-                                border: `1px solid ${walletPrimary}30`,
-                                cursor: refreshingAllWallet ? 'default' : 'pointer',
-                                padding: '0.5rem 0.75rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.4rem',
-                                color: walletPrimary,
-                                fontSize: '0.85rem',
-                                fontWeight: '500',
-                                borderRadius: '8px',
-                                transition: 'all 0.2s ease',
-                                opacity: refreshingAllWallet ? 0.6 : 1
-                            }}
-                            title="Refresh entire wallet"
-                        >
-                            <FaSync size={12} style={{ animation: refreshingAllWallet ? 'walletSpin 1s linear infinite' : 'none' }} />
-                            <span className="wallet-help-text">Refresh</span>
-                        </button>
-                        
-                        {/* Center - Total Value */}
-                        <div style={{
-                            textAlign: 'center',
-                            marginTop: '2rem'
-                        }}>
-                            <div className="total-portfolio-label" style={{
-                                color: theme.colors.mutedText,
-                                fontSize: '0.85rem',
-                                letterSpacing: '1px',
-                                textTransform: 'uppercase',
-                                marginBottom: '0.5rem',
-                                fontWeight: '500'
-                            }}>
-                                Total Portfolio Value
-                            </div>
-                            <div style={{
-                                color: walletPrimary,
-                                fontSize: '2.5rem',
-                                fontWeight: '700',
-                                letterSpacing: '0.5px'
-                            }}>
-                                ${totalDollarValue}
-                            </div>
-                        </div>
-                        
-                        {/* Breakdown fields - single row at bottom */}
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '12px',
-                            fontSize: '12px',
-                            color: theme.colors.secondaryText,
-                            alignItems: 'center'
-                        }}>
-                            {totalBreakdown.liquid > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Liquid">💧</span>
-                                    <span className="breakdown-text-label">Liquid: </span>
-                                    <span>
-                                        ${totalBreakdown.liquid.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.liquidity > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Liquidity Positions">🌊</span>
-                                    <span className="breakdown-text-label">Liquidity: </span>
-                                    <span>
-                                        ${totalBreakdown.liquidity.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.hasAnyMaturity && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Maturity">🌱</span>
-                                    <span className="breakdown-text-label">Maturity: </span>
-                                    <span>
-                                        ${totalBreakdown.maturity.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.hasAnyRewards && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Rewards">🎁</span>
-                                    <span className="breakdown-text-label">Rewards: </span>
-                                    <span>
-                                        ${totalBreakdown.rewards.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.hasAnyFees && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Unclaimed LP Fees">💸</span>
-                                    <span className="breakdown-text-label">Fees: </span>
-                                    <span>
-                                        ${totalBreakdown.fees.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.staked > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Staked">🧠</span>
-                                    <span className="breakdown-text-label">Staked: </span>
-                                    <span>
-                                        ${totalBreakdown.staked.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.locked > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Locked">🔐</span>
-                                    <span className="breakdown-text-label">Locked: </span>
-                                    <span>
-                                        ${totalBreakdown.locked.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 )}
 
