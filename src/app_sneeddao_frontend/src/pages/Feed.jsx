@@ -15,7 +15,8 @@ import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 import MarkdownBody from '../components/MarkdownBody';
 import TokenIcon from '../components/TokenIcon';
-import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList } from 'react-icons/fa';
+import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList, FaGavel } from 'react-icons/fa';
+import { createSneedexActor, getAssetDetails, formatAmount, formatTimeRemaining, getOfferStateString } from '../utils/SneedexUtils';
 
 // Accent colors for Feed
 const feedPrimary = '#f97316'; // Warm orange
@@ -24,6 +25,7 @@ const feedAccent = '#fbbf24'; // Golden yellow
 const feedGreen = '#22c55e';
 const feedBlue = '#3b82f6';
 const feedPurple = '#a855f7';
+const feedAuction = '#ec4899'; // Pink for auctions
 
 // Format relative time (e.g., "5m", "2h", "3d")
 const formatRelativeTime = (timestamp) => {
@@ -585,6 +587,19 @@ function Feed() {
     const [allSnses, setAllSnses] = useState([]);
     const [snsInstances, setSnsInstances] = useState([]);
     
+    // Auction (Sneedex) state
+    const [showAuctions, setShowAuctions] = useState(() => {
+        // Load auction toggle preference from localStorage
+        try {
+            const saved = localStorage.getItem('feedShowAuctions');
+            return saved !== null ? JSON.parse(saved) : true; // Default to showing auctions
+        } catch (e) {
+            return true;
+        }
+    });
+    const [auctionItems, setAuctionItems] = useState([]); // Raw auction offers
+    const [loadingAuctions, setLoadingAuctions] = useState(false);
+    
     // Ref to store the randomized SNS display list - only computed once per data change
     const randomizedSnsDisplayRef = useRef({ key: '', list: [] });
 
@@ -598,6 +613,110 @@ function Feed() {
         return createActor(canisterId, {
             agentOptions: identity ? { identity } : {}
         });
+    };
+
+    // Fetch active auctions from Sneedex
+    const fetchAuctions = async () => {
+        if (!showAuctions) return [];
+        
+        try {
+            setLoadingAuctions(true);
+            const sneedexActor = createSneedexActor(identity);
+            
+            // Use the paginated feed API with Active state filter
+            const input = {
+                start_id: [], // Start from newest
+                length: 20,
+                filter: [{
+                    states: [[{ Active: null }]], // Only active offers
+                    asset_types: [],
+                    creator: [],
+                    has_bids: [],
+                    public_only: [true] // Only public offers
+                }]
+            };
+            
+            const response = await sneedexActor.getOfferFeed(input);
+            console.log('Fetched auctions:', response.offers.length);
+            return response.offers;
+        } catch (e) {
+            console.error('Failed to fetch auctions:', e);
+            return [];
+        } finally {
+            setLoadingAuctions(false);
+        }
+    };
+
+    // Convert auction offer to feed item format
+    const convertAuctionToFeedItem = (offer) => {
+        // Generate a title from assets
+        const assets = offer.assets.map(a => getAssetDetails(a));
+        let title = '';
+        
+        if (assets.length === 1) {
+            const asset = assets[0];
+            if (asset.type === 'SNSNeuron') {
+                title = 'SNS Neuron for Sale';
+            } else if (asset.type === 'Canister') {
+                title = asset.title || 'Canister for Sale';
+            } else if (asset.type === 'ICRC1Token') {
+                title = 'Token Lot for Sale';
+            }
+        } else {
+            title = `Bundle of ${assets.length} Assets`;
+        }
+        
+        // Use public_note as body if available
+        const publicNote = offer.public_note?.[0] || null;
+        
+        // Build body description
+        let bodyParts = [];
+        if (publicNote) {
+            bodyParts.push(publicNote);
+        }
+        
+        // Add pricing info
+        if (offer.buyout_price?.[0]) {
+            bodyParts.push(`Buyout: ${formatAmount(offer.buyout_price[0])} tokens`);
+        }
+        if (offer.min_bid_price?.[0]) {
+            bodyParts.push(`Min bid: ${formatAmount(offer.min_bid_price[0])} tokens`);
+        }
+        if (offer.expiration?.[0]) {
+            const timeRemaining = formatTimeRemaining(offer.expiration[0]);
+            bodyParts.push(`Ends: ${timeRemaining}`);
+        }
+        
+        return {
+            id: `auction_${offer.id}`, // Prefix to avoid ID collision with forum items
+            item_type: { auction: null }, // Custom type
+            title: title,
+            body: bodyParts.join(' • '),
+            created_by: offer.creator,
+            created_at: offer.activated_at?.[0] || offer.created_at, // Use activation time if available
+            // Auction-specific fields
+            _isAuction: true,
+            _offerId: Number(offer.id),
+            _offer: offer,
+            _assets: assets,
+            // Compatibility fields (null/empty for auctions)
+            sns_root_canister_id: null,
+            forum_id: null,
+            forum_title: null,
+            topic_id: null,
+            topic_title: null,
+            thread_id: null,
+            thread_title: null,
+            poll_id: null,
+            replied_to_post: null
+        };
+    };
+
+    // Toggle auction display
+    const toggleShowAuctions = () => {
+        const newValue = !showAuctions;
+        setShowAuctions(newValue);
+        localStorage.setItem('feedShowAuctions', JSON.stringify(newValue));
     };
 
     // Get/set last seen ID from localStorage
@@ -920,20 +1039,26 @@ function Feed() {
         });
     };
 
-    // Get display text for type (NEW FORUM, NEW TOPIC, etc.)
+    // Get display text for type (Forum, Topic, etc.)
     const getTypeDisplayText = (type) => {
+        // Handle auction type (custom feed item)
+        if (type && type.auction !== undefined) {
+            return 'Auction';
+        }
         const typeStr = extractVariant(type);
         switch (typeStr) {
             case 'forum':
-                return 'NEW FORUM';
+                return 'Forum';
             case 'topic':
-                return 'NEW TOPIC';
+                return 'Topic';
             case 'thread':
-                return 'THREAD';
+                return 'Thread';
             case 'post':
-                return 'POST';
+                return 'Post';
+            case 'auction':
+                return 'Auction';
             default:
-                return typeStr.toUpperCase();
+                return typeStr.charAt(0).toUpperCase() + typeStr.slice(1);
         }
     };
 
@@ -1082,13 +1207,40 @@ function Feed() {
             }
             
             if (direction === 'initial') {
-                setFeedItems(filteredItems);
+                // Fetch auctions in parallel if enabled and no type filter or auction filter
+                let auctionsToMerge = [];
+                const shouldFetchAuctions = showAuctions && 
+                    (!appliedFilters.selectedType || appliedFilters.selectedType === 'auction');
+                
+                if (shouldFetchAuctions) {
+                    try {
+                        const auctions = await fetchAuctions();
+                        auctionsToMerge = auctions.map(convertAuctionToFeedItem);
+                        setAuctionItems(auctions);
+                    } catch (e) {
+                        console.warn('Failed to fetch auctions for feed:', e);
+                    }
+                }
+                
+                // Skip forum items if type filter is auction-only
+                let forumItems = appliedFilters.selectedType === 'auction' ? [] : filteredItems;
+                
+                // Merge forum items and auctions by timestamp (newest first)
+                const mergedItems = [...forumItems, ...auctionsToMerge].sort((a, b) => {
+                    const aTime = BigInt(a.created_at);
+                    const bTime = BigInt(b.created_at);
+                    if (aTime > bTime) return -1;
+                    if (aTime < bTime) return 1;
+                    return 0;
+                });
+                
+                setFeedItems(mergedItems);
                 setHasMore(response.has_more);
                 setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
                 
                 // Fetch polls for items with poll_id (async, non-blocking)
-                if (filteredItems.length > 0) {
-                    fetchPollsForItems(filteredItems, forumActor);
+                if (forumItems.length > 0) {
+                    fetchPollsForItems(forumItems, forumActor);
                 }
                 
                 // If we started from a specific item (either URL param or back button), we might have newer items available
@@ -1280,7 +1432,7 @@ function Feed() {
                 loadFeed(null, 'initial');
             }
         }
-    }, [appliedFilters, searchParams]);
+    }, [appliedFilters, searchParams, showAuctions]); // Re-load when showAuctions changes
 
     // Initialize last seen ID from localStorage
     useEffect(() => {
@@ -1518,6 +1670,11 @@ function Feed() {
 
     // Get navigation URL for item type
     const getItemNavigationUrl = (item) => {
+        // Handle auction items
+        if (item._isAuction) {
+            return `/sneedex_offer/${item._offerId}`;
+        }
+        
         const typeStr = extractVariant(item.item_type);
         const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
         const snsRootStr = principalToText(snsRootId);
@@ -1565,6 +1722,8 @@ function Feed() {
                 return { bg: feedPurple, icon: <FaStream size={10} /> };
             case 'Post':
                 return { bg: feedPrimary, icon: <FaReply size={10} /> };
+            case 'Auction':
+                return { bg: feedAuction, icon: <FaGavel size={10} /> };
             default:
                 return { bg: theme.colors.accent, icon: null };
         }
@@ -1611,8 +1770,20 @@ function Feed() {
                 }} 
                 data-feed-item-id={item.id.toString()}
             >
-                {/* SNS Logo - Clickable link to forum */}
-                {snsInfo && (
+                {/* Logo - SNS logo for forum items, Sneedex icon for auctions */}
+                {item._isAuction ? (
+                    <div
+                        style={{
+                            ...getStyles(theme).snsLogoPlaceholder,
+                            background: `linear-gradient(135deg, ${feedAuction}, #db2777)`,
+                            cursor: 'pointer'
+                        }}
+                        onClick={handleItemClick}
+                        title="View Auction on Sneedex"
+                    >
+                        <FaGavel size={20} style={{ color: 'white' }} />
+                    </div>
+                ) : snsInfo && (
                     <div
                         style={getStyles(theme).snsLogoPlaceholder}
                         onClick={handleSnsLogoClick}
@@ -1663,7 +1834,33 @@ function Feed() {
                                     isAuthenticated={isAuthenticated}
                                 />
                             )}
-                            {snsInfo && (
+                            {item._isAuction ? (
+                                <>
+                                    <span style={{
+                                        fontSize: '0.75rem',
+                                        color: 'white',
+                                        backgroundColor: feedAuction,
+                                        padding: '3px 8px',
+                                        borderRadius: '6px',
+                                        fontWeight: '500'
+                                    }}>
+                                        Sneedex
+                                    </span>
+                                    {item._assets && item._assets.length > 0 && (
+                                        <span style={{
+                                            fontSize: '0.7rem',
+                                            color: theme.colors.secondaryText,
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            padding: '2px 6px',
+                                            borderRadius: '4px'
+                                        }}>
+                                            {item._assets.length === 1 
+                                                ? item._assets[0].type 
+                                                : `${item._assets.length} assets`}
+                                        </span>
+                                    )}
+                                </>
+                            ) : snsInfo && (
                                 <span style={{
                                     fontSize: '0.75rem',
                                     color: theme.colors.mutedText,
@@ -2106,6 +2303,28 @@ function Feed() {
                                         </button>
                                     )}
                                     
+                                    {/* Auction Toggle */}
+                                    <button 
+                                        onClick={toggleShowAuctions}
+                                        className="feed-filter-toggle"
+                                        style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            backgroundColor: showAuctions ? feedAuction : theme.colors.secondaryBg,
+                                            border: `1.5px solid ${showAuctions ? feedAuction : theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: showAuctions ? 'white' : theme.colors.mutedText,
+                                            cursor: 'pointer',
+                                            marginLeft: '4px'
+                                        }}
+                                        title={showAuctions ? 'Hide auctions from feed' : 'Show auctions in feed'}
+                                    >
+                                        <FaGavel size={10} />
+                                    </button>
+                                    
                                     {/* Advanced Filter Toggle */}
                                     <button 
                                         onClick={() => setShowFilters(!showFilters)}
@@ -2198,6 +2417,7 @@ function Feed() {
                                         <option value="topic">📂 Topics</option>
                                         <option value="thread">💬 Threads</option>
                                         <option value="post">✉️ Posts</option>
+                                        <option value="auction">🔨 Auctions</option>
                                     </select>
                                 </div>
                                 
