@@ -9,7 +9,7 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import PrincipalInput from './PrincipalInput';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { subaccountToHex } from '../utils/StringUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
@@ -55,6 +55,7 @@ function TransactionList({
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
     const [rawTransactions, setRawTransactions] = useState([]);
     const [allTransactions, setAllTransactions] = useState([]);
     const [displayedTransactions, setDisplayedTransactions] = useState([]);
@@ -631,17 +632,20 @@ function TransactionList({
         const amount = getTransactionAmount(tx);
         const typeInfo = getTypeInfo(txType);
         const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index);
+        const txUrl = `/transaction?sns=${snsRootCanisterId}&id=${txId}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`;
         
         return (
             <div 
                 key={index} 
+                onClick={() => navigate(txUrl)}
                 style={{
                     background: theme.colors.primaryBg,
                     borderRadius: '12px',
                     padding: '1rem',
                     marginBottom: '0.75rem',
                     border: `1px solid ${theme.colors.border}`,
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    cursor: 'pointer'
                 }}
             >
                 <div style={{
@@ -1202,14 +1206,18 @@ function TransactionList({
                                     const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index);
                                     const isHovered = hoveredRow === index;
 
+                                    const txUrl = `/transaction?sns=${snsRootCanisterId}&id=${txId}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`;
+                                    
                                     return (
                                         <tr 
                                             key={index}
                                             onMouseEnter={() => setHoveredRow(index)}
                                             onMouseLeave={() => setHoveredRow(null)}
+                                            onClick={() => navigate(txUrl)}
                                             style={{
                                                 background: isHovered ? theme.colors.primaryBg : 'transparent',
-                                                transition: 'background 0.15s ease'
+                                                transition: 'background 0.15s ease',
+                                                cursor: 'pointer'
                                             }}
                                         >
                                             <td style={{
