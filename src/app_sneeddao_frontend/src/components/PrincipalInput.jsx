@@ -4,7 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
-import { FaUser, FaCube } from 'react-icons/fa';
+import { FaUser, FaCube, FaPen } from 'react-icons/fa';
 
 // Helper to determine if a principal is a canister (shorter) or user (longer)
 // Canister principals are typically 27 chars, user principals are 63 chars
@@ -42,6 +42,7 @@ const PrincipalInput = ({
     const [showUsers, setShowUsers] = useState(defaultPrincipalType === 'users' || defaultPrincipalType === 'both');
     const [showCanisters, setShowCanisters] = useState(defaultPrincipalType === 'canisters' || defaultPrincipalType === 'both');
     const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+    const [isEditing, setIsEditing] = useState(!value); // Start in edit mode if no initial value
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
     const containerRef = useRef(null);
@@ -66,6 +67,18 @@ const PrincipalInput = ({
     // Sync internal input value with external value prop
     useEffect(() => {
         setInputValue(value);
+        // If value is externally set to a valid principal, exit edit mode
+        if (value) {
+            try {
+                Principal.fromText(value.trim());
+                setIsEditing(false);
+            } catch (e) {
+                // Invalid principal, stay in edit mode
+            }
+        } else {
+            // No value, enter edit mode
+            setIsEditing(true);
+        }
     }, [value]);
 
     // Search and rank principals
@@ -225,6 +238,7 @@ const PrincipalInput = ({
     const handleSelect = (item) => {
         setInputValue(item.principalStr);
         setShowDropdown(false);
+        setIsEditing(false); // Exit edit mode after selection
         
         if (onChange) {
             onChange(item.principalStr);
@@ -245,6 +259,10 @@ const PrincipalInput = ({
         setTimeout(() => {
             if (!dropdownRef.current?.contains(e.relatedTarget)) {
                 setShowDropdown(false);
+                // Exit edit mode if we have a valid principal
+                if (isValid) {
+                    setIsEditing(false);
+                }
             }
         }, 150);
         if (onBlurProp) onBlurProp();
@@ -267,6 +285,28 @@ const PrincipalInput = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Handle entering edit mode
+    const handleEditClick = () => {
+        setIsEditing(true);
+        // Focus the input after state update
+        setTimeout(() => {
+            inputRef.current?.focus();
+            inputRef.current?.select();
+        }, 0);
+    };
+
+    // Handle clearing the selection
+    const handleClear = () => {
+        setInputValue('');
+        setIsEditing(true);
+        if (onChange) {
+            onChange('');
+        }
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 0);
+    };
+
     return (
         <div 
             ref={containerRef}
@@ -277,65 +317,98 @@ const PrincipalInput = ({
                 ...style 
             }}
         >
-            <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={handleInputChange}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-                onKeyDown={onKeyDown}
-                placeholder={placeholder}
-                disabled={disabled}
-                autoFocus={autoFocus}
-                style={{
-                    width: '100%',
-                    padding: '8px 12px',
+            {/* Display View - shown when valid principal selected and not editing */}
+            {isValid && !isEditing && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
                     border: `1px solid ${theme.colors.border}`,
                     borderRadius: '8px',
                     backgroundColor: theme.colors.tertiaryBg,
-                    color: theme.colors.primaryText,
-                    fontSize: '14px',
-                    outline: 'none',
-                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                    boxSizing: 'border-box',
-                    ...inputStyle
-                }}
-                onFocusCapture={(e) => {
-                    e.target.style.borderColor = theme.colors.accent;
-                    e.target.style.boxShadow = `0 0 0 2px ${theme.colors.accent}25`;
-                }}
-                onBlurCapture={(e) => {
-                    e.target.style.borderColor = theme.colors.border;
-                    e.target.style.boxShadow = 'none';
-                }}
-            />
-            
-            {/* Resolved name display */}
-            {resolvedInfo && isValid && (
-                <div style={{
-                    marginTop: '4px',
-                    fontSize: '12px',
-                    color: theme.colors.mutedText
+                    minHeight: '38px'
                 }}>
-                    {(() => {
-                        try {
-                            return (
-                                <PrincipalDisplay
-                                    principal={Principal.fromText(inputValue.trim())}
-                                    displayInfo={resolvedInfo}
-                                    showCopyButton={false}
-                                    style={{ fontSize: '12px' }}
-                                    noLink={true}
-                                    short={true}
-                                    isAuthenticated={isAuthenticated}
-                                />
-                            );
-                        } catch (e) {
-                            return null;
-                        }
-                    })()}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        {(() => {
+                            try {
+                                const principal = Principal.fromText(inputValue.trim());
+                                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+                                return (
+                                    <PrincipalDisplay
+                                        principal={principal}
+                                        displayInfo={displayInfo}
+                                        showCopyButton={false}
+                                        style={{ fontSize: '14px' }}
+                                        noLink={true}
+                                        short={true}
+                                        isAuthenticated={isAuthenticated}
+                                    />
+                                );
+                            } catch (e) {
+                                return <span style={{ color: theme.colors.mutedText }}>{inputValue}</span>;
+                            }
+                        })()}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleEditClick}
+                        disabled={disabled}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: '4px',
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            color: theme.colors.mutedText,
+                            display: 'flex',
+                            alignItems: 'center',
+                            opacity: disabled ? 0.5 : 1,
+                            transition: 'color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => !disabled && (e.currentTarget.style.color = theme.colors.accent)}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = theme.colors.mutedText)}
+                        title="Edit"
+                    >
+                        <FaPen size={12} />
+                    </button>
                 </div>
+            )}
+
+            {/* Edit View - shown when editing or no valid principal */}
+            {(isEditing || !isValid) && (
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onFocus={handleFocus}
+                    onBlur={handleBlur}
+                    onKeyDown={onKeyDown}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    autoFocus={autoFocus}
+                    style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: theme.colors.tertiaryBg,
+                        color: theme.colors.primaryText,
+                        fontSize: '14px',
+                        outline: 'none',
+                        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                        boxSizing: 'border-box',
+                        ...inputStyle
+                    }}
+                    onFocusCapture={(e) => {
+                        e.target.style.borderColor = theme.colors.accent;
+                        e.target.style.boxShadow = `0 0 0 2px ${theme.colors.accent}25`;
+                    }}
+                    onBlurCapture={(e) => {
+                        e.target.style.borderColor = theme.colors.border;
+                        e.target.style.boxShadow = 'none';
+                    }}
+                />
             )}
             
             {/* Dropdown - rendered via portal to ensure it's above everything */}
