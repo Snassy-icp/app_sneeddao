@@ -4,6 +4,10 @@ import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 
+// Accent colors matching wallet page
+const walletPrimary = '#10b981';
+const walletSecondary = '#059669';
+
 function DepositTokenModal({ show, onClose, onDeposit, token }) {
   const { theme } = useTheme();
   const [amount, setAmount] = useState('');
@@ -31,89 +35,49 @@ function DepositTokenModal({ show, onClose, onDeposit, token }) {
   };
 
   const handleDeposit = async () => {
-    console.log('=== DepositTokenModal.handleDeposit START ===');
-    console.log('Input values:', { amount, tokenSymbol: token.symbol });
-    
     setErrorText('');
 
     if (amount === "") {
-      console.log('ERROR: Empty amount');
       setErrorText("Please enter an amount first!");
       return;
     }
 
-    // Convert to BigInt safely - handle decimal inputs from formatAmount
     const amountFloat = parseFloat(amount);
-    console.log('Amount parsing:', { 
-      originalAmount: amount, 
-      amountFloat, 
-      isNaN: isNaN(amountFloat),
-      isPositive: amountFloat > 0 
-    });
-    
     if (isNaN(amountFloat) || amountFloat <= 0) {
-      console.log('ERROR: Invalid amount after parsing');
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
     
     const scaledAmount = amountFloat * (10 ** token.decimals);
     const bigIntAmount = BigInt(Math.floor(scaledAmount));
-    
-    console.log('BigInt conversion:', {
-      decimals: token.decimals,
-      scaledAmount,
-      bigIntAmount: bigIntAmount.toString(),
-      frontendBalance: token.balance.toString(),
-      tokenFee: token.fee.toString()
-    });
-
-    // Max allowed is frontend balance minus 1 tx fee
     const maxAllowed = BigInt(token.balance) - BigInt(token.fee);
-    
-    console.log('Balance validation:', {
-      bigIntAmount: bigIntAmount.toString(),
-      frontendBalance: token.balance.toString(),
-      maxAllowed: maxAllowed.toString(),
-      isExceeded: bigIntAmount > maxAllowed
-    });
 
     if (bigIntAmount > maxAllowed) {
-      console.log('ERROR: Insufficient frontend balance');
       setErrorText(`Insufficient frontend balance! Remember that depositing requires 1 transaction fee.`);
       return;
     }
 
     if (token.balance <= BigInt(token.fee)) {
-      console.log('ERROR: Frontend balance too small to cover fee');
       setErrorText(`Frontend balance is too small to cover the transaction fee of ${formatAmount(token.fee, token.decimals)} ${token.symbol}.`);
       return;
     }
 
-    console.log('All validations passed, setting up confirmation');
-
     setConfirmAction(() => async () => {
-      console.log('=== CONFIRMATION ACTION START ===');
       try {
         setIsLoading(true);
         setErrorText('');
-        console.log('About to call onDeposit with:', { token: token.symbol, amount });
         await onDeposit(token, amount);
-        console.log('onDeposit completed successfully');
         onClose();
-        console.log('Modal closed');
       } catch (error) {
         console.error('ERROR in confirmation action:', error);
         setErrorText(`Error depositing tokens: ${error.message || error.toString()}`);
       } finally {
         setIsLoading(false);
-        console.log('=== CONFIRMATION ACTION END ===');
       }
     });
 
     setConfirmMessage(`You are about to deposit ${amount} ${token.symbol} from your wallet. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
     setShowConfirmModal(true);
-    console.log('=== DepositTokenModal.handleDeposit END ===');
   };
 
   if (!show) {
@@ -127,214 +91,243 @@ function DepositTokenModal({ show, onClose, onDeposit, token }) {
       left: 0,
       width: '100%',
       height: '100%',
-      background: theme.colors.modalBg,
+      background: 'rgba(0, 0, 0, 0.75)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: theme.colors.cardGradient,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%)`,
         border: `1px solid ${theme.colors.border}`,
-        boxShadow: theme.colors.cardShadow,
+        boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${walletPrimary}15`,
         borderRadius: '16px',
-        padding: '32px',
+        padding: '0',
         width: '450px',
         maxWidth: '90vw',
         maxHeight: '90vh',
-        overflow: 'auto'
+        overflow: 'hidden'
       }}>
-        <h2 style={{
-          color: theme.colors.primaryText,
-          marginTop: '0',
-          marginBottom: '24px',
-          fontSize: '1.5rem',
-          fontWeight: '600'
-        }}>
-          Deposit {token.symbol} to Backend
-        </h2>
-        
-        {/* Frontend Balance Info */}
+        {/* Header */}
         <div style={{
-          background: theme.colors.secondaryBg,
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '20px',
-          border: `1px solid ${theme.colors.border}`
+          background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            color: theme.colors.primaryText
-          }}>
-            <span style={{ color: theme.colors.mutedText }}>Frontend Balance:</span>
-            <span style={{ fontWeight: '500' }}>{formatAmount(token.balance, token.decimals)} {token.symbol}</span>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{
-            display: 'block',
-            color: theme.colors.primaryText,
-            marginBottom: '8px',
-            fontWeight: '500'
-          }}>
-            Amount to Deposit:
-          </label>
-          <div style={{
+          <h2 style={{
+            color: 'white',
+            margin: 0,
+            fontSize: '1.2rem',
+            fontWeight: '600',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '0.5rem'
           }}>
-            <input 
-              type="number" 
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              style={{
-                flex: '1',
-                padding: '12px',
-                background: theme.colors.secondaryBg,
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: '8px',
-                color: theme.colors.primaryText,
-                fontSize: '0.9rem',
-                boxSizing: 'border-box'
-              }}
-            />
-            <button 
-              onClick={handleSetMax}
-              style={{
-                background: theme.colors.accent,
-                color: theme.colors.primaryBg,
-                border: 'none',
-                borderRadius: '8px',
-                padding: '12px 16px',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: '600',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.accent;
-              }}
-            >
-              MAX
-            </button>
+            ↓ Deposit {token.symbol}
+          </h2>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              fontSize: '1.25rem',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              color: 'white',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            ×
+          </button>
+        </div>
+        
+        <div style={{ padding: '1.5rem' }}>
+          {/* Frontend Balance Info */}
+          <div style={{
+            background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${walletPrimary}08 100%)`,
+            borderRadius: '12px',
+            padding: '1rem',
+            marginBottom: '1.25rem',
+            border: `1px solid ${walletPrimary}25`
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              color: theme.colors.primaryText
+            }}>
+              <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Wallet Balance:</span>
+              <span style={{ fontWeight: '600', color: walletPrimary }}>
+                {formatAmount(token.balance, token.decimals)} {token.symbol}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{
-            display: 'block',
-            color: theme.colors.secondaryText,
-            fontSize: '0.9rem'
-          }}>
-            Transaction Fee: {formatAmount(token.fee, token.decimals)} {token.symbol}
-          </label>
-        </div>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{
+              display: 'block',
+              color: theme.colors.primaryText,
+              marginBottom: '0.5rem',
+              fontWeight: '500',
+              fontSize: '0.9rem'
+            }}>
+              Amount to Deposit
+            </label>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <input 
+                type="number" 
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                style={{
+                  flex: '1',
+                  padding: '0.875rem',
+                  background: theme.colors.secondaryBg,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: '10px',
+                  color: theme.colors.primaryText,
+                  fontSize: '1rem',
+                  boxSizing: 'border-box',
+                  outline: 'none'
+                }}
+              />
+              <button 
+                onClick={handleSetMax}
+                style={{
+                  background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.875rem 1rem',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease',
+                  boxShadow: `0 2px 8px ${walletPrimary}40`
+                }}
+              >
+                MAX
+              </button>
+            </div>
+          </div>
 
-        {errorText && (
-          <p style={{
-            color: theme.colors.error,
-            marginBottom: '20px',
-            padding: '12px',
-            background: `${theme.colors.error}15`,
-            border: `1px solid ${theme.colors.error}30`,
+          <div style={{ 
+            marginBottom: '1.25rem',
+            padding: '0.75rem 1rem',
+            background: theme.colors.tertiaryBg,
             borderRadius: '8px',
-            fontSize: '0.9rem'
+            fontSize: '0.85rem',
+            color: theme.colors.secondaryText
           }}>
-            {errorText}
-          </p>
-        )}
+            Transaction Fee: <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+              {formatAmount(token.fee, token.decimals)} {token.symbol}
+            </span>
+          </div>
 
-        {isLoading ? (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            padding: '20px'
-          }}>
-            <div className="spinner" style={{
-              width: '24px',
-              height: '24px',
-              border: `3px solid ${theme.colors.border}`,
-              borderTop: `3px solid ${theme.colors.accent}`,
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }}></div>
-          </div>
-        ) : (
-          <div style={{
-            display: 'flex',
-            gap: '12px',
-            marginTop: '24px'
-          }}>
-            <button 
-              onClick={handleDeposit} 
-              disabled={isLoading}
-              style={{
-                flex: '1',
-                background: theme.colors.accent,
-                color: theme.colors.primaryBg,
-                border: 'none',
-                borderRadius: '8px',
-                padding: '12px 24px',
-                cursor: 'pointer',
-                fontSize: '0.95rem',
-                fontWeight: '600',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.accent;
-              }}
-            >
-              Deposit
-            </button>
-            <button 
-              onClick={onClose} 
-              disabled={isLoading}
-              style={{
-                flex: '1',
-                background: theme.colors.secondaryBg,
-                color: theme.colors.mutedText,
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: '8px',
-                padding: '12px 24px',
-                cursor: 'pointer',
-                fontSize: '0.95rem',
-                fontWeight: '500',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.tertiaryBg;
-                e.target.style.color = theme.colors.primaryText;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.secondaryBg;
-                e.target.style.color = theme.colors.mutedText;
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
+          {errorText && (
+            <p style={{
+              color: '#ef4444',
+              marginBottom: '1.25rem',
+              padding: '0.875rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '10px',
+              fontSize: '0.85rem'
+            }}>
+              {errorText}
+            </p>
+          )}
+
+          {isLoading ? (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              padding: '1.5rem'
+            }}>
+              <div style={{
+                width: '28px',
+                height: '28px',
+                border: `3px solid ${walletPrimary}30`,
+                borderTop: `3px solid ${walletPrimary}`,
+                borderRadius: '50%',
+                animation: 'depositSpin 0.8s linear infinite'
+              }}></div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem'
+            }}>
+              <button 
+                onClick={onClose} 
+                disabled={isLoading}
+                style={{
+                  flex: '1',
+                  background: theme.colors.secondaryBg,
+                  color: theme.colors.primaryText,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: '10px',
+                  padding: '0.875rem 1.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeposit} 
+                disabled={isLoading}
+                style={{
+                  flex: '1',
+                  background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.875rem 1.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease',
+                  boxShadow: `0 4px 15px ${walletPrimary}40`
+                }}
+              >
+                Deposit
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+      
       <ConfirmationModal
-          show={showConfirmModal}
-          onClose={() => setShowConfirmModal(false)}
-          onSubmit={confirmAction}
-          message={confirmMessage}
-          doAwait={false}
-          />
+        show={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onSubmit={confirmAction}
+        message={confirmMessage}
+        doAwait={false}
+      />
+      
+      <style>{`
+        @keyframes depositSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
 
 export default DepositTokenModal;
-
