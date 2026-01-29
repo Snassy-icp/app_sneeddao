@@ -621,47 +621,56 @@ function Forum() {
                     }}>
                         {loadingLogo ? (
                             <div style={{
-                                    width: '72px',
-                                    height: '72px',
+                                width: '72px',
+                                height: '72px',
+                                minWidth: '72px',
+                                maxWidth: '72px',
+                                flexShrink: 0,
                                 borderRadius: '50%',
-                                    background: theme.colors.tertiaryBg,
+                                background: theme.colors.tertiaryBg,
                                 display: 'flex',
                                 alignItems: 'center',
-                                    justifyContent: 'center'
+                                justifyContent: 'center'
                             }}>
-                                    <span className="forum-pulse" style={{ color: theme.colors.mutedText }}>...</span>
+                                <span className="forum-pulse" style={{ color: theme.colors.mutedText }}>...</span>
                             </div>
                         ) : snsLogo ? (
                             <img
                                 src={snsLogo}
                                 alt={snsInfo?.name || 'SNS Logo'}
                                 style={{
-                                        width: '72px',
-                                        height: '72px',
+                                    width: '72px',
+                                    height: '72px',
+                                    minWidth: '72px',
+                                    maxWidth: '72px',
+                                    flexShrink: 0,
                                     borderRadius: '50%',
                                     objectFit: 'cover',
-                                        border: `3px solid ${forumPrimary}40`,
-                                        boxShadow: `0 4px 20px ${forumPrimary}30`
+                                    border: `3px solid ${forumPrimary}40`,
+                                    boxShadow: `0 4px 20px ${forumPrimary}30`
                                 }}
                             />
                         ) : (
                             <div style={{
-                                    width: '72px',
-                                    height: '72px',
+                                width: '72px',
+                                height: '72px',
+                                minWidth: '72px',
+                                maxWidth: '72px',
+                                flexShrink: 0,
                                 borderRadius: '50%',
-                                    background: `linear-gradient(135deg, ${forumPrimary}, ${forumSecondary})`,
+                                background: `linear-gradient(135deg, ${forumPrimary}, ${forumSecondary})`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                    fontSize: '1.5rem',
-                                    color: 'white',
-                                    fontWeight: '700'
+                                fontSize: '1.5rem',
+                                color: 'white',
+                                fontWeight: '700'
                             }}>
-                                    {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SN'}
+                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SN'}
                             </div>
                         )}
                         
-                            <div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                         <h1 style={{
                             color: theme.colors.primaryText,
                                     fontSize: '2.5rem',
@@ -966,7 +975,7 @@ function Forum() {
                                                                             alignItems: 'center',
                                                                             gap: '4px',
                                                                             transition: 'all 0.2s ease'
-                                                                        }}
+                                                            }}
                                                         >
                                                             {child.title}
                                                                         {childStats?.total_unread_posts > 0 && (
