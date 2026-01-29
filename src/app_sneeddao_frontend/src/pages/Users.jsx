@@ -177,7 +177,7 @@ function Users() {
         return null;
     };
 
-    // Format stake with K/M/B suffixes for large numbers
+    // Format stake with M/B suffixes for large numbers (millions and above only)
     const formatStakeCompact = (e8sValue) => {
         if (!e8sValue) return '0';
         const value = Number(e8sValue) / 100000000;
@@ -186,9 +186,6 @@ function Users() {
         }
         if (value >= 1000000) {
             return (value / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
-        }
-        if (value >= 1000) {
-            return (value / 1000).toFixed(1).replace(/\.?0+$/, '') + 'K';
         }
         return Math.floor(value).toLocaleString();
     };
@@ -310,7 +307,8 @@ function Users() {
                     result = b.neurons.length - a.neurons.length;
                     break;
                 case 'owned':
-                    result = b.ownedNeurons.length - a.ownedNeurons.length;
+                    // Sort by owned stake (BigInt comparison)
+                    result = a.ownedStake > b.ownedStake ? -1 : a.ownedStake < b.ownedStake ? 1 : 0;
                     break;
                 case 'name':
                     const nameA = getPrincipalDisplayInfo(a.principal)?.name || getPrincipalDisplayInfo(a.principal)?.nickname || '';
