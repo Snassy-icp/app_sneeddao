@@ -489,6 +489,8 @@ function Wallet() {
     const [showConsolidateModal, setShowConsolidateModal] = useState(false);
     const [consolidateType, setConsolidateType] = useState(null); // 'fees', 'rewards', 'maturity', 'all'
     const [consolidateItems, setConsolidateItems] = useState([]);
+    const [consolidateError, setConsolidateError] = useState(''); // Error message shown instead of alert
+    const [snsNeuronsByToken, setSnsNeuronsByToken] = useState({}); // ledgerId -> neurons array (for collect maturity)
     const [consolidationExpanded, setConsolidationExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('consolidationExpanded');
@@ -534,6 +536,7 @@ function Wallet() {
     const [registeringManager, setRegisteringManager] = useState(false);
     const [registerManagerError, setRegisterManagerError] = useState('');
     const [deregisteringManager, setDeregisteringManager] = useState(null);
+    const [deregisterManagerError, setDeregisterManagerError] = useState(''); // Error message for remove manager
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     
     // Tracked canisters (wallet canisters) state
@@ -4090,9 +4093,11 @@ function Wallet() {
         const items = [];
         // Only SNS tokens have neurons with maturity
         tokens.forEach(token => {
-            if (!snsTokens.has(token.ledger_canister_id?.toString?.())) return;
+            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            if (!snsTokens.has(ledgerId)) return;
             
-            const neurons = token.neurons || [];
+            // Use the neurons stored from TokenCard callback
+            const neurons = snsNeuronsByToken[ledgerId] || [];
             neurons.forEach(neuron => {
                 const maturity = BigInt(neuron.maturity_e8s_equivalent || 0n);
                 // Only include neurons where user has DISBURSE_MATURITY permission
@@ -4139,10 +4144,13 @@ function Wallet() {
         }
         
         if (items.length === 0) {
-            alert('No items available to collect at this time. Please ensure data is loaded and try again.');
+            setConsolidateError('No items available to collect at this time. Please ensure data is loaded and try again.');
+            // Auto-clear error after 5 seconds
+            setTimeout(() => setConsolidateError(''), 5000);
             return;
         }
         
+        setConsolidateError(''); // Clear any previous error
         setConsolidateItems(items);
         setConsolidateType(type);
         setShowConsolidateModal(true);
@@ -4634,6 +4642,39 @@ function Wallet() {
                                     </div>
                                 </div>
                             )}
+                            
+                            {/* Collect Error Message */}
+                            {consolidateError && (
+                                <div style={{
+                                    background: `${theme.colors.error || '#ef4444'}15`,
+                                    border: `1px solid ${theme.colors.error || '#ef4444'}40`,
+                                    borderRadius: '10px',
+                                    padding: '0.75rem 1rem',
+                                    color: theme.colors.error || '#ef4444',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                }}>
+                                    <span>⚠️</span>
+                                    <span>{consolidateError}</span>
+                                    <button
+                                        onClick={() => setConsolidateError('')}
+                                        style={{
+                                            marginLeft: 'auto',
+                                            background: 'none',
+                                            border: 'none',
+                                            color: theme.colors.error || '#ef4444',
+                                            cursor: 'pointer',
+                                            padding: '0.25rem',
+                                            fontSize: '1rem',
+                                            lineHeight: 1
+                                        }}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -5057,6 +5098,13 @@ function Wallet() {
                                         [ledgerId]: breakdown
                                     }));
                                 }}
+                                onNeuronsLoaded={(neurons) => {
+                                    const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                    setSnsNeuronsByToken(prev => ({
+                                        ...prev,
+                                        [ledgerId]: neurons
+                                    }));
+                                }}
                                 openTransferTokenLockModal={openTransferTokenLockModal}
                             />
                         );
@@ -5338,6 +5386,37 @@ function Wallet() {
                                 padding: '0 4px'
                             }}>
                                 {registerManagerError}
+                            </div>
+                        )}
+                        {deregisterManagerError && (
+                            <div style={{ 
+                                background: `${theme.colors.error || '#ef4444'}15`,
+                                border: `1px solid ${theme.colors.error || '#ef4444'}40`,
+                                borderRadius: '8px',
+                                padding: '0.6rem 0.75rem',
+                                color: theme.colors.error || '#ef4444',
+                                fontSize: '12px',
+                                marginBottom: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.5rem'
+                            }}>
+                                <span>{deregisterManagerError}</span>
+                                <button
+                                    onClick={() => setDeregisterManagerError('')}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: theme.colors.error || '#ef4444',
+                                        cursor: 'pointer',
+                                        padding: '2px 6px',
+                                        fontSize: '14px',
+                                        lineHeight: 1
+                                    }}
+                                >
+                                    ×
+                                </button>
                             </div>
                         )}
                         
@@ -5962,11 +6041,14 @@ function Wallet() {
                                                                 <button
                                                                     onClick={async () => {
                                                                         setConfirmRemoveManager(null);
+                                                                        setDeregisterManagerError('');
                                                                         setDeregisteringManager(canisterId);
                                                                         const result = await handleDeregisterManager(manager.canisterId);
                                                                         setDeregisteringManager(null);
                                                                         if (!result.success) {
-                                                                            alert(`Failed to remove: ${result.error}`);
+                                                                            setDeregisterManagerError(`Failed to remove: ${result.error}`);
+                                                                            // Auto-clear after 5 seconds
+                                                                            setTimeout(() => setDeregisterManagerError(''), 5000);
                                                                         }
                                                                     }}
                                                                     disabled={deregisteringManager === canisterId}

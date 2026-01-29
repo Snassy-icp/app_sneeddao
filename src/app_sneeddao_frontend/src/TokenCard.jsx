@@ -77,7 +77,7 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, openTransferTokenLockModal }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -556,7 +556,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 limit: 100,
                 start_page_at: []
             });
-            setNeurons(response.neurons || []);
+            const loadedNeurons = response.neurons || [];
+            setNeurons(loadedNeurons);
+            
+            // Notify parent of loaded neurons (for collect maturity feature)
+            if (onNeuronsLoaded) {
+                onNeuronsLoaded(loadedNeurons);
+            }
         } catch (error) {
             console.error('[TokenCard] Error refetching neurons:', error);
         }
@@ -1106,8 +1112,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     }),
                     governanceActor.get_nervous_system_parameters(null)
                 ]);
-                setNeurons(neuronsResponse.neurons || []);
+                const loadedNeurons = neuronsResponse.neurons || [];
+                setNeurons(loadedNeurons);
                 setNervousSystemParameters(paramsResponse);
+                
+                // Notify parent of loaded neurons (for collect maturity feature)
+                if (onNeuronsLoaded) {
+                    onNeuronsLoaded(loadedNeurons);
+                }
                 
                 // Initialize voting power calculator
                 const calc = new VotingPowerCalculator();
