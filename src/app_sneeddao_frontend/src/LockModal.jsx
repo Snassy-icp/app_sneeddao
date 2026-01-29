@@ -110,8 +110,9 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, token, amo
                     
                     {steps.map((step, index) => {
                         const isActive = index === currentStep;
-                        const isCompleted = index < currentStep;
+                        const isCompleted = index < currentStep || (isActive && step.preCompleted);
                         const isPending = index > currentStep;
+                        const showSpinner = isActive && !step.preCompleted;
                         
                         return (
                             <div key={index} style={{
@@ -136,12 +137,13 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, token, amo
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     flexShrink: 0,
-                                    boxShadow: isActive ? `0 4px 16px ${lockPrimary}40` : 'none',
+                                    boxShadow: isActive && !step.preCompleted ? `0 4px 16px ${lockPrimary}40` : 
+                                               isCompleted ? `0 4px 16px ${successGreen}40` : 'none',
                                     transition: 'all 0.3s ease'
                                 }}>
                                     {isCompleted ? (
                                         <FaCheck color="white" size={16} />
-                                    ) : isActive ? (
+                                    ) : showSpinner ? (
                                         <FaSpinner className="spin" color="white" size={16} />
                                     ) : (
                                         step.icon
@@ -149,15 +151,15 @@ function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, token, amo
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <div style={{
-                                        color: isActive ? theme.colors.primaryText : theme.colors.secondaryText,
-                                        fontWeight: isActive ? '600' : '500',
+                                        color: isActive || isCompleted ? theme.colors.primaryText : theme.colors.secondaryText,
+                                        fontWeight: isActive || isCompleted ? '600' : '500',
                                         fontSize: '0.95rem'
                                     }}>
                                         {step.label}
                                     </div>
-                                    {isActive && step.sublabel && (
+                                    {(isActive || isCompleted) && step.sublabel && (
                                         <div style={{
-                                            color: theme.colors.mutedText,
+                                            color: isCompleted ? successGreen : theme.colors.mutedText,
                                             fontSize: '0.8rem',
                                             marginTop: '2px'
                                         }}>
@@ -387,18 +389,47 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                 setIsLoading(true);
                 setErrorText('');
                 
-                // Build progress steps based on whether payment is needed
+                // Determine if deposit is needed
+                const amountFloat = parseFloat(newLockAmount);
+                const scaledAmount = amountFloat * (10 ** token.decimals);
+                const bigIntAmount = BigInt(Math.floor(scaledAmount));
+                const needsDeposit = bigIntAmount > (token.available_backend || 0n);
+                
+                // Build progress steps based on what's needed
                 const steps = [];
+                let stepIndex = 0;
+                const stepIndices = { payment: -1, deposit: -1, lock: -1 };
+                
                 if (needsPayment) {
+                    stepIndices.payment = stepIndex++;
                     steps.push({
                         label: 'Processing Payment',
                         sublabel: `Paying ${formatIcp(requiredFee)} fee`,
                         icon: <FaCreditCard color={theme.colors.mutedText} size={16} />
                     });
                 }
+                
+                if (needsDeposit) {
+                    stepIndices.deposit = stepIndex++;
+                    steps.push({
+                        label: 'Depositing Funds',
+                        sublabel: `Transferring ${newLockAmount} ${token.symbol} to vault`,
+                        icon: <FaWallet color={theme.colors.mutedText} size={16} />
+                    });
+                } else {
+                    stepIndices.deposit = stepIndex++;
+                    steps.push({
+                        label: 'Funds Ready',
+                        sublabel: 'Already deposited in vault',
+                        icon: <FaCheck color={theme.colors.mutedText} size={16} />,
+                        preCompleted: true
+                    });
+                }
+                
+                stepIndices.lock = stepIndex++;
                 steps.push({
                     label: 'Creating Lock',
-                    sublabel: `Locking ${newLockAmount} ${token.symbol}`,
+                    sublabel: `Locking until ${dateToReadable(new Date(newLockExpiry))}`,
                     icon: <FaLock color={theme.colors.mutedText} size={16} />
                 });
                 
@@ -415,11 +446,25 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                         setShowProgress(false);
                         return;
                     }
-                    // Move to next step
-                    setProgressStep(1);
+                    // Move to deposit/funds ready step
+                    setProgressStep(stepIndices.deposit);
                 }
                 
-                const result = await onAddLock(token, newLockAmount, new Date(newLockExpiry).getTime());
+                // If funds are already deposited, briefly show that, then move to lock
+                if (!needsDeposit) {
+                    await new Promise(r => setTimeout(r, 500)); // Brief pause to show "Funds Ready"
+                }
+                
+                // Progress callback for the onAddLock
+                const onProgress = (stage) => {
+                    if (stage === 'depositing') {
+                        setProgressStep(stepIndices.deposit);
+                    } else if (stage === 'locking') {
+                        setProgressStep(stepIndices.lock);
+                    }
+                };
+                
+                const result = await onAddLock(token, newLockAmount, new Date(newLockExpiry).getTime(), onProgress);
                 if (result["Err"]) {
                     var error_text = result["Err"].message;
                     setErrorText(error_text);

@@ -3122,7 +3122,7 @@ function Wallet() {
         setShowSendLiquidityPositionModal(true);
     };
 
-    const handleAddLock = async (token, amount, expiry) => {
+    const handleAddLock = async (token, amount, expiry, onProgress) => {
         const ledger_canister_id = token.ledger_canister_id;
         const ledgerActor = createLedgerActor(ledger_canister_id, { agentOptions: { identity } });
         const decimals = await ledgerActor.icrc1_decimals();
@@ -3134,6 +3134,9 @@ function Wallet() {
         const bigIntAmountSendToBackend = bigIntAmount - available_balance_backend;
 
         if (bigIntAmountSendToBackend > 0) {
+            // Report progress: depositing
+            if (onProgress) onProgress('depositing');
+            
             const principal_subaccount = principalToSubAccount(identity.getPrincipal());
             const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
             const resultSend = await ledgerActor.icrc1_transfer({
@@ -3146,6 +3149,9 @@ function Wallet() {
             });
 
         }
+
+        // Report progress: locking
+        if (onProgress) onProgress('locking');
 
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, {
             agentOptions: {
