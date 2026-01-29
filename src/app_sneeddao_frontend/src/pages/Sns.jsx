@@ -10,7 +10,7 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
 import { formatE8s } from '../utils/NeuronUtils';
-import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle } from 'react-icons/fa';
+import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle, FaCog, FaKey, FaGift, FaClock, FaUserCog } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -93,6 +93,12 @@ function Sns() {
     const [copiedId, setCopiedId] = useState(null);
     const [isListCollapsed, setIsListCollapsed] = useState(false);
     const [isDetailsCollapsed, setIsDetailsCollapsed] = useState(false);
+    const [isCanistersExpanded, setIsCanistersExpanded] = useState(false);
+    const [isDappsExpanded, setIsDappsExpanded] = useState(false);
+    const [isArchivesExpanded, setIsArchivesExpanded] = useState(false);
+    const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
+    const [isRewardsExpanded, setIsRewardsExpanded] = useState(false);
+    const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
 
     // Handle window resize for responsive design
     useEffect(() => {
@@ -378,7 +384,7 @@ function Sns() {
         const isCopied = copiedId === canisterId;
         
         return (
-            <div style={{
+            <div key={canisterId} style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -729,402 +735,149 @@ function Sns() {
                     </div>
                 </div>
 
-                {/* Content Section - Two columns */}
+                {/* Content Section - Two columns (details first on mobile) */}
                 <div style={{
                     display: 'flex',
                     flexDirection: isMobile ? 'column' : 'row',
                     gap: '2rem'
                 }}>
-                    {/* SNS List */}
-                    <div style={{
-                        flex: isMobile ? 'none' : '0 0 380px',
-                        minWidth: isMobile ? 'auto' : '380px',
-                        maxWidth: isMobile ? 'none' : '380px'
-                    }}>
-                        {/* Search and Sort Controls */}
-                        <div
-                            className="sns-card-animate"
-                            style={{
-                                background: theme.colors.secondaryBg,
-                                borderRadius: '16px',
-                                padding: '1.25rem',
-                                marginBottom: '1.5rem',
-                                border: `1px solid ${theme.colors.border}`,
-                                animationDelay: '0.1s',
-                                opacity: 0
-                            }}
-                        >
-                            {/* Search Input */}
-                            <div style={{
-                                position: 'relative',
-                                marginBottom: '1rem'
-                            }}>
-                                <FaSearch style={{
-                                    position: 'absolute',
-                                    left: '14px',
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '14px'
-                                }} />
-                                <input
-                                    type="text"
-                                    placeholder="Search SNS..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '12px 14px 12px 40px',
-                                        background: theme.colors.primaryBg,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '10px',
-                                        color: theme.colors.primaryText,
-                                        fontSize: '0.95rem',
-                                        outline: 'none',
-                                        transition: 'border-color 0.2s ease',
-                                        boxSizing: 'border-box'
-                                    }}
-                                />
-                            </div>
-
-                            {/* Sort and Count */}
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                flexWrap: 'wrap',
-                                gap: '0.75rem'
-                            }}>
-                                <div style={{
-                                    color: theme.colors.secondaryText,
-                                    fontSize: '0.85rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}>
-                                    <FaUsers size={12} style={{ color: snsPrimary }} />
-                                    <span><strong style={{ color: theme.colors.primaryText }}>{sortedList.length}</strong></span>
-                                </div>
-                                <select
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value)}
-                                    style={{
-                                        backgroundColor: theme.colors.primaryBg,
-                                        color: theme.colors.primaryText,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '8px',
-                                        padding: '6px 10px',
-                                        fontSize: '0.8rem',
-                                        cursor: 'pointer',
-                                        outline: 'none'
-                                    }}
-                                >
-                                    <option value="age-newest">Newest</option>
-                                    <option value="age-oldest">Oldest</option>
-                                    <option value="name-asc">A-Z</option>
-                                    <option value="name-desc">Z-A</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* SNS Cards */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {sortedList.map((sns, index) => {
-                                const isSelected = sns.rootCanisterId === selectedSnsRoot;
-                                const logo = snsLogos.get(sns.canisters.governance);
-                                const isLoadingLogo = loadingLogos.has(sns.canisters.governance);
-                                const startsWithAlphanumeric = /^[a-zA-Z0-9]/.test(sns.name);
-                                const isHovered = hoveredCard === sns.rootCanisterId;
-
-                                return (
-                                    <div
-                                        key={sns.rootCanisterId}
-                                        className="sns-card-animate"
-                                        onClick={() => handleSnsSelect(sns.rootCanisterId)}
-                                        style={{
-                                            background: isSelected
-                                                ? `linear-gradient(135deg, ${snsPrimary}15 0%, ${snsSecondary}10 100%)`
-                                                : theme.colors.secondaryBg,
-                                            border: isSelected
-                                                ? `2px solid ${snsPrimary}`
-                                                : `1px solid ${isHovered ? snsPrimary : theme.colors.border}`,
-                                            borderRadius: '12px',
-                                            padding: '0.875rem 1rem',
-                                            cursor: 'pointer',
-                                            opacity: startsWithAlphanumeric ? 1 : 0.7,
-                                            transition: 'all 0.2s ease',
-                                            transform: isHovered ? 'translateX(4px)' : 'translateX(0)',
-                                            boxShadow: isSelected
-                                                ? `0 4px 20px ${snsPrimary}25`
-                                                : 'none',
-                                            animationDelay: `${0.15 + index * 0.02}s`,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '12px'
-                                        }}
-                                        onMouseEnter={() => setHoveredCard(sns.rootCanisterId)}
-                                        onMouseLeave={() => setHoveredCard(null)}
-                                    >
-                                        {isLoadingLogo ? (
-                                            <div style={{
-                                                width: '36px',
-                                                height: '36px',
-                                                borderRadius: '50%',
-                                                background: theme.colors.border,
-                                                flexShrink: 0
-                                            }} />
-                                        ) : logo ? (
-                                            <img
-                                                src={logo}
-                                                alt={sns.name}
-                                                style={{
-                                                    width: '36px',
-                                                    height: '36px',
-                                                    borderRadius: '50%',
-                                                    objectFit: 'cover',
-                                                    border: isSelected ? `2px solid ${snsPrimary}` : `2px solid ${theme.colors.border}`,
-                                                    flexShrink: 0
-                                                }}
-                                            />
-                                        ) : (
-                                            <div style={{
-                                                width: '36px',
-                                                height: '36px',
-                                                borderRadius: '50%',
-                                                background: `linear-gradient(135deg, ${snsPrimary}30, ${snsSecondary}20)`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: snsPrimary,
-                                                fontSize: '12px',
-                                                fontWeight: '700',
-                                                flexShrink: 0
-                                            }}>
-                                                {sns.name.substring(0, 2).toUpperCase()}
-                                            </div>
-                                        )}
-                                        <div style={{ minWidth: 0, flex: 1 }}>
-                                            <div style={{
-                                                color: startsWithAlphanumeric ? theme.colors.primaryText : theme.colors.mutedText,
-                                                fontSize: '0.95rem',
-                                                fontWeight: '600',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                                                {sns.name}
-                                            </div>
-                                        </div>
-                                        {isSelected && (
-                                            <div style={{
-                                                width: '8px',
-                                                height: '8px',
-                                                borderRadius: '50%',
-                                                background: snsPrimary,
-                                                flexShrink: 0
-                                            }} />
-                                        )}
-                                    </div>
-                                );
-                            })}
-
-                            {sortedList.length === 0 && searchQuery && (
-                                <div style={{
-                                    textAlign: 'center',
-                                    padding: '2rem',
-                                    background: theme.colors.secondaryBg,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`
-                                }}>
-                                    <FaSearch size={24} style={{ color: theme.colors.mutedText, marginBottom: '0.75rem' }} />
-                                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', margin: 0 }}>
-                                        No SNS found
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Selected SNS Details */}
+                    {/* Details Panel - Shows first on mobile */}
                     <div style={{
                         flex: 1,
-                        minWidth: 0
+                        minWidth: 0,
+                        order: isMobile ? 1 : 2
                     }}>
-                        <div
-                            className="sns-card-animate"
+                        {/* Collapsible Header for Details */}
+                        <button
+                            onClick={() => setIsDetailsCollapsed(!isDetailsCollapsed)}
                             style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '1rem 1.25rem',
                                 background: theme.colors.secondaryBg,
-                                borderRadius: '20px',
-                                padding: '1.75rem',
                                 border: `1px solid ${theme.colors.border}`,
-                                position: isMobile ? 'static' : 'sticky',
-                                top: '2rem',
-                                animationDelay: '0.2s',
-                                opacity: 0
+                                borderRadius: isDetailsCollapsed ? '16px' : '16px 16px 0 0',
+                                cursor: 'pointer',
+                                color: theme.colors.primaryText,
+                                marginBottom: isDetailsCollapsed ? 0 : '-1px',
+                                transition: 'all 0.2s ease'
                             }}
                         >
-                            {selectedSnsRoot ? (
-                                <>
-                                    {loadingDetails ? (
-                                        <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
-                                            <div className="sns-spin" style={{
-                                                width: '40px',
-                                                height: '40px',
-                                                border: `3px solid ${theme.colors.border}`,
-                                                borderTopColor: snsPrimary,
-                                                borderRadius: '50%',
-                                                margin: '0 auto 1rem'
-                                            }} />
-                                            <p style={{ color: theme.colors.mutedText }}>Loading SNS details...</p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                {selectedLogo ? (
+                                    <img
+                                        src={selectedLogo}
+                                        alt={selectedSnsDetails?.name || 'SNS'}
+                                        style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            objectFit: 'cover',
+                                            border: `2px solid ${snsPrimary}40`
+                                        }}
+                                    />
+                                ) : (
+                                    <div style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '8px',
+                                        background: `linear-gradient(135deg, ${snsPrimary}, ${snsSecondary})`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}>
+                                        <FaInfoCircle size={16} color="white" />
+                                    </div>
+                                )}
+                                <div style={{ textAlign: 'left' }}>
+                                    <div style={{ fontWeight: '600', fontSize: '1rem' }}>
+                                        {selectedSnsDetails?.name || 'SNS Details'}
+                                    </div>
+                                    {selectedSnsDetails?.tokenSymbol && (
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                            ${selectedSnsDetails.tokenSymbol}
                                         </div>
-                                    ) : selectedSnsDetails ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                                            {/* SNS Header */}
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '1rem',
-                                                paddingBottom: '1.25rem',
-                                                borderBottom: `1px solid ${theme.colors.border}`
-                                            }}>
-                                                {selectedLogo ? (
-                                                    <img
-                                                        src={selectedLogo}
-                                                        alt={selectedSnsDetails.name}
-                                                        style={{
-                                                            width: '60px',
-                                                            height: '60px',
-                                                            borderRadius: '16px',
-                                                            objectFit: 'cover',
-                                                            border: `3px solid ${snsPrimary}40`
-                                                        }}
-                                                    />
-                                                ) : (
+                                    )}
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {isMobile && (
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                        {isDetailsCollapsed ? 'Show' : 'Hide'}
+                                    </span>
+                                )}
+                                {isDetailsCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
+                            </div>
+                        </button>
+
+                        {/* Details Content */}
+                        {!isDetailsCollapsed && (
+                            <div
+                                className="sns-card-animate"
+                                style={{
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '0 0 20px 20px',
+                                    padding: '1.75rem',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderTop: 'none',
+                                    position: isMobile ? 'static' : 'sticky',
+                                    top: '2rem',
+                                    animationDelay: '0.2s'
+                                }}
+                            >
+                                {selectedSnsRoot ? (
+                                    <>
+                                        {loadingDetails ? (
+                                            <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+                                                <div className="sns-spin" style={{
+                                                    width: '40px',
+                                                    height: '40px',
+                                                    border: `3px solid ${theme.colors.border}`,
+                                                    borderTopColor: snsPrimary,
+                                                    borderRadius: '50%',
+                                                    margin: '0 auto 1rem'
+                                                }} />
+                                                <p style={{ color: theme.colors.mutedText }}>Loading SNS details...</p>
+                                            </div>
+                                        ) : selectedSnsDetails ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                                {/* Description */}
+                                                {selectedSnsDetails.metadata?.description?.[0] && (
                                                     <div style={{
-                                                        width: '60px',
-                                                        height: '60px',
-                                                        borderRadius: '16px',
-                                                        background: `linear-gradient(135deg, ${snsPrimary}, ${snsSecondary})`,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        color: 'white',
-                                                        fontSize: '1.25rem',
-                                                        fontWeight: '700'
+                                                        color: theme.colors.secondaryText,
+                                                        fontSize: '0.9rem',
+                                                        lineHeight: '1.6',
+                                                        padding: '1rem',
+                                                        background: theme.colors.primaryBg,
+                                                        borderRadius: '12px'
                                                     }}>
-                                                        {selectedSnsDetails.name?.substring(0, 2).toUpperCase() || 'SN'}
+                                                        {selectedSnsDetails.metadata.description[0]}
                                                     </div>
                                                 )}
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <h2 style={{
-                                                        color: theme.colors.primaryText,
-                                                        fontSize: '1.5rem',
-                                                        fontWeight: '700',
-                                                        margin: 0,
-                                                        marginBottom: '4px'
-                                                    }}>
-                                                        {selectedSnsDetails.name}
-                                                    </h2>
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        flexWrap: 'wrap'
-                                                    }}>
-                                                        <span style={{
-                                                            color: snsPrimary,
-                                                            fontWeight: '600',
-                                                            background: `${snsPrimary}15`,
-                                                            padding: '2px 10px',
-                                                            borderRadius: '6px',
-                                                            fontSize: '0.85rem'
-                                                        }}>
-                                                            ${selectedSnsDetails.tokenSymbol}
-                                                        </span>
-                                                        {selectedSnsDetails.metadata?.url?.[0] && (
-                                                            <a
-                                                                href={selectedSnsDetails.metadata.url[0]}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                style={{
-                                                                    color: snsAccent,
-                                                                    fontSize: '0.8rem',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '4px',
-                                                                    textDecoration: 'none'
-                                                                }}
-                                                            >
-                                                                <FaLink size={10} />
-                                                                Website
-                                                            </a>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
 
-                                            {/* Description */}
-                                            {selectedSnsDetails.metadata?.description?.[0] && (
-                                                <div style={{
-                                                    color: theme.colors.secondaryText,
-                                                    fontSize: '0.9rem',
-                                                    lineHeight: '1.6',
-                                                    padding: '1rem',
-                                                    background: theme.colors.primaryBg,
-                                                    borderRadius: '12px'
-                                                }}>
-                                                    {selectedSnsDetails.metadata.description[0]}
-                                                </div>
-                                            )}
+                                                {/* Website Link */}
+                                                {selectedSnsDetails.metadata?.url?.[0] && (
+                                                    <a
+                                                        href={selectedSnsDetails.metadata.url[0]}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{
+                                                            color: snsAccent,
+                                                            fontSize: '0.9rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            textDecoration: 'none'
+                                                        }}
+                                                    >
+                                                        <FaLink size={12} />
+                                                        {selectedSnsDetails.metadata.url[0]}
+                                                    </a>
+                                                )}
 
-                                            {/* Token Info */}
-                                            <div>
-                                                <h3 style={{
-                                                    color: snsPrimary,
-                                                    fontSize: '0.85rem',
-                                                    fontWeight: '600',
-                                                    marginBottom: '0.75rem',
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.5px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}>
-                                                    <FaCoins size={14} />
-                                                    Token Information
-                                                </h3>
-                                                <div style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                                                    gap: '0.75rem'
-                                                }}>
-                                                    <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Symbol</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{selectedSnsDetails.tokenSymbol}</div>
-                                                    </div>
-                                                    <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Name</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>{selectedSnsDetails.tokenName}</div>
-                                                    </div>
-                                                    <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Decimals</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{selectedSnsDetails.tokenDecimals}</div>
-                                                    </div>
-                                                    <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Total Supply</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>{formatE8s(selectedSnsDetails.totalSupply)}</div>
-                                                    </div>
-                                                    {selectedSnsDetails.transactionFee > 0n && (
-                                                        <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Tx Fee</div>
-                                                            <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>{formatE8s(selectedSnsDetails.transactionFee)}</div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Governance Parameters */}
-                                            {selectedSnsDetails.nervousSystemParameters && (
+                                                {/* Token Info */}
                                                 <div>
                                                     <h3 style={{
                                                         color: snsPrimary,
@@ -1137,260 +890,910 @@ function Sns() {
                                                         alignItems: 'center',
                                                         gap: '8px'
                                                     }}>
-                                                        <FaShieldAlt size={14} />
-                                                        Governance Parameters
+                                                        <FaCoins size={14} />
+                                                        Token Information
                                                     </h3>
                                                     <div style={{
                                                         display: 'grid',
                                                         gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
                                                         gap: '0.75rem'
                                                     }}>
-                                                        {selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s?.[0] && (
+                                                        <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Symbol</div>
+                                                            <div style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{selectedSnsDetails.tokenSymbol}</div>
+                                                        </div>
+                                                        <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Name</div>
+                                                            <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>{selectedSnsDetails.tokenName}</div>
+                                                        </div>
+                                                        <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Decimals</div>
+                                                            <div style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{selectedSnsDetails.tokenDecimals}</div>
+                                                        </div>
+                                                        <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Total Supply</div>
+                                                            <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>{formatE8s(selectedSnsDetails.totalSupply)}</div>
+                                                        </div>
+                                                        {selectedSnsDetails.transactionFee > 0n && (
                                                             <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Min Stake</div>
-                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
-                                                                    {formatE8s(selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s[0])}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds?.[0] && (
-                                                            <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Max Dissolve</div>
-                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
-                                                                    {formatDuration(selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds[0] * 1000000000n)}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        {selectedSnsDetails.nervousSystemParameters.proposal_reject_cost_e8s?.[0] && (
-                                                            <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
-                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Reject Cost</div>
-                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
-                                                                    {formatE8s(selectedSnsDetails.nervousSystemParameters.proposal_reject_cost_e8s[0])}
-                                                                </div>
+                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Tx Fee</div>
+                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>{formatE8s(selectedSnsDetails.transactionFee)}</div>
                                                             </div>
                                                         )}
                                                     </div>
                                                 </div>
-                                            )}
 
-                                            {/* Canisters */}
-                                            <div>
-                                                <h3 style={{
-                                                    color: snsPrimary,
-                                                    fontSize: '0.85rem',
-                                                    fontWeight: '600',
-                                                    marginBottom: '0.75rem',
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.5px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}>
-                                                    <FaServer size={14} />
-                                                    SNS Canisters
-                                                </h3>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                                    {renderCanisterRow('Root', selectedSnsDetails.allCanisters?.root, <FaCube size={14} />, snsPrimary)}
-                                                    {renderCanisterRow('Governance', selectedSnsDetails.allCanisters?.governance, <FaShieldAlt size={14} />, '#f59e0b')}
-                                                    {renderCanisterRow('Ledger', selectedSnsDetails.allCanisters?.ledger, <FaCoins size={14} />, theme.colors.success)}
-                                                    {renderCanisterRow('Swap', selectedSnsDetails.allCanisters?.swap, <FaExchangeAlt size={14} />, '#e74c3c')}
-                                                    {renderCanisterRow('Index', selectedSnsDetails.allCanisters?.index, <FaSearch size={14} />, snsAccent)}
-                                                    
-                                                    {/* Dapp Canisters */}
-                                                    {selectedSnsDetails.allCanisters?.dapps?.length > 0 && (
-                                                        <>
-                                                            <div style={{ 
-                                                                color: theme.colors.mutedText, 
-                                                                fontSize: '0.75rem', 
-                                                                marginTop: '0.5rem',
-                                                                textTransform: 'uppercase',
-                                                                letterSpacing: '0.5px'
-                                                            }}>
-                                                                Dapp Canisters ({selectedSnsDetails.allCanisters.dapps.length})
-                                                            </div>
-                                                            {selectedSnsDetails.allCanisters.dapps.map((dapp, idx) => (
-                                                                renderCanisterRow(`Dapp ${idx + 1}`, dapp, <FaCode size={14} />, '#9b59b6')
-                                                            ))}
-                                                        </>
-                                                    )}
-                                                    
-                                                    {/* Archive Canisters */}
-                                                    {selectedSnsDetails.allCanisters?.archives?.length > 0 && (
-                                                        <>
-                                                            <div style={{ 
-                                                                color: theme.colors.mutedText, 
-                                                                fontSize: '0.75rem', 
-                                                                marginTop: '0.5rem',
-                                                                textTransform: 'uppercase',
-                                                                letterSpacing: '0.5px'
-                                                            }}>
-                                                                Archive Canisters ({selectedSnsDetails.allCanisters.archives.length})
-                                                            </div>
-                                                            {selectedSnsDetails.allCanisters.archives.map((archive, idx) => (
-                                                                renderCanisterRow(`Archive ${idx + 1}`, archive, <FaArchive size={14} />, theme.colors.mutedText)
-                                                            ))}
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* External Links */}
-                                            <div>
-                                                <h3 style={{
-                                                    color: snsPrimary,
-                                                    fontSize: '0.85rem',
-                                                    fontWeight: '600',
-                                                    marginBottom: '0.75rem',
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.5px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}>
-                                                    <FaExternalLinkAlt size={12} />
-                                                    External Links
-                                                </h3>
-                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                                    <a
-                                                        href={`https://nns.ic0.app/project/?project=${selectedSnsRoot}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        style={{
-                                                            color: snsAccent,
-                                                            textDecoration: 'none',
-                                                            padding: '0.6rem 1rem',
-                                                            background: theme.colors.primaryBg,
-                                                            borderRadius: '10px',
+                                                {/* Governance Parameters */}
+                                                {selectedSnsDetails.nervousSystemParameters && (
+                                                    <div>
+                                                        <h3 style={{
+                                                            color: snsPrimary,
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: '600',
+                                                            marginBottom: '0.75rem',
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.5px',
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            gap: '8px',
-                                                            fontSize: '0.85rem',
-                                                            fontWeight: '500',
-                                                            border: `1px solid transparent`,
-                                                            transition: 'all 0.2s ease'
-                                                        }}
-                                                    >
-                                                        NNS dApp
-                                                        <FaArrowRight size={10} />
-                                                    </a>
-                                                    <a
-                                                        href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        style={{
-                                                            color: snsAccent,
-                                                            textDecoration: 'none',
-                                                            padding: '0.6rem 1rem',
-                                                            background: theme.colors.primaryBg,
-                                                            borderRadius: '10px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            fontSize: '0.85rem',
-                                                            fontWeight: '500',
-                                                            border: `1px solid transparent`,
-                                                            transition: 'all 0.2s ease'
-                                                        }}
-                                                    >
-                                                        IC Dashboard
-                                                        <FaArrowRight size={10} />
-                                                    </a>
-                                                </div>
-                                            </div>
+                                                            gap: '8px'
+                                                        }}>
+                                                            <FaShieldAlt size={14} />
+                                                            Governance Parameters
+                                                        </h3>
+                                                        <div style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                                            gap: '0.75rem'
+                                                        }}>
+                                                            {selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s?.[0] !== undefined && (
+                                                                <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Min Stake</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                        {formatE8s(selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s[0])} {selectedSnsDetails.tokenSymbol}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds?.[0] !== undefined && (
+                                                                <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Max Dissolve</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                        {formatDuration(selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds[0] * 1000000000n)}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {selectedSnsDetails.nervousSystemParameters.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] !== undefined && (
+                                                                <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Min Dissolve to Vote</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                        {formatDuration(selectedSnsDetails.nervousSystemParameters.neuron_minimum_dissolve_delay_to_vote_seconds[0] * 1000000000n)}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_bonus_percentage?.[0] !== undefined && (
+                                                                <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Dissolve Bonus</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                        {Number(selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_bonus_percentage[0])}%
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {selectedSnsDetails.nervousSystemParameters.max_age_bonus_percentage?.[0] !== undefined && (
+                                                                <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Age Bonus</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                        {Number(selectedSnsDetails.nervousSystemParameters.max_age_bonus_percentage[0])}%
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {selectedSnsDetails.nervousSystemParameters.max_neuron_age_for_age_bonus?.[0] !== undefined && (
+                                                                <div style={{ background: theme.colors.primaryBg, borderRadius: '10px', padding: '0.75rem' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px' }}>Max Age for Bonus</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                        {formatDuration(selectedSnsDetails.nervousSystemParameters.max_neuron_age_for_age_bonus[0] * 1000000000n)}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
 
-                                            {/* Explore This SNS */}
-                                            <div>
-                                                <h3 style={{
-                                                    color: snsPrimary,
-                                                    fontSize: '0.85rem',
-                                                    fontWeight: '600',
-                                                    marginBottom: '0.75rem',
-                                                    textTransform: 'uppercase',
-                                                    letterSpacing: '0.5px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}>
-                                                    <FaArrowRight size={12} />
-                                                    Explore This SNS
-                                                </h3>
-                                                <div style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
-                                                    gap: '0.75rem'
-                                                }}>
-                                                    {[
-                                                        { path: `/proposals?sns=${selectedSnsRoot}`, icon: <FaVoteYea size={18} />, label: 'Proposals', color: '#f59e0b' },
-                                                        { path: `/forum?sns=${selectedSnsRoot}`, icon: <FaComments size={18} />, label: 'Forum', color: theme.colors.success },
-                                                        { path: `/neurons?sns=${selectedSnsRoot}`, icon: <FaUsers size={18} />, label: 'Neurons', color: snsPrimary },
-                                                        { path: `/transactions?sns=${selectedSnsRoot}`, icon: <FaHistory size={18} />, label: 'Transactions', color: snsAccent }
-                                                    ].map((item) => (
-                                                        <Link
-                                                            key={item.path}
-                                                            to={item.path}
+                                                        {/* Advanced Governance - Expandable */}
+                                                        <button
+                                                            onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
                                                             style={{
+                                                                width: '100%',
                                                                 display: 'flex',
-                                                                flexDirection: 'column',
                                                                 alignItems: 'center',
-                                                                gap: '6px',
-                                                                padding: '0.875rem',
+                                                                justifyContent: 'space-between',
+                                                                padding: '0.75rem 1rem',
+                                                                marginTop: '0.75rem',
                                                                 background: theme.colors.primaryBg,
-                                                                borderRadius: '12px',
-                                                                textDecoration: 'none',
-                                                                transition: 'all 0.2s ease',
-                                                                border: `1px solid transparent`
-                                                            }}
-                                                            onMouseEnter={(e) => {
-                                                                e.currentTarget.style.borderColor = item.color;
-                                                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                                            }}
-                                                            onMouseLeave={(e) => {
-                                                                e.currentTarget.style.borderColor = 'transparent';
-                                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                borderRadius: '10px',
+                                                                cursor: 'pointer',
+                                                                color: theme.colors.secondaryText,
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: '500'
                                                             }}
                                                         >
-                                                            <div style={{ color: item.color }}>{item.icon}</div>
-                                                            <span style={{ color: theme.colors.primaryText, fontSize: '0.8rem', fontWeight: '500' }}>{item.label}</span>
-                                                        </Link>
-                                                    ))}
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <FaCog size={12} />
+                                                                Advanced Parameters
+                                                            </span>
+                                                            {isAdvancedExpanded ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                                                        </button>
+
+                                                        {isAdvancedExpanded && (
+                                                            <div style={{
+                                                                display: 'grid',
+                                                                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                                                gap: '0.75rem',
+                                                                marginTop: '0.75rem',
+                                                                padding: '1rem',
+                                                                background: `${theme.colors.primaryBg}80`,
+                                                                borderRadius: '10px',
+                                                                border: `1px solid ${theme.colors.border}`
+                                                            }}>
+                                                                {selectedSnsDetails.nervousSystemParameters.reject_cost_e8s?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Proposal Reject Cost</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {formatE8s(selectedSnsDetails.nervousSystemParameters.reject_cost_e8s[0])} {selectedSnsDetails.tokenSymbol}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.initial_voting_period_seconds?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Initial Voting Period</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {formatDuration(selectedSnsDetails.nervousSystemParameters.initial_voting_period_seconds[0] * 1000000000n)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.wait_for_quiet_deadline_increase_seconds?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Wait for Quiet Extension</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {formatDuration(selectedSnsDetails.nervousSystemParameters.wait_for_quiet_deadline_increase_seconds[0] * 1000000000n)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.max_number_of_neurons?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Max Neurons</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {Number(selectedSnsDetails.nervousSystemParameters.max_number_of_neurons[0]).toLocaleString()}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.max_number_of_principals_per_neuron?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Max Principals/Neuron</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {Number(selectedSnsDetails.nervousSystemParameters.max_number_of_principals_per_neuron[0])}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.max_followees_per_function?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Max Followees/Function</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {Number(selectedSnsDetails.nervousSystemParameters.max_followees_per_function[0])}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.max_number_of_proposals_with_ballots?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Max Active Proposals</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {Number(selectedSnsDetails.nervousSystemParameters.max_number_of_proposals_with_ballots[0])}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {selectedSnsDetails.nervousSystemParameters.maturity_modulation_disabled?.[0] !== undefined && (
+                                                                    <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Maturity Modulation</div>
+                                                                        <div style={{ color: selectedSnsDetails.nervousSystemParameters.maturity_modulation_disabled[0] ? theme.colors.error : theme.colors.success, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                            {selectedSnsDetails.nervousSystemParameters.maturity_modulation_disabled[0] ? 'Disabled' : 'Enabled'}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Voting Rewards - Expandable */}
+                                                        {selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters?.[0] && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => setIsRewardsExpanded(!isRewardsExpanded)}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'space-between',
+                                                                        padding: '0.75rem 1rem',
+                                                                        marginTop: '0.5rem',
+                                                                        background: theme.colors.primaryBg,
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        borderRadius: '10px',
+                                                                        cursor: 'pointer',
+                                                                        color: theme.colors.secondaryText,
+                                                                        fontSize: '0.8rem',
+                                                                        fontWeight: '500'
+                                                                    }}
+                                                                >
+                                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        <FaGift size={12} />
+                                                                        Voting Rewards
+                                                                    </span>
+                                                                    {isRewardsExpanded ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                                                                </button>
+
+                                                                {isRewardsExpanded && (
+                                                                    <div style={{
+                                                                        display: 'grid',
+                                                                        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                                                        gap: '0.75rem',
+                                                                        marginTop: '0.5rem',
+                                                                        padding: '1rem',
+                                                                        background: `${theme.colors.primaryBg}80`,
+                                                                        borderRadius: '10px',
+                                                                        border: `1px solid ${theme.colors.border}`
+                                                                    }}>
+                                                                        {selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].initial_reward_rate_basis_points?.[0] !== undefined && (
+                                                                            <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Initial Reward Rate</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                                    {(Number(selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].initial_reward_rate_basis_points[0]) / 100).toFixed(2)}%
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].final_reward_rate_basis_points?.[0] !== undefined && (
+                                                                            <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Final Reward Rate</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                                    {(Number(selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].final_reward_rate_basis_points[0]) / 100).toFixed(2)}%
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].reward_rate_transition_duration_seconds?.[0] !== undefined && (
+                                                                            <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Transition Duration</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                                    {formatDuration(selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].reward_rate_transition_duration_seconds[0] * 1000000000n)}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].round_duration_seconds?.[0] !== undefined && (
+                                                                            <div style={{ background: theme.colors.secondaryBg, borderRadius: '8px', padding: '0.6rem' }}>
+                                                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Reward Round Duration</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.8rem' }}>
+                                                                                    {formatDuration(selectedSnsDetails.nervousSystemParameters.voting_rewards_parameters[0].round_duration_seconds[0] * 1000000000n)}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+
+                                                        {/* Neuron Permissions - Expandable */}
+                                                        {(selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0] || 
+                                                          selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.[0]) && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => setIsPermissionsExpanded(!isPermissionsExpanded)}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'space-between',
+                                                                        padding: '0.75rem 1rem',
+                                                                        marginTop: '0.5rem',
+                                                                        background: theme.colors.primaryBg,
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        borderRadius: '10px',
+                                                                        cursor: 'pointer',
+                                                                        color: theme.colors.secondaryText,
+                                                                        fontSize: '0.8rem',
+                                                                        fontWeight: '500'
+                                                                    }}
+                                                                >
+                                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        <FaKey size={12} />
+                                                                        Neuron Permissions (Hotkeys)
+                                                                    </span>
+                                                                    {isPermissionsExpanded ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                                                                </button>
+
+                                                                {isPermissionsExpanded && (
+                                                                    <div style={{
+                                                                        marginTop: '0.5rem',
+                                                                        padding: '1rem',
+                                                                        background: `${theme.colors.primaryBg}80`,
+                                                                        borderRadius: '10px',
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        fontSize: '0.8rem'
+                                                                    }}>
+                                                                        {selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0]?.permissions && (
+                                                                            <div style={{ marginBottom: '1rem' }}>
+                                                                                <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                    <FaUserCog size={12} />
+                                                                                    Grantable Permissions (Hotkeys can have):
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                    {selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions[0].permissions.map((perm, idx) => {
+                                                                                        const permNames = ['Unspecified', 'Configure Dissolve', 'Manage Principals', 'Submit Proposal', 'Vote', 'Disburse', 'Split', 'Merge Maturity', 'Disburse Maturity', 'Stake Maturity', 'Manage Voting Permission'];
+                                                                                        return (
+                                                                                            <span key={idx} style={{
+                                                                                                background: theme.colors.secondaryBg,
+                                                                                                color: theme.colors.primaryText,
+                                                                                                padding: '4px 8px',
+                                                                                                borderRadius: '6px',
+                                                                                                fontSize: '0.75rem'
+                                                                                            }}>
+                                                                                                {permNames[perm] || `Permission ${perm}`}
+                                                                                            </span>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.[0]?.permissions && (
+                                                                            <div>
+                                                                                <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                    <FaKey size={12} />
+                                                                                    Claimer Permissions (New neurons get):
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                    {selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions[0].permissions.map((perm, idx) => {
+                                                                                        const permNames = ['Unspecified', 'Configure Dissolve', 'Manage Principals', 'Submit Proposal', 'Vote', 'Disburse', 'Split', 'Merge Maturity', 'Disburse Maturity', 'Stake Maturity', 'Manage Voting Permission'];
+                                                                                        return (
+                                                                                            <span key={idx} style={{
+                                                                                                background: theme.colors.secondaryBg,
+                                                                                                color: theme.colors.primaryText,
+                                                                                                padding: '4px 8px',
+                                                                                                borderRadius: '6px',
+                                                                                                fontSize: '0.75rem'
+                                                                                            }}>
+                                                                                                {permNames[perm] || `Permission ${perm}`}
+                                                                                            </span>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Canisters - Expandable */}
+                                                <div>
+                                                    <button
+                                                        onClick={() => setIsCanistersExpanded(!isCanistersExpanded)}
+                                                        style={{
+                                                            width: '100%',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '0.75rem 1rem',
+                                                            background: theme.colors.primaryBg,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '10px',
+                                                            cursor: 'pointer',
+                                                            color: theme.colors.primaryText,
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: '600'
+                                                        }}
+                                                    >
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <FaServer size={14} style={{ color: snsPrimary }} />
+                                                            SNS Canisters (5)
+                                                        </span>
+                                                        {isCanistersExpanded ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
+                                                    </button>
+                                                    
+                                                    {isCanistersExpanded && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                            {renderCanisterRow('Root', selectedSnsDetails.allCanisters?.root, <FaCube size={14} />, snsPrimary)}
+                                                            {renderCanisterRow('Governance', selectedSnsDetails.allCanisters?.governance, <FaShieldAlt size={14} />, '#f59e0b')}
+                                                            {renderCanisterRow('Ledger', selectedSnsDetails.allCanisters?.ledger, <FaCoins size={14} />, theme.colors.success)}
+                                                            {renderCanisterRow('Swap', selectedSnsDetails.allCanisters?.swap, <FaExchangeAlt size={14} />, '#e74c3c')}
+                                                            {renderCanisterRow('Index', selectedSnsDetails.allCanisters?.index, <FaSearch size={14} />, snsAccent)}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Dapp Canisters - Expandable */}
+                                                    {selectedSnsDetails.allCanisters?.dapps?.length > 0 && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => setIsDappsExpanded(!isDappsExpanded)}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    padding: '0.75rem 1rem',
+                                                                    marginTop: '0.5rem',
+                                                                    background: theme.colors.primaryBg,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '10px',
+                                                                    cursor: 'pointer',
+                                                                    color: theme.colors.primaryText,
+                                                                    fontSize: '0.85rem',
+                                                                    fontWeight: '600'
+                                                                }}
+                                                            >
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <FaCode size={14} style={{ color: '#9b59b6' }} />
+                                                                    Dapp Canisters ({selectedSnsDetails.allCanisters.dapps.length})
+                                                                </span>
+                                                                {isDappsExpanded ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
+                                                            </button>
+                                                            
+                                                            {isDappsExpanded && (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                                    {selectedSnsDetails.allCanisters.dapps.map((dapp, idx) => (
+                                                                        renderCanisterRow(`Dapp ${idx + 1}`, dapp, <FaCode size={14} />, '#9b59b6')
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    
+                                                    {/* Archive Canisters - Expandable */}
+                                                    {selectedSnsDetails.allCanisters?.archives?.length > 0 && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => setIsArchivesExpanded(!isArchivesExpanded)}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    padding: '0.75rem 1rem',
+                                                                    marginTop: '0.5rem',
+                                                                    background: theme.colors.primaryBg,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '10px',
+                                                                    cursor: 'pointer',
+                                                                    color: theme.colors.primaryText,
+                                                                    fontSize: '0.85rem',
+                                                                    fontWeight: '600'
+                                                                }}
+                                                            >
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <FaArchive size={14} style={{ color: theme.colors.mutedText }} />
+                                                                    Archive Canisters ({selectedSnsDetails.allCanisters.archives.length})
+                                                                </span>
+                                                                {isArchivesExpanded ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
+                                                            </button>
+                                                            
+                                                            {isArchivesExpanded && (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                                    {selectedSnsDetails.allCanisters.archives.map((archive, idx) => (
+                                                                        renderCanisterRow(`Archive ${idx + 1}`, archive, <FaArchive size={14} />, theme.colors.mutedText)
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {/* External Links */}
+                                                <div>
+                                                    <h3 style={{
+                                                        color: snsPrimary,
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '600',
+                                                        marginBottom: '0.75rem',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.5px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <FaExternalLinkAlt size={12} />
+                                                        External Links
+                                                    </h3>
+                                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                        <a
+                                                            href={`https://nns.ic0.app/project/?project=${selectedSnsRoot}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{
+                                                                color: snsAccent,
+                                                                textDecoration: 'none',
+                                                                padding: '0.6rem 1rem',
+                                                                background: theme.colors.primaryBg,
+                                                                borderRadius: '10px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                fontSize: '0.85rem',
+                                                                fontWeight: '500',
+                                                                border: `1px solid transparent`,
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            NNS dApp
+                                                            <FaArrowRight size={10} />
+                                                        </a>
+                                                        <a
+                                                            href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{
+                                                                color: snsAccent,
+                                                                textDecoration: 'none',
+                                                                padding: '0.6rem 1rem',
+                                                                background: theme.colors.primaryBg,
+                                                                borderRadius: '10px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                fontSize: '0.85rem',
+                                                                fontWeight: '500',
+                                                                border: `1px solid transparent`,
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            IC Dashboard
+                                                            <FaArrowRight size={10} />
+                                                        </a>
+                                                    </div>
+                                                </div>
+
+                                                {/* Explore This SNS */}
+                                                <div>
+                                                    <h3 style={{
+                                                        color: snsPrimary,
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '600',
+                                                        marginBottom: '0.75rem',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.5px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <FaArrowRight size={12} />
+                                                        Explore This SNS
+                                                    </h3>
+                                                    <div style={{
+                                                        display: 'grid',
+                                                        gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+                                                        gap: '0.75rem'
+                                                    }}>
+                                                        {[
+                                                            { path: `/proposals?sns=${selectedSnsRoot}`, icon: <FaVoteYea size={18} />, label: 'Proposals', color: '#f59e0b' },
+                                                            { path: `/forum?sns=${selectedSnsRoot}`, icon: <FaComments size={18} />, label: 'Forum', color: theme.colors.success },
+                                                            { path: `/neurons?sns=${selectedSnsRoot}`, icon: <FaUsers size={18} />, label: 'Neurons', color: snsPrimary },
+                                                            { path: `/transactions?sns=${selectedSnsRoot}`, icon: <FaHistory size={18} />, label: 'Transactions', color: snsAccent }
+                                                        ].map((item) => (
+                                                            <Link
+                                                                key={item.path}
+                                                                to={item.path}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    flexDirection: 'column',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    padding: '0.875rem',
+                                                                    background: theme.colors.primaryBg,
+                                                                    borderRadius: '12px',
+                                                                    textDecoration: 'none',
+                                                                    transition: 'all 0.2s ease',
+                                                                    border: `1px solid transparent`
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.currentTarget.style.borderColor = item.color;
+                                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.currentTarget.style.borderColor = 'transparent';
+                                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                                }}
+                                                            >
+                                                                <div style={{ color: item.color }}>{item.icon}</div>
+                                                                <span style={{ color: theme.colors.primaryText, fontSize: '0.8rem', fontWeight: '500' }}>{item.label}</span>
+                                                            </Link>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
+                                        ) : (
+                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                Failed to load SNS details
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+                                        <div className="sns-float" style={{
+                                            width: '70px',
+                                            height: '70px',
+                                            borderRadius: '50%',
+                                            background: `linear-gradient(135deg, ${snsPrimary}30, ${snsSecondary}20)`,
+                                            margin: '0 auto 1.5rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: snsPrimary
+                                        }}>
+                                            <FaGlobe size={28} />
                                         </div>
-                                    ) : (
-                                        <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                            Failed to load SNS details
+                                        <h2 style={{
+                                            color: theme.colors.primaryText,
+                                            marginBottom: '0.75rem',
+                                            fontSize: '1.3rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            Select an SNS
+                                        </h2>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.95rem' }}>
+                                            Choose an SNS from the list to view detailed information
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SNS List - Shows second on mobile */}
+                    <div style={{
+                        flex: isMobile ? 'none' : '0 0 380px',
+                        minWidth: isMobile ? 'auto' : '380px',
+                        maxWidth: isMobile ? 'none' : '380px',
+                        order: isMobile ? 2 : 1
+                    }}>
+                        {/* Collapsible Header for List */}
+                        <button
+                            onClick={() => setIsListCollapsed(!isListCollapsed)}
+                            style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '1rem 1.25rem',
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: isListCollapsed ? '16px' : '16px 16px 0 0',
+                                cursor: 'pointer',
+                                color: theme.colors.primaryText,
+                                marginBottom: isListCollapsed ? 0 : '-1px',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    background: `linear-gradient(135deg, ${snsPrimary}30, ${snsSecondary}20)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: snsPrimary
+                                }}>
+                                    <FaList size={14} />
+                                </div>
+                                <div style={{ textAlign: 'left' }}>
+                                    <div style={{ fontWeight: '600', fontSize: '1rem' }}>
+                                        SNS Directory
+                                    </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                        {sortedList.length} SNS{sortedList.length !== 1 ? 'es' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {isMobile && (
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                        {isListCollapsed ? 'Show' : 'Hide'}
+                                    </span>
+                                )}
+                                {isListCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
+                            </div>
+                        </button>
+
+                        {/* List Content */}
+                        {!isListCollapsed && (
+                            <div style={{
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '0 0 16px 16px',
+                                padding: '1.25rem',
+                                border: `1px solid ${theme.colors.border}`,
+                                borderTop: 'none'
+                            }}>
+                                {/* Search Input */}
+                                <div style={{
+                                    position: 'relative',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <FaSearch style={{
+                                        position: 'absolute',
+                                        left: '14px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '14px'
+                                    }} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search SNS..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px 14px 12px 40px',
+                                            background: theme.colors.primaryBg,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '10px',
+                                            color: theme.colors.primaryText,
+                                            fontSize: '0.95rem',
+                                            outline: 'none',
+                                            transition: 'border-color 0.2s ease',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Sort */}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'flex-end',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                        style={{
+                                            backgroundColor: theme.colors.primaryBg,
+                                            color: theme.colors.primaryText,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '8px',
+                                            padding: '6px 10px',
+                                            fontSize: '0.8rem',
+                                            cursor: 'pointer',
+                                            outline: 'none'
+                                        }}
+                                    >
+                                        <option value="age-newest">Newest</option>
+                                        <option value="age-oldest">Oldest</option>
+                                        <option value="name-asc">A-Z</option>
+                                        <option value="name-desc">Z-A</option>
+                                    </select>
+                                </div>
+
+                                {/* SNS Cards */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    gap: '0.5rem',
+                                    maxHeight: isMobile ? '400px' : 'none',
+                                    overflowY: isMobile ? 'auto' : 'visible'
+                                }}>
+                                    {sortedList.map((sns, index) => {
+                                        const isSelected = sns.rootCanisterId === selectedSnsRoot;
+                                        const logo = snsLogos.get(sns.canisters.governance);
+                                        const isLoadingLogo = loadingLogos.has(sns.canisters.governance);
+                                        const startsWithAlphanumeric = /^[a-zA-Z0-9]/.test(sns.name);
+                                        const isHovered = hoveredCard === sns.rootCanisterId;
+
+                                        return (
+                                            <div
+                                                key={sns.rootCanisterId}
+                                                onClick={() => {
+                                                    handleSnsSelect(sns.rootCanisterId);
+                                                    if (isMobile) {
+                                                        setIsDetailsCollapsed(false);
+                                                    }
+                                                }}
+                                                style={{
+                                                    background: isSelected
+                                                        ? `linear-gradient(135deg, ${snsPrimary}15 0%, ${snsSecondary}10 100%)`
+                                                        : theme.colors.primaryBg,
+                                                    border: isSelected
+                                                        ? `2px solid ${snsPrimary}`
+                                                        : `1px solid ${isHovered ? snsPrimary : theme.colors.border}`,
+                                                    borderRadius: '12px',
+                                                    padding: '0.875rem 1rem',
+                                                    cursor: 'pointer',
+                                                    opacity: startsWithAlphanumeric ? 1 : 0.7,
+                                                    transition: 'all 0.2s ease',
+                                                    transform: isHovered ? 'translateX(4px)' : 'translateX(0)',
+                                                    boxShadow: isSelected
+                                                        ? `0 4px 20px ${snsPrimary}25`
+                                                        : 'none',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '12px'
+                                                }}
+                                                onMouseEnter={() => setHoveredCard(sns.rootCanisterId)}
+                                                onMouseLeave={() => setHoveredCard(null)}
+                                            >
+                                                {isLoadingLogo ? (
+                                                    <div style={{
+                                                        width: '36px',
+                                                        height: '36px',
+                                                        borderRadius: '50%',
+                                                        background: theme.colors.border,
+                                                        flexShrink: 0
+                                                    }} />
+                                                ) : logo ? (
+                                                    <img
+                                                        src={logo}
+                                                        alt={sns.name}
+                                                        style={{
+                                                            width: '36px',
+                                                            height: '36px',
+                                                            borderRadius: '50%',
+                                                            objectFit: 'cover',
+                                                            border: isSelected ? `2px solid ${snsPrimary}` : `2px solid ${theme.colors.border}`,
+                                                            flexShrink: 0
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div style={{
+                                                        width: '36px',
+                                                        height: '36px',
+                                                        borderRadius: '50%',
+                                                        background: `linear-gradient(135deg, ${snsPrimary}30, ${snsSecondary}20)`,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: snsPrimary,
+                                                        fontSize: '12px',
+                                                        fontWeight: '700',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        {sns.name.substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                    <div style={{
+                                                        color: startsWithAlphanumeric ? theme.colors.primaryText : theme.colors.mutedText,
+                                                        fontSize: '0.95rem',
+                                                        fontWeight: '600',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap'
+                                                    }}>
+                                                        {sns.name}
+                                                    </div>
+                                                </div>
+                                                {isSelected && (
+                                                    <div style={{
+                                                        width: '8px',
+                                                        height: '8px',
+                                                        borderRadius: '50%',
+                                                        background: snsPrimary,
+                                                        flexShrink: 0
+                                                    }} />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
+                                    {sortedList.length === 0 && searchQuery && (
+                                        <div style={{
+                                            textAlign: 'center',
+                                            padding: '2rem',
+                                            background: theme.colors.primaryBg,
+                                            borderRadius: '12px',
+                                            border: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <FaSearch size={24} style={{ color: theme.colors.mutedText, marginBottom: '0.75rem' }} />
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', margin: 0 }}>
+                                                No SNS found
+                                            </p>
                                         </div>
                                     )}
-                                </>
-                            ) : (
-                                <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
-                                    <div className="sns-float" style={{
-                                        width: '70px',
-                                        height: '70px',
-                                        borderRadius: '50%',
-                                        background: `linear-gradient(135deg, ${snsPrimary}30, ${snsSecondary}20)`,
-                                        margin: '0 auto 1.5rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        color: snsPrimary
-                                    }}>
-                                        <FaGlobe size={28} />
-                                    </div>
-                                    <h2 style={{
-                                        color: theme.colors.primaryText,
-                                        marginBottom: '0.75rem',
-                                        fontSize: '1.3rem',
-                                        fontWeight: '600'
-                                    }}>
-                                        Select an SNS
-                                    </h2>
-                                    <p style={{ color: theme.colors.mutedText, fontSize: '0.95rem' }}>
-                                        Choose an SNS from the list to view detailed information
-                                    </p>
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </main>
