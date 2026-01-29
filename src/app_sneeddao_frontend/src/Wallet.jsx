@@ -39,6 +39,7 @@ import { fetchAndCacheSnsData, getAllSnses } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
 import PrincipalInput from './components/PrincipalInput';
+import TokenIcon from './components/TokenIcon';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import priceService from './services/PriceService';
@@ -4362,13 +4363,37 @@ function Wallet() {
                                     gap: '0.5rem'
                                 }}>
                                     <div style={{ 
-                                        color: theme.colors.mutedText, 
-                                        fontSize: '0.7rem', 
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                        fontWeight: '500'
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
                                     }}>
-                                        Total Portfolio
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                            fontWeight: '500'
+                                        }}>
+                                            Total Portfolio
+                                        </div>
+                                        {/* ICP Price inline */}
+                                        {icpPrice && (
+                                            <div style={{ 
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.3rem',
+                                                color: theme.colors.secondaryText,
+                                                fontSize: '0.75rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                <TokenIcon 
+                                                    logo="https://swaprunner.com/icp_symbol.svg" 
+                                                    alt="ICP" 
+                                                    size={14} 
+                                                />
+                                                ${icpPrice.toFixed(2)}
+                                            </div>
+                                        )}
                                     </div>
                                     <div style={{ 
                                         color: walletPrimary, 
@@ -4460,44 +4485,6 @@ function Wallet() {
                                             )}
                                         </div>
                                     )}
-                                </div>
-                            )}
-                            
-                            {/* ICP Price */}
-                            {icpPrice && (
-                                <div style={{
-                                    background: theme.colors.secondaryBg,
-                                    border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: '12px',
-                                    padding: '1rem 1.25rem',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '0.25rem'
-                                }}>
-                                    <div style={{ 
-                                        color: theme.colors.mutedText, 
-                                        fontSize: '0.7rem', 
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                        fontWeight: '500',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.35rem'
-                                    }}>
-                                        <img 
-                                            src="https://swaprunner.com/icp_symbol.svg" 
-                                            alt="ICP" 
-                                            style={{ width: 14, height: 14 }} 
-                                        />
-                                        ICP Price
-                                    </div>
-                                    <div style={{ 
-                                        color: theme.colors.primaryText, 
-                                        fontSize: '1.5rem', 
-                                        fontWeight: '700'
-                                    }}>
-                                        ${icpPrice.toFixed(2)}
-                                    </div>
                                 </div>
                             )}
                             
