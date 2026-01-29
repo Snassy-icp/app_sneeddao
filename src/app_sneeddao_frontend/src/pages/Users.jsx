@@ -103,6 +103,45 @@ function Users() {
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
+    // Helper to safely extract principal string from various formats
+    // Handles: Principal object, [Principal] opt array, serialized {_arr} from IndexedDB
+    const extractPrincipalString = (principalData) => {
+        if (!principalData) return null;
+        
+        // If it's an array (opt type), get first element
+        const principal = Array.isArray(principalData) ? principalData[0] : principalData;
+        if (!principal) return null;
+        
+        // If it has a toString method that returns a valid principal string, use it
+        if (typeof principal.toString === 'function') {
+            const str = principal.toString();
+            // Check if it's a valid principal string (not "[object Object]")
+            if (str && !str.includes('[object')) {
+                return str;
+            }
+        }
+        
+        // If it has _arr (serialized Principal from IndexedDB), reconstruct
+        if (principal._arr) {
+            try {
+                return Principal.fromUint8Array(new Uint8Array(principal._arr)).toString();
+            } catch (e) {
+                console.warn('Failed to reconstruct principal from _arr:', e);
+            }
+        }
+        
+        // If it's a Uint8Array directly
+        if (principal instanceof Uint8Array) {
+            try {
+                return Principal.fromUint8Array(principal).toString();
+            } catch (e) {
+                console.warn('Failed to reconstruct principal from Uint8Array:', e);
+            }
+        }
+        
+        return null;
+    };
+
     // Index neurons by principal (both owners and hotkeys)
     const usersData = useMemo(() => {
         const userMap = new Map();
@@ -118,14 +157,18 @@ function Users() {
             const principals = new Set();
             const ownerPrincipals = getOwnerPrincipals(neuron);
             
-            // Add owners
-            ownerPrincipals.forEach(p => principals.add(p));
+            // Add owners (getOwnerPrincipals already returns strings)
+            ownerPrincipals.forEach(p => {
+                if (p && typeof p === 'string' && !p.includes('[object')) {
+                    principals.add(p);
+                }
+            });
             
             // Add all principals with any permissions (hotkeys)
-            // Note: p.principal is an optional array [Principal], so we access [0]
             neuron.permissions?.forEach(p => {
-                if (p.principal && p.principal[0]) {
-                    principals.add(p.principal[0].toString());
+                const principalStr = extractPrincipalString(p.principal);
+                if (principalStr) {
+                    principals.add(principalStr);
                 }
             });
             
@@ -434,7 +477,7 @@ function Users() {
                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Staked</span>
                             </div>
                             <div style={{ color: '#f59e0b', fontSize: '1.5rem', fontWeight: '700' }}>
-                                {formatE8s(stats.totalStake)}
+                                {Math.floor(Number(stats.totalStake) / 100000000).toLocaleString()}
                             </div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
                                 {tokenSymbol}
