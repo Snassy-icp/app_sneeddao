@@ -440,6 +440,13 @@ function SneedexOffers() {
         }
     }, [identity, offerTab, principal, showInactiveOffers, fetchGlobalTokenMetadata]);
     
+    // Clear offers immediately when tab or filter changes (for responsive UX)
+    // This shows loading state right away instead of stale data
+    useEffect(() => {
+        setOffers([]);
+        setLoading(true);
+    }, [offerTab, showInactiveOffers]);
+    
     useEffect(() => {
         fetchOffers();
     }, [fetchOffers]);
