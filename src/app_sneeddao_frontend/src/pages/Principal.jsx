@@ -1015,6 +1015,42 @@ export default function PrincipalPage() {
                     {/* Search Section - only show when focused or no principal selected */}
                     {(isSearchFocused || !stablePrincipalId.current) && renderSearchSection()}
 
+                    {/* Search Another button - show when principal selected and search hidden */}
+                    {stablePrincipalId.current && !isSearchFocused && (
+                        <button
+                            onClick={() => {
+                                setSearchInput('');
+                                setSearchParams({});
+                            }}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                background: `${principalPrimary}15`,
+                                color: principalPrimary,
+                                border: `1px solid ${principalPrimary}30`,
+                                borderRadius: '10px',
+                                padding: '10px 16px',
+                                fontSize: '0.9rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                marginBottom: '1rem',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = `${principalPrimary}25`;
+                                e.currentTarget.style.borderColor = `${principalPrimary}50`;
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = `${principalPrimary}15`;
+                                e.currentTarget.style.borderColor = `${principalPrimary}30`;
+                            }}
+                        >
+                            <FaSearch size={14} />
+                            Search Another User
+                        </button>
+                    )}
+
                 {/* Principal Profile Card */}
                 <div
                     className="principal-card-animate"
