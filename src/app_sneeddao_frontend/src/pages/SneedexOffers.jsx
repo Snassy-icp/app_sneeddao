@@ -85,7 +85,8 @@ function SneedexOffers() {
     const navigate = useNavigate();
     
     // Use global token metadata cache for fast logo/metadata loading
-    const { fetchTokenMetadata: fetchGlobalTokenMetadata, getTokenMetadata } = useTokenMetadata();
+    // We use 'metadata' state to trigger re-renders when cache updates
+    const { fetchTokenMetadata: fetchGlobalTokenMetadata, getTokenMetadata, metadata: tokenMetadataState } = useTokenMetadata();
     
     // Get the principal from identity
     const principal = identity ? identity.getPrincipal() : null;
@@ -177,6 +178,7 @@ function SneedexOffers() {
     }, [identity]);
     
     // Helper to get token info from whitelisted tokens or global metadata cache
+    // Note: tokenMetadataState in deps triggers re-render when global cache updates
     const getTokenInfo = useCallback((ledgerId) => {
         // Get metadata from global cache (fast, persists across page navigation)
         const globalMeta = getTokenMetadata(ledgerId);
@@ -195,7 +197,7 @@ function SneedexOffers() {
         // Fallback for known tokens
         if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: cachedLogo || 'icp_symbol.svg', fee: BigInt(10000) };
         return { symbol: 'TOKEN', decimals: 8, logo: cachedLogo, fee: null };
-    }, [whitelistedTokens, getTokenMetadata]);
+    }, [whitelistedTokens, getTokenMetadata, tokenMetadataState]);
     
     // Helper to get SNS info by governance id
     const getSnsInfo = useCallback((governanceId) => {
