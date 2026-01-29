@@ -30,6 +30,54 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
+// Accent colors for Sneedex
+const sneedexPrimary = '#8b5cf6'; // Purple
+const sneedexSecondary = '#a78bfa';
+const sneedexAccent = '#c4b5fd';
+
+// CSS animation keyframes
+const injectSneedexStyles = () => {
+    if (document.getElementById('sneedex-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'sneedex-styles';
+    style.textContent = `
+        @keyframes sneedexFadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes sneedexPulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        @keyframes sneedexFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .sneedex-hero-icon {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .sneedex-hero-icon:hover {
+            transform: scale(1.1) rotate(5deg);
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.4);
+        }
+        .sneedex-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        .sneedex-action-btn {
+            transition: all 0.2s ease;
+        }
+        .sneedex-action-btn:hover {
+            transform: translateY(-2px);
+        }
+    `;
+    document.head.appendChild(style);
+};
+
 function SneedexOffers() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
@@ -83,6 +131,11 @@ function SneedexOffers() {
     
     // ICP ledger canister ID constant
     const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+    
+    // Inject CSS animations on mount
+    useEffect(() => {
+        injectSneedexStyles();
+    }, []);
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -1262,121 +1315,234 @@ function SneedexOffers() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
-            <main style={styles.container}>
-                {/* Centered content: banner, header, filters */}
-                <div style={styles.centeredContent}>
-                {/* Jailbreak Wizard Banner */}
+            <main style={{ color: theme.colors.primaryText }}>
+                {/* Hero Section */}
                 <div style={{
-                    background: `linear-gradient(135deg, ${theme.colors.success}12, ${theme.colors.accent}08)`,
-                    border: `1px solid ${theme.colors.success}35`,
-                    borderRadius: '14px',
-                    padding: '16px 20px',
-                    marginBottom: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '16px',
-                    flexWrap: 'wrap'
+                    background: `linear-gradient(180deg, ${sneedexPrimary}12 0%, transparent 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* Decorative glows */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${sneedexPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${sneedexSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        {/* Hero Content */}
                         <div style={{
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '10px',
-                            background: `${theme.colors.success}20`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            textAlign: 'center',
+                            marginBottom: '1.5rem'
+                        }}>
+                            {/* Icon and Title */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1rem',
+                                marginBottom: '0.5rem'
+                            }}>
+                                <div 
+                                    className="sneedex-hero-icon"
+                                    style={{
+                                        width: '56px',
+                                        height: '56px',
+                                        borderRadius: '16px',
+                                        background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: `0 4px 20px ${sneedexPrimary}40`
+                                    }}
+                                >
+                                    <FaGavel size={26} color="white" />
+                                </div>
+                                <h1 style={{
+                                    fontSize: '2rem',
+                                    fontWeight: '800',
+                                    margin: 0,
+                                    background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${sneedexPrimary})`,
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text'
+                                }}>
+                                    Sneedex
+                                </h1>
+                            </div>
+                            
+                            <p style={{
+                                color: theme.colors.mutedText,
+                                fontSize: '0.95rem',
+                                margin: 0,
+                                maxWidth: '500px'
+                            }}>
+                                Trade ICP neurons, SNS neurons, canisters, and tokens
+                            </p>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            gap: '12px',
+                            flexWrap: 'wrap',
+                            marginBottom: '1.5rem'
                         }}>
-                            <FaUnlock style={{ color: theme.colors.success, fontSize: '18px' }} />
-                        </div>
-                        <div>
-                            <div style={{ color: theme.colors.primaryText, fontWeight: 700, fontSize: '0.95rem' }}>
-                                Jailbreak Wizard
-                            </div>
-                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
-                                Already have SNS neurons? Make them tradable on Sneedex!
-                            </div>
-                        </div>
-                    </div>
-                    <Link
-                        to="/tools/sns_jailbreak"
-                        style={{
-                            background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
-                            color: '#fff',
-                            padding: '10px 18px',
-                            borderRadius: '10px',
-                            textDecoration: 'none',
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            boxShadow: `0 4px 12px ${theme.colors.success}30`,
-                            transition: 'all 0.2s ease',
-                        }}
-                    >
-                        <FaUnlock size={14} /> Open Wizard →
-                    </Link>
-                </div>
-                <div style={styles.header}>
-                    <div style={styles.headerButtons}>
-                        <button
-                            style={styles.refreshButton}
-                            onClick={fetchOffers}
-                            disabled={loading}
-                        >
-                            <FaSync style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                            {loading ? 'Loading...' : 'Refresh'}
-                        </button>
-                        {isAuthenticated && (
-                            <Link
-                                to="/sneedex_create"
-                                style={styles.createButton}
-                                onMouseEnter={(e) => {
-                                    e.target.style.transform = 'translateY(-2px)';
-                                    e.target.style.boxShadow = `0 6px 20px ${theme.colors.success}40`;
+                            <button
+                                className="sneedex-action-btn"
+                                style={{
+                                    background: theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
                                 }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.transform = 'translateY(0)';
-                                    e.target.style.boxShadow = 'none';
+                                onClick={fetchOffers}
+                                disabled={loading}
+                            >
+                                <FaSync style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                                {loading ? 'Loading...' : 'Refresh'}
+                            </button>
+                            {isAuthenticated && (
+                                <Link
+                                    to="/sneedex_create"
+                                    className="sneedex-action-btn"
+                                    style={{
+                                        background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                        color: 'white',
+                                        padding: '10px 18px',
+                                        borderRadius: '10px',
+                                        border: 'none',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        textDecoration: 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        boxShadow: `0 4px 16px ${sneedexPrimary}30`
+                                    }}
+                                >
+                                    <FaGavel /> Create Offer
+                                </Link>
+                            )}
+                            <Link
+                                to="/tools/sns_jailbreak"
+                                className="sneedex-action-btn"
+                                style={{
+                                    background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                    color: 'white',
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
+                                    border: 'none',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    boxShadow: `0 4px 16px ${theme.colors.success}30`
                                 }}
                             >
-                                <FaGavel /> Create Offer
+                                <FaUnlock /> Jailbreak Wizard
                             </Link>
-                        )}
+                        </div>
+                        
+                        {/* Public/Private tabs - centered */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center'
+                        }}>
+                            <div className="sneedex-tab-container" style={{
+                                display: 'flex',
+                                gap: '4px',
+                                background: theme.colors.tertiaryBg,
+                                padding: '4px',
+                                borderRadius: '12px',
+                            }}>
+                                <button
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: offerTab === 'public' ? theme.colors.secondaryBg : 'transparent',
+                                        color: offerTab === 'public' ? theme.colors.primaryText : theme.colors.mutedText,
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: offerTab === 'public' ? `0 2px 8px ${theme.colors.shadow}` : 'none',
+                                    }}
+                                    onClick={() => setOfferTab('public')}
+                                >
+                                    <FaGlobe /> Public Offers
+                                </button>
+                                <button
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: offerTab === 'private' ? theme.colors.secondaryBg : 'transparent',
+                                        color: offerTab === 'private' ? theme.colors.primaryText : theme.colors.mutedText,
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: offerTab === 'private' ? `0 2px 8px ${theme.colors.shadow}` : 'none',
+                                        opacity: !isAuthenticated ? 0.5 : 1,
+                                    }}
+                                    onClick={() => setOfferTab('private')}
+                                    disabled={!isAuthenticated}
+                                    title={!isAuthenticated ? 'Connect wallet to view private offers' : ''}
+                                >
+                                    <FaLock /> Private (OTC)
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                
+                {/* Main Content Area */}
+                <div style={{ padding: '1.5rem 2rem' }}>
+                <div style={styles.centeredContent}>
                 
                 {error && (
                     <div style={styles.errorState}>
                         {error}
                     </div>
                 )}
-                
-                {/* Public/Private tabs */}
-                <div className="sneedex-tab-container" style={styles.tabContainer}>
-                    <button
-                        style={{
-                            ...styles.tab,
-                            ...(offerTab === 'public' ? styles.tabActive : {})
-                        }}
-                        onClick={() => setOfferTab('public')}
-                    >
-                        <FaGlobe /> Public Offers
-                    </button>
-                    <button
-                        style={{
-                            ...styles.tab,
-                            ...(offerTab === 'private' ? styles.tabActive : {})
-                        }}
-                        onClick={() => setOfferTab('private')}
-                        disabled={!isAuthenticated}
-                        title={!isAuthenticated ? 'Connect wallet to view private offers' : ''}
-                    >
-                        <FaLock /> Private (OTC)
-                    </button>
-                </div>
                 
                 <div className="sneedex-controls" style={styles.controls}>
                     <button
@@ -1709,8 +1875,11 @@ function SneedexOffers() {
                 )}
                 </div>
                 {/* End centered content */}
+                </div>
+                {/* End main content padding wrapper */}
                 
                 {/* Offers section */}
+                <div style={{ padding: '0 2rem 2rem' }}>
                 {loading && offers.length === 0 ? (
                     <div style={{ ...styles.centeredContent, ...styles.loadingState }}>
                         <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
@@ -2235,6 +2404,8 @@ function SneedexOffers() {
                         )}
                     </>
                 )}
+                </div>
+                {/* End offers section padding wrapper */}
             </main>
             
             <style>{`
