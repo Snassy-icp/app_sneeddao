@@ -2153,7 +2153,7 @@ function Feed() {
                             }}>
                                 Filters
                             </span>
-                            {(searchText || selectedCreator || selectedType || selectedSnsList.length > 0) && (
+                            {(searchText || selectedCreator || selectedType) && (
                                 <span style={{
                                     fontSize: '0.7rem',
                                     backgroundColor: feedPrimary,
@@ -2167,9 +2167,9 @@ function Feed() {
                             )}
                         </div>
                         
-                        <div style={isNarrowScreen ? getStyles(theme).filterLayoutStacked : getStyles(theme).filterLayoutResponsive}>
-                            {/* Left Column: User, Type, Text */}
-                            <div style={getStyles(theme).filterLeftColumn}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {/* Filter inputs */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
                                 <div style={getStyles(theme).filterGroup}>
                                     <label style={getStyles(theme).filterLabel}>
                                         <FaUser size={10} style={{ marginRight: '6px' }} />
@@ -2214,120 +2214,18 @@ function Feed() {
                                         style={getStyles(theme).filterInput}
                                     />
                                 </div>
-                                
-                                {/* Filter Buttons */}
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                                        <button onClick={applyFilters} style={getStyles(theme).applyButton}>
-                                            Apply Filters
-                                        </button>
-                                        <button onClick={clearFilters} style={getStyles(theme).clearButton}>
-                                            Clear Filters
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                {/* Right Column (or bottom on narrow): SNS List */}
-                                <div style={getStyles(theme).filterRightColumn}>
-                                    <div style={getStyles(theme).filterGroup}>
-                                        <div style={getStyles(theme).snsFilterHeader}>
-                                            <label style={getStyles(theme).filterLabel}>
-                                                SNS (Select Multiple)
-                                                {selectedSnsList.length > 0 && (
-                                                    <span style={{ color: theme.colors.accent, marginLeft: '8px' }}>
-                                                        ({selectedSnsList.length} selected)
-                                                    </span>
-                                                )}
-                                            </label>
-                                            <button
-                                                onClick={() => setShowSnsList(!showSnsList)}
-                                                style={getStyles(theme).snsToggleButton}
-                                            >
-                                                {showSnsList ? '▼ Hide' : '▶ Show'}
-                                            </button>
-                                        </div>
-                                        
-                                        {showSnsList && (
-                                            <>
-                                                <div style={getStyles(theme).checkboxContainer}>
-                                                    {snsInstances && snsInstances.map((sns) => {
-                                                        // Find the corresponding SNS info for logo
-                                                        const snsInfo = allSnses.find(s => s.rootCanisterId === sns.root_canister_id);
-                                                        const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
-                                                        const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
-                                                        
-                                                        return (
-                                                            <label 
-                                                                key={sns.root_canister_id} 
-                                                                style={getStyles(theme).snsCheckboxWithLogo}
-                                                                onMouseEnter={(e) => {
-                                                                    e.target.style.backgroundColor = theme.colors.secondaryBg;
-                                                                }}
-                                                                onMouseLeave={(e) => {
-                                                                    e.target.style.backgroundColor = 'transparent';
-                                                                }}
-                                                            >
-                                                                                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedSnsList.includes(sns.root_canister_id)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSelectedSnsList(prev => [...prev, sns.root_canister_id]);
-                                                        } else {
-                                                            setSelectedSnsList(prev => prev.filter(id => id !== sns.root_canister_id));
-                                                        }
-                                                    }}
-                                                    style={getStyles(theme).checkbox}
-                                                />
-                                                
-                                                {/* SNS Logo */}
-                                                {snsInfo && (
-                                                    <>
-                                                        {isLoadingLogo ? (
-                                                            <div style={getStyles(theme).snsLogoPlaceholderSmall}>
-                                                                ...
-                                                            </div>
-                                                        ) : snsLogo ? (
-                                                            <img
-                                                                src={snsLogo}
-                                                                alt={snsInfo.name}
-                                                                style={getStyles(theme).snsLogoSmall}
-                                                            />
-                                                        ) : (
-                                                            <div style={getStyles(theme).snsLogoPlaceholderSmall}>
-                                                                {snsInfo.name.substring(0, 2).toUpperCase()}
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                )}
-                                                
-                                                <span style={getStyles(theme).checkboxText}>
-                                                    {sns.name || sns.root_canister_id.substring(0, 8) + '...'}
-                                                </span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                </div>
-                                                
-                                                {/* Clear SNS Button - below the list */}
-                                                {selectedSnsList.length > 0 && (
-                                                    <button
-                                                        onClick={clearAllSns}
-                                                        style={getStyles(theme).clearSnsButton}
-                                                        onMouseEnter={(e) => {
-                                                            e.target.style.backgroundColor = theme.colors.mutedText;
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.target.style.backgroundColor = theme.colors.mutedText;
-                                                        }}
-                                                    >
-                                                        Clear SNS Selection
-                                                    </button>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
                             </div>
+                            
+                            {/* Filter Buttons */}
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <button onClick={applyFilters} style={getStyles(theme).applyButton}>
+                                    Apply Filters
+                                </button>
+                                <button onClick={clearFilters} style={getStyles(theme).clearButton}>
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
