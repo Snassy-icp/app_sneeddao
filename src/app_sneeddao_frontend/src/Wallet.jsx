@@ -4204,7 +4204,15 @@ function Wallet() {
             agentOptions: { identity }
         });
 
-        const neuronId = { id: Array.from(Buffer.from(neuronIdHex, 'hex')) };
+        // Convert hex string to byte array (browser-compatible, no Buffer)
+        const hexToBytes = (hex) => {
+            const bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substr(i, 2), 16));
+            }
+            return bytes;
+        };
+        const neuronId = { id: hexToBytes(neuronIdHex) };
         
         const result = await governanceActor.manage_neuron({
             subaccount: neuronId.id,
@@ -5624,7 +5632,7 @@ function Wallet() {
                                             {/* Expanded Section */}
                                             {isExpanded && (
                                                 <div className="card-content">
-                                                    {/* First Row: Transfer button (right-aligned) */}
+                                                    {/* First Row: Send button (right-aligned) */}
                                                     {neuronManagerIsController[canisterId] && (
                                                         <div style={{ 
                                                             display: 'flex', 
@@ -5662,10 +5670,10 @@ function Wallet() {
                                                             >
                                                                 <img 
                                                                     src="send-inverted.png" 
-                                                                    alt="Transfer" 
+                                                                    alt="Send" 
                                                                     style={{ width: '14px', height: '14px' }}
                                                                 />
-                                                                Transfer
+                                                                Send
                                                             </button>
                                                         </div>
                                                     )}
@@ -6542,7 +6550,7 @@ function Wallet() {
                                             {/* Expanded Section */}
                                             {isExpanded && (
                                                 <div className="card-content">
-                                                    {/* First Row: Transfer button (right-aligned) */}
+                                                    {/* First Row: Send button (right-aligned) */}
                                                     {isController && (
                                                         <div style={{ 
                                                             display: 'flex', 
@@ -6581,10 +6589,10 @@ function Wallet() {
                                                             >
                                                                 <img 
                                                                     src="send-inverted.png" 
-                                                                    alt="Transfer" 
+                                                                    alt="Send" 
                                                                     style={{ width: '14px', height: '14px' }}
                                                                 />
-                                                                Transfer
+                                                                Send
                                                             </button>
                                                         </div>
                                                     )}
