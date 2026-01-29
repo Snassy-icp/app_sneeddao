@@ -499,6 +499,16 @@ function Wallet() {
             return true;
         }
     });
+    
+    // Active tab for main wallet sections
+    const [activeWalletTab, setActiveWalletTab] = useState(() => {
+        try {
+            const saved = localStorage.getItem('activeWalletTab');
+            return saved || 'tokens';
+        } catch (error) {
+            return 'tokens';
+        }
+    });
     const [newTrackedCanisterId, setNewTrackedCanisterId] = useState('');
     const [addingTrackedCanister, setAddingTrackedCanister] = useState(false);
     const [addTrackedCanisterError, setAddTrackedCanisterError] = useState('');
@@ -566,6 +576,15 @@ function Wallet() {
             console.warn('Could not save tracked canisters expanded state to localStorage:', error);
         }
     }, [trackedCanistersExpanded]);
+
+    // Save activeWalletTab state to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('activeWalletTab', activeWalletTab);
+        } catch (error) {
+            console.warn('Could not save active wallet tab to localStorage:', error);
+        }
+    }, [activeWalletTab]);
 
     // Load SNS data progressively (non-blocking)
     useEffect(() => {
@@ -5035,44 +5054,131 @@ function Wallet() {
                     </div>
                 ) : (
                     <>
-                <SectionHeader 
-                    title="Tokens"
-                    subtitle={tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}
-                    isExpanded={tokensExpanded}
-                    onToggle={() => setTokensExpanded(!tokensExpanded)}
-                    onRefresh={handleRefreshTokensSection}
-                    isRefreshing={refreshingTokensSection}
-                    theme={theme}
-                />
-                {tokensExpanded && (
+                {/* Tab Bar for Wallet Sections */}
+                <div style={{
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '16px',
+                    padding: '0.5rem',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    gap: '0.5rem',
+                    flexWrap: 'wrap',
+                    border: `1px solid ${theme.colors.border}`
+                }}>
+                    {[
+                        { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
+                        { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
+                        { id: 'neuronManagers', label: 'ICP Neurons', icon: <FaBrain size={14} />, subtitle: neuronManagers.length > 0 ? `${neuronManagers.length}` : null },
+                        { id: 'canisters', label: 'Canisters', icon: <FaLock size={14} />, subtitle: trackedCanisters.length > 0 ? `${trackedCanisters.length}` : null }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveWalletTab(tab.id)}
+                            style={{
+                                flex: '1 1 auto',
+                                minWidth: '120px',
+                                padding: '0.75rem 1rem',
+                                borderRadius: '12px',
+                                border: 'none',
+                                background: activeWalletTab === tab.id 
+                                    ? `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`
+                                    : 'transparent',
+                                color: activeWalletTab === tab.id ? 'white' : theme.colors.secondaryText,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.9rem',
+                                fontWeight: activeWalletTab === tab.id ? '600' : '500',
+                                transition: 'all 0.2s ease',
+                                boxShadow: activeWalletTab === tab.id ? `0 4px 15px ${walletPrimary}40` : 'none'
+                            }}
+                        >
+                            {tab.icon}
+                            <span>{tab.label}</span>
+                            {tab.subtitle && (
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    opacity: 0.9,
+                                    fontWeight: '500',
+                                    marginLeft: '0.25rem'
+                                }}>
+                                    ({tab.subtitle})
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Tokens Tab Content */}
+                {activeWalletTab === 'tokens' && (
                     <>
                     <div style={{ 
                         display: 'flex', 
-                        justifyContent: 'flex-end', 
-                        marginBottom: '16px' 
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1rem',
+                        gap: '1rem',
+                        flexWrap: 'wrap'
                     }}>
-                        <button
-                            onClick={() => setShowAddLedgerModal(true)}
-                            style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
-                                border: 'none',
-                                borderRadius: '8px',
-                                padding: '8px 16px',
-                                cursor: 'pointer',
-                                fontSize: '0.85rem',
-                                fontWeight: '600',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = theme.colors.accentHover;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = theme.colors.accent;
-                            }}
-                        >
-                            Add Token
-                        </button>
+                        <h3 style={{ 
+                            color: theme.colors.primaryText, 
+                            fontSize: '1.1rem', 
+                            fontWeight: '600',
+                            margin: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}>
+                            <FaCoins size={16} color={walletPrimary} />
+                            Tokens
+                            {tokensTotal > 0 && (
+                                <span style={{ color: walletPrimary, fontWeight: '500' }}>
+                                    (${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                </span>
+                            )}
+                        </h3>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button
+                                onClick={handleRefreshTokensSection}
+                                disabled={refreshingTokensSection}
+                                style={{
+                                    background: `${walletPrimary}15`,
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 0.75rem',
+                                    cursor: refreshingTokensSection ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s ease',
+                                    opacity: refreshingTokensSection ? 0.6 : 1
+                                }}
+                            >
+                                <FaSync size={12} style={{ animation: refreshingTokensSection ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                Refresh
+                            </button>
+                            <button
+                                onClick={() => setShowAddLedgerModal(true)}
+                                style={{
+                                    background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 1rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                + Add Token
+                            </button>
+                        </div>
                     </div>
                     <div className="card-grid">
                     {tokens.map((token, index) => {
@@ -5129,44 +5235,75 @@ function Wallet() {
                 </div>
                 </>
                 )}
-                <SectionHeader 
-                    title="Liquidity Positions"
-                    subtitle={lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}
-                    isExpanded={positionsExpanded}
-                    onToggle={() => setPositionsExpanded(!positionsExpanded)}
-                    onRefresh={handleRefreshPositionsSection}
-                    isRefreshing={refreshingPositionsSection}
-                    theme={theme}
-                />
-                {positionsExpanded && (
+
+                {/* Liquidity Positions Tab Content */}
+                {activeWalletTab === 'positions' && (
                     <>
                     <div style={{ 
                         display: 'flex', 
-                        justifyContent: 'flex-end', 
-                        marginBottom: '16px' 
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1rem',
+                        gap: '1rem',
+                        flexWrap: 'wrap'
                     }}>
-                        <button
-                            onClick={() => setShowAddSwapModal(true)}
-                            style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
-                                border: 'none',
-                                borderRadius: '8px',
-                                padding: '8px 16px',
-                                cursor: 'pointer',
-                                fontSize: '0.85rem',
-                                fontWeight: '600',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = theme.colors.accentHover;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = theme.colors.accent;
-                            }}
-                        >
-                            Add Swap Pair
-                        </button>
+                        <h3 style={{ 
+                            color: theme.colors.primaryText, 
+                            fontSize: '1.1rem', 
+                            fontWeight: '600',
+                            margin: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}>
+                            <FaExchangeAlt size={16} color={walletPrimary} />
+                            Liquidity Positions
+                            {lpPositionsTotal > 0 && (
+                                <span style={{ color: walletPrimary, fontWeight: '500' }}>
+                                    (${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                </span>
+                            )}
+                        </h3>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button
+                                onClick={handleRefreshPositionsSection}
+                                disabled={refreshingPositionsSection}
+                                style={{
+                                    background: `${walletPrimary}15`,
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 0.75rem',
+                                    cursor: refreshingPositionsSection ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s ease',
+                                    opacity: refreshingPositionsSection ? 0.6 : 1
+                                }}
+                            >
+                                <FaSync size={12} style={{ animation: refreshingPositionsSection ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                Refresh
+                            </button>
+                            <button
+                                onClick={() => setShowAddSwapModal(true)}
+                                style={{
+                                    background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 1rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                + Add Swap Pair
+                            </button>
+                        </div>
                     </div>
                     <div className="card-grid">                
                     {liquidityPositions.map((position, index) => (
@@ -5215,29 +5352,85 @@ function Wallet() {
                 </>
                 )}
 
-                {/* ICP Neuron Managers Section */}
-                <SectionHeader 
-                    title="ICP Neuron Managers"
-                    subtitle={neuronManagers.length > 0 
-                        ? (managerNeuronsTotal > 0 && icpPrice 
-                            ? `${neuronManagers.length} • $${(managerNeuronsTotal * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : `${neuronManagers.length}`)
-                        : null}
-                    isExpanded={neuronManagersExpanded}
-                    onToggle={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
-                    onRefresh={handleRefreshNeuronManagers}
-                    isRefreshing={refreshingNeuronManagers}
-                    addButtonText="+ Create"
-                    onAdd={() => navigate('/create_icp_neuron')}
-                    theme={theme}
-                />
-                {neuronManagersExpanded && (
+                {/* ICP Neuron Managers Tab Content */}
+                {activeWalletTab === 'neuronManagers' && (
                     <div style={{ marginBottom: '20px' }}>
+                        <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem',
+                            gap: '1rem',
+                            flexWrap: 'wrap'
+                        }}>
+                            <h3 style={{ 
+                                color: theme.colors.primaryText, 
+                                fontSize: '1.1rem', 
+                                fontWeight: '600',
+                                margin: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <FaBrain size={16} color={walletPrimary} />
+                                ICP Neuron Managers
+                                {neuronManagers.length > 0 && (
+                                    <span style={{ color: walletPrimary, fontWeight: '500' }}>
+                                        ({neuronManagers.length})
+                                        {managerNeuronsTotal > 0 && icpPrice && (
+                                            <span style={{ marginLeft: '0.25rem' }}>
+                                                • ${(managerNeuronsTotal * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        )}
+                                    </span>
+                                )}
+                            </h3>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button
+                                    onClick={handleRefreshNeuronManagers}
+                                    disabled={refreshingNeuronManagers}
+                                    style={{
+                                        background: `${walletPrimary}15`,
+                                        color: walletPrimary,
+                                        border: `1px solid ${walletPrimary}30`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 0.75rem',
+                                        cursor: refreshingNeuronManagers ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        transition: 'all 0.2s ease',
+                                        opacity: refreshingNeuronManagers ? 0.6 : 1
+                                    }}
+                                >
+                                    <FaSync size={12} style={{ animation: refreshingNeuronManagers ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                    Refresh
+                                </button>
+                                <button
+                                    onClick={() => navigate('/create_icp_neuron')}
+                                    style={{
+                                        background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 1rem',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    + Create
+                                </button>
+                            </div>
+                        </div>
                         {/* Learn how it works link */}
                         <div style={{ marginBottom: '12px' }}>
                             <Link 
                                 to="/help/icp-neuron-manager" 
-                                style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
+                                style={{ color: walletPrimary, fontSize: '13px', textDecoration: 'none' }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             >
@@ -6123,23 +6316,62 @@ function Wallet() {
                     </div>
                 )}
 
-                {/* Canisters Section (Tracked Canisters / Wallet Canisters) */}
-                <SectionHeader 
-                    title="Canisters"
-                    subtitle={trackedCanisters.length > 0 ? `${trackedCanisters.length}` : null}
-                    isExpanded={trackedCanistersExpanded}
-                    onToggle={() => setTrackedCanistersExpanded(!trackedCanistersExpanded)}
-                    onRefresh={handleRefreshTrackedCanisters}
-                    isRefreshing={refreshingTrackedCanisters}
-                    theme={theme}
-                />
-                {trackedCanistersExpanded && (
+                {/* Canisters Tab Content */}
+                {activeWalletTab === 'canisters' && (
                     <div style={{ marginBottom: '20px' }}>
+                        <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem',
+                            gap: '1rem',
+                            flexWrap: 'wrap'
+                        }}>
+                            <h3 style={{ 
+                                color: theme.colors.primaryText, 
+                                fontSize: '1.1rem', 
+                                fontWeight: '600',
+                                margin: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <FaLock size={16} color={walletPrimary} />
+                                Canisters
+                                {trackedCanisters.length > 0 && (
+                                    <span style={{ color: walletPrimary, fontWeight: '500' }}>
+                                        ({trackedCanisters.length})
+                                    </span>
+                                )}
+                            </h3>
+                            <button
+                                onClick={handleRefreshTrackedCanisters}
+                                disabled={refreshingTrackedCanisters}
+                                style={{
+                                    background: `${walletPrimary}15`,
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 0.75rem',
+                                    cursor: refreshingTrackedCanisters ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s ease',
+                                    opacity: refreshingTrackedCanisters ? 0.6 : 1
+                                }}
+                            >
+                                <FaSync size={12} style={{ animation: refreshingTrackedCanisters ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                Refresh
+                            </button>
+                        </div>
                         {/* Manage custom canister groups link */}
                         <div style={{ marginBottom: '12px' }}>
                             <Link 
                                 to="/canisters" 
-                                style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
+                                style={{ color: walletPrimary, fontSize: '13px', textDecoration: 'none' }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             >
@@ -6992,66 +7224,6 @@ function Wallet() {
                     </div>
                 )}
 
-                <SectionHeader 
-                    title="What is Sneed Lock?"
-                    isExpanded={isSneedLockExpanded}
-                    onToggle={() => {
-                        const newState = !isSneedLockExpanded;
-                        setIsSneedLockExpanded(newState);
-                        try {
-                            localStorage.setItem('sneedLockDisclaimerExpanded', JSON.stringify(newState));
-                        } catch (error) {
-                            console.warn('Could not save disclaimer state to localStorage:', error);
-                        }
-                    }}
-                    theme={theme}
-                />
-                {isSneedLockExpanded && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <div style={{ 
-                            backgroundColor: theme.colors.secondaryBg, 
-                            borderRadius: '8px', 
-                            padding: '20px',
-                            color: theme.colors.primaryText
-                        }}>
-                            <p><strong>Sneed Lock</strong> is a trustless time-locking service for tokens and liquidity positions, integrated directly into your Sneed Wallet. It allows you to lock assets for a specified period, proving commitment and enabling vesting schedules while building trust in the ICP ecosystem.</p>
-                            
-                            <p><strong>Key Features:</strong></p>
-                            <ul style={{ marginLeft: '20px', marginBottom: '12px' }}>
-                                <li><strong>Fee Claiming from Locked LPs:</strong> When you lock a liquidity position, you can still claim trading fees directly from your wallet—even while the position remains locked!</li>
-                                <li><strong>Liquid Locking:</strong> Transfer locked tokens and LP positions to other Sneed Wallet users! The locks remain enforced (preventing rugs), but ownership can change. This creates liquidity while maintaining security.</li>
-                                <li><strong>Trustless & Immutable:</strong> Locks cannot be canceled or modified by anyone—including you. This ensures genuine commitment.</li>
-                            </ul>
-                            
-                            <p>After registering a token or liquidity position, you can lock it by clicking the lock button in the token or position card. Locked assets cannot be withdrawn until the expiration date.</p>
-                            
-                            <p><b>⚠️ Important: Do NOT lock tokens or positions you might need access to during the lock period!</b></p>
-                            
-                            <p>Sneed Lock is ideal for token developers, team members, and investors who want to demonstrate long-term commitment and prevent "rug pulls" by locking large token and liquidity positions. Maximum lock time is 10 years.</p>
-                            
-                            <p style={{ marginTop: '12px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                                <Link to="/lock_wizard" style={{ 
-                                    color: theme.colors.warning, 
-                                    textDecoration: 'none',
-                                    fontWeight: '600'
-                                }}>
-                                    🧙 Lock Wizard →
-                                </Link>
-                                <Link to="/help/sneedlock" style={{ 
-                                    color: theme.colors.accent, 
-                                    textDecoration: 'none',
-                                    fontWeight: '600'
-                                }}>
-                                    📚 Learn More About Sneed Lock →
-                                </Link>
-                            </p>
-                            
-                            <p style={{ marginTop: '8px', fontSize: '0.9rem', color: theme.colors.mutedText }}>
-                                <b>Disclaimer:</b> All use is at the user's own risk. Sneed DAO, its members, developers and contributors bear no responsibility for any funds lost or stolen.
-                            </p>
-                        </div>
-                    </div>
-                )}
                 <AddSwapCanisterModal
                     show={showAddSwapModal}
                     onClose={() => setShowAddSwapModal(false)}
