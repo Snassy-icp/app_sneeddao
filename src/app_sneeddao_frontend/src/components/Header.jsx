@@ -1129,8 +1129,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             </div>
             )}
 
-            {/* Bottom Row: VP Display */}
-            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && showVpBarSetting && (
+            {/* Bottom Row: VP Display - hide if no neurons (don't show loading state if no neurons) */}
+            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && showVpBarSetting && !neuronsLoading && getAllNeurons().length > 0 && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1223,6 +1223,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     // Calculate additional reachable neurons (not hotkeyed)
                                     const additionalNeuronsCount = allNeurons.length - hotkeyNeurons.length;
                                     const hasAdditionalReachable = reachableVP > hotkeyedVP;
+                                    
+                                    // Don't show VP bar if no VP
+                                    if (hotkeyedVP === 0 && reachableVP === 0) {
+                                        return null;
+                                    }
                                     
                                     return (
                                         <>
