@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import useNeuronsCache from '../hooks/useNeuronsCache';
-import { fetchAndCacheSnsData } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { formatE8s, uint8ArrayToHex, getOwnerPrincipals } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -87,6 +87,12 @@ function Users() {
     
     // Get naming context
     const { principalNames, principalNicknames, verifiedNames } = useNaming();
+
+    // Get SNS info for the selected SNS
+    const snsInfo = useMemo(() => {
+        if (!selectedSnsRoot) return null;
+        return getSnsById(selectedSnsRoot);
+    }, [selectedSnsRoot]);
 
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
@@ -308,12 +314,21 @@ function Users() {
                                     </div>
                                 )}
                             </div>
-                            <div>
-                                <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
-                                    User Explorer
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1.75rem', 
+                                    fontWeight: '700', 
+                                    margin: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    {snsInfo ? `${snsInfo.name}` : ''} User Explorer
                                 </h1>
-                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
-                                    Browse all users with neuron holdings in this SNS
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.35rem 0 0 0' }}>
+                                    Browse all users with neuron holdings in {snsInfo?.name || 'this SNS'}
                                 </p>
                             </div>
                         </div>

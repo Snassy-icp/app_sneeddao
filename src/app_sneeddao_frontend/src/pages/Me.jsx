@@ -2122,8 +2122,8 @@ function NeuronCard({
 
     return (
         <div style={{
-            background: theme.colors.secondaryBg,
-            borderRadius: '12px',
+            background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${mePrimary}08 100%)`,
+            borderRadius: '14px',
             padding: '1.25rem',
             border: `1px solid ${theme.colors.border}`,
             transition: 'all 0.3s ease'
