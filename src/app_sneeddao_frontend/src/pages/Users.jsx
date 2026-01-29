@@ -89,6 +89,7 @@ function Users() {
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [sortConfig, setSortConfig] = useState({ key: 'stake', direction: 'desc' });
     const [hideUnnamed, setHideUnnamed] = useState(false);
+    const [userTypeFilter, setUserTypeFilter] = useState('all'); // 'all', 'owners', 'hotkeys'
     
     // Get naming context
     const { principalNames, principalNicknames, verifiedNames } = useNaming();
@@ -265,6 +266,13 @@ function Users() {
     const filteredUsers = useMemo(() => {
         let filtered = usersData;
         
+        // Apply owner/hotkey filter
+        if (userTypeFilter === 'owners') {
+            filtered = filtered.filter(user => user.ownedNeurons.length > 0);
+        } else if (userTypeFilter === 'hotkeys') {
+            filtered = filtered.filter(user => user.ownedNeurons.length === 0 && user.hotkeyNeurons.length > 0);
+        }
+        
         // Apply search filter
         if (searchTerm.trim()) {
             const searchLower = searchTerm.toLowerCase();
@@ -326,7 +334,7 @@ function Users() {
         });
         
         return filtered;
-    }, [usersData, searchTerm, hideUnnamed, sortConfig, principalNames, principalNicknames]);
+    }, [usersData, searchTerm, hideUnnamed, userTypeFilter, sortConfig, principalNames, principalNicknames]);
 
     // Pagination
     const paginatedUsers = filteredUsers.slice(
@@ -598,10 +606,10 @@ function Users() {
                             display: 'flex',
                             gap: '1rem',
                             flexWrap: 'wrap',
-                            alignItems: 'flex-start',
+                            alignItems: 'center',
                             marginBottom: '1rem'
                         }}>
-                            <div style={{ flex: '1 1 300px', minWidth: '200px', maxWidth: '400px', position: 'relative' }}>
+                            <div style={{ width: '280px', minWidth: '200px', position: 'relative' }}>
                                 <FaSearch size={14} style={{
                                     position: 'absolute',
                                     left: '12px',
@@ -613,7 +621,7 @@ function Users() {
                                     type="text"
                                     value={searchTerm}
                                     onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                                    placeholder="Search by principal ID or name..."
+                                    placeholder="Search by name or ID..."
                                     style={{
                                         backgroundColor: theme.colors.tertiaryBg,
                                         color: theme.colors.primaryText,
@@ -624,6 +632,26 @@ function Users() {
                                         fontSize: '0.9rem'
                                     }}
                                 />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Show:</span>
+                                <select
+                                    value={userTypeFilter}
+                                    onChange={(e) => { setUserTypeFilter(e.target.value); setCurrentPage(1); }}
+                                    style={{
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 0.75rem',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value="all">All Users</option>
+                                    <option value="owners">Owners Only</option>
+                                    <option value="hotkeys">Hotkeys Only</option>
+                                </select>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Per page:</span>

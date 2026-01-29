@@ -1157,7 +1157,7 @@ export default function Me() {
                                     <FaCog size={18} />
                                 </div>
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                    Settings
+                                    My Settings
                                 </span>
                             </div>
                             <FaChevronDown 
