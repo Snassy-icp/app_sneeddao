@@ -1407,14 +1407,6 @@ function Sns() {
                                                             const rawGrantable = nsParams.neuron_grantable_permissions;
                                                             const rawClaimer = nsParams.neuron_claimer_permissions;
                                                             
-                                                            // Debug: Log the raw data to understand the structure
-                                                            console.log('SNS Permissions Debug:', {
-                                                                rawGrantable,
-                                                                rawClaimer,
-                                                                grantable0: rawGrantable?.[0],
-                                                                grantablePerms: rawGrantable?.[0]?.permissions,
-                                                                nsParams
-                                                            });
                                                             
                                                             // Handle Candid opt type: [] for None, [value] for Some
                                                             // Also handle direct object access as fallback
@@ -1450,9 +1442,12 @@ function Sns() {
                                                             
                                                             const normalizedGrantable = normalizePerms(grantablePerms);
                                                             const normalizedClaimer = normalizePerms(claimerPerms);
-                                                            const hasAnyPermissions = normalizedGrantable.length > 0 || normalizedClaimer.length > 0;
                                                             
-                                                            console.log('SNS Permissions Normalized:', { normalizedGrantable, normalizedClaimer, hasAnyPermissions });
+                                                            // All possible permissions (1-10, excluding 0 which is Unspecified)
+                                                            const ALL_PERMISSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+                                                            const notGrantable = ALL_PERMISSIONS.filter(p => !normalizedGrantable.includes(p));
+                                                            
+                                                            const hasAnyPermissions = normalizedGrantable.length > 0 || normalizedClaimer.length > 0;
                                                             
                                                             return (
                                                                 <>
@@ -1497,7 +1492,7 @@ function Sns() {
                                                                             ) : (
                                                                                 <>
                                                                                     {normalizedGrantable.length > 0 && (
-                                                                                        <div style={{ marginBottom: normalizedClaimer.length > 0 ? '1rem' : 0 }}>
+                                                                                        <div style={{ marginBottom: '1rem' }}>
                                                                                             <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                                                 <FaUserCog size={12} />
                                                                                                 Grantable Permissions (Hotkeys can have):
@@ -1520,6 +1515,39 @@ function Sns() {
                                                                                                             cursor: 'default',
                                                                                                             transition: 'all 0.2s ease'
                                                                                                         }} title={permInfo?.description || `Permission type ${permNum}`}>
+                                                                                                            <span style={{ fontSize: '0.85rem' }}>{permInfo?.icon || '🔒'}</span>
+                                                                                                            <span>{permInfo?.label || `Type ${permNum}`}</span>
+                                                                                                        </span>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {notGrantable.length > 0 && (
+                                                                                        <div style={{ marginBottom: normalizedClaimer.length > 0 ? '1rem' : 0 }}>
+                                                                                            <div style={{ color: theme.colors.error || '#ef4444', fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                                <FaShieldAlt size={12} />
+                                                                                                Not Grantable (Reserved for controllers):
+                                                                                            </div>
+                                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                                {notGrantable.map((permNum, idx) => {
+                                                                                                    const permInfo = PERMISSION_INFO[permNum];
+                                                                                                    return (
+                                                                                                        <span key={idx} style={{
+                                                                                                            padding: '0.35rem 0.7rem',
+                                                                                                            borderRadius: '20px',
+                                                                                                            background: `${theme.colors.error || '#ef4444'}15`,
+                                                                                                            border: `1px solid ${theme.colors.error || '#ef4444'}30`,
+                                                                                                            color: theme.colors.mutedText,
+                                                                                                            fontSize: '0.75rem',
+                                                                                                            fontWeight: '500',
+                                                                                                            display: 'inline-flex',
+                                                                                                            alignItems: 'center',
+                                                                                                            gap: '0.4rem',
+                                                                                                            cursor: 'default',
+                                                                                                            opacity: 0.7,
+                                                                                                            transition: 'all 0.2s ease'
+                                                                                                        }} title={`${permInfo?.description || `Permission type ${permNum}`} - Cannot be granted to hotkeys`}>
                                                                                                             <span style={{ fontSize: '0.85rem' }}>{permInfo?.icon || '🔒'}</span>
                                                                                                             <span>{permInfo?.label || `Type ${permNum}`}</span>
                                                                                                         </span>

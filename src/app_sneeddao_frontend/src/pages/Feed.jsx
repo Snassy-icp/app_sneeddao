@@ -2565,7 +2565,7 @@ function Feed() {
                                     fontWeight: '700', 
                                     margin: 0 
                                 }}>
-                                    Activity Feed
+                                    Sneed's Feed
                                 </h1>
                                 <p style={{ 
                                     color: theme.colors.secondaryText, 
