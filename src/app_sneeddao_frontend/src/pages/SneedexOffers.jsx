@@ -26,6 +26,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/SnsUtils';
 import priceService from '../services/PriceService';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { useTokenMetadata } from '../hooks/useTokenMetadata';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -83,6 +84,9 @@ function SneedexOffers() {
     const { theme } = useTheme();
     const navigate = useNavigate();
     
+    // Use global token metadata cache for fast logo/metadata loading
+    const { fetchTokenMetadata: fetchGlobalTokenMetadata, getTokenMetadata } = useTokenMetadata();
+    
     // Get the principal from identity
     const principal = identity ? identity.getPrincipal() : null;
     
@@ -100,8 +104,6 @@ function SneedexOffers() {
     const [snsList, setSnsList] = useState([]); // List of all SNSes
     const [snsSymbols, setSnsSymbols] = useState(new Map()); // governance_id -> token symbol
     const [neuronInfo, setNeuronInfo] = useState({}); // `${governance_id}_${neuron_id}` -> { stake, state }
-    const [tokenLogos, setTokenLogos] = useState(new Map()); // ledger_id -> logo URL
-    const [tokenMetadataCache, setTokenMetadataCache] = useState(new Map()); // ledger_id -> { symbol, name, decimals, logo }
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // canister_id -> { totalStake, neuronCount }
     
     // USD pricing state
@@ -169,26 +171,26 @@ function SneedexOffers() {
         fetchTokens();
     }, [identity]);
     
-    // Helper to get token info from whitelisted tokens or cached metadata
+    // Helper to get token info from whitelisted tokens or global metadata cache
     const getTokenInfo = useCallback((ledgerId) => {
-        // Get logo from tokenLogos map or tokenMetadataCache (fetched from ledger)
-        const cachedLogo = tokenLogos.get(ledgerId) || tokenMetadataCache.get(ledgerId)?.logo || null;
+        // Get metadata from global cache (fast, persists across page navigation)
+        const globalMeta = getTokenMetadata(ledgerId);
+        const cachedLogo = globalMeta?.logo || null;
         
-        // First check whitelisted tokens for basic metadata
+        // First check whitelisted tokens for basic metadata (symbol, decimals, fee)
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
-            // Use cached logo since whitelist doesn't include logo URLs
+            // Use logo from global cache since whitelist doesn't include logo URLs
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: cachedLogo, fee: token.fee ? BigInt(token.fee) : null };
         }
-        // Then check dynamically fetched metadata cache
-        const cachedMeta = tokenMetadataCache.get(ledgerId);
-        if (cachedMeta) {
-            return cachedMeta;
+        // Then check global metadata cache
+        if (globalMeta) {
+            return { symbol: globalMeta.symbol, decimals: globalMeta.decimals, name: globalMeta.symbol, logo: globalMeta.logo, fee: null };
         }
         // Fallback for known tokens
-        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: cachedLogo, fee: BigInt(10000) };
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: cachedLogo || 'icp_symbol.svg', fee: BigInt(10000) };
         return { symbol: 'TOKEN', decimals: 8, logo: cachedLogo, fee: null };
-    }, [whitelistedTokens, tokenMetadataCache, tokenLogos]);
+    }, [whitelistedTokens, getTokenMetadata]);
     
     // Helper to get SNS info by governance id
     const getSnsInfo = useCallback((governanceId) => {
@@ -283,87 +285,11 @@ function SneedexOffers() {
         }
     }, [neuronInfo, identity]);
     
-    // Fetch token metadata from ledger (logo, symbol, name, decimals, fee)
+    // Fetch token metadata using global cache (fast, persists across page navigation)
     const fetchTokenMetadata = useCallback(async (ledgerId) => {
-        // Skip if we already have this token cached with a logo
-        if (tokenMetadataCache.has(ledgerId) && tokenMetadataCache.get(ledgerId)?.logo) return;
-        // Skip if we already have this token's logo in the tokenLogos map
-        if (tokenLogos.has(ledgerId)) return;
-        
-        try {
-            // Use same approach as Feed.jsx - create agent and inline actor definition
-            const { Actor } = await import('@dfinity/agent');
-            const agent = await HttpAgent.create({ host: 'https://icp-api.io' });
-            
-            const icrc1IdlFactory = ({ IDL }) => {
-                return IDL.Service({
-                    icrc1_symbol: IDL.Func([], [IDL.Text], ['query']),
-                    icrc1_name: IDL.Func([], [IDL.Text], ['query']),
-                    icrc1_decimals: IDL.Func([], [IDL.Nat8], ['query']),
-                    icrc1_fee: IDL.Func([], [IDL.Nat], ['query']),
-                    icrc1_metadata: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Variant({
-                        Nat: IDL.Nat,
-                        Int: IDL.Int,
-                        Text: IDL.Text,
-                        Blob: IDL.Vec(IDL.Nat8)
-                    })))], ['query']),
-                });
-            };
-            
-            const ledgerActor = Actor.createActor(icrc1IdlFactory, {
-                agent,
-                canisterId: ledgerId,
-            });
-            
-            // First try to get everything from icrc1_metadata
-            const metadata = await ledgerActor.icrc1_metadata().catch(() => []);
-            
-            // Extract all available fields from metadata
-            let symbol = null;
-            let name = null;
-            let decimals = null;
-            let fee = null;
-            let logo = null;
-            
-            for (const [key, value] of metadata) {
-                if ((key === 'icrc1:symbol' || key === 'symbol') && value.Text) {
-                    symbol = value.Text;
-                } else if ((key === 'icrc1:name' || key === 'name') && value.Text) {
-                    name = value.Text;
-                } else if ((key === 'icrc1:decimals' || key === 'decimals') && value.Nat !== undefined) {
-                    decimals = Number(value.Nat);
-                } else if ((key === 'icrc1:fee' || key === 'fee') && value.Nat !== undefined) {
-                    fee = BigInt(value.Nat);
-                } else if ((key === 'icrc1:logo' || key === 'logo') && value.Text) {
-                    logo = value.Text;
-                }
-            }
-            
-            // Fall back to individual calls only for missing fields
-            if (symbol === null) {
-                symbol = await ledgerActor.icrc1_symbol().catch(() => 'TOKEN');
-            }
-            if (name === null) {
-                name = await ledgerActor.icrc1_name().catch(() => 'Unknown Token');
-            }
-            if (decimals === null) {
-                decimals = Number(await ledgerActor.icrc1_decimals().catch(() => 8));
-            }
-            if (fee === null) {
-                fee = BigInt(await ledgerActor.icrc1_fee().catch(() => 0));
-            }
-            
-            // Cache the metadata
-            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals, logo, fee }));
-            
-            // Also update tokenLogos for backward compatibility
-            if (logo) {
-                setTokenLogos(prev => new Map(prev).set(ledgerId, logo));
-            }
-        } catch (e) {
-            console.warn('Failed to fetch token metadata:', e);
-        }
-    }, [tokenMetadataCache, tokenLogos]);
+        // Use global hook - it handles caching and deduplication automatically
+        await fetchGlobalTokenMetadata(ledgerId);
+    }, [fetchGlobalTokenMetadata]);
     
     // Fetch ICP Neuron Manager info (total staked + maturity across all neurons)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
