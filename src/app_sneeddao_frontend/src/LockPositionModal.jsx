@@ -1,6 +1,5 @@
 // LockPositionModal.jsx
 import React, { useState, useEffect } from 'react';
-import './LockPositionModal.css';
 import ConfirmationModal from './ConfirmationModal';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from './utils/DateUtils';
 import { useTheme } from './contexts/ThemeContext';
@@ -10,6 +9,10 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaSpinner, FaWallet, FaCheck, FaCrown } from 'react-icons/fa';
 
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+
+// Accent colors for lock modal
+const lockPrimary = '#f59e0b';
+const lockSecondary = '#d97706';
 
 function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition, identity, isPremium }) {    
     const { theme } = useTheme();
@@ -185,54 +188,97 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
             left: 0,
             width: '100%',
             height: '100%',
-            background: theme.colors.modalBg,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000
+            zIndex: 1000,
+            padding: '20px',
+            backdropFilter: 'blur(4px)'
         }}>
             <div style={{
-                background: theme.colors.cardGradient,
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${lockPrimary}08 100%)`,
                 border: `1px solid ${theme.colors.border}`,
-                boxShadow: theme.colors.cardShadow,
+                boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${lockPrimary}15`,
                 borderRadius: '16px',
-                padding: '32px',
-                width: '450px',
+                padding: '0',
+                width: '480px',
                 maxWidth: '90vw',
                 maxHeight: '90vh',
-                overflow: 'auto'
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
             }}>
-                <h2 style={{
-                    color: theme.colors.primaryText,
-                    marginTop: '0',
-                    marginBottom: '24px',
-                    fontSize: '1.5rem',
-                    fontWeight: '600'
+                {/* Header */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                    padding: '1.25rem 1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
                 }}>
-                    Lock {liquidityPosition.symbols} #{liquidityPosition.id.toString()}
-                </h2>
+                    <h2 style={{
+                        color: 'white',
+                        margin: 0,
+                        fontSize: '1.2rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                    }}>
+                        🔒 Lock {liquidityPosition.symbols} #{liquidityPosition.id.toString()}
+                    </h2>
+                    <button
+                        onClick={onClose}
+                        disabled={isLoading}
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            fontSize: '1.25rem',
+                            cursor: isLoading ? 'not-allowed' : 'pointer',
+                            color: 'white',
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: isLoading ? 0.5 : 1
+                        }}
+                    >
+                        ×
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
                 
                 {isLoading ? (
                     <div style={{
                         display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         padding: '40px 20px'
                     }}>
                         <div className="spinner" style={{
-                            width: '24px',
-                            height: '24px',
+                            width: '28px',
+                            height: '28px',
                             border: `3px solid ${theme.colors.border}`,
-                            borderTop: `3px solid ${theme.colors.accent}`,
+                            borderTop: `3px solid ${lockPrimary}`,
                             borderRadius: '50%',
-                            animation: 'spin 1s linear infinite'
+                            animation: 'spin 1s linear infinite',
+                            marginBottom: '10px'
                         }}></div>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Processing...</span>
                     </div>
                 ) : (
                     <div>
                         <h3 style={{
                             color: theme.colors.primaryText,
+                            marginTop: 0,
                             marginBottom: '20px',
-                            fontSize: '1.2rem',
+                            fontSize: '1rem',
                             fontWeight: '500'
                         }}>
                             Add New Lock
@@ -381,38 +427,30 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                         <div style={{
                             display: 'flex',
                             gap: '12px',
-                            marginTop: '24px'
+                            marginTop: '20px'
                         }}>
                             <button 
                                 onClick={handleAddLockPosition}
                                 disabled={BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)}
                                 style={{
-                                    flex: '1',
+                                    flex: '2',
                                     background: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
-                                        ? theme.colors.secondaryBg 
-                                        : theme.colors.accent,
+                                        ? theme.colors.tertiaryBg 
+                                        : `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
                                     color: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
                                         ? theme.colors.mutedText 
-                                        : theme.colors.primaryBg,
+                                        : 'white',
                                     border: 'none',
-                                    borderRadius: '8px',
-                                    padding: '12px 24px',
+                                    borderRadius: '10px',
+                                    padding: '14px 24px',
                                     cursor: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
                                         ? 'not-allowed' 
                                         : 'pointer',
                                     fontSize: '0.95rem',
                                     fontWeight: '600',
-                                    transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                    if (!(BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee))) {
-                                        e.target.style.background = theme.colors.accentHover;
-                                    }
-                                }}
-                                onMouseLeave={(e) => {
-                                    if (!(BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee))) {
-                                        e.target.style.background = theme.colors.accent;
-                                    }
+                                    boxShadow: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
+                                        ? 'none' 
+                                        : `0 4px 12px ${lockPrimary}40`
                                 }}
                             >
                                 {BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)
@@ -424,22 +462,13 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                                 style={{
                                     flex: '1',
                                     background: theme.colors.secondaryBg,
-                                    color: theme.colors.mutedText,
+                                    color: theme.colors.primaryText,
                                     border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: '8px',
-                                    padding: '12px 24px',
+                                    borderRadius: '10px',
+                                    padding: '14px 24px',
                                     cursor: 'pointer',
                                     fontSize: '0.95rem',
-                                    fontWeight: '500',
-                                    transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.tertiaryBg;
-                                    e.target.style.color = theme.colors.primaryText;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.secondaryBg;
-                                    e.target.style.color = theme.colors.mutedText;
+                                    fontWeight: '500'
                                 }}
                             >
                                 Close
@@ -447,6 +476,7 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                         </div>
                     </div>
                 )}
+                </div>
             </div>
             <ConfirmationModal
                 show={showConfirmModal}

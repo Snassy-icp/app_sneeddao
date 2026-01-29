@@ -1,14 +1,19 @@
 // WrapUnwrapModal.jsx
 import React, { useState, useEffect } from 'react';
-import './SendTokenModal.css'; // Reuse the same CSS styling
 import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
+import { useTheme } from './contexts/ThemeContext';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
 const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
+// Accent colors 
+const wrapPrimary = '#8b5cf6'; // Purple for wrap/unwrap
+const wrapSecondary = '#7c3aed';
+
 function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) {
+  const { theme } = useTheme();
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -184,54 +189,245 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
     : `${operationType} ${token.symbol} to GLDT`;
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content">
-        <h2>{description}</h2>
-        <label>
-          Amount:
-          <div className="amount-input-container">
-            <input 
-              type="number" 
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            <button className="max-button" onClick={handleSetMax}>MAX</button>
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      padding: '20px',
+      backdropFilter: 'blur(4px)'
+    }}>
+      <div style={{
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${wrapPrimary}08 100%)`,
+        border: `1px solid ${theme.colors.border}`,
+        boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${wrapPrimary}15`,
+        borderRadius: '16px',
+        padding: '0',
+        width: '480px',
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <div style={{
+          background: `linear-gradient(135deg, ${wrapPrimary}, ${wrapSecondary})`,
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <h2 style={{
+            color: 'white',
+            margin: 0,
+            fontSize: '1.2rem',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            🔄 {description}
+          </h2>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              fontSize: '1.25rem',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              color: 'white',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isLoading ? 0.5 : 1,
+              transition: 'all 0.2s ease'
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
+          {/* Amount Input */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              color: theme.colors.primaryText,
+              marginBottom: '8px',
+              fontWeight: '500',
+              fontSize: '0.9rem'
+            }}>
+              Amount:
+            </label>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <input 
+                type="number" 
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background: theme.colors.secondaryBg,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: '10px',
+                  color: theme.colors.primaryText,
+                  fontSize: '0.9rem',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <button 
+                onClick={handleSetMax}
+                style={{
+                  background: `linear-gradient(135deg, ${wrapPrimary}, ${wrapSecondary})`,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: '600'
+                }}
+              >
+                MAX
+              </button>
+            </div>
           </div>
-        </label>
-        
-        {isWrapMode && (
-          <div className="fee-info">
-            <p><strong>Wrapping Process:</strong></p>
-            <p>• Approve call: {formatAmount(token.fee, token.decimals)} {token.symbol} fee</p>
-            <p>• Transfer call: {formatAmount(token.fee, token.decimals)} {token.symbol} fee</p>
-            <p>• Total Cost: {formatAmount(2n * token.fee, token.decimals)} {token.symbol} (all tx fees)</p>
-          </div>
-        )}
-        
-        {isUnwrapMode && gldtToken && (
-          <div className="fee-info">
-            <p><strong>Unwrapping Process:</strong></p>
-            <p>• Transaction Fee: {formatAmount(gldtToken.fee, gldtToken.decimals)} GLDT</p>
-            <p>• Unwrapping Fee: {formatAmount(2n * gldtToken.fee, gldtToken.decimals)} GLDT</p>
-            <p>• Total Cost: {formatAmount(3n * gldtToken.fee, gldtToken.decimals)} GLDT</p>
-          </div>
-        )}
-        
-        {amount && gldtToken && (
-          <div className="expected-result">
-            <p><strong>{calculateExpectedResult()}</strong></p>
-          </div>
-        )}
-        
-        {errorText && <p className="error-text">{errorText}</p>}
-        {isLoading ? (
-            <div className="spinner"></div>
-          ) : (
-            <div className="button-group">
-              <button onClick={handleOperation} disabled={isLoading}>{operationType}</button>
-              <button className="cancel-button" onClick={onClose} disabled={isLoading}>Cancel</button>
+          
+          {/* Fee Info */}
+          {isWrapMode && (
+            <div style={{
+              background: `${wrapPrimary}10`,
+              border: `1px solid ${wrapPrimary}25`,
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '16px',
+              fontSize: '0.85rem'
+            }}>
+              <p style={{ color: theme.colors.primaryText, fontWeight: '600', margin: '0 0 8px 0' }}>Wrapping Process:</p>
+              <p style={{ color: theme.colors.secondaryText, margin: '4px 0' }}>• Approve call: {formatAmount(token.fee, token.decimals)} {token.symbol} fee</p>
+              <p style={{ color: theme.colors.secondaryText, margin: '4px 0' }}>• Transfer call: {formatAmount(token.fee, token.decimals)} {token.symbol} fee</p>
+              <p style={{ color: wrapPrimary, margin: '8px 0 0 0', fontWeight: '600' }}>• Total Cost: {formatAmount(2n * token.fee, token.decimals)} {token.symbol}</p>
             </div>
           )}
+          
+          {isUnwrapMode && gldtToken && (
+            <div style={{
+              background: `${wrapPrimary}10`,
+              border: `1px solid ${wrapPrimary}25`,
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '16px',
+              fontSize: '0.85rem'
+            }}>
+              <p style={{ color: theme.colors.primaryText, fontWeight: '600', margin: '0 0 8px 0' }}>Unwrapping Process:</p>
+              <p style={{ color: theme.colors.secondaryText, margin: '4px 0' }}>• Transaction Fee: {formatAmount(gldtToken.fee, gldtToken.decimals)} GLDT</p>
+              <p style={{ color: theme.colors.secondaryText, margin: '4px 0' }}>• Unwrapping Fee: {formatAmount(2n * gldtToken.fee, gldtToken.decimals)} GLDT</p>
+              <p style={{ color: wrapPrimary, margin: '8px 0 0 0', fontWeight: '600' }}>• Total Cost: {formatAmount(3n * gldtToken.fee, gldtToken.decimals)} GLDT</p>
+            </div>
+          )}
+          
+          {/* Expected Result */}
+          {amount && gldtToken && (
+            <div style={{
+              background: `linear-gradient(135deg, ${wrapPrimary}15 0%, ${wrapSecondary}10 100%)`,
+              border: `1px solid ${wrapPrimary}30`,
+              borderRadius: '12px',
+              padding: '14px 16px',
+              marginBottom: '16px'
+            }}>
+              <p style={{ color: wrapPrimary, fontWeight: '600', margin: 0, fontSize: '0.9rem' }}>
+                {calculateExpectedResult()}
+              </p>
+            </div>
+          )}
+          
+          {/* Error */}
+          {errorText && (
+            <div style={{
+              background: `${theme.colors.error}15`,
+              border: `1px solid ${theme.colors.error}30`,
+              borderRadius: '10px',
+              padding: '12px',
+              marginBottom: '16px',
+              color: theme.colors.error,
+              fontSize: '0.85rem'
+            }}>
+              {errorText}
+            </div>
+          )}
+
+          {/* Buttons */}
+          {isLoading ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px'
+            }}>
+              <div style={{
+                width: '28px',
+                height: '28px',
+                border: `3px solid ${theme.colors.border}`,
+                borderTop: `3px solid ${wrapPrimary}`,
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+                marginBottom: '10px'
+              }}></div>
+              <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Processing...</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+              <button 
+                onClick={handleOperation} 
+                disabled={isLoading}
+                style={{
+                  flex: 2,
+                  background: `linear-gradient(135deg, ${wrapPrimary}, ${wrapSecondary})`,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '14px 24px',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                  fontWeight: '600',
+                  boxShadow: `0 4px 12px ${wrapPrimary}40`
+                }}
+              >
+                {operationType}
+              </button>
+              <button 
+                onClick={onClose} 
+                disabled={isLoading}
+                style={{
+                  flex: 1,
+                  background: theme.colors.secondaryBg,
+                  color: theme.colors.primaryText,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: '10px',
+                  padding: '14px 24px',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <ConfirmationModal
           show={showConfirmModal}

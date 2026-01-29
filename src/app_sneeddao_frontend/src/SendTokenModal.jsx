@@ -17,6 +17,10 @@ import {
   getSubaccountForTransfer
 } from './utils/AccountParser';
 
+// Wallet accent colors
+const walletPrimary = '#10b981';
+const walletSecondary = '#059669';
+
 function SendTokenModal({ show, onClose, onSend, token }) {
   const { theme } = useTheme();
   const [recipient, setRecipient] = useState('');
@@ -299,80 +303,107 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         left: 0,
         width: '100%',
         height: '100%',
-        background: theme.colors.modalBg,
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 1000
+        zIndex: 1000,
+        padding: '20px',
+        backdropFilter: 'blur(4px)'
       }}>
         <div style={{
-          background: theme.colors.cardGradient,
+          background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%)`,
           border: `1px solid ${theme.colors.border}`,
-          boxShadow: theme.colors.cardShadow,
-          borderRadius: '12px',
-          padding: '24px',
-          width: '420px',
+          boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${walletPrimary}15`,
+          borderRadius: '16px',
+          padding: '0',
+          width: '450px',
           maxWidth: '90vw',
           maxHeight: '90vh',
-          overflow: 'auto'
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
         }}>
-          {/* Compact Header */}
-          <div style={{ 
+          {/* Header */}
+          <div style={{
+            background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+            padding: '1rem 1.25rem',
             display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '16px',
-            paddingBottom: '12px',
-            borderBottom: `1px solid ${theme.colors.border}`
+            justifyContent: 'space-between',
+            alignItems: 'center'
           }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: `${theme.colors.accent}20`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: `2px solid ${theme.colors.accent}`,
-              flexShrink: 0
-            }}>
-              {token.logo && logoLoaded ? (
-                <img
-                  src={token.logo}
-                  alt={token.symbol}
-                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'contain' }}
-                />
-              ) : (
-                <span style={{ fontSize: '18px' }}>💸</span>
-              )}
-            </div>
-            <div>
-              <h2 style={{
-                color: theme.colors.primaryText,
-                margin: 0,
-                fontSize: '1.1rem',
-                fontWeight: '600'
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
               }}>
-                Confirm Send
-              </h2>
-              <p style={{
-                color: theme.colors.mutedText,
-                margin: 0,
-                fontSize: '0.75rem'
-              }}>
-                Review before confirming
-              </p>
+                {token.logo && logoLoaded ? (
+                  <img
+                    src={token.logo}
+                    alt={token.symbol}
+                    style={{ width: '22px', height: '22px', borderRadius: '6px', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <span style={{ fontSize: '16px' }}>💸</span>
+                )}
+              </div>
+              <div>
+                <h2 style={{
+                  color: 'white',
+                  margin: 0,
+                  fontSize: '1.1rem',
+                  fontWeight: '600'
+                }}>
+                  Confirm Send
+                </h2>
+                <p style={{
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  margin: 0,
+                  fontSize: '0.75rem'
+                }}>
+                  Review before confirming
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => setShowReviewScreen(false)}
+              disabled={isLoading}
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                border: 'none',
+                fontSize: '1.25rem',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                color: 'white',
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: isLoading ? 0.5 : 1,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              ×
+            </button>
           </div>
+
+          <div style={{ padding: '1.25rem', overflowY: 'auto' }}>
 
           {/* Amount - Compact */}
           <div style={{
             textAlign: 'center',
             marginBottom: '16px',
             padding: '16px',
-            background: `linear-gradient(135deg, ${theme.colors.accent}15 0%, ${theme.colors.accent}05 100%)`,
-            borderRadius: '10px',
-            border: `1px solid ${theme.colors.accent}30`
+            background: `linear-gradient(135deg, ${walletPrimary}15 0%, ${walletSecondary}08 100%)`,
+            borderRadius: '12px',
+            border: `1px solid ${walletPrimary}30`
           }}>
             <div style={{
               fontSize: '1.6rem',
@@ -380,7 +411,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               color: theme.colors.primaryText,
               marginBottom: '2px'
             }}>
-              {reviewData.amount} <span style={{ color: theme.colors.accent }}>{token.symbol}</span>
+              {reviewData.amount} <span style={{ color: walletPrimary }}>{token.symbol}</span>
             </div>
             <div style={{
               color: theme.colors.mutedText,
@@ -539,21 +570,13 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                   flex: 1,
                   padding: '12px 16px',
                   background: theme.colors.secondaryBg,
-                  color: theme.colors.mutedText,
+                  color: theme.colors.primaryText,
                   border: `1px solid ${theme.colors.border}`,
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   cursor: 'pointer',
                   fontSize: '0.9rem',
                   fontWeight: '500',
                   transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.background = theme.colors.tertiaryBg;
-                  e.target.style.color = theme.colors.primaryText;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.background = theme.colors.secondaryBg;
-                  e.target.style.color = theme.colors.mutedText;
                 }}
               >
                 ← Back
@@ -563,26 +586,22 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                 style={{
                   flex: 2,
                   padding: '12px 16px',
-                  background: theme.colors.accent,
-                  color: theme.colors.primaryBg,
+                  background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                  color: 'white',
                   border: 'none',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   cursor: 'pointer',
                   fontSize: '0.9rem',
                   fontWeight: '600',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.background = theme.colors.accentHover;
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.background = theme.colors.accent;
+                  transition: 'all 0.2s ease',
+                  boxShadow: `0 4px 12px ${walletPrimary}40`
                 }}
               >
                 Confirm & Send
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
     );
@@ -596,51 +615,106 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       left: 0,
       width: '100%',
       height: '100%',
-      background: theme.colors.modalBg,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      padding: '20px',
+      backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: theme.colors.cardGradient,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%)`,
         border: `1px solid ${theme.colors.border}`,
-        boxShadow: theme.colors.cardShadow,
+        boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${walletPrimary}15`,
         borderRadius: '16px',
-        padding: '32px',
-        width: '500px',
+        padding: '0',
+        width: '520px',
         maxWidth: '90vw',
         maxHeight: '90vh',
-        overflow: 'auto'
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
       }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '24px' }}>
+        {/* Header */}
+        <div style={{
+          background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+          padding: '1rem 1.25rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {token.logo && logoLoaded ? (
-              <img
-                src={token.logo}
-                alt={`${token.symbol} logo`}
-                style={{ width: '28px', height: '28px', borderRadius: '8px', objectFit: 'contain', background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }}
-              />
-            ) : (
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }} />
-            )}
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {token.logo && logoLoaded ? (
+                <img
+                  src={token.logo}
+                  alt={`${token.symbol} logo`}
+                  style={{ width: '22px', height: '22px', borderRadius: '6px', objectFit: 'contain' }}
+                />
+              ) : (
+                <span style={{ fontSize: '16px' }}>💸</span>
+              )}
+            </div>
             <h2 style={{
-              color: theme.colors.primaryText,
+              color: 'white',
               margin: 0,
-              fontSize: '1.5rem',
+              fontSize: '1.2rem',
               fontWeight: '600'
             }}>
               Send {token.symbol}
             </h2>
           </div>
-
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>Available balance</div>
-            <div style={{ color: theme.colors.primaryText, fontWeight: 700 }}>
-              {formatAmount(token.available ?? token.balance ?? 0n, token.decimals)} {token.symbol}
-            </div>
-          </div>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              fontSize: '1.25rem',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              color: 'white',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isLoading ? 0.5 : 1,
+              transition: 'all 0.2s ease'
+            }}
+          >
+            ×
+          </button>
         </div>
+
+        {/* Content */}
+        <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
+          {/* Balance Info */}
+          <div style={{
+            background: `linear-gradient(135deg, ${walletPrimary}12 0%, ${walletSecondary}08 100%)`,
+            border: `1px solid ${walletPrimary}25`,
+            borderRadius: '12px',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Available balance</span>
+            <span style={{ color: walletPrimary, fontWeight: '700', fontSize: '1rem' }}>
+              {formatAmount(token.available ?? token.balance ?? 0n, token.decimals)} {token.symbol}
+            </span>
+          </div>
 
         <div style={{ marginBottom: '20px' }}>
           <label style={{
@@ -1108,21 +1182,15 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             <button
               onClick={handleSetMax}
               style={{
-                background: theme.colors.accent,
-                color: theme.colors.primaryBg,
+                background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                color: 'white',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '10px',
                 padding: '12px 16px',
                 cursor: 'pointer',
                 fontSize: '0.85rem',
                 fontWeight: '600',
                 transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.accent;
               }}
             >
               MAX
@@ -1157,44 +1225,43 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         {isLoading ? (
           <div style={{
             display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             justifyContent: 'center',
             padding: '20px'
           }}>
             <div className="spinner" style={{
-              width: '24px',
-              height: '24px',
+              width: '28px',
+              height: '28px',
               border: `3px solid ${theme.colors.border}`,
-              borderTop: `3px solid ${theme.colors.accent}`,
+              borderTop: `3px solid ${walletPrimary}`,
               borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
+              animation: 'spin 1s linear infinite',
+              marginBottom: '10px'
             }}></div>
+            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Processing...</span>
           </div>
         ) : (
           <div style={{
             display: 'flex',
             gap: '12px',
-            marginTop: '24px'
+            marginTop: '20px'
           }}>
             <button
               onClick={handleReview}
               disabled={isLoading}
               style={{
-                flex: '1',
-                background: theme.colors.accent,
-                color: theme.colors.primaryBg,
+                flex: '2',
+                background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                color: 'white',
                 border: 'none',
-                borderRadius: '8px',
-                padding: '12px 24px',
+                borderRadius: '10px',
+                padding: '14px 24px',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 fontWeight: '600',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.accent;
+                transition: 'all 0.2s ease',
+                boxShadow: `0 4px 12px ${walletPrimary}40`
               }}
             >
               Review Transaction
@@ -1205,28 +1272,21 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               style={{
                 flex: '1',
                 background: theme.colors.secondaryBg,
-                color: theme.colors.mutedText,
+                color: theme.colors.primaryText,
                 border: `1px solid ${theme.colors.border}`,
-                borderRadius: '8px',
-                padding: '12px 24px',
+                borderRadius: '10px',
+                padding: '14px 24px',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 fontWeight: '500',
                 transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.tertiaryBg;
-                e.target.style.color = theme.colors.primaryText;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.secondaryBg;
-                e.target.style.color = theme.colors.mutedText;
               }}
             >
               Cancel
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

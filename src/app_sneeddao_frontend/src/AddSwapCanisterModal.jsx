@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createIcpSwapFactoryActor, canisterId as factoryCanisterId } from 'declarations/icp_swap_factory';
-import './AddSwapCanisterModal.css';
 import { Principal } from "@dfinity/principal";
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
 import TokenSelector from './components/TokenSelector';
 
 const DEFAULT_FEE = BigInt(3000); // 0.3% fee tier (most common)
+
+// Accent colors
+const walletPrimary = '#10b981';
+const walletSecondary = '#059669';
 
 function AddSwapCanisterModal({ show, onClose, onSubmit }) {
   const { theme } = useTheme();
@@ -148,32 +151,67 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
       left: 0,
       width: '100%',
       height: '100%',
-      background: theme.colors.modalBg,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      padding: '20px',
+      backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: theme.colors.cardGradient,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%)`,
         border: `1px solid ${theme.colors.border}`,
-        boxShadow: theme.colors.cardShadow,
+        boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${walletPrimary}15`,
         borderRadius: '16px',
-        padding: '32px',
-        width: '450px',
+        padding: '0',
+        width: '500px',
         maxWidth: '90vw',
         maxHeight: '90vh',
-        overflow: 'auto'
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
       }}>
-        <h2 style={{
-          color: theme.colors.primaryText,
-          marginTop: '0',
-          marginBottom: '24px',
-          fontSize: '1.5rem',
-          fontWeight: '600'
+        {/* Header */}
+        <div style={{
+          background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          Add Swap Pool Canister
-        </h2>
+          <h2 style={{
+            color: 'white',
+            margin: 0,
+            fontSize: '1.2rem',
+            fontWeight: '600'
+          }}>
+            💱 Add Swap Pool Canister
+          </h2>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              fontSize: '1.25rem',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              color: 'white',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isLoading ? 0.5 : 1
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
 
         {/* Toggle between pair selection and manual input */}
         <div style={{ 
@@ -353,43 +391,41 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
         {isLoading ? (
           <div style={{
             display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             justifyContent: 'center',
             padding: '20px'
           }}>
             <div className="spinner" style={{
-              width: '24px',
-              height: '24px',
+              width: '28px',
+              height: '28px',
               border: `3px solid ${theme.colors.border}`,
-              borderTop: `3px solid ${theme.colors.accent}`,
+              borderTop: `3px solid ${walletPrimary}`,
               borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
+              animation: 'spin 1s linear infinite',
+              marginBottom: '10px'
             }}></div>
+            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Adding...</span>
           </div>
         ) : (
           <div style={{
             display: 'flex',
             gap: '12px',
-            marginTop: '24px'
+            marginTop: '20px'
           }}>
             <button 
               onClick={handleSubmit}
               style={{
-                flex: '1',
-                background: theme.colors.accent,
-                color: theme.colors.primaryBg,
+                flex: '2',
+                background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                color: 'white',
                 border: 'none',
-                borderRadius: '8px',
-                padding: '12px 24px',
+                borderRadius: '10px',
+                padding: '14px 24px',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 fontWeight: '600',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.accent;
+                boxShadow: `0 4px 12px ${walletPrimary}40`
               }}
             >
               Add Swap Pair
@@ -399,28 +435,20 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
               style={{
                 flex: '1',
                 background: theme.colors.secondaryBg,
-                color: theme.colors.mutedText,
+                color: theme.colors.primaryText,
                 border: `1px solid ${theme.colors.border}`,
-                borderRadius: '8px',
-                padding: '12px 24px',
+                borderRadius: '10px',
+                padding: '14px 24px',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
-                fontWeight: '500',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.tertiaryBg;
-                e.target.style.color = theme.colors.primaryText;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.secondaryBg;
-                e.target.style.color = theme.colors.mutedText;
+                fontWeight: '500'
               }}
             >
               Cancel
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

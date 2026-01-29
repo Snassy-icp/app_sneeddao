@@ -6826,56 +6826,106 @@ function Wallet() {
                 )}
 
                 {/* Transfer Neuron Manager Modal */}
-                {transferModalOpen && transferTargetManager && (
+                {transferModalOpen && transferTargetManager && (() => {
+                    const dangerPrimary = '#ef4444';
+                    const dangerSecondary = '#dc2626';
+                    return (
                     <div style={{
                         position: 'fixed',
                         top: 0,
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        backgroundColor: 'rgba(0,0,0,0.75)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         zIndex: 1000,
-                        padding: '20px'
+                        padding: '20px',
+                        backdropFilter: 'blur(4px)'
                     }}>
                         <div style={{
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '12px',
-                            padding: '24px',
+                            background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${dangerPrimary}08 100%)`,
+                            borderRadius: '16px',
+                            padding: '0',
                             maxWidth: '500px',
                             width: '100%',
-                            border: `1px solid ${theme.colors.border}`
+                            border: `1px solid ${theme.colors.border}`,
+                            boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${dangerPrimary}15`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden'
                         }}>
-                            <h3 style={{ 
-                                color: theme.colors.primaryText, 
-                                marginBottom: '8px',
-                                fontSize: '18px'
+                            {/* Header */}
+                            <div style={{
+                                background: `linear-gradient(135deg, ${dangerPrimary}, ${dangerSecondary})`,
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
                             }}>
-                                Transfer Neuron Manager
-                            </h3>
+                                <h3 style={{ 
+                                    color: 'white', 
+                                    margin: 0,
+                                    fontSize: '1.1rem',
+                                    fontWeight: '600'
+                                }}>
+                                    ⚠️ Transfer Neuron Manager
+                                </h3>
+                                <button
+                                    onClick={() => {
+                                        setTransferModalOpen(false);
+                                        setTransferTargetManager(null);
+                                        setTransferRecipient('');
+                                        setTransferError('');
+                                        setTransferSuccess('');
+                                    }}
+                                    disabled={transferring}
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.2)',
+                                        border: 'none',
+                                        fontSize: '1.25rem',
+                                        cursor: transferring ? 'not-allowed' : 'pointer',
+                                        color: 'white',
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '8px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        opacity: transferring ? 0.5 : 1
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div style={{ padding: '1.25rem' }}>
                             <p style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '13px',
-                                marginBottom: '20px'
+                                fontSize: '0.85rem',
+                                marginTop: 0,
+                                marginBottom: '20px',
+                                lineHeight: 1.5
                             }}>
                                 This will transfer full control of the canister to another principal. 
-                                <strong style={{ color: theme.colors.warning || '#f59e0b' }}> You will lose all access.</strong>
+                                <strong style={{ color: dangerPrimary }}> You will lose all access.</strong>
                             </p>
                             
                             <div style={{ marginBottom: '16px' }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '6px', fontWeight: '500', textTransform: 'uppercase' }}>
                                     Canister to Transfer
                                 </div>
                                 <div style={{ 
                                     color: theme.colors.primaryText, 
                                     fontFamily: 'monospace', 
-                                    fontSize: '13px',
-                                    backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
-                                    padding: '10px',
-                                    borderRadius: '6px',
-                                    wordBreak: 'break-all'
+                                    fontSize: '0.85rem',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    padding: '12px',
+                                    borderRadius: '10px',
+                                    wordBreak: 'break-all',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
                                     {transferTargetManager.canisterId.toText()}
                                 </div>
@@ -6884,9 +6934,11 @@ function Wallet() {
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ 
                                     color: theme.colors.mutedText, 
-                                    fontSize: '12px', 
+                                    fontSize: '0.75rem', 
                                     display: 'block', 
-                                    marginBottom: '6px' 
+                                    marginBottom: '6px',
+                                    fontWeight: '500',
+                                    textTransform: 'uppercase'
                                 }}>
                                     Recipient Principal ID
                                 </label>
@@ -6899,11 +6951,11 @@ function Wallet() {
                                     style={{
                                         width: '100%',
                                         padding: '12px',
-                                        borderRadius: '8px',
+                                        borderRadius: '10px',
                                         border: `1px solid ${theme.colors.border}`,
-                                        backgroundColor: theme.colors.primaryBg,
+                                        backgroundColor: theme.colors.secondaryBg,
                                         color: theme.colors.primaryText,
-                                        fontSize: '14px',
+                                        fontSize: '0.9rem',
                                         fontFamily: 'monospace',
                                         boxSizing: 'border-box'
                                     }}
@@ -6912,12 +6964,12 @@ function Wallet() {
                             
                             {transferError && (
                                 <div style={{ 
-                                    backgroundColor: `${theme.colors.error}20`,
-                                    border: `1px solid ${theme.colors.error}`,
+                                    backgroundColor: `${theme.colors.error}15`,
+                                    border: `1px solid ${theme.colors.error}30`,
                                     color: theme.colors.error,
                                     padding: '12px',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.85rem',
                                     marginBottom: '16px'
                                 }}>
                                     {transferError}
@@ -6926,19 +6978,19 @@ function Wallet() {
                             
                             {transferSuccess && (
                                 <div style={{ 
-                                    backgroundColor: `${theme.colors.success || '#22c55e'}20`,
-                                    border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                    backgroundColor: `${theme.colors.success || '#22c55e'}15`,
+                                    border: `1px solid ${theme.colors.success || '#22c55e'}30`,
                                     color: theme.colors.success || '#22c55e',
                                     padding: '12px',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.85rem',
                                     marginBottom: '16px'
                                 }}>
                                     {transferSuccess}
                                 </div>
                             )}
                             
-                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <div style={{ display: 'flex', gap: '12px' }}>
                                 <button
                                     onClick={() => {
                                         setTransferModalOpen(false);
@@ -6949,13 +7001,14 @@ function Wallet() {
                                     }}
                                     disabled={transferring}
                                     style={{
-                                        padding: '10px 20px',
-                                        borderRadius: '8px',
+                                        flex: 1,
+                                        padding: '14px 20px',
+                                        borderRadius: '10px',
                                         border: `1px solid ${theme.colors.border}`,
-                                        backgroundColor: 'transparent',
+                                        backgroundColor: theme.colors.secondaryBg,
                                         color: theme.colors.primaryText,
                                         cursor: transferring ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
+                                        fontSize: '0.95rem',
                                         fontWeight: '500'
                                     }}
                                 >
@@ -6965,75 +7018,134 @@ function Wallet() {
                                     onClick={handleTransferManager}
                                     disabled={transferring || !transferRecipient.trim()}
                                     style={{
-                                        padding: '10px 20px',
-                                        borderRadius: '8px',
+                                        flex: 2,
+                                        padding: '14px 20px',
+                                        borderRadius: '10px',
                                         border: 'none',
-                                        backgroundColor: theme.colors.error || '#ef4444',
-                                        color: '#fff',
+                                        background: (transferring || !transferRecipient.trim()) 
+                                            ? theme.colors.tertiaryBg 
+                                            : `linear-gradient(135deg, ${dangerPrimary}, ${dangerSecondary})`,
+                                        color: (transferring || !transferRecipient.trim()) 
+                                            ? theme.colors.mutedText 
+                                            : 'white',
                                         cursor: (transferring || !transferRecipient.trim()) ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
+                                        fontSize: '0.95rem',
                                         fontWeight: '600',
-                                        opacity: (transferring || !transferRecipient.trim()) ? 0.6 : 1
+                                        boxShadow: (transferring || !transferRecipient.trim()) 
+                                            ? 'none' 
+                                            : `0 4px 12px ${dangerPrimary}40`
                                     }}
                                 >
                                     {transferring ? '⏳ Transferring...' : '⚠️ Transfer Control'}
                                 </button>
                             </div>
+                            </div>
                         </div>
                     </div>
-                )}
+                    );
+                })()}
 
                 {/* Transfer Canister Modal */}
-                {transferCanisterModalOpen && transferTargetCanister && (
+                {transferCanisterModalOpen && transferTargetCanister && (() => {
+                    const dangerPrimary = '#ef4444';
+                    const dangerSecondary = '#dc2626';
+                    return (
                     <div style={{
                         position: 'fixed',
                         top: 0,
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        backgroundColor: 'rgba(0,0,0,0.75)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         zIndex: 1000,
-                        padding: '20px'
+                        padding: '20px',
+                        backdropFilter: 'blur(4px)'
                     }}>
                         <div style={{
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '12px',
-                            padding: '24px',
+                            background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${dangerPrimary}08 100%)`,
+                            borderRadius: '16px',
+                            padding: '0',
                             maxWidth: '500px',
                             width: '100%',
-                            border: `1px solid ${theme.colors.border}`
+                            border: `1px solid ${theme.colors.border}`,
+                            boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${dangerPrimary}15`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden'
                         }}>
-                            <h3 style={{ 
-                                color: theme.colors.primaryText, 
-                                marginBottom: '8px',
-                                fontSize: '18px'
+                            {/* Header */}
+                            <div style={{
+                                background: `linear-gradient(135deg, ${dangerPrimary}, ${dangerSecondary})`,
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
                             }}>
-                                Transfer Canister
-                            </h3>
+                                <h3 style={{ 
+                                    color: 'white', 
+                                    margin: 0,
+                                    fontSize: '1.1rem',
+                                    fontWeight: '600'
+                                }}>
+                                    ⚠️ Transfer Canister
+                                </h3>
+                                <button
+                                    onClick={() => {
+                                        setTransferCanisterModalOpen(false);
+                                        setTransferTargetCanister(null);
+                                        setTransferCanisterRecipient('');
+                                        setTransferCanisterError('');
+                                        setTransferCanisterSuccess('');
+                                    }}
+                                    disabled={transferringCanister}
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.2)',
+                                        border: 'none',
+                                        fontSize: '1.25rem',
+                                        cursor: transferringCanister ? 'not-allowed' : 'pointer',
+                                        color: 'white',
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '8px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        opacity: transferringCanister ? 0.5 : 1
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div style={{ padding: '1.25rem' }}>
                             <p style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '13px',
-                                marginBottom: '20px'
+                                fontSize: '0.85rem',
+                                marginTop: 0,
+                                marginBottom: '20px',
+                                lineHeight: 1.5
                             }}>
                                 This will transfer full control of the canister to another principal. 
-                                <strong style={{ color: theme.colors.warning || '#f59e0b' }}> You will lose all access.</strong>
+                                <strong style={{ color: dangerPrimary }}> You will lose all access.</strong>
                             </p>
                             
                             <div style={{ marginBottom: '16px' }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '6px', fontWeight: '500', textTransform: 'uppercase' }}>
                                     Canister to Transfer
                                 </div>
                                 <div style={{ 
                                     color: theme.colors.primaryText, 
                                     fontFamily: 'monospace', 
-                                    fontSize: '13px',
-                                    backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
-                                    padding: '10px',
-                                    borderRadius: '6px',
-                                    wordBreak: 'break-all'
+                                    fontSize: '0.85rem',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    padding: '12px',
+                                    borderRadius: '10px',
+                                    wordBreak: 'break-all',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
                                     {transferTargetCanister}
                                 </div>
@@ -7042,9 +7154,11 @@ function Wallet() {
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ 
                                     color: theme.colors.mutedText, 
-                                    fontSize: '12px', 
+                                    fontSize: '0.75rem', 
                                     display: 'block', 
-                                    marginBottom: '6px' 
+                                    marginBottom: '6px',
+                                    fontWeight: '500',
+                                    textTransform: 'uppercase'
                                 }}>
                                     Recipient Principal ID
                                 </label>
@@ -7057,11 +7171,11 @@ function Wallet() {
                                     style={{
                                         width: '100%',
                                         padding: '12px',
-                                        borderRadius: '8px',
+                                        borderRadius: '10px',
                                         border: `1px solid ${theme.colors.border}`,
-                                        backgroundColor: theme.colors.primaryBg,
+                                        backgroundColor: theme.colors.secondaryBg,
                                         color: theme.colors.primaryText,
-                                        fontSize: '14px',
+                                        fontSize: '0.9rem',
                                         fontFamily: 'monospace',
                                         boxSizing: 'border-box'
                                     }}
@@ -7070,12 +7184,12 @@ function Wallet() {
                             
                             {transferCanisterError && (
                                 <div style={{ 
-                                    backgroundColor: `${theme.colors.error}20`,
-                                    border: `1px solid ${theme.colors.error}`,
+                                    backgroundColor: `${theme.colors.error}15`,
+                                    border: `1px solid ${theme.colors.error}30`,
                                     color: theme.colors.error,
                                     padding: '12px',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.85rem',
                                     marginBottom: '16px'
                                 }}>
                                     {transferCanisterError}
@@ -7084,19 +7198,19 @@ function Wallet() {
                             
                             {transferCanisterSuccess && (
                                 <div style={{ 
-                                    backgroundColor: `${theme.colors.success || '#22c55e'}20`,
-                                    border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                    backgroundColor: `${theme.colors.success || '#22c55e'}15`,
+                                    border: `1px solid ${theme.colors.success || '#22c55e'}30`,
                                     color: theme.colors.success || '#22c55e',
                                     padding: '12px',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.85rem',
                                     marginBottom: '16px'
                                 }}>
                                     {transferCanisterSuccess}
                                 </div>
                             )}
                             
-                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <div style={{ display: 'flex', gap: '12px' }}>
                                 <button
                                     onClick={() => {
                                         setTransferCanisterModalOpen(false);
@@ -7107,13 +7221,14 @@ function Wallet() {
                                     }}
                                     disabled={transferringCanister}
                                     style={{
-                                        padding: '10px 20px',
-                                        borderRadius: '8px',
+                                        flex: 1,
+                                        padding: '14px 20px',
+                                        borderRadius: '10px',
                                         border: `1px solid ${theme.colors.border}`,
-                                        backgroundColor: 'transparent',
+                                        backgroundColor: theme.colors.secondaryBg,
                                         color: theme.colors.primaryText,
                                         cursor: transferringCanister ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
+                                        fontSize: '0.95rem',
                                         fontWeight: '500'
                                     }}
                                 >
@@ -7123,23 +7238,32 @@ function Wallet() {
                                     onClick={handleCanisterTransfer}
                                     disabled={transferringCanister || !transferCanisterRecipient.trim()}
                                     style={{
-                                        padding: '10px 20px',
-                                        borderRadius: '8px',
+                                        flex: 2,
+                                        padding: '14px 20px',
+                                        borderRadius: '10px',
                                         border: 'none',
-                                        backgroundColor: theme.colors.error || '#ef4444',
-                                        color: '#fff',
+                                        background: (transferringCanister || !transferCanisterRecipient.trim()) 
+                                            ? theme.colors.tertiaryBg 
+                                            : `linear-gradient(135deg, ${dangerPrimary}, ${dangerSecondary})`,
+                                        color: (transferringCanister || !transferCanisterRecipient.trim()) 
+                                            ? theme.colors.mutedText 
+                                            : 'white',
                                         cursor: (transferringCanister || !transferCanisterRecipient.trim()) ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
+                                        fontSize: '0.95rem',
                                         fontWeight: '600',
-                                        opacity: (transferringCanister || !transferCanisterRecipient.trim()) ? 0.6 : 1
+                                        boxShadow: (transferringCanister || !transferCanisterRecipient.trim()) 
+                                            ? 'none' 
+                                            : `0 4px 12px ${dangerPrimary}40`
                                     }}
                                 >
                                     {transferringCanister ? '⏳ Transferring...' : '⚠️ Transfer Control'}
                                 </button>
                             </div>
+                            </div>
                         </div>
                     </div>
-                )}
+                    );
+                })()}
 
                 <AddSwapCanisterModal
                     show={showAddSwapModal}

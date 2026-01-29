@@ -1,10 +1,13 @@
 // SendLiquidityPositionModal.jsx
 import React, { useState, useEffect } from 'react';
-import './SendLiquidityPositionModal.css'; // Create this CSS file for styling
 import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
+
+// Accent colors
+const walletPrimary = '#10b981';
+const walletSecondary = '#059669';
 
 function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }) {
   const { theme } = useTheme();
@@ -72,32 +75,67 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
       left: 0,
       width: '100%',
       height: '100%',
-      background: theme.colors.modalBg,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      padding: '20px',
+      backdropFilter: 'blur(4px)'
     }}>
       <div style={{
-        background: theme.colors.cardGradient,
+        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${walletPrimary}08 100%)`,
         border: `1px solid ${theme.colors.border}`,
-        boxShadow: theme.colors.cardShadow,
+        boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${walletPrimary}15`,
         borderRadius: '16px',
-        padding: '32px',
-        width: '450px',
+        padding: '0',
+        width: '480px',
         maxWidth: '90vw',
         maxHeight: '90vh',
-        overflow: 'auto'
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
       }}>
-        <h2 style={{
-          color: theme.colors.primaryText,
-          marginTop: '0',
-          marginBottom: '24px',
-          fontSize: '1.5rem',
-          fontWeight: '600'
+        {/* Header */}
+        <div style={{
+          background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          {isBackendTransfer ? 'Transfer' : 'Send'} {liquidityPosition.symbols} Position #{liquidityPosition.id.toString()}
-        </h2>
+          <h2 style={{
+            color: 'white',
+            margin: 0,
+            fontSize: '1.1rem',
+            fontWeight: '600'
+          }}>
+            {isBackendTransfer ? '🔄 Transfer' : '📤 Send'} {liquidityPosition.symbols} Position #{liquidityPosition.id.toString()}
+          </h2>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              fontSize: '1.25rem',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              color: 'white',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isLoading ? 0.5 : 1
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
         
         {/* Warning Box for Locked Positions */}
         {isBackendTransfer && (
@@ -170,44 +208,42 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
         {isLoading ? (
           <div style={{
             display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             justifyContent: 'center',
             padding: '20px'
           }}>
             <div className="spinner" style={{
-              width: '24px',
-              height: '24px',
+              width: '28px',
+              height: '28px',
               border: `3px solid ${theme.colors.border}`,
-              borderTop: `3px solid ${theme.colors.accent}`,
+              borderTop: `3px solid ${walletPrimary}`,
               borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
+              animation: 'spin 1s linear infinite',
+              marginBottom: '10px'
             }}></div>
+            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Processing...</span>
           </div>
         ) : (
           <div style={{
             display: 'flex',
             gap: '12px',
-            marginTop: '24px'
+            marginTop: '20px'
           }}>
             <button 
               onClick={handleSend} 
               disabled={isLoading}
               style={{
-                flex: '1',
-                background: theme.colors.accent,
-                color: theme.colors.primaryBg,
+                flex: '2',
+                background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                color: 'white',
                 border: 'none',
-                borderRadius: '8px',
-                padding: '12px 24px',
+                borderRadius: '10px',
+                padding: '14px 24px',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 fontWeight: '600',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.accentHover;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.accent;
+                boxShadow: `0 4px 12px ${walletPrimary}40`
               }}
             >
               {isBackendTransfer ? 'Transfer' : 'Send'}
@@ -218,28 +254,20 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
               style={{
                 flex: '1',
                 background: theme.colors.secondaryBg,
-                color: theme.colors.mutedText,
+                color: theme.colors.primaryText,
                 border: `1px solid ${theme.colors.border}`,
-                borderRadius: '8px',
-                padding: '12px 24px',
+                borderRadius: '10px',
+                padding: '14px 24px',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
-                fontWeight: '500',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = theme.colors.tertiaryBg;
-                e.target.style.color = theme.colors.primaryText;
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = theme.colors.secondaryBg;
-                e.target.style.color = theme.colors.mutedText;
+                fontWeight: '500'
               }}
             >
               Cancel
             </button>
           </div>
         )}
+        </div>
       </div>
       <ConfirmationModal
         show={showConfirmModal}

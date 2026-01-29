@@ -1,6 +1,5 @@
 // LockModal.jsx
 import React, { useState, useEffect } from 'react';
-import './LockModal.css';
 import ConfirmationModal from './ConfirmationModal';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from './utils/DateUtils';
 import { formatAmount } from './utils/StringUtils';
@@ -11,6 +10,10 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaSpinner, FaWallet, FaCheck, FaCrown } from 'react-icons/fa';
 
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+
+// Accent colors for lock modal
+const lockPrimary = '#f59e0b'; // Amber for locking
+const lockSecondary = '#d97706';
 
 function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium }) {
     const { theme } = useTheme();
@@ -229,37 +232,77 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
             left: 0,
             width: '100%',
             height: '100%',
-            background: theme.colors.modalBg,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000
+            zIndex: 1000,
+            padding: '20px',
+            backdropFilter: 'blur(4px)'
         }}>
             <div style={{
-                background: theme.colors.cardGradient,
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${lockPrimary}08 100%)`,
                 border: `1px solid ${theme.colors.border}`,
-                boxShadow: theme.colors.cardShadow,
+                boxShadow: `0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px ${lockPrimary}15`,
                 borderRadius: '16px',
-                padding: '32px',
-                width: '450px',
+                padding: '0',
+                width: '480px',
                 maxWidth: '90vw',
                 maxHeight: '90vh',
-                overflow: 'auto'
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
             }}>
-                <h2 style={{
-                    color: theme.colors.primaryText,
-                    marginTop: '0',
-                    marginBottom: '24px',
-                    fontSize: '1.5rem',
-                    fontWeight: '600'
+                {/* Header */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                    padding: '1.25rem 1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
                 }}>
-                    {token ? `Lock ${token.symbol}` : 'All Lock Details'}
-                </h2>
+                    <h2 style={{
+                        color: 'white',
+                        margin: 0,
+                        fontSize: '1.2rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                    }}>
+                        🔒 {token ? `Lock ${token.symbol}` : 'All Lock Details'}
+                    </h2>
+                    <button
+                        onClick={onClose}
+                        disabled={isLoading}
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            fontSize: '1.25rem',
+                            cursor: isLoading ? 'not-allowed' : 'pointer',
+                            color: 'white',
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: isLoading ? 0.5 : 1,
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        ×
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
 
                 <h3 style={{
                     color: theme.colors.primaryText,
+                    marginTop: 0,
                     marginBottom: '20px',
-                    fontSize: '1.2rem',
+                    fontSize: '1rem',
                     fontWeight: '500'
                 }}>
                     Add New Lock
@@ -320,21 +363,14 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                         <button 
                             onClick={handleSetMax}
                             style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
+                                background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                                color: 'white',
                                 border: 'none',
-                                borderRadius: '8px',
+                                borderRadius: '10px',
                                 padding: '12px 16px',
                                 cursor: 'pointer',
                                 fontSize: '0.85rem',
-                                fontWeight: '600',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = theme.colors.accentHover;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = theme.colors.accent;
+                                fontWeight: '600'
                             }}
                         >
                             MAX
@@ -518,50 +554,44 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                         padding: '20px'
                     }}>
                         <div className="spinner" style={{
-                            width: '24px',
-                            height: '24px',
+                            width: '28px',
+                            height: '28px',
                             border: `3px solid ${theme.colors.border}`,
-                            borderTop: `3px solid ${theme.colors.accent}`,
+                            borderTop: `3px solid ${lockPrimary}`,
                             borderRadius: '50%',
-                            animation: 'spin 1s linear infinite'
+                            animation: 'spin 1s linear infinite',
+                            marginBottom: '10px'
                         }}></div>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Processing...</span>
                     </div>
                 ) : (
                     <div style={{
                         display: 'flex',
                         gap: '12px',
-                        marginTop: '24px'
+                        marginTop: '20px'
                     }}>
                         <button 
                             onClick={handleAddLock}
                             disabled={BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)}
                             style={{
-                                flex: '1',
+                                flex: '2',
                                 background: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
                                     ? theme.colors.tertiaryBg 
-                                    : theme.colors.accent,
+                                    : `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
                                 color: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
                                     ? theme.colors.mutedText 
-                                    : theme.colors.primaryBg,
+                                    : 'white',
                                 border: 'none',
-                                borderRadius: '8px',
-                                padding: '12px 24px',
+                                borderRadius: '10px',
+                                padding: '14px 24px',
                                 cursor: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
                                     ? 'not-allowed' 
                                     : 'pointer',
                                 fontSize: '0.95rem',
                                 fontWeight: '600',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                if (!(BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee))) {
-                                    e.target.style.background = theme.colors.accentHover;
-                                }
-                            }}
-                            onMouseLeave={(e) => {
-                                if (!(BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee))) {
-                                    e.target.style.background = theme.colors.accent;
-                                }
+                                boxShadow: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
+                                    ? 'none' 
+                                    : `0 4px 12px ${lockPrimary}40`
                             }}
                         >
                             {BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee) 
@@ -573,28 +603,20 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                             style={{
                                 flex: '1',
                                 background: theme.colors.secondaryBg,
-                                color: theme.colors.mutedText,
+                                color: theme.colors.primaryText,
                                 border: `1px solid ${theme.colors.border}`,
-                                borderRadius: '8px',
-                                padding: '12px 24px',
+                                borderRadius: '10px',
+                                padding: '14px 24px',
                                 cursor: 'pointer',
                                 fontSize: '0.95rem',
-                                fontWeight: '500',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = theme.colors.tertiaryBg;
-                                e.target.style.color = theme.colors.primaryText;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = theme.colors.secondaryBg;
-                                e.target.style.color = theme.colors.mutedText;
+                                fontWeight: '500'
                             }}
                         >
                             Close
                         </button>
                     </div>
                 )}
+                </div>
             </div>
             <ConfirmationModal
                 show={showConfirmModal}
