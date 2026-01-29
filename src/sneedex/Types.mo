@@ -648,6 +648,8 @@ module {
         notify_on_win : Bool;
         // Notify when an offer you bid on is cancelled
         notify_on_cancellation : Bool;
+        // Notify when you are invited to a private auction
+        notify_on_private_invite : Bool;
     };
     
     // Default notification settings (all enabled)
@@ -658,6 +660,7 @@ module {
         notify_on_expiration = true;
         notify_on_win = true;
         notify_on_cancellation = true;
+        notify_on_private_invite = true;
     };
     
     // ============================================

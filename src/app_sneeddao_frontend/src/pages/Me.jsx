@@ -108,6 +108,7 @@ export default function Me() {
     const [notifyOnExpiration, setNotifyOnExpiration] = useState(true);
     const [notifyOnWin, setNotifyOnWin] = useState(true);
     const [notifyOnCancellation, setNotifyOnCancellation] = useState(true);
+    const [notifyOnPrivateInvite, setNotifyOnPrivateInvite] = useState(true);
     const [loadingNotificationSettings, setLoadingNotificationSettings] = useState(false);
     const [notificationSettingsSaved, setNotificationSettingsSaved] = useState(false);
 
@@ -179,6 +180,7 @@ export default function Me() {
                 setNotifyOnExpiration(settings.notify_on_expiration);
                 setNotifyOnWin(settings.notify_on_win);
                 setNotifyOnCancellation(settings.notify_on_cancellation ?? true);
+                setNotifyOnPrivateInvite(settings.notify_on_private_invite ?? true);
             } catch (err) {
                 console.error('Failed to load notification settings:', err);
                 // Use defaults on error
@@ -204,6 +206,7 @@ export default function Me() {
                 notify_on_expiration: notifyOnExpiration,
                 notify_on_win: notifyOnWin,
                 notify_on_cancellation: notifyOnCancellation,
+                notify_on_private_invite: notifyOnPrivateInvite,
             });
             
             if ('ok' in result) {
@@ -2049,6 +2052,55 @@ export default function Me() {
                                                                 height: '22px',
                                                                 width: '22px',
                                                                 left: notifyOnCancellation ? '25px' : '3px',
+                                                                bottom: '3px',
+                                                                backgroundColor: 'white',
+                                                                transition: '0.3s',
+                                                                borderRadius: '50%',
+                                                            }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+
+                                                {/* Private Auction Invite */}
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    alignItems: 'center',
+                                                    padding: '12px 0',
+                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '14px' }}>
+                                                            🔒 Private Auction Invite
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Notify me when I'm invited to a private auction
+                                                        </div>
+                                                    </div>
+                                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={notifyOnPrivateInvite}
+                                                            onChange={(e) => setNotifyOnPrivateInvite(e.target.checked)}
+                                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            cursor: 'pointer',
+                                                            top: 0,
+                                                            left: 0,
+                                                            right: 0,
+                                                            bottom: 0,
+                                                            backgroundColor: notifyOnPrivateInvite ? theme.colors.accent : theme.colors.border,
+                                                            transition: '0.3s',
+                                                            borderRadius: '28px',
+                                                        }}>
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                content: '',
+                                                                height: '22px',
+                                                                width: '22px',
+                                                                left: notifyOnPrivateInvite ? '25px' : '3px',
                                                                 bottom: '3px',
                                                                 backgroundColor: 'white',
                                                                 transition: '0.3s',

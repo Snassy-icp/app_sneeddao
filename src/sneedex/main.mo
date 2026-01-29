@@ -396,6 +396,40 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
+    // Notify approved bidders that they've been invited to a private auction (fire-and-forget)
+    func notifyPrivateInvite<system>(offer : T.Offer, approvedBidders : [Principal]) {
+        ignore Timer.setTimer<system>(#seconds 0, func() : async () {
+            let (symbol, decimals) = await fetchTokenMetadata(offer.price_token_ledger);
+            let minBidText = switch (offer.min_bid_price) {
+                case (?minBid) { "**Minimum bid:** " # formatTokenAmount(minBid, symbol, decimals) # "\n\n" };
+                case null { "" };
+            };
+            let offerUrl = "/sneedex_offer/" # Nat.toText(offer.id);
+            let subject = "🔒 You've Been Invited to a Private Sneedex Auction #" # Nat.toText(offer.id);
+            
+            // Build list of recipients who have this notification enabled
+            let recipientsBuffer = Buffer.Buffer<Principal>(approvedBidders.size());
+            for (bidder in approvedBidders.vals()) {
+                // Don't notify the creator if they're in the list
+                if (not Principal.equal(bidder, offer.creator)) {
+                    let settings = getUserNotificationSettings(bidder);
+                    if (settings.notify_on_private_invite) {
+                        recipientsBuffer.add(bidder);
+                    };
+                };
+            };
+            
+            let recipients = Buffer.toArray(recipientsBuffer);
+            if (recipients.size() > 0) {
+                let body = "You have been invited to bid on a private Sneedex auction #" # Nat.toText(offer.id) # ".\n\n" #
+                           minBidText #
+                           "This is a private offer and only invited users can participate.\n\n" #
+                           "[View offer](" # offerUrl # ")";
+                await sendNotification(recipients, subject, body);
+            };
+        });
+    };
+    
     // Helper to remove all hotkeys from all neurons in a neuron manager (best effort)
     func removeNeuronManagerHotkeys(canisterId : Principal) : async () {
         try {
@@ -1909,6 +1943,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 
                 // Schedule caching of asset stakes (SNS neurons and neuron managers)
                 scheduleCacheAssetStakes<system>(offerId);
+                
+                // Notify approved bidders of private auction invitation
+                switch (updatedOffer.approved_bidders) {
+                    case (?approvedList) {
+                        if (approvedList.size() > 0) {
+                            notifyPrivateInvite<system>(updatedOffer, approvedList);
+                        };
+                    };
+                    case null {};
+                };
                 
                 #ok();
             };
