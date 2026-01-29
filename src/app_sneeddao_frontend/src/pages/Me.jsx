@@ -45,7 +45,7 @@ import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette } from 'react-icons/fa';
+import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -756,6 +756,7 @@ export default function Me() {
     // Quick navigation items
     const quickNavItems = [
         { icon: <FaWallet size={20} />, label: 'My Wallet', to: '/wallet', color: mePrimary },
+        { icon: <FaGavel size={20} />, label: 'My Trades', to: '/sneedex_my', color: '#6366f1' },
         { icon: <FaComments size={20} />, label: 'My Posts', to: '/posts', color: '#10b981' },
         { icon: <FaCoins size={20} />, label: 'My Tips', to: '/tips', color: '#f59e0b' },
         { icon: <FaEnvelope size={20} />, label: 'My Messages', to: '/sms', color: '#ec4899' },
