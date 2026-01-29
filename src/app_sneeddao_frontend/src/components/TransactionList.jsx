@@ -295,7 +295,11 @@ function TransactionList({
                     throw new Error(response.Err.message);
                 }
 
-                const transactions = response.Ok.transactions;
+                const transactions = response.Ok.transactions.map(tx => ({
+                    ...tx,
+                    // Ensure id is consistently available as a number
+                    txId: tx.id !== undefined ? Number(tx.id) : undefined
+                }));
                 allTxs = [...allTxs, ...transactions];
                 
                 if (transactions.length < FETCH_SIZE) {
@@ -1206,7 +1210,7 @@ function TransactionList({
                                     const toPrincipal = getToPrincipal(tx);
                                     const amount = getTransactionAmount(tx);
                                     const typeInfo = getTypeInfo(txType);
-                                    const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index);
+                                    const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.txId ?? tx.id ?? index);
                                     const isHovered = hoveredRow === index;
 
                                     const txUrl = `/transaction?sns=${snsRootCanisterId}&id=${txId}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`;

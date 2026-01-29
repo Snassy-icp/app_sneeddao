@@ -755,42 +755,39 @@ export default function PrincipalPage() {
         </div>
     );
 
-    // Render icon with SNS logo overlay
+    // Render icon with SNS logo badge in corner (like sneedex_offers)
     const renderOverlappedIcon = (icon, size = 36, iconSize = 16, color = principalPrimary) => (
-        <div style={{ position: 'relative', width: `${size}px`, height: `${size}px` }}>
-            {/* SNS Logo background */}
-            {snsLogo ? (
+        <div style={{ 
+            position: 'relative', 
+            width: `${size}px`, 
+            height: `${size}px`,
+            borderRadius: '10px',
+            background: `linear-gradient(135deg, ${color}30, ${color}15)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: color
+        }}>
+            {/* Main icon */}
+            {icon}
+            {/* SNS Logo badge in corner */}
+            {snsLogo && (
                 <img 
                     src={snsLogo} 
                     alt="" 
                     style={{
                         position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: `${size}px`,
-                        height: `${size}px`,
-                        borderRadius: '10px',
+                        bottom: -3,
+                        right: -3,
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
                         objectFit: 'cover',
-                        opacity: 0.3
+                        border: `2px solid ${theme.colors.secondaryBg}`,
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                     }}
                 />
-            ) : null}
-            {/* Icon foreground */}
-            <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: `${size}px`,
-                height: `${size}px`,
-                borderRadius: '10px',
-                background: snsLogo ? `${color}60` : `linear-gradient(135deg, ${color}30, ${color}15)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: color
-            }}>
-                {icon}
-            </div>
+            )}
         </div>
     );
 
