@@ -75,6 +75,21 @@ const snsPrimary = '#8b5cf6'; // Purple
 const snsSecondary = '#6366f1'; // Indigo
 const snsAccent = '#06b6d4'; // Cyan
 
+// Permission definitions (same as Neuron.jsx)
+const PERMISSION_INFO = {
+    0: { label: 'Unspecified', icon: '❓', description: 'Legacy/unspecified permission' },
+    1: { label: 'Configure Dissolve', icon: '⏱️', description: 'Start/stop dissolving, change delay' },
+    2: { label: 'Manage Principals', icon: '👥', description: 'Add or remove principals' },
+    3: { label: 'Submit Proposals', icon: '📝', description: 'Create and submit proposals' },
+    4: { label: 'Vote', icon: '🗳️', description: 'Vote on proposals (hotkey)' },
+    5: { label: 'Disburse', icon: '💰', description: 'Disburse neuron stake' },
+    6: { label: 'Split', icon: '✂️', description: 'Split into multiple neurons' },
+    7: { label: 'Merge Maturity', icon: '🔗', description: 'Merge maturity into stake' },
+    8: { label: 'Disburse Maturity', icon: '💸', description: 'Disburse maturity' },
+    9: { label: 'Stake Maturity', icon: '🎯', description: 'Stake maturity' },
+    10: { label: 'Manage Voting', icon: '🔐', description: 'Manage followees' }
+};
+
 function Sns() {
     const { identity } = useAuth();
     const { theme } = useTheme();
@@ -103,6 +118,8 @@ function Sns() {
     const [tokenPriceICP, setTokenPriceICP] = useState(null);
     const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
     const [loadingPrice, setLoadingPrice] = useState(false);
+    const [snsPrices, setSnsPrices] = useState(new Map()); // Map of ledger canister ID -> { icp, usd }
+    const [loadingSnsPrices, setLoadingSnsPrices] = useState(new Set()); // Set of ledger IDs currently loading
 
     // Handle window resize for responsive design
     useEffect(() => {
@@ -319,6 +336,48 @@ function Sns() {
             return prev;
         });
     };
+
+    // Load price for a single SNS token
+    const loadSnsPrice = async (ledgerCanisterId) => {
+        if (snsPrices.has(ledgerCanisterId) || loadingSnsPrices.has(ledgerCanisterId)) return;
+
+        setLoadingSnsPrices(prev => new Set([...prev, ledgerCanisterId]));
+
+        try {
+            const [priceICP, priceUSD] = await Promise.all([
+                priceService.getTokenICPPrice(ledgerCanisterId),
+                priceService.getTokenUSDPrice(ledgerCanisterId)
+            ]);
+            setSnsPrices(prev => new Map(prev).set(ledgerCanisterId, { icp: priceICP, usd: priceUSD }));
+        } catch (err) {
+            // Price not available - that's okay, token may not have liquidity
+            setSnsPrices(prev => new Map(prev).set(ledgerCanisterId, { icp: null, usd: null }));
+        } finally {
+            setLoadingSnsPrices(prev => {
+                const next = new Set(prev);
+                next.delete(ledgerCanisterId);
+                return next;
+            });
+        }
+    };
+
+    // Progressive loading of SNS prices
+    useEffect(() => {
+        if (snsList.length === 0) return;
+
+        // Load prices in batches to avoid overwhelming the service
+        const loadPricesProgressively = async () => {
+            for (const sns of snsList) {
+                if (sns.canisters?.ledger) {
+                    // Small delay between requests to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    loadSnsPrice(sns.canisters.ledger);
+                }
+            }
+        };
+
+        loadPricesProgressively();
+    }, [snsList]);
 
     const formatDuration = (nanoseconds) => {
         const seconds = Number(nanoseconds) / 1000000000;
@@ -1008,12 +1067,46 @@ function Sns() {
                                                             </div>
                                                         )}
                                                         <div style={{ 
-                                                            marginTop: '0.5rem', 
-                                                            fontSize: '0.7rem', 
-                                                            color: theme.colors.mutedText,
-                                                            opacity: 0.8
+                                                            marginTop: '0.75rem', 
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            flexWrap: 'wrap',
+                                                            gap: '0.5rem'
                                                         }}>
-                                                            Prices from ICPSwap
+                                                            <span style={{ 
+                                                                fontSize: '0.7rem', 
+                                                                color: theme.colors.mutedText,
+                                                                opacity: 0.8
+                                                            }}>
+                                                                Prices from ICPSwap
+                                                            </span>
+                                                            <a
+                                                                href={`https://app.icpswap.com/info-swap/token/details/${selectedSnsDetails.canisters.ledger}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    color: snsAccent,
+                                                                    textDecoration: 'none',
+                                                                    padding: '4px 10px',
+                                                                    borderRadius: '6px',
+                                                                    background: `${snsAccent}15`,
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                                onMouseOver={(e) => {
+                                                                    e.currentTarget.style.background = `${snsAccent}25`;
+                                                                }}
+                                                                onMouseOut={(e) => {
+                                                                    e.currentTarget.style.background = `${snsAccent}15`;
+                                                                }}
+                                                            >
+                                                                View Price Chart
+                                                                <FaExternalLinkAlt size={10} />
+                                                            </a>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1314,18 +1407,23 @@ function Sns() {
                                                                                     <FaUserCog size={12} />
                                                                                     Grantable Permissions (Hotkeys can have):
                                                                                 </div>
-                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                                                                                     {selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions[0].permissions.map((perm, idx) => {
-                                                                                        const permNames = ['Unspecified', 'Configure Dissolve', 'Manage Principals', 'Submit Proposal', 'Vote', 'Disburse', 'Split', 'Merge Maturity', 'Disburse Maturity', 'Stake Maturity', 'Manage Voting Permission'];
+                                                                                        const permInfo = PERMISSION_INFO[perm];
+                                                                                        if (!permInfo) return null;
                                                                                         return (
                                                                                             <span key={idx} style={{
-                                                                                                background: theme.colors.secondaryBg,
-                                                                                                color: theme.colors.primaryText,
-                                                                                                padding: '4px 8px',
-                                                                                                borderRadius: '6px',
-                                                                                                fontSize: '0.75rem'
-                                                                                            }}>
-                                                                                                {permNames[perm] || `Permission ${perm}`}
+                                                                                                padding: '0.2rem 0.5rem',
+                                                                                                borderRadius: '4px',
+                                                                                                background: `${snsPrimary}15`,
+                                                                                                color: theme.colors.secondaryText,
+                                                                                                fontSize: '0.7rem',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                gap: '0.25rem'
+                                                                                            }} title={permInfo.description}>
+                                                                                                <span>{permInfo.icon}</span>
+                                                                                                <span>{permInfo.label}</span>
                                                                                             </span>
                                                                                         );
                                                                                     })}
@@ -1338,18 +1436,23 @@ function Sns() {
                                                                                     <FaKey size={12} />
                                                                                     Claimer Permissions (New neurons get):
                                                                                 </div>
-                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                                                                                     {selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions[0].permissions.map((perm, idx) => {
-                                                                                        const permNames = ['Unspecified', 'Configure Dissolve', 'Manage Principals', 'Submit Proposal', 'Vote', 'Disburse', 'Split', 'Merge Maturity', 'Disburse Maturity', 'Stake Maturity', 'Manage Voting Permission'];
+                                                                                        const permInfo = PERMISSION_INFO[perm];
+                                                                                        if (!permInfo) return null;
                                                                                         return (
                                                                                             <span key={idx} style={{
-                                                                                                background: theme.colors.secondaryBg,
-                                                                                                color: theme.colors.primaryText,
-                                                                                                padding: '4px 8px',
-                                                                                                borderRadius: '6px',
-                                                                                                fontSize: '0.75rem'
-                                                                                            }}>
-                                                                                                {permNames[perm] || `Permission ${perm}`}
+                                                                                                padding: '0.2rem 0.5rem',
+                                                                                                borderRadius: '4px',
+                                                                                                background: `${snsPrimary}15`,
+                                                                                                color: theme.colors.secondaryText,
+                                                                                                fontSize: '0.7rem',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                gap: '0.25rem'
+                                                                                            }} title={permInfo.description}>
+                                                                                                <span>{permInfo.icon}</span>
+                                                                                                <span>{permInfo.label}</span>
                                                                                             </span>
                                                                                         );
                                                                                     })}
@@ -1684,11 +1787,9 @@ function Sns() {
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {isMobile && (
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
-                                        {isListCollapsed ? 'Show' : 'Hide'}
-                                    </span>
-                                )}
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                    {isListCollapsed ? 'Show' : 'Hide'}
+                                </span>
                                 {isListCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
                             </div>
                         </button>
@@ -1857,6 +1958,39 @@ function Sns() {
                                                         whiteSpace: 'nowrap'
                                                     }}>
                                                         {sns.name}
+                                                    </div>
+                                                    {/* Token Price */}
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        marginTop: '2px',
+                                                        fontSize: '0.75rem'
+                                                    }}>
+                                                        {loadingSnsPrices.has(sns.canisters.ledger) ? (
+                                                            <span style={{ color: theme.colors.mutedText }}>Loading...</span>
+                                                        ) : snsPrices.has(sns.canisters.ledger) && snsPrices.get(sns.canisters.ledger).icp !== null ? (
+                                                            <>
+                                                                <span style={{ color: theme.colors.secondaryText }}>
+                                                                    {snsPrices.get(sns.canisters.ledger).icp < 0.0001 
+                                                                        ? snsPrices.get(sns.canisters.ledger).icp.toExponential(2)
+                                                                        : snsPrices.get(sns.canisters.ledger).icp < 1
+                                                                            ? snsPrices.get(sns.canisters.ledger).icp.toFixed(4)
+                                                                            : snsPrices.get(sns.canisters.ledger).icp.toFixed(2)
+                                                                    } ICP
+                                                                </span>
+                                                                {snsPrices.get(sns.canisters.ledger).usd !== null && (
+                                                                    <span style={{ color: theme.colors.success }}>
+                                                                        ${snsPrices.get(sns.canisters.ledger).usd < 0.01 
+                                                                            ? snsPrices.get(sns.canisters.ledger).usd.toFixed(4)
+                                                                            : snsPrices.get(sns.canisters.ledger).usd.toFixed(2)
+                                                                        }
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        ) : snsPrices.has(sns.canisters.ledger) ? (
+                                                            <span style={{ color: theme.colors.mutedText, fontStyle: 'italic', fontSize: '0.7rem' }}>No price</span>
+                                                        ) : null}
                                                     </div>
                                                 </div>
                                                 {isSelected && (
