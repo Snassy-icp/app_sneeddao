@@ -1022,33 +1022,38 @@ export default function PrincipalPage() {
                                 gap: '1.5rem',
                                 marginBottom: '1.5rem'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
                                     {/* Avatar */}
                                     <div style={{
-                                        width: '64px',
-                                        height: '64px',
-                                        borderRadius: '16px',
+                                        width: '72px',
+                                        height: '72px',
+                                        minWidth: '72px',
+                                        borderRadius: '18px',
                                         background: `linear-gradient(135deg, ${getPrincipalColor(stablePrincipalId.current.toString())}, ${getPrincipalColor(stablePrincipalId.current.toString())}aa)`,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         color: 'white',
-                                        fontSize: '1.5rem',
+                                        fontSize: '1.75rem',
                                         fontWeight: '700',
                                         boxShadow: `0 4px 20px ${getPrincipalColor(stablePrincipalId.current.toString())}40`
                                     }}>
-                                        {principalInfo?.name ? principalInfo.name[0].toUpperCase() : <FaUser size={28} />}
+                                        {(principalInfo?.name || principalInfo?.nickname) 
+                                            ? (principalInfo?.name || principalInfo?.nickname)[0].toUpperCase() 
+                                            : <FaUser size={32} />}
                                     </div>
                                     
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        {/* Public Name */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
                                             <h2 style={{ 
                                                 color: theme.colors.primaryText,
                                                 margin: '0',
                                                 fontSize: '1.5rem',
-                                                fontWeight: '700'
+                                                fontWeight: '700',
+                                                lineHeight: '1.2'
                                             }}>
-                                                {principalInfo?.name || principalInfo?.nickname || 'Anonymous'}
+                                                {principalInfo?.name || 'Anonymous'}
                                             </h2>
                                             {viewedUserIsPremium && !premiumLoading && (
                                                 <PremiumBadge size="small" />
@@ -1058,20 +1063,41 @@ export default function PrincipalPage() {
                                             )}
                                         </div>
                                         
+                                        {/* Private Nickname - only show if different from name */}
+                                        {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.85rem', 
+                                                marginBottom: '8px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}>
+                                                <span style={{ opacity: 0.7 }}>Your nickname:</span>
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    fontWeight: '500',
+                                                    background: `${principalPrimary}15`,
+                                                    padding: '2px 8px',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    {principalInfo.nickname}
+                                                </span>
+                                            </div>
+                                        )}
+                                        
                                         {/* Principal ID with copy */}
                                         <div style={{ 
-                                            display: 'flex', 
+                                            display: 'inline-flex', 
                                             alignItems: 'center', 
                                             gap: '8px',
                                             background: theme.colors.primaryBg,
                                             padding: '6px 12px',
-                                            borderRadius: '8px',
-                                            width: 'fit-content'
+                                            borderRadius: '8px'
                                         }}>
                                             <code style={{ 
                                                 color: theme.colors.secondaryText, 
-                                                fontSize: '0.8rem',
-                                                wordBreak: 'break-all'
+                                                fontSize: '0.8rem'
                                             }}>
                                                 {stablePrincipalId.current.toString().slice(0, 12)}...{stablePrincipalId.current.toString().slice(-8)}
                                             </code>

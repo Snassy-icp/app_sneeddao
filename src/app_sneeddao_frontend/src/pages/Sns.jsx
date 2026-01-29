@@ -1401,8 +1401,10 @@ function Sns() {
                                                         )}
 
                                                         {/* Neuron Permissions - Expandable */}
-                                                        {(selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0] || 
-                                                          selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.[0]) && (
+                                                        {(selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0]?.permissions?.length > 0 || 
+                                                          selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.permissions?.length > 0 ||
+                                                          selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.[0]?.permissions?.length > 0 ||
+                                                          selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.permissions?.length > 0) && (
                                                             <>
                                                                 <button
                                                                     onClick={() => setIsPermissionsExpanded(!isPermissionsExpanded)}
@@ -1438,21 +1440,25 @@ function Sns() {
                                                                         border: `1px solid ${theme.colors.border}`,
                                                                         fontSize: '0.8rem'
                                                                     }}>
-                                                                        {selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0]?.permissions && (
-                                                                            <div style={{ marginBottom: '1rem' }}>
-                                                                                <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                    <FaUserCog size={12} />
-                                                                                    Grantable Permissions (Hotkeys can have):
-                                                                                </div>
-                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                                                                                    {(() => {
-                                                                                        const perms = selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions[0].permissions;
-                                                                                        // Handle different data formats
-                                                                                        const permArray = Array.isArray(perms) ? perms : [];
-                                                                                        return permArray.map((perm, idx) => {
-                                                                                            // Convert BigInt to Number for lookup
-                                                                                            const permNum = typeof perm === 'bigint' ? Number(perm) : Number(perm);
+                                                                        {(() => {
+                                                                            // Handle both data formats like SnsJailbreak does
+                                                                            const grantablePerms = selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.[0]?.permissions || 
+                                                                                                   selectedSnsDetails.nervousSystemParameters.neuron_grantable_permissions?.permissions || [];
+                                                                            if (!grantablePerms || grantablePerms.length === 0) return null;
+                                                                            
+                                                                            return (
+                                                                                <div style={{ marginBottom: '1rem' }}>
+                                                                                    <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                        <FaUserCog size={12} />
+                                                                                        Grantable Permissions (Hotkeys can have):
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                        {grantablePerms.map((perm, idx) => {
+                                                                                            // Convert to number (handles BigInt and regular numbers)
+                                                                                            const permNum = Number(perm);
                                                                                             const permInfo = PERMISSION_INFO[permNum];
+                                                                                            // Skip permission 0 (Unspecified) as it's not useful to display
+                                                                                            if (permNum === 0) return null;
                                                                                             return (
                                                                                                 <span key={idx} style={{
                                                                                                     padding: '0.35rem 0.7rem',
@@ -1467,31 +1473,35 @@ function Sns() {
                                                                                                     gap: '0.4rem',
                                                                                                     cursor: 'default',
                                                                                                     transition: 'all 0.2s ease'
-                                                                                                }} title={permInfo?.description || `Permission ${permNum}`}>
+                                                                                                }} title={permInfo?.description || `Permission type ${permNum}`}>
                                                                                                     <span style={{ fontSize: '0.85rem' }}>{permInfo?.icon || '🔒'}</span>
-                                                                                                    <span>{permInfo?.label || `Permission ${permNum}`}</span>
+                                                                                                    <span>{permInfo?.label || `Type ${permNum}`}</span>
                                                                                                 </span>
                                                                                             );
-                                                                                        });
-                                                                                    })()}
+                                                                                        }).filter(Boolean)}
+                                                                                    </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        )}
-                                                                        {selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.[0]?.permissions && (
-                                                                            <div>
-                                                                                <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                    <FaKey size={12} />
-                                                                                    Claimer Permissions (New neurons get):
-                                                                                </div>
-                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                                                                                    {(() => {
-                                                                                        const perms = selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions[0].permissions;
-                                                                                        // Handle different data formats
-                                                                                        const permArray = Array.isArray(perms) ? perms : [];
-                                                                                        return permArray.map((perm, idx) => {
-                                                                                            // Convert BigInt to Number for lookup
-                                                                                            const permNum = typeof perm === 'bigint' ? Number(perm) : Number(perm);
+                                                                            );
+                                                                        })()}
+                                                                        {(() => {
+                                                                            // Handle both data formats like SnsJailbreak does
+                                                                            const claimerPerms = selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.[0]?.permissions || 
+                                                                                                 selectedSnsDetails.nervousSystemParameters.neuron_claimer_permissions?.permissions || [];
+                                                                            if (!claimerPerms || claimerPerms.length === 0) return null;
+                                                                            
+                                                                            return (
+                                                                                <div>
+                                                                                    <div style={{ color: theme.colors.secondaryText, fontWeight: '600', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                        <FaKey size={12} />
+                                                                                        Claimer Permissions (New neurons get):
+                                                                                    </div>
+                                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                                                        {claimerPerms.map((perm, idx) => {
+                                                                                            // Convert to number (handles BigInt and regular numbers)
+                                                                                            const permNum = Number(perm);
                                                                                             const permInfo = PERMISSION_INFO[permNum];
+                                                                                            // Skip permission 0 (Unspecified) as it's not useful to display
+                                                                                            if (permNum === 0) return null;
                                                                                             return (
                                                                                                 <span key={idx} style={{
                                                                                                     padding: '0.35rem 0.7rem',
@@ -1506,16 +1516,16 @@ function Sns() {
                                                                                                     gap: '0.4rem',
                                                                                                     cursor: 'default',
                                                                                                     transition: 'all 0.2s ease'
-                                                                                                }} title={permInfo?.description || `Permission ${permNum}`}>
+                                                                                                }} title={permInfo?.description || `Permission type ${permNum}`}>
                                                                                                     <span style={{ fontSize: '0.85rem' }}>{permInfo?.icon || '🔒'}</span>
-                                                                                                    <span>{permInfo?.label || `Permission ${permNum}`}</span>
+                                                                                                    <span>{permInfo?.label || `Type ${permNum}`}</span>
                                                                                                 </span>
                                                                                             );
-                                                                                        });
-                                                                                    })()}
+                                                                                        }).filter(Boolean)}
+                                                                                    </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        )}
+                                                                            );
+                                                                        })()}
                                                                     </div>
                                                                 )}
                                                             </>
