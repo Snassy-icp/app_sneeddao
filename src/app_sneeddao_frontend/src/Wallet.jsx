@@ -35,7 +35,7 @@ import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
-import { fetchAndCacheSnsData, getAllSnses, getSnsById } from './utils/SnsUtils';
+import { fetchAndCacheSnsData, getAllSnses, getSnsById, getSnsByLedgerId } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
 import PrincipalInput from './components/PrincipalInput';
@@ -4194,12 +4194,13 @@ function Wallet() {
     };
 
     const handleDisburseMaturity = async (token, neuronIdHex) => {
-        const snsInfo = getSnsById(token.ledger_canister_id?.toString?.());
+        const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+        const snsInfo = getSnsByLedgerId(ledgerId);
         if (!snsInfo) {
-            throw new Error('SNS information not found');
+            throw new Error('SNS information not found for ledger: ' + ledgerId);
         }
 
-        const governanceActor = createSnsGovernanceActor(snsInfo.governance_canister_id, {
+        const governanceActor = createSnsGovernanceActor(snsInfo.canisters.governance, {
             agentOptions: { identity }
         });
 
@@ -5623,6 +5624,52 @@ function Wallet() {
                                             {/* Expanded Section */}
                                             {isExpanded && (
                                                 <div className="card-content">
+                                                    {/* First Row: Transfer button (right-aligned) */}
+                                                    {neuronManagerIsController[canisterId] && (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            justifyContent: 'flex-end',
+                                                            marginBottom: '12px'
+                                                        }}>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setTransferTargetManager(manager);
+                                                                    setTransferRecipient('');
+                                                                    setTransferError('');
+                                                                    setTransferSuccess('');
+                                                                    setTransferModalOpen(true);
+                                                                }}
+                                                                style={{
+                                                                    background: theme.colors.accent,
+                                                                    color: theme.colors.primaryBg,
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    padding: '6px 12px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.85rem',
+                                                                    fontWeight: '500',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.target.style.background = theme.colors.accentHover;
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.target.style.background = theme.colors.accent;
+                                                                }}
+                                                            >
+                                                                <img 
+                                                                    src="send-inverted.png" 
+                                                                    alt="Transfer" 
+                                                                    style={{ width: '14px', height: '14px' }}
+                                                                />
+                                                                Transfer
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    
                                                     {/* Canister Info */}
                                                     <div style={{ 
                                                         padding: '12px 16px',
@@ -5978,30 +6025,6 @@ function Wallet() {
                                                         >
                                                             Manage
                                                         </Link>
-                                                        {/* Transfer - only for controllers */}
-                                                        {neuronManagerIsController[canisterId] && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    setTransferTargetManager(manager);
-                                                                    setTransferRecipient('');
-                                                                    setTransferError('');
-                                                                    setTransferSuccess('');
-                                                                    setTransferModalOpen(true);
-                                                                }}
-                                                                style={{
-                                                                    background: 'transparent',
-                                                                    color: theme.colors.accent,
-                                                                    border: `1px solid ${theme.colors.accent}`,
-                                                                    padding: '8px 16px',
-                                                                    borderRadius: '6px',
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '13px',
-                                                                    fontWeight: '600',
-                                                                }}
-                                                            >
-                                                                Transfer
-                                                            </button>
-                                                        )}
                                                         {/* Top-Up - available for anyone */}
                                                         <button
                                                             onClick={() => {
@@ -6519,6 +6542,53 @@ function Wallet() {
                                             {/* Expanded Section */}
                                             {isExpanded && (
                                                 <div className="card-content">
+                                                    {/* First Row: Transfer button (right-aligned) */}
+                                                    {isController && (
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            justifyContent: 'flex-end',
+                                                            marginBottom: '12px'
+                                                        }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setTransferTargetCanister(canisterId);
+                                                                    setTransferCanisterRecipient('');
+                                                                    setTransferCanisterError('');
+                                                                    setTransferCanisterSuccess('');
+                                                                    setTransferCanisterModalOpen(true);
+                                                                }}
+                                                                style={{
+                                                                    background: theme.colors.accent,
+                                                                    color: theme.colors.primaryBg,
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    padding: '6px 12px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.85rem',
+                                                                    fontWeight: '500',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.target.style.background = theme.colors.accentHover;
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.target.style.background = theme.colors.accent;
+                                                                }}
+                                                            >
+                                                                <img 
+                                                                    src="send-inverted.png" 
+                                                                    alt="Transfer" 
+                                                                    style={{ width: '14px', height: '14px' }}
+                                                                />
+                                                                Transfer
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    
                                                     {/* Canister Info */}
                                                     <div style={{ 
                                                         padding: '12px 16px',
@@ -6592,31 +6662,6 @@ function Wallet() {
                                                         >
                                                             View Details
                                                         </Link>
-                                                        {/* Transfer - only for controllers */}
-                                                        {isController && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setTransferTargetCanister(canisterId);
-                                                                    setTransferCanisterRecipient('');
-                                                                    setTransferCanisterError('');
-                                                                    setTransferCanisterSuccess('');
-                                                                    setTransferCanisterModalOpen(true);
-                                                                }}
-                                                                style={{
-                                                                    background: 'transparent',
-                                                                    color: theme.colors.warning || '#f59e0b',
-                                                                    border: `1px solid ${theme.colors.warning || '#f59e0b'}`,
-                                                                    padding: '8px 16px',
-                                                                    borderRadius: '6px',
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '13px',
-                                                                    fontWeight: '600',
-                                                                }}
-                                                            >
-                                                                Transfer
-                                                            </button>
-                                                        )}
                                                         {/* Top-Up - available for anyone */}
                                                         <button
                                                             onClick={(e) => {

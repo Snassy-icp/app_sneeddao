@@ -276,6 +276,11 @@ export function getSnsById(rootCanisterId) {
     return cachedData?.find(sns => sns.rootCanisterId === rootCanisterId);
 }
 
+export function getSnsByLedgerId(ledgerCanisterId) {
+    const cachedData = getCachedSnsData();
+    return cachedData?.find(sns => sns.canisters?.ledger === ledgerCanisterId);
+}
+
 export function getAllSnses() {
     return getCachedSnsData() || [];
 }
