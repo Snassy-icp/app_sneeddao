@@ -4922,22 +4922,35 @@ function SneedexOffer() {
                                     )}
                                 </div>
                             </div>
-                            <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
-                                <span style={styles.priceLabel}>Time Remaining</span>
-                                <span style={{ 
-                                    ...styles.priceValue, 
-                                    color: isCountdownExpired ? theme.colors.error : 
-                                           (timeRemainingMs !== null && timeRemainingMs < 300000) ? theme.colors.error : // < 5 min = red
-                                           (timeRemainingMs !== null && timeRemainingMs < 3600000) ? theme.colors.warning : // < 1 hour = warning
-                                           theme.colors.warning,
-                                    fontFamily: (timeRemainingMs !== null && timeRemainingMs <= 3600000) ? 'monospace' : 'inherit',
-                                }}>
-                                    <FaClock style={{ marginRight: '8px' }} />
-                                    {timeRemainingMs !== null && timeRemainingMs <= 3600000 
-                                        ? formatCountdown() 
-                                        : formatTimeRemaining(offer.expiration[0])}
-                                </span>
-                            </div>
+                            {/* Only show time remaining for active offers */}
+                            {isActive ? (
+                                <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
+                                    <span style={styles.priceLabel}>Time Remaining</span>
+                                    <span style={{ 
+                                        ...styles.priceValue, 
+                                        color: isCountdownExpired ? theme.colors.error : 
+                                               (timeRemainingMs !== null && timeRemainingMs < 300000) ? theme.colors.error : // < 5 min = red
+                                               (timeRemainingMs !== null && timeRemainingMs < 3600000) ? theme.colors.warning : // < 1 hour = warning
+                                               theme.colors.warning,
+                                        fontFamily: (timeRemainingMs !== null && timeRemainingMs <= 3600000) ? 'monospace' : 'inherit',
+                                    }}>
+                                        <FaClock style={{ marginRight: '8px' }} />
+                                        {timeRemainingMs !== null && timeRemainingMs <= 3600000 
+                                            ? formatCountdown() 
+                                            : formatTimeRemaining(offer.expiration[0])}
+                                    </span>
+                                </div>
+                            ) : (
+                                <div style={{ ...styles.priceRow, borderBottom: offer.approved_bidders?.[0]?.length > 0 ? undefined : 'none' }}>
+                                    <span style={styles.priceLabel}>Status</span>
+                                    <span style={{ 
+                                        ...styles.priceValue, 
+                                        color: theme.colors.mutedText,
+                                    }}>
+                                        {getOfferStateString(offer.state)}
+                                    </span>
+                                </div>
+                            )}
                             
                             {/* Private Offer indicator */}
                             {offer.approved_bidders?.[0]?.length > 0 && (

@@ -15,7 +15,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 import MarkdownBody from '../components/MarkdownBody';
 import TokenIcon from '../components/TokenIcon';
-import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList, FaGavel } from 'react-icons/fa';
+import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList, FaGavel, FaBrain, FaRobot, FaCube, FaCoins, FaClock } from 'react-icons/fa';
 import { createSneedexActor, getAssetDetails, formatAmount, formatTimeRemaining, getOfferStateString } from '../utils/SneedexUtils';
 
 // Accent colors for Feed
@@ -2157,18 +2157,30 @@ function Feed() {
                                                 }}>
                                                     {asset.type === 'SNSNeuron' && (
                                                         <>
-                                                            {snsNeuronLogo ? (
-                                                                <TokenIcon logo={snsNeuronLogo} size={18} borderRadius="4px" />
-                                                            ) : (
-                                                                <span style={{ color: feedPurple }}>🧠</span>
-                                                            )}
-                                                            <span style={{ color: theme.colors.primaryText }}>
-                                                                {snsNeuronInfo?.name || 'SNS'} Neuron
-                                                                {asset.cached_stake_e8s && (
-                                                                    <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
-                                                                        ({formatAmount(asset.cached_stake_e8s)} staked)
-                                                                    </span>
+                                                            <span style={{ position: 'relative', display: 'inline-flex', marginRight: '4px' }}>
+                                                                <FaBrain style={{ color: feedGreen, fontSize: '16px' }} />
+                                                                {snsNeuronLogo && (
+                                                                    <img 
+                                                                        src={snsNeuronLogo} 
+                                                                        alt={snsNeuronInfo?.name || 'SNS'} 
+                                                                        style={{ 
+                                                                            width: 10, 
+                                                                            height: 10, 
+                                                                            borderRadius: '50%',
+                                                                            position: 'absolute',
+                                                                            bottom: -2,
+                                                                            right: -4,
+                                                                            border: `1px solid ${theme.colors.tertiaryBg}`,
+                                                                            background: theme.colors.tertiaryBg,
+                                                                        }}
+                                                                    />
                                                                 )}
+                                                            </span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {asset.cached_stake_e8s 
+                                                                    ? `${formatAmount(asset.cached_stake_e8s)} ${snsNeuronInfo?.symbol || 'Neuron'}`
+                                                                    : `${snsNeuronInfo?.name || 'SNS'} Neuron`
+                                                                }
                                                             </span>
                                                         </>
                                                     )}
@@ -2176,19 +2188,33 @@ function Feed() {
                                                         <>
                                                             {isNeuronManager ? (
                                                                 <>
-                                                                    <TokenIcon logo={ICP_LOGO} size={18} borderRadius="4px" />
+                                                                    <span style={{ position: 'relative', display: 'inline-flex', marginRight: '4px' }}>
+                                                                        <FaRobot style={{ color: theme.colors.accent, fontSize: '16px' }} />
+                                                                        <img 
+                                                                            src={ICP_LOGO} 
+                                                                            alt="ICP" 
+                                                                            style={{ 
+                                                                                width: 10, 
+                                                                                height: 10, 
+                                                                                borderRadius: '50%',
+                                                                                position: 'absolute',
+                                                                                bottom: -2,
+                                                                                right: -4,
+                                                                                border: `1px solid ${theme.colors.tertiaryBg}`,
+                                                                                background: theme.colors.tertiaryBg,
+                                                                            }}
+                                                                        />
+                                                                    </span>
                                                                     <span style={{ color: theme.colors.primaryText }}>
-                                                                        {asset.title || 'ICP Neuron Manager'}
-                                                                        {asset.cached_total_stake_e8s && (
-                                                                            <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
-                                                                                ({formatAmount(asset.cached_total_stake_e8s)} ICP)
-                                                                            </span>
-                                                                        )}
+                                                                        {asset.cached_total_stake_e8s 
+                                                                            ? `${formatAmount(asset.cached_total_stake_e8s)} ICP`
+                                                                            : asset.title || 'ICP Neuron Manager'
+                                                                        }
                                                                     </span>
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    <span style={{ color: feedBlue }}>📦</span>
+                                                                    <FaCube style={{ color: feedBlue, fontSize: '14px' }} />
                                                                     <span style={{ color: theme.colors.primaryText }}>
                                                                         {asset.title || 'Canister'}
                                                                     </span>
@@ -2264,18 +2290,33 @@ function Feed() {
                                                     </span>
                                                 </div>
                                             )}
-                                            {item._expiration && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Ends:</span>
-                                                    <span style={{ 
-                                                        fontSize: '0.85rem', 
-                                                        fontWeight: '500', 
-                                                        color: formatTimeRemaining(item._expiration) === 'Expired' ? '#ef4444' : feedPrimary 
-                                                    }}>
-                                                        {formatTimeRemaining(item._expiration)}
-                                                    </span>
-                                                </div>
-                                            )}
+                                            {(() => {
+                                                const isInactive = item._offerState && 
+                                                    ['Completed', 'Claimed', 'Expired', 'Cancelled', 'Reclaimed'].includes(item._offerState);
+                                                
+                                                if (isInactive) {
+                                                    // Don't show time for inactive auctions
+                                                    return null;
+                                                }
+                                                
+                                                if (item._expiration) {
+                                                    const timeRemaining = formatTimeRemaining(item._expiration);
+                                                    return (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <FaClock size={12} style={{ color: theme.colors.mutedText }} />
+                                                            <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Ends:</span>
+                                                            <span style={{ 
+                                                                fontSize: '0.85rem', 
+                                                                fontWeight: '500', 
+                                                                color: timeRemaining === 'Expired' ? '#ef4444' : feedPrimary 
+                                                            }}>
+                                                                {timeRemaining}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </>
                                     );
                                 })()}

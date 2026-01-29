@@ -2139,26 +2139,49 @@ function SneedexOffers() {
                                     </div>
                                     
                                     <div style={styles.cardFooter}>
-                                        <div style={{
-                                            ...styles.timeInfo,
-                                            color: isOfferPastExpiration(offer.expiration[0]) 
-                                                ? theme.colors.warning 
-                                                : styles.timeInfo?.color
-                                        }}>
-                                            <FaClock />
-                                            {formatTimeRemaining(offer.expiration[0])}
-                                            {isOfferPastExpiration(offer.expiration[0]) && (
-                                                <span style={{ 
-                                                    marginLeft: '6px', 
-                                                    fontSize: '0.75rem',
-                                                    background: `${theme.colors.warning}20`,
-                                                    padding: '2px 6px',
-                                                    borderRadius: '4px'
+                                        {(() => {
+                                            const isInactive = 'Completed' in offer.state || 
+                                                'Claimed' in offer.state || 
+                                                'Expired' in offer.state || 
+                                                'Cancelled' in offer.state || 
+                                                'Reclaimed' in offer.state;
+                                            
+                                            if (isInactive) {
+                                                // Don't show time for inactive offers
+                                                return (
+                                                    <div style={{
+                                                        ...styles.timeInfo,
+                                                        color: theme.colors.mutedText
+                                                    }}>
+                                                        <FaClock />
+                                                        {getOfferStateString(offer.state)}
+                                                    </div>
+                                                );
+                                            }
+                                            
+                                            return (
+                                                <div style={{
+                                                    ...styles.timeInfo,
+                                                    color: isOfferPastExpiration(offer.expiration[0]) 
+                                                        ? theme.colors.warning 
+                                                        : styles.timeInfo?.color
                                                 }}>
-                                                    Action needed
-                                                </span>
-                                            )}
-                                        </div>
+                                                    <FaClock />
+                                                    {formatTimeRemaining(offer.expiration[0])}
+                                                    {isOfferPastExpiration(offer.expiration[0]) && (
+                                                        <span style={{ 
+                                                            marginLeft: '6px', 
+                                                            fontSize: '0.75rem',
+                                                            background: `${theme.colors.warning}20`,
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px'
+                                                        }}>
+                                                            Action needed
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                         <div style={styles.bidInfo}>
                                             <div style={styles.bidCount}>
                                                 {bidInfo.bids?.length || 0} bid{(bidInfo.bids?.length || 0) !== 1 ? 's' : ''}
