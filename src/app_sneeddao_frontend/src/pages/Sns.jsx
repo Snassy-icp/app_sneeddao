@@ -10,7 +10,7 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
 import { formatE8s } from '../utils/NeuronUtils';
-import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck } from 'react-icons/fa';
+import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -91,6 +91,8 @@ function Sns() {
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredCard, setHoveredCard] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
+    const [isListCollapsed, setIsListCollapsed] = useState(false);
+    const [isDetailsCollapsed, setIsDetailsCollapsed] = useState(false);
 
     // Handle window resize for responsive design
     useEffect(() => {
