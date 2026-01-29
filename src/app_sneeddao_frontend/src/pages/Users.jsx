@@ -268,7 +268,8 @@ function Users() {
         
         // Apply owner/hotkey filter
         if (userTypeFilter === 'owners') {
-            filtered = filtered.filter(user => user.ownedNeurons.length > 0);
+            // Filter to users with actual owned stake (not just owned neurons with 0 stake)
+            filtered = filtered.filter(user => user.ownedStake > BigInt(0));
         } else if (userTypeFilter === 'hotkeys') {
             filtered = filtered.filter(user => user.ownedNeurons.length === 0 && user.hotkeyNeurons.length > 0);
         }
@@ -360,12 +361,14 @@ function Users() {
     // Calculate aggregate stats
     const stats = useMemo(() => {
         const uniqueUsers = usersData.length;
+        // Count owners (users with ownedStake > 0)
+        const totalOwners = usersData.filter(u => u.ownedStake > BigInt(0)).length;
         const totalStake = usersData.reduce((sum, u) => {
             // Only count owned stake to avoid double counting
             return sum + u.ownedStake;
         }, BigInt(0));
         
-        return { uniqueUsers, totalStake };
+        return { uniqueUsers, totalOwners, totalStake };
     }, [usersData]);
 
     return (
@@ -447,6 +450,9 @@ function Users() {
                         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
                             <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                                 <span style={{ color: usersPrimary, fontWeight: '600' }}>{stats.uniqueUsers.toLocaleString()}</span> unique users
+                            </div>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <span style={{ color: '#10b981', fontWeight: '600' }}>{stats.totalOwners.toLocaleString()}</span> owners
                             </div>
                             <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                                 <span style={{ color: usersPrimary, fontWeight: '600' }}>{neurons.length.toLocaleString()}</span> neurons loaded
