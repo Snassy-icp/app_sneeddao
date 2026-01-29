@@ -397,7 +397,13 @@ const PrincipalInput = ({
                             <button
                                 type="button"
                                 onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => setShowUsers(!showUsers)}
+                                onClick={() => {
+                                    // If turning off users and canisters would also be off, turn on canisters instead
+                                    if (showUsers && !showCanisters) {
+                                        setShowCanisters(true);
+                                    }
+                                    setShowUsers(!showUsers);
+                                }}
                                 style={{
                                     padding: '5px 8px',
                                     borderRadius: '6px',
@@ -417,7 +423,13 @@ const PrincipalInput = ({
                             <button
                                 type="button"
                                 onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => setShowCanisters(!showCanisters)}
+                                onClick={() => {
+                                    // If turning off canisters and users would also be off, turn on users instead
+                                    if (showCanisters && !showUsers) {
+                                        setShowUsers(true);
+                                    }
+                                    setShowCanisters(!showCanisters);
+                                }}
                                 style={{
                                     padding: '5px 8px',
                                     borderRadius: '6px',
