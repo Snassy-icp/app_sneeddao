@@ -103,7 +103,7 @@ function Sns() {
     const [selectedSnsDetails, setSelectedSnsDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-    const [sortBy, setSortBy] = useState('age-oldest');
+    const [sortBy, setSortBy] = useState('price-high');
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredCard, setHoveredCard] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
@@ -419,7 +419,49 @@ function Sns() {
             return /^[a-zA-Z0-9]/.test(name);
         };
 
-        if (sortBy === 'name-asc') {
+        // Helper to get price for an SNS
+        const getPrice = (sns) => {
+            const priceData = snsPrices.get(sns.canisters?.ledger);
+            return priceData?.usd ?? null;
+        };
+
+        if (sortBy === 'price-high') {
+            return filteredList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+
+                const aPrice = getPrice(a);
+                const bPrice = getPrice(b);
+                
+                // SNSes with prices come first, then sort by price descending
+                if (aPrice !== null && bPrice === null) return -1;
+                if (aPrice === null && bPrice !== null) return 1;
+                if (aPrice === null && bPrice === null) return a.name.localeCompare(b.name);
+                
+                return bPrice - aPrice;
+            });
+        } else if (sortBy === 'price-low') {
+            return filteredList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+
+                const aPrice = getPrice(a);
+                const bPrice = getPrice(b);
+                
+                // SNSes with prices come first, then sort by price ascending
+                if (aPrice !== null && bPrice === null) return -1;
+                if (aPrice === null && bPrice !== null) return 1;
+                if (aPrice === null && bPrice === null) return a.name.localeCompare(b.name);
+                
+                return aPrice - bPrice;
+            });
+        } else if (sortBy === 'name-asc') {
             return filteredList.sort((a, b) => {
                 const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
                 const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
@@ -1856,6 +1898,8 @@ function Sns() {
                                             outline: 'none'
                                         }}
                                     >
+                                        <option value="price-high">Price: High to Low</option>
+                                        <option value="price-low">Price: Low to High</option>
                                         <option value="age-newest">Newest</option>
                                         <option value="age-oldest">Oldest</option>
                                         <option value="name-asc">A-Z</option>

@@ -19,24 +19,79 @@ import TransactionList from '../components/TransactionList';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
+import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.principal-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+    opacity: 0;
+}
+
+.principal-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+}
+
+.principal-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.principal-float {
+    animation: float 4s ease-in-out infinite;
+}
+
+.principal-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Accent colors for the Principal page
+const principalPrimary = '#3b82f6'; // Blue
+const principalSecondary = '#6366f1'; // Indigo
+const principalAccent = '#8b5cf6'; // Purple
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
     if (input.length > 32) return 'Name cannot be longer than 32 characters';
-    // Only allow letters, numbers, spaces, hyphens, underscores, dots, and apostrophes
     const validPattern = /^[a-zA-Z0-9\s\-_.']+$/;
     if (!validPattern.test(input)) {
         return 'Name can only contain letters, numbers, spaces, hyphens (-), underscores (_), dots (.), and apostrophes (\')';
     }
     return '';
 };
-
-const spinKeyframes = `
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-`;
 
 export default function PrincipalPage() {
     const { theme } = useTheme();
@@ -75,14 +130,15 @@ export default function PrincipalPage() {
     const [postsError, setPostsError] = useState(null);
     const [expandedPosts, setExpandedPosts] = useState(new Set());
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
+    const [copiedPrincipal, setCopiedPrincipal] = useState(false);
     
-    // Add search state
+    // Search state
     const [searchInput, setSearchInput] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
     const [searchResults, setSearchResults] = useState([]);
     const [showSearchResults, setShowSearchResults] = useState(false);
     
-    // Keep stable references to dependencies
+    // Stable references
     const stableIdentity = useRef(identity);
     const stablePrincipalId = useRef(null);
     const searchContainerRef = useRef(null);
@@ -107,7 +163,7 @@ export default function PrincipalPage() {
         }
     }, [principalParam]);
 
-    // Add click outside handler for search results
+    // Click outside handler for search results
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
@@ -119,17 +175,13 @@ export default function PrincipalPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Search function that can search by principal ID, name, or nickname
+    // Search function
     const searchPrincipals = async (query) => {
         if (!query.trim()) {
             setSearchResults([]);
             setShowSearchResults(false);
             return;
         }
-
-        console.log('Searching for:', query);
-        console.log('principalNames available:', principalNames ? principalNames.size : 'undefined');
-        console.log('principalNicknames available:', principalNicknames ? principalNicknames.size : 'undefined');
 
         setSearchLoading(true);
         try {
@@ -146,10 +198,8 @@ export default function PrincipalPage() {
                 });
             }
 
-            // Search through cached names and nicknames only if they exist
+            // Search through cached names and nicknames
             if (principalNames && principalNicknames) {
-                console.log('Searching through cached data...');
-                // Search through principal names
                 for (const [principalId, name] of principalNames.entries()) {
                     if (name.toLowerCase().includes(searchLower)) {
                         const score = name.toLowerCase() === searchLower ? 100 : 
@@ -164,7 +214,6 @@ export default function PrincipalPage() {
                     }
                 }
 
-                // Search through principal nicknames
                 for (const [principalId, nickname] of principalNicknames.entries()) {
                     if (nickname.toLowerCase().includes(searchLower)) {
                         const score = nickname.toLowerCase() === searchLower ? 95 : 
@@ -178,8 +227,6 @@ export default function PrincipalPage() {
                         });
                     }
                 }
-            } else {
-                console.log('principalNames or principalNicknames not available yet');
             }
 
             // Remove duplicates and sort by score
@@ -191,12 +238,10 @@ export default function PrincipalPage() {
                 return acc;
             }, []);
 
-            // Sort by score (highest first) and limit to 10 results
             const sortedResults = uniqueResults
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 10);
 
-            console.log('Search results:', sortedResults);
             setSearchResults(sortedResults);
             setShowSearchResults(sortedResults.length > 0);
         } catch (error) {
@@ -234,7 +279,6 @@ export default function PrincipalPage() {
         e.preventDefault();
         if (searchInput.trim()) {
             try {
-                // Validate principal ID
                 Principal.fromText(searchInput.trim());
                 setSearchParams({ id: searchInput.trim() });
                 setShowSearchResults(false);
@@ -258,10 +302,7 @@ export default function PrincipalPage() {
             }
 
             try {
-                // Always fetch public name, even when not logged in
                 const nameResponse = await getPrincipalName(null, stablePrincipalId.current);
-                console.log("NAME RESPONSE", nameResponse, stablePrincipalId.current);
-                // Only fetch nickname if user is logged in
                 let nicknameResponse = null;
                 if (identity) {
                     nicknameResponse = await getPrincipalNickname(identity, stablePrincipalId.current);
@@ -327,7 +368,6 @@ export default function PrincipalPage() {
                 if (mounted) {
                     setNeurons(relevantNeurons);
 
-                    // Get token symbol - we can do this anonymously
                     const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
                         agentOptions: { agent: new HttpAgent() }
                     });
@@ -360,9 +400,7 @@ export default function PrincipalPage() {
 
             const uniquePrincipals = new Set();
             neurons.forEach(neuron => {
-                // Add owner principals
                 getOwnerPrincipals(neuron).forEach(p => uniquePrincipals.add(p));
-                // Add all principals with permissions
                 neuron.permissions.forEach(p => {
                     if (p.principal) uniquePrincipals.add(p.principal.toString());
                 });
@@ -380,10 +418,10 @@ export default function PrincipalPage() {
         fetchPrincipalInfo();
     }, [neurons, principalNames, principalNicknames]);
 
-    // Add effect to auto-expand neurons section if there are neurons
+    // Auto-expand neurons section if there are neurons
     useEffect(() => {
         if (neurons.length > 0) {
-            setIsNeuronsCollapsed(false);  // Auto-expand if neurons exist
+            setIsNeuronsCollapsed(false);
         }
     }, [neurons]);
 
@@ -396,7 +434,6 @@ export default function PrincipalPage() {
 
         if (!nameInput.trim()) return;
 
-        // Show confirmation dialog
         setConfirmAction(() => async () => {
             setIsSubmitting(true);
             try {
@@ -444,7 +481,6 @@ export default function PrincipalPage() {
         try {
             const response = await setPrincipalNickname(identity, stablePrincipalId.current, nicknameInput);
             if ('ok' in response) {
-                // Fetch the updated nickname to ensure consistency
                 const nicknameResponse = await getPrincipalNickname(identity, stablePrincipalId.current);
                 setPrincipalInfo(prev => ({
                     ...prev,
@@ -475,14 +511,10 @@ export default function PrincipalPage() {
             const forumActor = createForumActor(identity);
             const targetPrincipal = stablePrincipalId.current;
             
-            // Fetch posts and threads separately
             const [postsData, threadsData] = await Promise.all([
                 getPostsByUser(forumActor, targetPrincipal),
                 getThreadsByUser(forumActor, targetPrincipal)
             ]);
-            
-            console.log('User posts:', postsData);
-            console.log('User threads:', threadsData);
             
             setUserPosts(postsData || []);
             setUserThreads(threadsData || []);
@@ -495,14 +527,13 @@ export default function PrincipalPage() {
         }
     }, [identity, createForumActor]);
 
-    // Fetch post counts for threads asynchronously (non-blocking)
+    // Fetch post counts for threads asynchronously
     const fetchThreadPostCounts = useCallback(async (threads) => {
         if (!identity || !createForumActor || !threads.length) return;
         
         try {
             const forumActor = createForumActor(identity);
             
-            // Fetch post counts for each thread in parallel
             const countPromises = threads.map(async (thread) => {
                 try {
                     const posts = await getPostsByThread(forumActor, thread.id);
@@ -515,7 +546,6 @@ export default function PrincipalPage() {
             
             const results = await Promise.all(countPromises);
             
-            // Update the post counts map
             const newCounts = new Map();
             results.forEach(({ threadId, count }) => {
                 newCounts.set(threadId.toString(), count);
@@ -542,20 +572,17 @@ export default function PrincipalPage() {
         }
     }, [userThreads, fetchThreadPostCounts]);
 
-    // Format vote scores (from e8s to tokens with up to 8 decimals)
+    // Format vote scores
     const formatScore = (score) => {
-        // Convert BigInt to Number first, then convert from e8s (divide by 10^8)
         const numericScore = typeof score === 'bigint' ? Number(score) : Number(score);
         const scoreInTokens = numericScore / 100000000;
         
         if (scoreInTokens >= 1 || scoreInTokens <= -1) {
-            // For values >= 1 or <= -1, show up to 2 decimal places
             return scoreInTokens.toLocaleString('en-US', {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 2
             });
         } else {
-            // For values < 1, show up to 8 decimal places, removing trailing zeros
             return scoreInTokens.toLocaleString('en-US', {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 8
@@ -563,87 +590,237 @@ export default function PrincipalPage() {
         }
     };
 
+    // Copy principal to clipboard
+    const copyPrincipal = async () => {
+        if (!stablePrincipalId.current) return;
+        try {
+            await navigator.clipboard.writeText(stablePrincipalId.current.toString());
+            setCopiedPrincipal(true);
+            setTimeout(() => setCopiedPrincipal(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy:', err);
+        }
+    };
+
+    // Render search section
+    const renderSearchSection = () => (
+        <div 
+            ref={searchContainerRef}
+            className="principal-card-animate"
+            style={{ 
+                background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${principalPrimary}10 100%)`,
+                borderRadius: '16px',
+                padding: '1.5rem',
+                marginBottom: '1.5rem',
+                border: `1px solid ${theme.colors.border}`,
+                position: 'relative',
+                animationDelay: '0.1s'
+            }}
+        >
+            <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '1rem',
+                flexWrap: 'wrap',
+                gap: '1rem'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '10px',
+                        background: `linear-gradient(135deg, ${principalPrimary}30, ${principalSecondary}20)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: principalPrimary
+                    }}>
+                        <FaSearch size={18} />
+                    </div>
+                    <h2 style={{ 
+                        color: theme.colors.primaryText,
+                        margin: '0',
+                        fontSize: '1.25rem',
+                        fontWeight: '600'
+                    }}>
+                        Search Principal
+                    </h2>
+                </div>
+                {identity && (
+                    <button
+                        onClick={() => {
+                            const myPrincipal = identity.getPrincipal().toString();
+                            setSearchParams({ id: myPrincipal });
+                            setSearchInput(myPrincipal);
+                            setShowSearchResults(false);
+                        }}
+                        style={{
+                            background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '10px',
+                            padding: '10px 16px',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: `0 4px 15px ${theme.colors.success}40`,
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        <FaUser size={14} />
+                        My Principal
+                    </button>
+                )}
+            </div>
+            <div style={{ maxWidth: '600px' }}>
+                <PrincipalInput
+                    value={searchInput}
+                    onChange={(value) => {
+                        setSearchInput(value);
+                        if (value.trim()) {
+                            try {
+                                Principal.fromText(value.trim());
+                                setSearchParams({ id: value.trim() });
+                                setShowSearchResults(false);
+                            } catch (e) {
+                                // Invalid principal, let user continue typing
+                            }
+                        }
+                    }}
+                    placeholder="Enter principal ID or search by name"
+                    isAuthenticated={isAuthenticated}
+                />
+            </div>
+        </div>
+    );
+
+    // Render collapsible section header
+    const renderSectionHeader = (title, icon, isCollapsed, onToggle, count = null, color = principalPrimary) => (
+        <button
+            onClick={onToggle}
+            style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '1rem 1.25rem',
+                background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${color}10 100%)`,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: isCollapsed ? '16px' : '16px 16px 0 0',
+                cursor: 'pointer',
+                color: theme.colors.primaryText,
+                transition: 'all 0.2s ease'
+            }}
+        >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: `linear-gradient(135deg, ${color}30, ${color}15)`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: color
+                }}>
+                    {icon}
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontWeight: '600', fontSize: '1rem' }}>{title}</div>
+                    {count !== null && (
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                            {count} item{count !== 1 ? 's' : ''}
+                        </div>
+                    )}
+                </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                    {isCollapsed ? 'Show' : 'Hide'}
+                </span>
+                {isCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
+            </div>
+        </button>
+    );
+
+    // No principal selected view
     if (!stablePrincipalId.current) {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header showSnsDropdown={true} />
-                <main className="wallet-container">
-                    {/* Search Section */}
-                    <div 
-                        ref={searchContainerRef}
-                        style={{ 
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '8px',
-                            padding: '20px',
-                            marginBottom: '20px',
-                            border: `1px solid ${theme.colors.border}`,
-                            position: 'relative'
-                        }}
-                    >
-                        <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
+                <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${principalPrimary}15 50%, ${principalSecondary}10 100%)`,
+                        borderRadius: '24px',
+                        padding: '3rem 2rem',
+                        marginBottom: '2rem',
+                        border: `1px solid ${theme.colors.border}`,
+                        position: 'relative',
+                        overflow: 'hidden',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            top: '-50%',
+                            right: '-10%',
+                            width: '400px',
+                            height: '400px',
+                            background: `radial-gradient(circle, ${principalPrimary}20 0%, transparent 70%)`,
+                            borderRadius: '50%',
+                            pointerEvents: 'none'
+                        }} />
+                        
+                        <div className="principal-float" style={{
+                            width: '80px',
+                            height: '80px',
+                            borderRadius: '20px',
+                            background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                            display: 'flex',
                             alignItems: 'center',
-                            marginBottom: '15px'
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem auto',
+                            boxShadow: `0 8px 30px ${principalPrimary}40`
                         }}>
-                            <h2 style={{ 
-                                color: theme.colors.primaryText,
-                                margin: '0',
-                                fontSize: '18px',
-                                fontWeight: '500'
-                            }}>
-                                Search Principal
-                            </h2>
-                            {identity && (
-                                <button
-                                    onClick={() => {
-                                        const myPrincipal = identity.getPrincipal().toString();
-                                        setSearchParams({ id: myPrincipal });
-                                        setSearchInput(myPrincipal);
-                                        setShowSearchResults(false);
-                                    }}
-                                    style={{
-                                        backgroundColor: theme.colors.success,
-                                        color: theme.colors.primaryText,
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '14px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                    }}
-                                >
-                                    👤 My Principal
-                                </button>
-                            )}
-                        </div>
-                        <div style={{ maxWidth: '600px' }}>
-                            <PrincipalInput
-                                value={searchInput}
-                                onChange={(value) => {
-                                    setSearchInput(value);
-                                    if (value.trim()) {
-                                        try {
-                                            Principal.fromText(value.trim());
-                                            // Valid principal, navigate immediately
-                                            setSearchParams({ id: value.trim() });
-                                            setShowSearchResults(false);
-                                        } catch (e) {
-                                            // Invalid principal, let user continue typing or use dropdown
-                                        }
-                                    }
-                                }}
-                                placeholder="Enter principal ID or search by name"
-                                isAuthenticated={isAuthenticated}
-                            />
+                            <FaUser size={36} color="white" />
                         </div>
 
+                        <h1 style={{
+                            fontSize: 'clamp(1.75rem, 4vw, 2.5rem)',
+                            color: theme.colors.primaryText,
+                            marginBottom: '1rem',
+                            fontWeight: '700'
+                        }}>
+                            Principal Explorer
+                        </h1>
+
+                        <p style={{
+                            color: theme.colors.secondaryText,
+                            fontSize: '1.1rem',
+                            maxWidth: '600px',
+                            margin: '0 auto 1.5rem auto',
+                            lineHeight: '1.6'
+                        }}>
+                            Search for any principal to view their profile, neurons, posts, and transaction history.
+                        </p>
                     </div>
 
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>No Principal Selected</h1>
+                    {renderSearchSection()}
+
+                    <div style={{
+                        textAlign: 'center',
+                        padding: '3rem',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '16px',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        <FaSearch size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem', opacity: 0.5 }} />
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem', fontSize: '1.25rem' }}>No Principal Selected</h2>
                         <p style={{ color: theme.colors.mutedText }}>Use the search box above to find a principal.</p>
                     </div>
                 </main>
@@ -653,919 +830,832 @@ export default function PrincipalPage() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header showSnsDropdown={true} />
-            <main className="wallet-container">
-                {/* Search Section */}
-                <div 
-                    ref={searchContainerRef}
+            <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+                {renderSearchSection()}
+
+                {/* Principal Profile Card */}
+                <div
+                    className="principal-card-animate"
                     style={{ 
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        padding: '20px',
-                        marginBottom: '20px',
+                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${principalPrimary}08 100%)`,
+                        borderRadius: '20px',
+                        padding: '2rem',
+                        marginBottom: '1.5rem',
                         border: `1px solid ${theme.colors.border}`,
-                        position: 'relative'
+                        position: 'relative',
+                        overflow: 'hidden',
+                        animationDelay: '0.2s'
                     }}
                 >
-                    <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        marginBottom: '15px'
-                    }}>
-                        <h2 style={{ 
-                            color: theme.colors.primaryText,
-                            margin: '0',
-                            fontSize: '18px',
-                            fontWeight: '500'
-                        }}>
-                            Search Principal
-                        </h2>
-                        {identity && (
-                            <button
-                                onClick={() => {
-                                    const myPrincipal = identity.getPrincipal().toString();
-                                    setSearchParams({ id: myPrincipal });
-                                    setSearchInput(myPrincipal);
-                                    setShowSearchResults(false);
-                                }}
-                                style={{
-                                    backgroundColor: theme.colors.success,
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}
-                            >
-                                👤 My Principal
-                            </button>
-                        )}
-                    </div>
-                    <div style={{ maxWidth: '600px' }}>
-                        <PrincipalInput
-                            value={searchInput}
-                            onChange={(value) => {
-                                setSearchInput(value);
-                                if (value.trim()) {
-                                    try {
-                                        Principal.fromText(value.trim());
-                                        // Valid principal, navigate immediately
-                                        setSearchParams({ id: value.trim() });
-                                        setShowSearchResults(false);
-                                    } catch (e) {
-                                        // Invalid principal, let user continue typing or use dropdown
-                                    }
-                                }
-                            }}
-                            placeholder="Enter principal ID or search by name"
-                            isAuthenticated={isAuthenticated}
-                        />
-                    </div>
+                    {/* Background decoration */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-30%',
+                        right: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${principalPrimary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
 
-                </div>
-
-                {!stablePrincipalId.current ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>No Principal Selected</h1>
-                        <p style={{ color: theme.colors.mutedText }}>Use the search box above to find a principal.</p>
-                    </div>
-                ) : (
-                    <>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                            <div className="principal-spin" style={{
+                                width: '40px',
+                                height: '40px',
+                                border: `3px solid ${theme.colors.border}`,
+                                borderTopColor: principalPrimary,
+                                borderRadius: '50%',
+                                margin: '0 auto 1rem'
+                            }} />
+                            Loading profile...
+                        </div>
+                    ) : error ? (
                         <div style={{ 
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '8px',
-                            padding: '20px',
-                            marginBottom: '30px',
-                            border: `1px solid ${theme.colors.border}`
+                            background: `${theme.colors.error}15`,
+                            border: `1px solid ${theme.colors.error}40`,
+                            color: theme.colors.error,
+                            padding: '1rem',
+                            borderRadius: '12px'
                         }}>
-                            {loading ? (
-                                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                    Loading...
-                                </div>
-                            ) : error ? (
-                                <div style={{ 
-                                    backgroundColor: `${theme.colors.error}20`, 
-                                    border: `1px solid ${theme.colors.error}`,
-                                    color: theme.colors.error,
-                                    padding: '15px',
-                                    borderRadius: '6px',
-                                    marginBottom: '20px'
-                                }}>
-                                    {error}
-                                </div>
-                            ) : (
-                                <>
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'flex-start',
-                                        flexWrap: 'wrap',
-                                        gap: '15px',
-                                        marginBottom: '15px'
+                            {error}
+                        </div>
+                    ) : (
+                        <div style={{ position: 'relative', zIndex: 1 }}>
+                            {/* Profile Header */}
+                            <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'flex-start',
+                                flexWrap: 'wrap',
+                                gap: '1.5rem',
+                                marginBottom: '1.5rem'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    {/* Avatar */}
+                                    <div style={{
+                                        width: '64px',
+                                        height: '64px',
+                                        borderRadius: '16px',
+                                        background: `linear-gradient(135deg, ${getPrincipalColor(stablePrincipalId.current.toString())}, ${getPrincipalColor(stablePrincipalId.current.toString())}aa)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white',
+                                        fontSize: '1.5rem',
+                                        fontWeight: '700',
+                                        boxShadow: `0 4px 20px ${getPrincipalColor(stablePrincipalId.current.toString())}40`
                                     }}>
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
-                                                <h2 style={{ 
-                                                    color: theme.colors.primaryText,
-                                                    margin: '0',
-                                                    fontSize: '18px',
-                                                    fontWeight: '500'
-                                                }}>
-                                                    User Details
-                                                </h2>
-                                                {viewedUserIsPremium && !premiumLoading && (
-                                                    <PremiumBadge size="small" />
-                                                )}
-                                            </div>
-                                            <PrincipalDisplay 
-                                                principal={stablePrincipalId.current}
-                                                displayInfo={{
-                                                    name: principalInfo?.name,
-                                                    nickname: principalInfo?.nickname,
-                                                    isVerified: principalInfo?.isVerified
-                                                }}
-                                                style={{
-                                                    fontSize: '16px'
-                                                }}
-                                                isAuthenticated={isAuthenticated}
-                                            />
+                                        {principalInfo?.name ? principalInfo.name[0].toUpperCase() : <FaUser size={28} />}
+                                    </div>
+                                    
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                                            <h2 style={{ 
+                                                color: theme.colors.primaryText,
+                                                margin: '0',
+                                                fontSize: '1.5rem',
+                                                fontWeight: '700'
+                                            }}>
+                                                {principalInfo?.name || principalInfo?.nickname || 'Anonymous'}
+                                            </h2>
+                                            {viewedUserIsPremium && !premiumLoading && (
+                                                <PremiumBadge size="small" />
+                                            )}
+                                            {principalInfo?.isVerified && (
+                                                <FaCheckCircle size={16} color={theme.colors.success} title="Verified" />
+                                            )}
                                         </div>
+                                        
+                                        {/* Principal ID with copy */}
                                         <div style={{ 
                                             display: 'flex', 
+                                            alignItems: 'center', 
                                             gap: '8px',
-                                            flexWrap: 'wrap',
-                                            alignItems: 'center'
+                                            background: theme.colors.primaryBg,
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            width: 'fit-content'
                                         }}>
-                                            {!editingName && !editingNickname && (
-                                                <>
-                                                    <button
-                                                        onClick={() => setEditingNickname(true)}
-                                                        style={{
-                                                            backgroundColor: theme.colors.mutedText,
-                                                            color: theme.colors.primaryText,
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            padding: '8px 12px',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        {principalInfo?.nickname ? 'Change Nickname' : 'Set Nickname'}
-                                                    </button>
-                                                    {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() ? (
-                                                        <button
-                                                            onClick={() => setEditingName(true)}
-                                                            style={{
-                                                                                                                                    backgroundColor: theme.colors.accent,
-                                                                    color: theme.colors.primaryText,
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                padding: '8px 12px',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            {principalInfo?.name ? 'Change Name' : 'Set Name'}
-                                                        </button>
-                                                    ) : (
-                                                        identity && (
-                                                            <button
-                                                                onClick={() => {
-                                                                    // Navigate to SMS with recipient pre-filled
-                                                                    const recipientPrincipal = stablePrincipalId.current.toString();
-                                                                    navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
-                                                                }}
-                                                                style={{
-                                                                    backgroundColor: theme.colors.success,
-                                                                    color: theme.colors.primaryText,
-                                                                    border: 'none',
-                                                                    borderRadius: '4px',
-                                                                    padding: '8px 12px',
-                                                                    cursor: 'pointer'
-                                                                }}
-                                                            >
-                                                                💬 Send Message
-                                                            </button>
-                                                        )
-                                                    )}
-                                                </>
-                                            )}
+                                            <code style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.8rem',
+                                                wordBreak: 'break-all'
+                                            }}>
+                                                {stablePrincipalId.current.toString().slice(0, 12)}...{stablePrincipalId.current.toString().slice(-8)}
+                                            </code>
+                                            <button
+                                                onClick={copyPrincipal}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    color: copiedPrincipal ? theme.colors.success : theme.colors.mutedText,
+                                                    padding: '4px',
+                                                    display: 'flex',
+                                                    alignItems: 'center'
+                                                }}
+                                                title="Copy principal ID"
+                                            >
+                                                {copiedPrincipal ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                                            </button>
                                         </div>
                                     </div>
+                                </div>
 
-                                    {editingName && (
-                                        <div style={{ 
-                                            marginTop: '20px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '10px'
-                                        }}>
-                                            <div>
-                                                <input
-                                                    type="text"
-                                                    value={nameInput}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.value;
-                                                        setNameInput(newValue);
-                                                        setInputError(validateNameInput(newValue));
-                                                    }}
-                                                    maxLength={32}
-                                                    placeholder="Enter public name (max 32 chars)"
-                                                    style={{
-                                                        backgroundColor: theme.colors.tertiaryBg,
-                                                        border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
-                                                        borderRadius: '4px',
-                                                        color: theme.colors.primaryText,
-                                                        padding: '8px',
-                                                        width: '100%'
-                                                    }}
-                                                />
-                                                {inputError && (
-                                                    <div style={{
-                                                        color: theme.colors.error,
-                                                        fontSize: '12px',
-                                                        marginTop: '4px'
-                                                    }}>
-                                                        {inputError}
-                                                    </div>
-                                                )}
-                                                <div style={{
-                                                    color: theme.colors.mutedText,
-                                                    fontSize: '12px',
-                                                    marginTop: '4px'
-                                                }}>
-                                                    Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
-                                                </div>
-                                            </div>
-                                            <div style={{
-                                                display: 'flex',
-                                                gap: '8px',
-                                                justifyContent: 'flex-end'
-                                            }}>
+                                {/* Action Buttons */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '0.5rem',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    {!editingName && !editingNickname && (
+                                        <>
+                                            <button
+                                                onClick={() => setEditingNickname(true)}
+                                                style={{
+                                                    background: theme.colors.primaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '10px',
+                                                    padding: '10px 16px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.9rem',
+                                                    fontWeight: '500',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                <FaPen size={12} />
+                                                {principalInfo?.nickname ? 'Edit Nickname' : 'Set Nickname'}
+                                            </button>
+                                            {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() ? (
                                                 <button
-                                                    onClick={handleNameSubmit}
-                                                    disabled={isSubmitting}
+                                                    onClick={() => setEditingName(true)}
                                                     style={{
-                                                                                                                            backgroundColor: theme.colors.accent,
-                                                                    color: theme.colors.primaryText,
+                                                        background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                                                        color: 'white',
                                                         border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '8px 12px',
-                                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                        opacity: isSubmitting ? 0.7 : 1,
+                                                        borderRadius: '10px',
+                                                        padding: '10px 16px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.9rem',
+                                                        fontWeight: '600',
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '6px'
+                                                        gap: '8px',
+                                                        boxShadow: `0 4px 15px ${principalPrimary}40`
                                                     }}
                                                 >
-                                                    {isSubmitting ? (
-                                                        <>
-                                                            <span style={{ 
-                                                                display: 'inline-block',
-                                                                animation: 'spin 1s linear infinite',
-                                                                fontSize: '14px'
-                                                            }}>⟳</span>
-                                                            Setting...
-                                                        </>
-                                                    ) : (
-                                                        'Set Name'
-                                                    )}
+                                                    <FaEdit size={12} />
+                                                    {principalInfo?.name ? 'Change Name' : 'Set Name'}
                                                 </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingName(false);
-                                                        setNameInput('');
-                                                        setInputError('');
-                                                    }}
-                                                    disabled={isSubmitting}
-                                                    style={{
-                                                        backgroundColor: theme.colors.error,
-                                                        color: theme.colors.primaryText,
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '8px 12px',
-                                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                        opacity: isSubmitting ? 0.7 : 1
-                                                    }}
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {editingNickname && (
-                                        <div style={{ 
-                                            marginTop: '20px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '10px'
-                                        }}>
-                                            <div>
-                                                <input
-                                                    type="text"
-                                                    value={nicknameInput}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.value;
-                                                        setNicknameInput(newValue);
-                                                        setNicknameError(validateNameInput(newValue));
-                                                    }}
-                                                    maxLength={32}
-                                                    placeholder="Enter private nickname (max 32 chars)"
-                                                    style={{
-                                                        backgroundColor: theme.colors.tertiaryBg,
-                                                        border: `1px solid ${nicknameError ? theme.colors.error : theme.colors.border}`,
-                                                        borderRadius: '4px',
-                                                        color: theme.colors.primaryText,
-                                                        padding: '8px',
-                                                        width: '100%'
-                                                    }}
-                                                />
-                                                {nicknameError && (
-                                                    <div style={{
-                                                        color: theme.colors.error,
-                                                        fontSize: '12px',
-                                                        marginTop: '4px'
-                                                    }}>
-                                                        {nicknameError}
-                                                    </div>
-                                                )}
-                                                <div style={{
-                                                    color: theme.colors.mutedText,
-                                                    fontSize: '12px',
-                                                    marginTop: '4px'
-                                                }}>
-                                                    Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
-                                                </div>
-                                            </div>
-                                            <div style={{
-                                                display: 'flex',
-                                                gap: '8px',
-                                                justifyContent: 'flex-end'
-                                            }}>
-                                                <button
-                                                    onClick={handleNicknameSubmit}
-                                                    disabled={isSubmittingNickname}
-                                                    style={{
-                                                        backgroundColor: '#95a5a6',
-                                                        color: theme.colors.primaryText,
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '8px 12px',
-                                                        cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
-                                                        opacity: isSubmittingNickname ? 0.7 : 1,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px'
-                                                    }}
-                                                >
-                                                    {isSubmittingNickname ? (
-                                                        <>
-                                                            <span style={{ 
-                                                                display: 'inline-block',
-                                                                animation: 'spin 1s linear infinite',
-                                                                fontSize: '14px'
-                                                            }}>⟳</span>
-                                                            Setting...
-                                                        </>
-                                                    ) : (
-                                                        'Set Nickname'
-                                                    )}
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingNickname(false);
-                                                        setNicknameInput('');
-                                                        setNicknameError('');
-                                                    }}
-                                                    disabled={isSubmittingNickname}
-                                                    style={{
-                                                        backgroundColor: theme.colors.error,
-                                                        color: theme.colors.primaryText,
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '8px 12px',
-                                                        cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
-                                                        opacity: isSubmittingNickname ? 0.7 : 1
-                                                    }}
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-
-                        {/* Posts & Threads Section */}
-                        <div style={{ 
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '8px',
-                            padding: '20px',
-                            marginBottom: '30px',
-                            border: `1px solid ${theme.colors.border}`
-                        }}>
-                            <div 
-                                style={{ 
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    marginBottom: isPostsCollapsed ? 0 : '20px'
-                                }}
-                                onClick={() => setIsPostsCollapsed(!isPostsCollapsed)}
-                            >
-                                <span style={{
-                                    fontSize: '18px',
-                                    color: theme.colors.mutedText,
-                                    transition: 'transform 0.2s',
-                                    transform: isPostsCollapsed ? 'rotate(-90deg)' : 'none'
-                                }}>
-                                    ▼
-                                </span>
-                                <h2 style={{ 
-                                    color: theme.colors.primaryText,
-                                    fontSize: '18px',
-                                    fontWeight: '500',
-                                    margin: 0
-                                }}>
-                                    Posts & Threads
-                                </h2>
-                            </div>
-
-                            {!isPostsCollapsed && (
-                                <>
-                                    {/* Tab Navigation */}
-                                    <div style={{
-                                        display: 'flex',
-                                        borderBottom: `1px solid ${theme.colors.border}`,
-                                        marginBottom: '20px'
-                                    }}>
-                                        <button
-                                            onClick={() => setPostsActiveTab('posts')}
-                                            style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: postsActiveTab === 'posts' ? theme.colors.accent : theme.colors.mutedText,
-                                                fontSize: '16px',
-                                                fontWeight: '500',
-                                                padding: '10px 20px',
-                                                cursor: 'pointer',
-                                                borderBottom: postsActiveTab === 'posts' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-                                                transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            Posts ({userPosts.length})
-                                        </button>
-                                        <button
-                                            onClick={() => setPostsActiveTab('threads')}
-                                            style={{
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                color: postsActiveTab === 'threads' ? theme.colors.accent : theme.colors.mutedText,
-                                                fontSize: '16px',
-                                                fontWeight: '500',
-                                                padding: '10px 20px',
-                                                cursor: 'pointer',
-                                                borderBottom: postsActiveTab === 'threads' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-                                                transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            Threads ({userThreads.length})
-                                        </button>
-                                    </div>
-
-                                    {/* Content */}
-                                    {loadingPosts ? (
-                                        <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                            Loading posts...
-                                        </div>
-                                    ) : postsError ? (
-                                        <div style={{ 
-                                            backgroundColor: `${theme.colors.error}20`, 
-                                            border: `1px solid ${theme.colors.error}`,
-                                            color: theme.colors.error,
-                                            padding: '15px',
-                                            borderRadius: '6px',
-                                            marginBottom: '20px'
-                                        }}>
-                                            Error: {postsError}
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            {postsActiveTab === 'posts' ? (
-                                                userPosts.length === 0 ? (
-                                                    <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                                        No posts found
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                        {userPosts.map((post) => {
-                                                            const isExpanded = expandedPosts.has(post.id);
-                                                            const shouldTruncate = post.body && post.body.length > 300;
-                                                            const displayBody = shouldTruncate && !isExpanded 
-                                                                ? post.body.substring(0, 300) + '...' 
-                                                                : post.body;
-
-                                                            const toggleExpanded = (postId) => {
-                                                                setExpandedPosts(prev => {
-                                                                    const newSet = new Set(prev);
-                                                                    if (newSet.has(postId)) {
-                                                                        newSet.delete(postId);
-                                                                    } else {
-                                                                        newSet.add(postId);
-                                                                    }
-                                                                    return newSet;
-                                                                });
-                                                            };
-
-                                                            return (
-                                                                <div key={post.id} style={{
-                                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                                    border: `1px solid ${theme.colors.border}`,
-                                                                    borderRadius: '6px',
-                                                                    padding: '15px'
-                                                                }}>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                                                                        <Link 
-                                                                            to={`/post?postid=${post.id}`}
-                                                                            style={{
-                                                                                color: theme.colors.accent,
-                                                                                textDecoration: 'none',
-                                                                                fontWeight: '600',
-                                                                                fontSize: '14px',
-                                                                                padding: '2px 4px',
-                                                                                borderRadius: '3px',
-                                                                                backgroundColor: 'rgba(60, 99, 130, 0.1)',
-                                                                                border: '1px solid rgba(60, 99, 130, 0.3)'
-                                                                            }}
-                                                                            onMouseEnter={(e) => {
-                                                                                e.target.style.textDecoration = 'underline';
-                                                                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.2)';
-                                                                            }}
-                                                                            onMouseLeave={(e) => {
-                                                                                e.target.style.textDecoration = 'none';
-                                                                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
-                                                                            }}
-                                                                        >
-                                                                            #{Number(post.id)}
-                                                                        </Link>
-                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', textAlign: 'right' }}>
-                                                                            {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
-                                                                            <br />
-                                                                            <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? theme.colors.success : theme.colors.error }}>
-                                                                                {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{formatScore(Number(post.upvote_score) - Number(post.downvote_score))}
-                                                                            </span>
-                                                                            {' '}
-                                                                            <span style={{ color: theme.colors.mutedText }}>
-                                                                                (↑{formatScore(post.upvote_score)} ↓{formatScore(post.downvote_score)})
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                    {post.title && post.title.length > 0 && (
-                                                                        <div style={{ 
-                                                                            color: theme.colors.primaryText, 
-                                                                            fontSize: '16px',
-                                                                            fontWeight: '500',
-                                                                            marginBottom: '10px'
-                                                                        }}>
-                                                                            {post.title[0]}
-                                                                        </div>
-                                                                    )}
-                                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '14px', lineHeight: '1.5' }}>
-                                                                        <MarkdownBody text={displayBody} style={{ fontSize: '14px' }} />
-                                                                        {shouldTruncate && (
-                                                                            <button
-                                                                                onClick={() => toggleExpanded(post.id)}
-                                                                                style={{
-                                                                                    background: 'none',
-                                                                                    border: 'none',
-                                                                                    color: theme.colors.accent,
-                                                                                    cursor: 'pointer',
-                                                                                    fontSize: '14px',
-                                                                                    marginLeft: '5px',
-                                                                                    textDecoration: 'underline'
-                                                                                }}
-                                                                            >
-                                                                                {isExpanded ? 'Show Less' : 'Show More'}
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )
                                             ) : (
-                                                userThreads.length === 0 ? (
-                                                    <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                                        No threads found
-                                                    </div>
-                                                ) : (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                        {userThreads.map((thread) => {
-                                                            const isExpanded = expandedPosts.has(`thread-${thread.id}`);
-                                                            const shouldTruncate = thread.body && thread.body.length > 300;
-                                                            const displayBody = shouldTruncate && !isExpanded 
-                                                                ? thread.body.substring(0, 300) + '...' 
-                                                                : thread.body;
-
-                                                            const toggleExpanded = (threadId) => {
-                                                                setExpandedPosts(prev => {
-                                                                    const newSet = new Set(prev);
-                                                                    if (newSet.has(threadId)) {
-                                                                        newSet.delete(threadId);
-                                                                    } else {
-                                                                        newSet.add(threadId);
-                                                                    }
-                                                                    return newSet;
-                                                                });
-                                                            };
-
-                                                            return (
-                                                                <div key={thread.id} style={{
-                                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                                    border: `1px solid ${theme.colors.border}`,
-                                                                    borderRadius: '6px',
-                                                                    padding: '15px'
-                                                                }}>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                            <Link 
-                                                                                to={`/thread?threadid=${thread.id}`}
-                                                                                style={{
-                                                                                    color: theme.colors.accent,
-                                                                                    textDecoration: 'none',
-                                                                                    fontWeight: '600',
-                                                                                    fontSize: '14px',
-                                                                                    padding: '2px 4px',
-                                                                                    borderRadius: '3px',
-                                                                                    backgroundColor: 'rgba(60, 99, 130, 0.1)',
-                                                                                    border: '1px solid rgba(60, 99, 130, 0.3)'
-                                                                                }}
-                                                                                onMouseEnter={(e) => {
-                                                                                    e.target.style.textDecoration = 'underline';
-                                                                                    e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.2)';
-                                                                                }}
-                                                                                onMouseLeave={(e) => {
-                                                                                    e.target.style.textDecoration = 'none';
-                                                                                    e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
-                                                                                }}
-                                                                            >
-                                                                                Thread #{Number(thread.id)}
-                                                                            </Link>
-                                                                            <span style={{ color: theme.colors.success, fontSize: '12px' }}>Created</span>
-                                                                        </div>
-                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', textAlign: 'right' }}>
-                                                                            {new Date(Number(thread.created_at) / 1000000).toLocaleDateString()}
-                                                                            <br />
-                                                                            {(() => {
-                                                                                const postCount = threadPostCounts.get(thread.id.toString());
-                                                                                return postCount !== undefined ? (
-                                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
-                                                                                        {postCount} post{postCount !== 1 ? 's' : ''}
-                                                                                    </span>
-                                                                                ) : (
-                                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '10px', fontStyle: 'italic' }}>
-                                                                                        Loading...
-                                                                                    </span>
-                                                                                );
-                                                                            })()}
-                                                                        </div>
-                                                                    </div>
-                                                                    {thread.title && (
-                                                                        <div style={{ 
-                                                                            color: theme.colors.primaryText, 
-                                                                            fontSize: '16px',
-                                                                            fontWeight: '500',
-                                                                            marginBottom: '10px'
-                                                                        }}>
-                                                                            {thread.title}
-                                                                        </div>
-                                                                    )}
-                                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '14px', lineHeight: '1.5' }}>
-                                                                        <MarkdownBody text={displayBody} style={{ fontSize: '14px' }} />
-                                                                        {shouldTruncate && (
-                                                                            <button
-                                                                                onClick={() => toggleExpanded(`thread-${thread.id}`)}
-                                                                                style={{
-                                                                                    background: 'none',
-                                                                                    border: 'none',
-                                                                                    color: theme.colors.accent,
-                                                                                    cursor: 'pointer',
-                                                                                    fontSize: '14px',
-                                                                                    marginLeft: '5px',
-                                                                                    textDecoration: 'underline'
-                                                                                }}
-                                                                            >
-                                                                                {isExpanded ? 'Show Less' : 'Show More'}
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )
-                                            )}
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-
-                        <div style={{ 
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '8px',
-                            padding: '20px',
-                            marginBottom: '30px',
-                            border: `1px solid ${theme.colors.border}`
-                        }}>
-                            <div 
-                                style={{ 
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    marginBottom: isNeuronsCollapsed ? 0 : '20px'
-                                }}
-                                onClick={() => setIsNeuronsCollapsed(!isNeuronsCollapsed)}
-                            >
-                                <span style={{
-                                    fontSize: '18px',
-                                    color: theme.colors.mutedText,
-                                    transition: 'transform 0.2s',
-                                    transform: isNeuronsCollapsed ? 'rotate(-90deg)' : 'none'
-                                }}>
-                                    ▼
-                                </span>
-                                <h2 style={{ 
-                                    color: theme.colors.primaryText,
-                                    fontSize: '18px',
-                                    fontWeight: '500',
-                                    margin: 0
-                                }}>
-                                    Hotkeyed Neurons
-                                </h2>
-                            </div>
-
-                            {!isNeuronsCollapsed && (
-                                <>
-                                    {loadingNeurons ? (
-                                        <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                            Loading neurons...
-                                        </div>
-                                    ) : neuronError ? (
-                                        <div style={{ 
-                                            backgroundColor: `${theme.colors.error}20`, 
-                                            border: `1px solid ${theme.colors.error}`,
-                                            color: theme.colors.error,
-                                            padding: '15px',
-                                            borderRadius: '6px',
-                                            marginBottom: '20px'
-                                        }}>
-                                            {neuronError}
-                                        </div>
-                                    ) : neurons.length === 0 ? (
-                                        <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
-                                            No neurons found where this principal is a hotkey.
-                                        </div>
-                                    ) : (
-                                        <div style={{ 
-                                            display: 'grid',
-                                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                                            gap: '20px'
-                                        }}>
-                                            {neurons.map((neuron) => {
-                                                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-                                                if (!neuronId) return null;
-
-                                                return (
-                                                    <div
-                                                        key={neuronId}
+                                                identity && (
+                                                    <button
+                                                        onClick={() => {
+                                                            const recipientPrincipal = stablePrincipalId.current.toString();
+                                                            navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                                                        }}
                                                         style={{
-                                                            backgroundColor: theme.colors.tertiaryBg,
-                                                            borderRadius: '8px',
-                                                            padding: '20px',
-                                                            border: `1px solid ${theme.colors.border}`
+                                                            background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            borderRadius: '10px',
+                                                            padding: '10px 16px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.9rem',
+                                                            fontWeight: '600',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            boxShadow: `0 4px 15px ${theme.colors.success}40`
                                                         }}
                                                     >
-                                                        <div style={{ marginBottom: '15px' }}>
-                                                            <div style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'flex-start',
-                                                                gap: '8px',
-                                                                marginBottom: '10px',
-                                                                flexWrap: 'wrap'
-                                                            }}>
-                                                                {formatNeuronIdLink(neuronId, searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT)}
-                                                            </div>
-                                                        </div>
+                                                        <FaEnvelope size={12} />
+                                                        Send Message
+                                                    </button>
+                                                )
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
 
-                                                        <div style={{ marginBottom: '20px' }}>
-                                                            <div style={{ 
-                                                                fontSize: '24px',
-                                                                fontWeight: 'bold',
-                                                                color: theme.colors.accent
-                                                            }}>
-                                                                {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                                                            </div>
-                                                        </div>
+                            {/* Nickname Editing Form */}
+                            {editingNickname && (
+                                <div style={{ 
+                                    background: theme.colors.primaryBg,
+                                    borderRadius: '12px',
+                                    padding: '1.25rem',
+                                    marginTop: '1rem'
+                                }}>
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '6px', display: 'block' }}>
+                                            Private Nickname (only visible to you)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={nicknameInput}
+                                            onChange={(e) => {
+                                                setNicknameInput(e.target.value);
+                                                setNicknameError(validateNameInput(e.target.value));
+                                            }}
+                                            maxLength={32}
+                                            placeholder="Enter private nickname (max 32 chars)"
+                                            style={{
+                                                width: '100%',
+                                                background: theme.colors.secondaryBg,
+                                                border: `1px solid ${nicknameError ? theme.colors.error : theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                color: theme.colors.primaryText,
+                                                padding: '10px 14px',
+                                                fontSize: '0.95rem',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                        {nicknameError && (
+                                            <div style={{ color: theme.colors.error, fontSize: '0.8rem', marginTop: '6px' }}>
+                                                {nicknameError}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                        <button
+                                            onClick={() => {
+                                                setEditingNickname(false);
+                                                setNicknameInput('');
+                                                setNicknameError('');
+                                            }}
+                                            style={{
+                                                background: theme.colors.secondaryBg,
+                                                color: theme.colors.primaryText,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                padding: '8px 16px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.9rem'
+                                            }}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleNicknameSubmit}
+                                            disabled={isSubmittingNickname || nicknameError}
+                                            style={{
+                                                background: principalPrimary,
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                padding: '8px 16px',
+                                                cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600',
+                                                opacity: isSubmittingNickname ? 0.7 : 1
+                                            }}
+                                        >
+                                            {isSubmittingNickname ? 'Saving...' : 'Save Nickname'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
-                                                        <div style={{ 
-                                                            display: 'grid',
-                                                            gridTemplateColumns: '1fr 1fr',
-                                                            gap: '15px',
-                                                            fontSize: '14px'
+                            {/* Name Editing Form */}
+                            {editingName && (
+                                <div style={{ 
+                                    background: theme.colors.primaryBg,
+                                    borderRadius: '12px',
+                                    padding: '1.25rem',
+                                    marginTop: '1rem'
+                                }}>
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '6px', display: 'block' }}>
+                                            Public Name (visible to everyone)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={nameInput}
+                                            onChange={(e) => {
+                                                setNameInput(e.target.value);
+                                                setInputError(validateNameInput(e.target.value));
+                                            }}
+                                            maxLength={32}
+                                            placeholder="Enter public name (max 32 chars)"
+                                            style={{
+                                                width: '100%',
+                                                background: theme.colors.secondaryBg,
+                                                border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                color: theme.colors.primaryText,
+                                                padding: '10px 14px',
+                                                fontSize: '0.95rem',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                        {inputError && (
+                                            <div style={{ color: theme.colors.error, fontSize: '0.8rem', marginTop: '6px' }}>
+                                                {inputError}
+                                            </div>
+                                        )}
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginTop: '6px' }}>
+                                            Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                        <button
+                                            onClick={() => {
+                                                setEditingName(false);
+                                                setNameInput('');
+                                                setInputError('');
+                                            }}
+                                            style={{
+                                                background: theme.colors.secondaryBg,
+                                                color: theme.colors.primaryText,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                padding: '8px 16px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.9rem'
+                                            }}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleNameSubmit}
+                                            disabled={isSubmitting || inputError}
+                                            style={{
+                                                background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                padding: '8px 16px',
+                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600',
+                                                opacity: isSubmitting ? 0.7 : 1
+                                            }}
+                                        >
+                                            {isSubmitting ? 'Saving...' : 'Set Name'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Posts & Threads Section */}
+                <div className="principal-card-animate" style={{ marginBottom: '1.5rem', animationDelay: '0.3s' }}>
+                    {renderSectionHeader(
+                        'Posts & Threads',
+                        <FaComments size={16} />,
+                        isPostsCollapsed,
+                        () => setIsPostsCollapsed(!isPostsCollapsed),
+                        userPosts.length + userThreads.length,
+                        theme.colors.success
+                    )}
+                    
+                    {!isPostsCollapsed && (
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '0 0 16px 16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            borderTop: 'none'
+                        }}>
+                            {/* Tab Navigation */}
+                            <div style={{
+                                display: 'flex',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                marginBottom: '1.25rem'
+                            }}>
+                                <button
+                                    onClick={() => setPostsActiveTab('posts')}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: postsActiveTab === 'posts' ? principalPrimary : theme.colors.mutedText,
+                                        fontSize: '0.95rem',
+                                        fontWeight: '600',
+                                        padding: '12px 20px',
+                                        cursor: 'pointer',
+                                        borderBottom: postsActiveTab === 'posts' ? `2px solid ${principalPrimary}` : '2px solid transparent',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    Posts ({userPosts.length})
+                                </button>
+                                <button
+                                    onClick={() => setPostsActiveTab('threads')}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: postsActiveTab === 'threads' ? principalPrimary : theme.colors.mutedText,
+                                        fontSize: '0.95rem',
+                                        fontWeight: '600',
+                                        padding: '12px 20px',
+                                        cursor: 'pointer',
+                                        borderBottom: postsActiveTab === 'threads' ? `2px solid ${principalPrimary}` : '2px solid transparent',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    Threads ({userThreads.length})
+                                </button>
+                            </div>
+
+                            {loadingPosts ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    <div className="principal-spin" style={{
+                                        width: '30px',
+                                        height: '30px',
+                                        border: `3px solid ${theme.colors.border}`,
+                                        borderTopColor: principalPrimary,
+                                        borderRadius: '50%',
+                                        margin: '0 auto 1rem'
+                                    }} />
+                                    Loading posts...
+                                </div>
+                            ) : postsError ? (
+                                <div style={{ 
+                                    background: `${theme.colors.error}15`,
+                                    border: `1px solid ${theme.colors.error}40`,
+                                    color: theme.colors.error,
+                                    padding: '1rem',
+                                    borderRadius: '10px'
+                                }}>
+                                    {postsError}
+                                </div>
+                            ) : (
+                                <div>
+                                    {postsActiveTab === 'posts' ? (
+                                        userPosts.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                No posts found
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                {userPosts.map((post) => {
+                                                    const isExpanded = expandedPosts.has(post.id);
+                                                    const shouldTruncate = post.body && post.body.length > 300;
+                                                    const displayBody = shouldTruncate && !isExpanded 
+                                                        ? post.body.substring(0, 300) + '...' 
+                                                        : post.body;
+                                                    const netScore = Number(post.upvote_score) - Number(post.downvote_score);
+
+                                                    return (
+                                                        <div key={post.id} style={{
+                                                            background: theme.colors.primaryBg,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '12px',
+                                                            padding: '1rem'
                                                         }}>
-                                                            <div>
-                                                                <div style={{ color: theme.colors.mutedText }}>Created</div>
-                                                                <div style={{ color: theme.colors.primaryText }}>
-                                                                    {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                                                                </div>
-                                                            </div>
-                                                            <div>
-                                                                <div style={{ color: theme.colors.mutedText }}>Dissolve State</div>
-                                                                <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
-                                                            </div>
-                                                            <div>
-                                                                <div style={{ color: theme.colors.mutedText }}>Maturity</div>
-                                                                <div style={{ color: theme.colors.primaryText }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                                                            </div>
-                                                            <div>
-                                                                <div style={{ color: theme.colors.mutedText }}>Voting Power</div>
-                                                                <div style={{ color: theme.colors.primaryText }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
-                                                            </div>
-                                                            {/* Add permissions section */}
-                                                            <div style={{ gridColumn: '1 / -1' }}>
-                                                                <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Permissions</div>
-                                                                {/* Owner */}
-                                                                {getOwnerPrincipals(neuron).length > 0 && (
-                                                                    <div style={{ 
-                                                                        marginBottom: '8px',
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                                                <Link 
+                                                                    to={`/post?postid=${post.id}`}
+                                                                    style={{
+                                                                        color: principalPrimary,
+                                                                        textDecoration: 'none',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.9rem',
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '6px',
+                                                                        background: `${principalPrimary}15`,
+                                                                        transition: 'all 0.2s'
+                                                                    }}
+                                                                >
+                                                                    #{Number(post.id)}
+                                                                </Link>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                                    <span style={{ 
+                                                                        color: netScore >= 0 ? theme.colors.success : theme.colors.error,
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.9rem',
                                                                         display: 'flex',
                                                                         alignItems: 'center',
-                                                                        gap: '8px'
+                                                                        gap: '4px'
                                                                     }}>
-                                                                        <span style={{ color: theme.colors.mutedText }}>Owner:</span>
-                                                                        <PrincipalDisplay 
-                                                                            principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
-                                                                            displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
-                                                                            showCopyButton={false}
-                                                                            isAuthenticated={isAuthenticated}
-                                                                        />
-                                                                    </div>
+                                                                        {netScore >= 0 ? <FaArrowUp size={12} /> : <FaArrowDown size={12} />}
+                                                                        {formatScore(netScore)}
+                                                                    </span>
+                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                                        {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            {post.title && post.title.length > 0 && (
+                                                                <div style={{ 
+                                                                    color: theme.colors.primaryText, 
+                                                                    fontSize: '1rem',
+                                                                    fontWeight: '600',
+                                                                    marginBottom: '0.5rem'
+                                                                }}>
+                                                                    {post.title[0]}
+                                                                </div>
+                                                            )}
+                                                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                                                <MarkdownBody text={displayBody} style={{ fontSize: '0.9rem' }} />
+                                                                {shouldTruncate && (
+                                                                    <button
+                                                                        onClick={() => setExpandedPosts(prev => {
+                                                                            const newSet = new Set(prev);
+                                                                            if (newSet.has(post.id)) newSet.delete(post.id);
+                                                                            else newSet.add(post.id);
+                                                                            return newSet;
+                                                                        })}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            color: principalPrimary,
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '500',
+                                                                            marginLeft: '4px'
+                                                                        }}
+                                                                    >
+                                                                        {isExpanded ? 'Show Less' : 'Show More'}
+                                                                    </button>
                                                                 )}
-                                                                {/* Hotkeys */}
-                                                                {neuron.permissions
-                                                                    .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
-                                                                    .map((p, index) => (
-                                                                        <div key={index} style={{ 
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '8px',
-                                                                            marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
-                                                                        }}>
-                                                                            <span style={{ color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                                🔑 Hotkey:
-                                                                            </span>
-                                                                            <PrincipalDisplay 
-                                                                                principal={p.principal}
-                                                                                displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                                                                showCopyButton={false}
-                                                                                isAuthenticated={isAuthenticated}
-                                                                            />
-                                                                        </div>
-                                                                    ))
-                                                                }
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
+                                    ) : (
+                                        userThreads.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                No threads found
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                {userThreads.map((thread) => {
+                                                    const isExpanded = expandedPosts.has(`thread-${thread.id}`);
+                                                    const shouldTruncate = thread.body && thread.body.length > 300;
+                                                    const displayBody = shouldTruncate && !isExpanded 
+                                                        ? thread.body.substring(0, 300) + '...' 
+                                                        : thread.body;
+                                                    const postCount = threadPostCounts.get(thread.id.toString());
+
+                                                    return (
+                                                        <div key={thread.id} style={{
+                                                            background: theme.colors.primaryBg,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '12px',
+                                                            padding: '1rem'
+                                                        }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                    <Link 
+                                                                        to={`/thread?threadid=${thread.id}`}
+                                                                        style={{
+                                                                            color: principalPrimary,
+                                                                            textDecoration: 'none',
+                                                                            fontWeight: '600',
+                                                                            fontSize: '0.9rem',
+                                                                            padding: '4px 10px',
+                                                                            borderRadius: '6px',
+                                                                            background: `${principalPrimary}15`
+                                                                        }}
+                                                                    >
+                                                                        Thread #{Number(thread.id)}
+                                                                    </Link>
+                                                                    <span style={{ 
+                                                                        color: theme.colors.success, 
+                                                                        fontSize: '0.75rem',
+                                                                        fontWeight: '600',
+                                                                        background: `${theme.colors.success}15`,
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: '4px'
+                                                                    }}>
+                                                                        Created
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ textAlign: 'right' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                                                                        {new Date(Number(thread.created_at) / 1000000).toLocaleDateString()}
+                                                                    </div>
+                                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem' }}>
+                                                                        {postCount !== undefined ? `${postCount} post${postCount !== 1 ? 's' : ''}` : 'Loading...'}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            {thread.title && (
+                                                                <div style={{ 
+                                                                    color: theme.colors.primaryText, 
+                                                                    fontSize: '1rem',
+                                                                    fontWeight: '600',
+                                                                    marginBottom: '0.5rem'
+                                                                }}>
+                                                                    {thread.title}
+                                                                </div>
+                                                            )}
+                                                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                                                <MarkdownBody text={displayBody} style={{ fontSize: '0.9rem' }} />
+                                                                {shouldTruncate && (
+                                                                    <button
+                                                                        onClick={() => setExpandedPosts(prev => {
+                                                                            const newSet = new Set(prev);
+                                                                            const key = `thread-${thread.id}`;
+                                                                            if (newSet.has(key)) newSet.delete(key);
+                                                                            else newSet.add(key);
+                                                                            return newSet;
+                                                                        })}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            color: principalPrimary,
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '500',
+                                                                            marginLeft: '4px'
+                                                                        }}
+                                                                    >
+                                                                        {isExpanded ? 'Show Less' : 'Show More'}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
                                     )}
-                                </>
+                                </div>
                             )}
                         </div>
+                    )}
+                </div>
 
-                        {/* Wrap TransactionList with collapse state */}
-                        <TransactionList 
-                            snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
-                            principalId={stablePrincipalId.current?.toString()}
-                            isCollapsed={isTransactionsCollapsed}
-                            onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
-                        />
-                    </>
-                )}
+                {/* Neurons Section */}
+                <div className="principal-card-animate" style={{ marginBottom: '1.5rem', animationDelay: '0.4s' }}>
+                    {renderSectionHeader(
+                        'Hotkeyed Neurons',
+                        <FaCoins size={16} />,
+                        isNeuronsCollapsed,
+                        () => setIsNeuronsCollapsed(!isNeuronsCollapsed),
+                        neurons.length,
+                        principalAccent
+                    )}
+                    
+                    {!isNeuronsCollapsed && (
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '0 0 16px 16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            borderTop: 'none'
+                        }}>
+                            {loadingNeurons ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    <div className="principal-spin" style={{
+                                        width: '30px',
+                                        height: '30px',
+                                        border: `3px solid ${theme.colors.border}`,
+                                        borderTopColor: principalAccent,
+                                        borderRadius: '50%',
+                                        margin: '0 auto 1rem'
+                                    }} />
+                                    Loading neurons...
+                                </div>
+                            ) : neuronError ? (
+                                <div style={{ 
+                                    background: `${theme.colors.error}15`,
+                                    border: `1px solid ${theme.colors.error}40`,
+                                    color: theme.colors.error,
+                                    padding: '1rem',
+                                    borderRadius: '10px'
+                                }}>
+                                    {neuronError}
+                                </div>
+                            ) : neurons.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    No neurons found where this principal is a hotkey.
+                                </div>
+                            ) : (
+                                <div style={{ 
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                                    gap: '1rem'
+                                }}>
+                                    {neurons.map((neuron) => {
+                                        const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                        if (!neuronId) return null;
+
+                                        return (
+                                            <div
+                                                key={neuronId}
+                                                style={{
+                                                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${principalAccent}08 100%)`,
+                                                    borderRadius: '14px',
+                                                    padding: '1.25rem',
+                                                    border: `1px solid ${theme.colors.border}`
+                                                }}
+                                            >
+                                                <div style={{ marginBottom: '1rem' }}>
+                                                    {formatNeuronIdLink(neuronId, searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT)}
+                                                </div>
+
+                                                <div style={{ 
+                                                    fontSize: '1.5rem',
+                                                    fontWeight: '700',
+                                                    color: principalAccent,
+                                                    marginBottom: '1rem'
+                                                }}>
+                                                    {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '1fr 1fr',
+                                                    gap: '1rem',
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Created</div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Dissolve State</div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Maturity</div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Voting Power</div>
+                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Permissions */}
+                                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
+                                                    {getOwnerPrincipals(neuron).length > 0 && (
+                                                        <div style={{ 
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            marginBottom: '6px'
+                                                        }}>
+                                                            <FaCrown size={12} color={principalAccent} />
+                                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Owner:</span>
+                                                            <PrincipalDisplay 
+                                                                principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
+                                                                displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
+                                                                showCopyButton={false}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {neuron.permissions
+                                                        .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
+                                                        .map((p, index) => (
+                                                            <div key={index} style={{ 
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                marginBottom: '6px'
+                                                            }}>
+                                                                <FaKey size={12} color={theme.colors.success} />
+                                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Hotkey:</span>
+                                                                <PrincipalDisplay 
+                                                                    principal={p.principal}
+                                                                    displayInfo={principalDisplayInfo.get(p.principal?.toString())}
+                                                                    showCopyButton={false}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                />
+                                                            </div>
+                                                        ))
+                                                    }
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Transactions Section */}
+                <div className="principal-card-animate" style={{ animationDelay: '0.5s' }}>
+                    <TransactionList 
+                        snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
+                        principalId={stablePrincipalId.current?.toString()}
+                        isCollapsed={isTransactionsCollapsed}
+                        onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                    />
+                </div>
             </main>
-            <style>{spinKeyframes}</style>
+            
             <ConfirmationModal
                 show={showConfirmModal}
                 onClose={() => setShowConfirmModal(false)}
@@ -1575,4 +1665,4 @@ export default function PrincipalPage() {
             />
         </div>
     );
-} 
+}
