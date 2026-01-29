@@ -44,6 +44,10 @@ const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || proces
 
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
 
+// Accent colors for Sneedex
+const sneedexPrimary = '#8b5cf6'; // Purple
+const sneedexSecondary = '#a78bfa';
+
 // Responsive CSS for mobile layout
 const RESPONSIVE_CSS = `
     @media (max-width: 900px) {
@@ -2327,73 +2331,172 @@ function SneedexOffer() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
-            <main style={styles.container}>
-                <Link 
-                    to="/sneedex_offers" 
-                    style={styles.backButton}
-                    onMouseEnter={(e) => e.target.style.color = theme.colors.accent}
-                    onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
-                >
-                    <FaArrowLeft /> Back to Marketplace
-                </Link>
-                
-                <div style={{ ...styles.header, position: 'relative', overflow: 'hidden' }}>
-                    {/* Corner ribbon banner for inactive offers */}
-                    {(() => {
-                        let bannerText = null;
-                        let bannerColor = null;
+            <main style={{ color: theme.colors.primaryText }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(180deg, ${sneedexPrimary}12 0%, transparent 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Decorative glows */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${sneedexPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        {/* Back link */}
+                        <Link 
+                            to="/sneedex_offers" 
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '0.9rem',
+                                marginBottom: '1rem',
+                                transition: 'color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.color = sneedexPrimary}
+                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                        >
+                            <FaArrowLeft /> Back to Marketplace
+                        </Link>
                         
-                        if ('Completed' in offer.state || 'Claimed' in offer.state) {
-                            bannerText = 'SOLD';
-                            bannerColor = 'linear-gradient(135deg, #22c55e, #16a34a)';
-                        } else if ('Expired' in offer.state) {
-                            bannerText = 'EXPIRED';
-                            bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
-                        } else if ('Cancelled' in offer.state) {
-                            bannerText = 'CANCELLED';
-                            bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
-                        } else if ('Reclaimed' in offer.state) {
-                            bannerText = 'EXPIRED';
-                            bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
-                        }
-                        
-                        return bannerText ? (
-                            <div style={{
-                                position: 'absolute',
-                                top: '16px',
-                                right: '-32px',
-                                background: bannerColor,
-                                color: '#fff',
-                                padding: '4px 45px',
-                                fontWeight: '700',
-                                fontSize: '0.75rem',
-                                transform: 'rotate(45deg)',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                                zIndex: 10,
-                                letterSpacing: '0.5px',
-                            }}>
-                                {bannerText}
+                        {/* Header with banner */}
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '1rem',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            background: theme.colors.cardGradient,
+                            borderRadius: '16px',
+                            padding: '1.5rem',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            {/* Corner ribbon banner for inactive offers */}
+                            {(() => {
+                                let bannerText = null;
+                                let bannerColor = null;
+                                
+                                if ('Completed' in offer.state || 'Claimed' in offer.state) {
+                                    bannerText = 'SOLD';
+                                    bannerColor = 'linear-gradient(135deg, #22c55e, #16a34a)';
+                                } else if ('Expired' in offer.state) {
+                                    bannerText = 'EXPIRED';
+                                    bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                } else if ('Cancelled' in offer.state) {
+                                    bannerText = 'CANCELLED';
+                                    bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                                } else if ('Reclaimed' in offer.state) {
+                                    bannerText = 'EXPIRED';
+                                    bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                }
+                                
+                                return bannerText ? (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '16px',
+                                        right: '-32px',
+                                        background: bannerColor,
+                                        color: '#fff',
+                                        padding: '4px 45px',
+                                        fontWeight: '700',
+                                        fontSize: '0.75rem',
+                                        transform: 'rotate(45deg)',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                        zIndex: 10,
+                                        letterSpacing: '0.5px',
+                                    }}>
+                                        {bannerText}
+                                    </div>
+                                ) : null;
+                            })()}
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <div style={{
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 4px 20px ${sneedexPrimary}40`
+                                }}>
+                                    <FaGavel size={26} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{
+                                        fontSize: '1.75rem',
+                                        fontWeight: '800',
+                                        margin: 0,
+                                        background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${sneedexPrimary})`,
+                                        WebkitBackgroundClip: 'text',
+                                        WebkitTextFillColor: 'transparent',
+                                        backgroundClip: 'text'
+                                    }}>
+                                        Offer #{Number(offer.id)}
+                                    </h1>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.9rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        marginTop: '4px'
+                                    }}>
+                                        <FaUser /> Created by <PrincipalDisplay 
+                                            principal={offer.creator} 
+                                            short={true}
+                                            showCopyButton={false}
+                                            style={{ display: 'inline-flex' }}
+                                            isAuthenticated={isAuthenticated}
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                        ) : null;
-                    })()}
-                    <div style={styles.titleSection}>
-                        <h1 style={styles.title}>Offer #{Number(offer.id)}</h1>
-                        <div style={styles.subtitle}>
-                            <FaUser /> Created by <PrincipalDisplay 
-                                principal={offer.creator} 
-                                short={true}
-                                showCopyButton={false}
-                                style={{ display: 'inline-flex' }}
-                                isAuthenticated={isAuthenticated}
-                            />
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <button 
+                                    type="button"
+                                    style={{
+                                        background: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        padding: '10px 18px',
+                                        borderRadius: '10px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                    }}
+                                    onClick={fetchOffer}
+                                >
+                                    <FaSync /> Refresh
+                                </button>
+                                <span style={getStatusBadgeStyle()}>{getOfferStateString(offer.state)}</span>
+                            </div>
                         </div>
                     </div>
-                    <button style={styles.refreshButton} onClick={fetchOffer}>
-                        <FaSync /> Refresh
-                    </button>
-                    <span style={getStatusBadgeStyle()}>{getOfferStateString(offer.state)}</span>
                 </div>
                 
+                {/* Main Content */}
+                <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
                 {error && <div style={styles.errorText}>{error}</div>}
                 
                 <div style={styles.mainContent} className="sneedex-offer-main-content">
@@ -5845,6 +5948,8 @@ function SneedexOffer() {
                         </div>
                     </div>
                 </div>
+                </div>
+                {/* End main content */}
             </main>
             
             <style>{`

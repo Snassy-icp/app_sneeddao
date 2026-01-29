@@ -47,6 +47,10 @@ const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const ICP_FEE = 10_000n; // 0.0001 ICP
 const E8S = 100_000_000n;
 
+// Accent colors for Sneedex
+const sneedexPrimary = '#8b5cf6'; // Purple
+const sneedexSecondary = '#a78bfa';
+
 // Management canister IDL for canister_status and update_settings
 const managementIdlFactory = () => {
     const definite_canister_settings = IDL.Record({
@@ -2311,18 +2315,110 @@ function SneedexCreate() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
-            <main style={styles.container} className="sneedex-create-container">
-                <Link 
-                    to="/sneedex_offers" 
-                    style={styles.backButton}
-                    onMouseEnter={(e) => e.target.style.color = theme.colors.accent}
-                    onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
-                >
-                    <FaArrowLeft /> Back to Marketplace
-                </Link>
+            <main style={{ color: theme.colors.primaryText }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(180deg, ${sneedexPrimary}12 0%, transparent 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Decorative glows */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${sneedexPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${sneedexSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        {/* Back link */}
+                        <Link 
+                            to="/sneedex_offers" 
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '0.9rem',
+                                marginBottom: '1rem',
+                                transition: 'color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.color = sneedexPrimary}
+                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                        >
+                            <FaArrowLeft /> Back to Marketplace
+                        </Link>
+                        
+                        {/* Hero Content */}
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            textAlign: 'center'
+                        }}>
+                            {/* Icon and Title */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1rem',
+                                marginBottom: '0.5rem'
+                            }}>
+                                <div style={{
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 4px 20px ${sneedexPrimary}40`
+                                }}>
+                                    <FaPlus size={26} color="white" />
+                                </div>
+                                <h1 style={{
+                                    fontSize: '2rem',
+                                    fontWeight: '800',
+                                    margin: 0,
+                                    background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${sneedexPrimary})`,
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text'
+                                }}>
+                                    Create Offer
+                                </h1>
+                            </div>
+                            
+                            <p style={{
+                                color: theme.colors.mutedText,
+                                fontSize: '0.95rem',
+                                margin: 0,
+                                maxWidth: '500px'
+                            }}>
+                                List your assets for auction or instant sale
+                            </p>
+                        </div>
+                    </div>
+                </div>
                 
-                <h1 style={styles.title}>Create Offer</h1>
-                <p style={styles.subtitle}>List your assets for auction or instant sale</p>
+                {/* Main Content */}
+                <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto' }} className="sneedex-create-container">
                 
                 {/* Progress Bar */}
                 {step < 4 && (
@@ -5029,6 +5125,8 @@ function SneedexCreate() {
                         </div>
                     </div>
                 )}
+                </div>
+                {/* End main content */}
             </main>
         </div>
     );

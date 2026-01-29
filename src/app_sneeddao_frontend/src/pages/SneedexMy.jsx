@@ -60,6 +60,37 @@ import ConfirmationModal from '../ConfirmationModal';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
+// Accent colors for Sneedex
+const sneedexPrimary = '#8b5cf6'; // Purple
+const sneedexSecondary = '#a78bfa';
+
+// CSS animation keyframes
+const injectSneedexMyStyles = () => {
+    if (document.getElementById('sneedex-my-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'sneedex-my-styles';
+    style.textContent = `
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .sneedex-my-hero-icon {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .sneedex-my-hero-icon:hover {
+            transform: scale(1.1) rotate(5deg);
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.4);
+        }
+        .sneedex-my-action-btn {
+            transition: all 0.2s ease;
+        }
+        .sneedex-my-action-btn:hover {
+            transform: translateY(-2px);
+        }
+    `;
+    document.head.appendChild(style);
+};
+
 function SneedexMy() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
@@ -100,6 +131,11 @@ function SneedexMy() {
     
     // ConfirmationModal state
     const [confirmModal, setConfirmModal] = useState({ show: false, message: '', action: null });
+    
+    // Inject CSS animations on mount
+    useEffect(() => {
+        injectSneedexMyStyles();
+    }, []);
     
     // Fetch whitelisted tokens for metadata lookup
     useEffect(() => {
@@ -966,34 +1002,224 @@ function SneedexMy() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
-            <main style={styles.container}>
-                <div style={styles.header}>
-                    <h1 style={styles.title}>My Sneedex</h1>
-                    <div style={styles.headerButtons}>
-                        <button
-                            style={styles.refreshButton}
-                            onClick={fetchData}
-                            disabled={loading}
-                        >
-                            <FaSync style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                            {loading ? 'Loading...' : 'Refresh'}
-                        </button>
-                        <Link
-                            to="/sneedex_create"
-                            style={styles.createButton}
-                            onMouseEnter={(e) => {
-                                e.target.style.transform = 'translateY(-2px)';
-                                e.target.style.boxShadow = `0 6px 20px ${theme.colors.success}40`;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.transform = 'translateY(0)';
-                                e.target.style.boxShadow = 'none';
-                            }}
-                        >
-                            <FaPlus /> Create Offer
-                        </Link>
+            <main style={{ color: theme.colors.primaryText }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(180deg, ${sneedexPrimary}12 0%, transparent 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Decorative glows */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${sneedexPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${sneedexSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        {/* Hero Content */}
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            textAlign: 'center',
+                            marginBottom: '1.5rem'
+                        }}>
+                            {/* Icon and Title */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1rem',
+                                marginBottom: '0.5rem'
+                            }}>
+                                <div 
+                                    className="sneedex-my-hero-icon"
+                                    style={{
+                                        width: '56px',
+                                        height: '56px',
+                                        borderRadius: '16px',
+                                        background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: `0 4px 20px ${sneedexPrimary}40`
+                                    }}
+                                >
+                                    <FaWallet size={26} color="white" />
+                                </div>
+                                <h1 style={{
+                                    fontSize: '2rem',
+                                    fontWeight: '800',
+                                    margin: 0,
+                                    background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${sneedexPrimary})`,
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text'
+                                }}>
+                                    My Sneedex
+                                </h1>
+                            </div>
+                            
+                            <p style={{
+                                color: theme.colors.mutedText,
+                                fontSize: '0.95rem',
+                                margin: 0,
+                                maxWidth: '500px'
+                            }}>
+                                Manage your offers and bids
+                            </p>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '12px',
+                            flexWrap: 'wrap',
+                            marginBottom: '1.5rem'
+                        }}>
+                            <button
+                                type="button"
+                                className="sneedex-my-action-btn"
+                                style={{
+                                    background: theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                }}
+                                onClick={fetchData}
+                                disabled={loading}
+                            >
+                                <FaSync style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                                {loading ? 'Loading...' : 'Refresh'}
+                            </button>
+                            <Link
+                                to="/sneedex_create"
+                                className="sneedex-my-action-btn"
+                                style={{
+                                    background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                    color: 'white',
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
+                                    border: 'none',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    boxShadow: `0 4px 16px ${sneedexPrimary}30`
+                                }}
+                            >
+                                <FaPlus /> Create Offer
+                            </Link>
+                            <Link
+                                to="/sneedex_offers"
+                                className="sneedex-my-action-btn"
+                                style={{
+                                    background: theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                }}
+                            >
+                                <FaGavel /> Browse Marketplace
+                            </Link>
+                        </div>
+                        
+                        {/* Tabs - centered */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                gap: '4px',
+                                background: theme.colors.tertiaryBg,
+                                padding: '4px',
+                                borderRadius: '12px',
+                            }}>
+                                <button
+                                    type="button"
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: activeTab === 'offers' ? theme.colors.secondaryBg : 'transparent',
+                                        color: activeTab === 'offers' ? theme.colors.primaryText : theme.colors.mutedText,
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: activeTab === 'offers' ? `0 2px 8px ${theme.colors.shadow}` : 'none',
+                                    }}
+                                    onClick={() => setActiveTab('offers')}
+                                >
+                                    <FaGavel /> My Offers ({myOffers.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: activeTab === 'bids' ? theme.colors.secondaryBg : 'transparent',
+                                        color: activeTab === 'bids' ? theme.colors.primaryText : theme.colors.mutedText,
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: activeTab === 'bids' ? `0 2px 8px ${theme.colors.shadow}` : 'none',
+                                    }}
+                                    onClick={() => setActiveTab('bids')}
+                                >
+                                    <FaHandHoldingUsd /> My Bids ({myBids.length})
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                
+                {/* Main Content Area */}
+                <div style={{ padding: '1.5rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
                 
                 {error && (
                     <div style={styles.errorState}>
@@ -1001,7 +1227,8 @@ function SneedexMy() {
                     </div>
                 )}
                 
-                <div style={styles.tabs}>
+                {/* Old tabs removed - now in hero */}
+                <div style={{ display: 'none' }}>
                     <button
                         style={{ ...styles.tab, ...(activeTab === 'offers' ? styles.activeTab : styles.inactiveTab) }}
                         onClick={() => setActiveTab('offers')}
@@ -1142,7 +1369,7 @@ function SneedexMy() {
                                 return (
                                     <div
                                         key={Number(offer.id)}
-                                        style={styles.card}
+                                        style={{ ...styles.card, position: 'relative', overflow: 'hidden' }}
                                         onClick={() => navigate(`/sneedex_offer/${offer.id}`)}
                                         onMouseEnter={(e) => {
                                             e.currentTarget.style.transform = 'translateY(-2px)';
@@ -1153,6 +1380,44 @@ function SneedexMy() {
                                             e.currentTarget.style.borderColor = theme.colors.border;
                                         }}
                                     >
+                                        {/* Status Banner for inactive offers */}
+                                        {(() => {
+                                            let bannerText = null;
+                                            let bannerColor = null;
+                                            
+                                            if ('Completed' in offer.state || 'Claimed' in offer.state) {
+                                                bannerText = 'SOLD';
+                                                bannerColor = 'linear-gradient(135deg, #22c55e, #16a34a)';
+                                            } else if ('Expired' in offer.state) {
+                                                bannerText = 'EXPIRED';
+                                                bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                            } else if ('Cancelled' in offer.state) {
+                                                bannerText = 'CANCELLED';
+                                                bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                                            } else if ('Reclaimed' in offer.state) {
+                                                bannerText = 'EXPIRED';
+                                                bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                            }
+                                            
+                                            return bannerText ? (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    top: '16px',
+                                                    right: '-32px',
+                                                    background: bannerColor,
+                                                    color: '#fff',
+                                                    padding: '4px 45px',
+                                                    fontWeight: '700',
+                                                    fontSize: '0.65rem',
+                                                    transform: 'rotate(45deg)',
+                                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                                    zIndex: 10,
+                                                    letterSpacing: '0.5px',
+                                                }}>
+                                                    {bannerText}
+                                                </div>
+                                            ) : null;
+                                        })()}
                                         <div style={styles.cardHeader}>
                                             <div style={styles.cardTitle}>
                                                 <span style={styles.offerId}>Offer #{Number(offer.id)}</span>
@@ -1568,6 +1833,8 @@ function SneedexMy() {
                         </div>
                     </>
                 )}
+                </div>
+                {/* End main content area */}
             </main>
             
             <style>{`
