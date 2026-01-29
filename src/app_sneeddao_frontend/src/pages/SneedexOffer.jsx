@@ -2337,51 +2337,45 @@ function SneedexOffer() {
                     <FaArrowLeft /> Back to Marketplace
                 </Link>
                 
-                {/* Status Banner for inactive offers */}
-                {(() => {
-                    let bannerText = null;
-                    let bannerBg = null;
-                    let bannerIcon = null;
-                    
-                    if ('Completed' in offer.state || 'Claimed' in offer.state) {
-                        bannerText = 'This offer has been sold';
-                        bannerBg = 'linear-gradient(135deg, #e74c3c, #c0392b)';
-                        bannerIcon = <FaCheck />;
-                    } else if ('Expired' in offer.state) {
-                        bannerText = 'This offer has expired';
-                        bannerBg = 'linear-gradient(135deg, #6b7280, #4b5563)';
-                        bannerIcon = <FaClock />;
-                    } else if ('Cancelled' in offer.state) {
-                        bannerText = 'This offer has been cancelled';
-                        bannerBg = 'linear-gradient(135deg, #f59e0b, #d97706)';
-                        bannerIcon = <FaTimes />;
-                    } else if ('Reclaimed' in offer.state) {
-                        bannerText = 'Assets have been reclaimed';
-                        bannerBg = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
-                        bannerIcon = <FaArrowLeft />;
-                    }
-                    
-                    return bannerText ? (
-                        <div style={{
-                            background: bannerBg,
-                            color: '#fff',
-                            padding: '12px 20px',
-                            borderRadius: '12px',
-                            marginBottom: '1.5rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            fontWeight: '600',
-                            fontSize: '1rem',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                        }}>
-                            {bannerIcon}
-                            {bannerText}
-                        </div>
-                    ) : null;
-                })()}
-
-                <div style={styles.header}>
+                <div style={{ ...styles.header, position: 'relative', overflow: 'hidden' }}>
+                    {/* Corner ribbon banner for inactive offers */}
+                    {(() => {
+                        let bannerText = null;
+                        let bannerColor = null;
+                        
+                        if ('Completed' in offer.state || 'Claimed' in offer.state) {
+                            bannerText = 'SOLD';
+                            bannerColor = 'linear-gradient(135deg, #22c55e, #16a34a)';
+                        } else if ('Expired' in offer.state) {
+                            bannerText = 'EXPIRED';
+                            bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                        } else if ('Cancelled' in offer.state) {
+                            bannerText = 'CANCELLED';
+                            bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                        } else if ('Reclaimed' in offer.state) {
+                            bannerText = 'RECLAIMED';
+                            bannerColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                        }
+                        
+                        return bannerText ? (
+                            <div style={{
+                                position: 'absolute',
+                                top: '16px',
+                                right: '-32px',
+                                background: bannerColor,
+                                color: '#fff',
+                                padding: '4px 45px',
+                                fontWeight: '700',
+                                fontSize: '0.75rem',
+                                transform: 'rotate(45deg)',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                zIndex: 10,
+                                letterSpacing: '0.5px',
+                            }}>
+                                {bannerText}
+                            </div>
+                        ) : null;
+                    })()}
                     <div style={styles.titleSection}>
                         <h1 style={styles.title}>Offer #{Number(offer.id)}</h1>
                         <div style={styles.subtitle}>

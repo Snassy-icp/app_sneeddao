@@ -2012,11 +2012,11 @@ function SneedexOffers() {
                                         return bannerText ? (
                                             <div style={{
                                                 position: 'absolute',
-                                                top: '12px',
-                                                right: '-35px',
+                                                top: '16px',
+                                                right: '-32px',
                                                 background: bannerColor,
                                                 color: '#fff',
-                                                padding: '3px 40px',
+                                                padding: '4px 45px',
                                                 fontWeight: '700',
                                                 fontSize: '0.65rem',
                                                 transform: 'rotate(45deg)',
