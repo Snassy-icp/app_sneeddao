@@ -4338,6 +4338,61 @@ function SneedexCreate() {
                             </div>
                         </div>
                         
+                        {/* Offer Visibility */}
+                        <div style={styles.reviewSection}>
+                            <div style={styles.reviewLabel}>Offer Visibility</div>
+                            <div style={styles.reviewValue}>
+                                {isPrivateOffer ? (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ color: theme.colors.warning || '#f59e0b' }}>🔒 Private Offer</span>
+                                    </span>
+                                ) : (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ color: theme.colors.success }}>🌐 Public Offer</span>
+                                    </span>
+                                )}
+                            </div>
+                            {isPrivateOffer && approvedBidders.length > 0 && (
+                                <div style={{ marginTop: '0.75rem' }}>
+                                    <div style={{ 
+                                        fontSize: '0.85rem', 
+                                        color: theme.colors.mutedText, 
+                                        marginBottom: '0.5rem' 
+                                    }}>
+                                        Approved Bidders ({approvedBidders.length}):
+                                    </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '6px',
+                                        padding: '0.75rem',
+                                        background: theme.colors.primaryBg,
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        {approvedBidders.map((bidderStr, idx) => (
+                                            <div 
+                                                key={bidderStr}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    padding: '4px 0',
+                                                    borderBottom: idx < approvedBidders.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                                }}
+                                            >
+                                                <PrincipalDisplay 
+                                                    principal={bidderStr} 
+                                                    size="small"
+                                                    showCopy={false}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
                         {minBidIncrement && (
                             <div style={styles.reviewSection}>
                                 <div style={styles.reviewLabel}>Min Bid Increment</div>
