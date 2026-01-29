@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaRocket, FaShieldAlt, FaGlobe } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -387,16 +387,26 @@ function Hub() {
                             style={{
                                 width: '80px',
                                 height: '80px',
-                                borderRadius: '20px',
+                                borderRadius: '50%',
                                 background: `linear-gradient(135deg, ${hubPrimary}, ${hubSecondary})`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 margin: '0 auto 1.5rem auto',
-                                color: 'white',
+                                padding: '12px',
+                                boxSizing: 'border-box',
                             }}
                         >
-                            <FaRocket size={36} />
+                            <img 
+                                src="sneed_logo.png" 
+                                alt="Sneed Logo" 
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                }}
+                            />
                         </div>
                         
                         <h1 style={{
