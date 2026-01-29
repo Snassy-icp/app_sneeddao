@@ -1549,6 +1549,7 @@ function SneedexOffers() {
                 
                 <div className="sneedex-controls" style={styles.controls}>
                     <button
+                        type="button"
                         style={{
                             ...styles.advancedFilterToggle,
                             borderColor: showAdvancedFilters ? theme.colors.accent : theme.colors.border,
@@ -1576,6 +1577,50 @@ function SneedexOffers() {
                         <option value="highest_bid">Highest Bid</option>
                         <option value="lowest_price">Lowest Price</option>
                     </select>
+                    
+                    {/* Active Only Toggle */}
+                    <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        cursor: 'pointer',
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        border: `1px solid ${theme.colors.border}`,
+                        background: theme.colors.secondaryBg,
+                        fontSize: '0.9rem',
+                        fontWeight: '500',
+                        color: theme.colors.primaryText,
+                        whiteSpace: 'nowrap',
+                    }}>
+                        <span style={{ color: showInactiveOffers ? theme.colors.mutedText : theme.colors.primaryText }}>
+                            Active Only
+                        </span>
+                        <div 
+                            onClick={() => setShowInactiveOffers(prev => !prev)}
+                            style={{
+                                width: '44px',
+                                height: '24px',
+                                borderRadius: '12px',
+                                background: showInactiveOffers ? theme.colors.tertiaryBg : sneedexPrimary,
+                                position: 'relative',
+                                transition: 'all 0.2s ease',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <div style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                background: '#fff',
+                                position: 'absolute',
+                                top: '3px',
+                                left: showInactiveOffers ? '3px' : '23px',
+                                transition: 'all 0.2s ease',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                            }} />
+                        </div>
+                    </label>
                 </div>
                 
                 {/* Filters Section */}
@@ -1596,34 +1641,6 @@ function SneedexOffers() {
                         </div>
                         
                         <div className="sneedex-advanced-filter-grid" style={styles.advancedFilterGrid}>
-                            {/* Show Inactive Offers Toggle */}
-                            <div style={styles.filterGroup}>
-                                <label style={styles.filterLabel}>Offer Status</label>
-                                <button
-                                    onClick={() => setShowInactiveOffers(prev => !prev)}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '8px',
-                                        padding: '10px 12px',
-                                        borderRadius: '8px',
-                                        border: `1px solid ${showInactiveOffers ? theme.colors.accent : theme.colors.border}`,
-                                        backgroundColor: showInactiveOffers ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
-                                        color: showInactiveOffers ? theme.colors.accent : theme.colors.mutedText,
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
-                                        transition: 'all 0.2s ease',
-                                        width: '100%',
-                                    }}
-                                    title={showInactiveOffers ? 'Showing all offers including sold, expired, cancelled' : 'Showing only active offers'}
-                                >
-                                    {showInactiveOffers ? <FaUnlock size={14} /> : <FaLock size={14} />}
-                                    {showInactiveOffers ? 'Show All (incl. Inactive)' : 'Active Only'}
-                                </button>
-                            </div>
-                            
                             {/* Asset Type Filter */}
                             <div style={styles.filterGroup}>
                                 <label style={styles.filterLabel}>Asset Type</label>

@@ -2702,9 +2702,14 @@ function SneedexOffer() {
                                                                 return `${snsName} Neuron`;
                                                             })()}
                                                             {details.type === 'ICRC1Token' && (() => {
-                                                                const meta = tokenMetadata[details.ledger_id];
-                                                                const decimals = meta?.decimals || 8;
-                                                                const symbol = meta?.symbol || 'Tokens';
+                                                                // Check whitelisted tokens first, then dynamically fetched metadata
+                                                                const ledgerId = details.ledger_id;
+                                                                const whitelistedToken = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                                                                const meta = tokenMetadata[ledgerId];
+                                                                const decimals = whitelistedToken?.decimals 
+                                                                    ? Number(whitelistedToken.decimals) 
+                                                                    : (meta?.decimals || 8);
+                                                                const symbol = whitelistedToken?.symbol || meta?.symbol || 'Tokens';
                                                                 const displayAmount = Number(details.amount) / Math.pow(10, decimals);
                                                                 const rawUsd = assetUsdEstimates[idx];
                                                                 const usdValue = typeof rawUsd === 'object' ? rawUsd?.value : rawUsd;
