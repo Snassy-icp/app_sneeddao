@@ -10,7 +10,8 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
 import { formatE8s } from '../utils/NeuronUtils';
-import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle, FaCog, FaKey, FaGift, FaClock, FaUserCog } from 'react-icons/fa';
+import { priceService } from '../services/PriceService';
+import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle, FaCog, FaKey, FaGift, FaClock, FaUserCog, FaDollarSign } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -99,6 +100,9 @@ function Sns() {
     const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
     const [isRewardsExpanded, setIsRewardsExpanded] = useState(false);
     const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
+    const [tokenPriceICP, setTokenPriceICP] = useState(null);
+    const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
+    const [loadingPrice, setLoadingPrice] = useState(false);
 
     // Handle window resize for responsive design
     useEffect(() => {
@@ -274,6 +278,27 @@ function Sns() {
                 nervousSystemParameters,
                 allCanisters
             });
+
+            // Fetch token price
+            setLoadingPrice(true);
+            setTokenPriceICP(null);
+            setTokenPriceUSD(null);
+            try {
+                // Set token decimals in price service for accurate calculation
+                priceService.setTokenDecimals(selectedSns.canisters.ledger, Number(decimals));
+                
+                const [priceICP, priceUSD] = await Promise.all([
+                    priceService.getTokenICPPrice(selectedSns.canisters.ledger, Number(decimals)),
+                    priceService.getTokenUSDPrice(selectedSns.canisters.ledger, Number(decimals))
+                ]);
+                setTokenPriceICP(priceICP);
+                setTokenPriceUSD(priceUSD);
+            } catch (priceErr) {
+                console.warn('Could not fetch token price:', priceErr);
+                // Price not available - that's okay, some tokens may not have liquidity
+            } finally {
+                setLoadingPrice(false);
+            }
         } catch (err) {
             console.error('Error loading SNS details:', err);
         } finally {
@@ -441,7 +466,7 @@ function Sns() {
                         {isCopied ? <FaCheck size={12} /> : <FaCopy size={12} />}
                     </button>
                     <Link
-                        to={`/canister/${canisterId}`}
+                        to={`/canister?id=${canisterId}`}
                         title="View on Sneed"
                         style={{
                             background: theme.colors.secondaryBg,
@@ -920,6 +945,76 @@ function Sns() {
                                                                 <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>{formatE8s(selectedSnsDetails.transactionFee)}</div>
                                                             </div>
                                                         )}
+                                                    </div>
+
+                                                    {/* Token Price */}
+                                                    <div style={{
+                                                        marginTop: '0.75rem',
+                                                        padding: '1rem',
+                                                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${snsPrimary}15 100%)`,
+                                                        borderRadius: '12px',
+                                                        border: `1px solid ${snsPrimary}30`
+                                                    }}>
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            marginBottom: '0.75rem'
+                                                        }}>
+                                                            <FaDollarSign size={14} style={{ color: theme.colors.success }} />
+                                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>Token Price</span>
+                                                        </div>
+                                                        {loadingPrice ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: theme.colors.mutedText }}>
+                                                                <div className="sns-spin" style={{
+                                                                    width: '14px',
+                                                                    height: '14px',
+                                                                    border: `2px solid ${theme.colors.border}`,
+                                                                    borderTopColor: snsPrimary,
+                                                                    borderRadius: '50%'
+                                                                }} />
+                                                                <span style={{ fontSize: '0.85rem' }}>Fetching price...</span>
+                                                            </div>
+                                                        ) : tokenPriceICP !== null ? (
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                                                                <div>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Price in ICP</div>
+                                                                    <div style={{ color: theme.colors.primaryText, fontWeight: '700', fontSize: '1.1rem' }}>
+                                                                        {tokenPriceICP < 0.0001 
+                                                                            ? tokenPriceICP.toExponential(4) 
+                                                                            : tokenPriceICP < 1 
+                                                                                ? tokenPriceICP.toFixed(6) 
+                                                                                : tokenPriceICP.toFixed(4)
+                                                                        } ICP
+                                                                    </div>
+                                                                </div>
+                                                                {tokenPriceUSD !== null && (
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '2px' }}>Price in USD</div>
+                                                                        <div style={{ color: theme.colors.success, fontWeight: '700', fontSize: '1.1rem' }}>
+                                                                            ${tokenPriceUSD < 0.0001 
+                                                                                ? tokenPriceUSD.toExponential(4) 
+                                                                                : tokenPriceUSD < 1 
+                                                                                    ? tokenPriceUSD.toFixed(6) 
+                                                                                    : tokenPriceUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                                                                            }
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                                                Price data not available (no liquidity pool found)
+                                                            </div>
+                                                        )}
+                                                        <div style={{ 
+                                                            marginTop: '0.5rem', 
+                                                            fontSize: '0.7rem', 
+                                                            color: theme.colors.mutedText,
+                                                            opacity: 0.8
+                                                        }}>
+                                                            Prices from ICPSwap
+                                                        </div>
                                                     </div>
                                                 </div>
 
