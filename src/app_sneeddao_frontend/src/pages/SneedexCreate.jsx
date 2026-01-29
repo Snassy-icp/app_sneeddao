@@ -2534,6 +2534,34 @@ function SneedexCreate() {
                                     </div>
                                 </div>
                             )}
+                            
+                            {/* Show USD price of selected token */}
+                            {priceTokenLedger && priceTokenSymbol && (
+                                <div style={{
+                                    marginTop: '8px',
+                                    fontSize: '0.85rem',
+                                    color: theme.colors.secondaryText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    {paymentTokenPrice ? (
+                                        <>
+                                            <span>1 {priceTokenSymbol} ≈</span>
+                                            <span style={{ 
+                                                color: theme.colors.success, 
+                                                fontWeight: '600' 
+                                            }}>
+                                                ${paymentTokenPrice.toFixed(paymentTokenPrice < 0.01 ? 6 : paymentTokenPrice < 1 ? 4 : 2)}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
+                                            USD price not available
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         
                         <div style={styles.formGroup}>
