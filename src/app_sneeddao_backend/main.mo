@@ -12,6 +12,7 @@ import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
 import Time "mo:base/Time";
 import Int "mo:base/Int";
+import Timer "mo:base/Timer";
 
 import T "Types";
 import PremiumClient "../PremiumClient";
@@ -70,6 +71,28 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #Blob : Blob;
     #Text : Text;
   };
+
+  // Refresh all tokens progress tracking
+  public type RefreshAllProgress = {
+    is_running: Bool;
+    total: Nat;
+    processed: Nat;
+    success: Nat;
+    failed: Nat;
+    current_token: Text;
+    errors: [Text];
+  };
+
+  // Transient state for refresh worker
+  transient var refresh_all_is_running : Bool = false;
+  transient var refresh_all_total : Nat = 0;
+  transient var refresh_all_processed : Nat = 0;
+  transient var refresh_all_success : Nat = 0;
+  transient var refresh_all_failed : Nat = 0;
+  transient var refresh_all_current_token : Text = "";
+  transient var refresh_all_errors : Buffer.Buffer<Text> = Buffer.Buffer<Text>(10);
+  transient var refresh_all_tokens_to_process : [WhitelistedToken] = [];
+  transient var refresh_all_timer_id : ?Timer.TimerId = null;
 
   // Ban types
   type BanLogEntry = {
@@ -752,17 +775,84 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
   };
 
-  // Refresh metadata for all whitelisted tokens
-  public shared ({ caller }) func refresh_all_token_metadata() : async { success: Nat; failed: Nat; errors: [Text] } {
+  // Query to get refresh all tokens progress
+  public query func get_refresh_all_progress() : async RefreshAllProgress {
+    {
+      is_running = refresh_all_is_running;
+      total = refresh_all_total;
+      processed = refresh_all_processed;
+      success = refresh_all_success;
+      failed = refresh_all_failed;
+      current_token = refresh_all_current_token;
+      errors = Buffer.toArray(refresh_all_errors);
+    };
+  };
+
+  // Start the refresh all tokens worker
+  public shared ({ caller }) func start_refresh_all_token_metadata() : async Result.Result<(), Text> {
     assert(is_admin(caller));
     
-    var successCount : Nat = 0;
-    var failedCount : Nat = 0;
-    let errorBuffer = Buffer.Buffer<Text>(10);
+    // Check if already running
+    if (refresh_all_is_running) {
+      return #err("Refresh is already running");
+    };
     
+    // Initialize state
     let tokensList = Iter.toArray(whitelisted_tokens.vals());
+    if (tokensList.size() == 0) {
+      return #err("No tokens to refresh");
+    };
     
-    for (token in tokensList.vals()) {
+    refresh_all_is_running := true;
+    refresh_all_total := tokensList.size();
+    refresh_all_processed := 0;
+    refresh_all_success := 0;
+    refresh_all_failed := 0;
+    refresh_all_current_token := "";
+    refresh_all_errors := Buffer.Buffer<Text>(10);
+    refresh_all_tokens_to_process := tokensList;
+    
+    // Schedule the first batch with a 0-second timer
+    refresh_all_timer_id := ?Timer.setTimer<system>(#seconds 0, refreshAllWorkerBatch);
+    
+    #ok(());
+  };
+
+  // Stop the refresh all tokens worker
+  public shared ({ caller }) func stop_refresh_all_token_metadata() : async () {
+    assert(is_admin(caller));
+    
+    // Cancel the timer if running
+    switch (refresh_all_timer_id) {
+      case (?timerId) {
+        Timer.cancelTimer(timerId);
+        refresh_all_timer_id := null;
+      };
+      case null {};
+    };
+    
+    refresh_all_is_running := false;
+    refresh_all_current_token := "Stopped by user";
+  };
+
+  // Worker function that processes tokens in batches
+  private func refreshAllWorkerBatch() : async () {
+    // Batch size - process this many tokens per timer tick
+    let BATCH_SIZE : Nat = 5;
+    
+    if (not refresh_all_is_running) {
+      return;
+    };
+    
+    let startIdx = refresh_all_processed;
+    let endIdx = Nat.min(startIdx + BATCH_SIZE, refresh_all_total);
+    
+    // Process this batch
+    var i = startIdx;
+    while (i < endIdx and refresh_all_is_running) {
+      let token = refresh_all_tokens_to_process[i];
+      refresh_all_current_token := token.symbol # " (" # token.name # ")";
+      
       let ledger = actor(Principal.toText(token.ledger_id)) : actor {
         icrc1_metadata : shared query () -> async [(Text, ICRC1MetadataValue)];
       };
@@ -782,20 +872,31 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
               standard = token.standard;
             };
             whitelisted_tokens.put(token.ledger_id, updatedToken);
-            successCount += 1;
+            refresh_all_success += 1;
           };
           case _ {
-            failedCount += 1;
-            errorBuffer.add(Principal.toText(token.ledger_id) # ": Missing required metadata fields");
+            refresh_all_failed += 1;
+            refresh_all_errors.add(token.symbol # ": Missing required metadata fields");
           };
         };
       } catch (e) {
-        failedCount += 1;
-        errorBuffer.add(Principal.toText(token.ledger_id) # ": " # Error.message(e));
+        refresh_all_failed += 1;
+        refresh_all_errors.add(token.symbol # ": " # Error.message(e));
       };
+      
+      refresh_all_processed += 1;
+      i += 1;
     };
     
-    { success = successCount; failed = failedCount; errors = Buffer.toArray(errorBuffer) };
+    // Check if we're done
+    if (refresh_all_processed >= refresh_all_total) {
+      refresh_all_is_running := false;
+      refresh_all_current_token := "Completed";
+      refresh_all_timer_id := null;
+    } else if (refresh_all_is_running) {
+      // Schedule next batch
+      refresh_all_timer_id := ?Timer.setTimer<system>(#seconds 0, refreshAllWorkerBatch);
+    };
   };
 
   public shared ({ caller }) func send_tokens(icrc1_ledger_canister_id: Principal, amount: Nat, to: Principal) : async T.TransferResult {

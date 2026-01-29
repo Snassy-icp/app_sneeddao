@@ -117,6 +117,7 @@ export interface AppSneedDaoBackend {
   'get_principal_nickname' : ActorMethod<[Principal], [] | [string]>,
   'get_project' : ActorMethod<[bigint], [] | [Project]>,
   'get_projects' : ActorMethod<[], Array<Project>>,
+  'get_refresh_all_progress' : ActorMethod<[], RefreshAllProgress>,
   'get_swap_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_tracked_canisters' : ActorMethod<[], Array<Principal>>,
   'get_user_ban_history' : ActorMethod<[Principal], Result_5>,
@@ -125,10 +126,6 @@ export interface AppSneedDaoBackend {
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
-  'refresh_all_token_metadata' : ActorMethod<
-    [],
-    { 'errors' : Array<string>, 'success' : bigint, 'failed' : bigint }
-  >,
   'refresh_token_metadata' : ActorMethod<[Principal], Result_3>,
   'register_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'register_swap_canister_id' : ActorMethod<[Principal], undefined>,
@@ -168,6 +165,8 @@ export interface AppSneedDaoBackend {
     Result_1
   >,
   'set_principal_nickname' : ActorMethod<[Principal, string], Result_1>,
+  'start_refresh_all_token_metadata' : ActorMethod<[], Result_2>,
+  'stop_refresh_all_token_metadata' : ActorMethod<[], undefined>,
   'test_calculate_ban_duration' : ActorMethod<[Principal], bigint>,
   'transfer_position' : ActorMethod<
     [Principal, Principal, bigint],
@@ -291,6 +290,15 @@ export interface ProjectLink { 'url' : string, 'title' : string }
 export type ProjectType = { 'fork' : null } |
   { 'product' : null } |
   { 'project' : null };
+export interface RefreshAllProgress {
+  'total' : bigint,
+  'errors' : Array<string>,
+  'success' : bigint,
+  'current_token' : string,
+  'is_running' : boolean,
+  'processed' : bigint,
+  'failed' : bigint,
+}
 export type Result = { 'ok' : bigint } |
   { 'err' : string };
 export type Result_1 = { 'ok' : string } |

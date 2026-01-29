@@ -56,6 +56,7 @@ export default function TokensAdmin() {
     // Refresh all tokens state
     const [refreshingAll, setRefreshingAll] = useState(false);
     const [refreshAllResult, setRefreshAllResult] = useState(null);
+    const [refreshAllProgress, setRefreshAllProgress] = useState({ current: 0, total: 0, success: 0, failed: 0, currentToken: '' });
     
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
@@ -323,32 +324,94 @@ export default function TokensAdmin() {
         }
     };
     
-    // Refresh all whitelisted tokens metadata
+    // Poll for refresh all progress
+    const pollRefreshProgress = async (actor) => {
+        const POLL_INTERVAL = 1000; // 1 second
+        
+        const poll = async () => {
+            try {
+                const progress = await actor.get_refresh_all_progress();
+                
+                setRefreshAllProgress({
+                    current: Number(progress.processed),
+                    total: Number(progress.total),
+                    success: Number(progress.success),
+                    failed: Number(progress.failed),
+                    currentToken: progress.current_token
+                });
+                
+                // Check if still running
+                if (progress.is_running) {
+                    // Continue polling
+                    setTimeout(() => poll(), POLL_INTERVAL);
+                } else {
+                    // Done - show final result
+                    setRefreshingAll(false);
+                    setRefreshAllResult({
+                        success: Number(progress.failed) === 0,
+                        message: `Refreshed ${progress.success} tokens successfully. ${progress.failed} failed.`,
+                        errors: progress.errors || []
+                    });
+                    // Refresh the list to show updated metadata
+                    await fetchTokens();
+                }
+            } catch (err) {
+                console.error('Error polling refresh progress:', err);
+                setRefreshingAll(false);
+                setRefreshAllResult({
+                    success: false,
+                    message: `Error polling progress: ${err.message || 'Unknown error'}`,
+                    errors: []
+                });
+            }
+        };
+        
+        // Start polling
+        poll();
+    };
+    
+    // Start refresh all whitelisted tokens metadata (async worker on backend)
     const handleRefreshAllTokens = async () => {
         setRefreshingAll(true);
         setRefreshAllResult(null);
+        setRefreshAllProgress({ current: 0, total: tokens.length, success: 0, failed: 0, currentToken: 'Starting...' });
         
         try {
             const actor = getBackendActor();
-            const result = await actor.refresh_all_token_metadata();
+            const result = await actor.start_refresh_all_token_metadata();
             
-            setRefreshAllResult({
-                success: result.failed === 0n || result.failed === 0,
-                message: `Refreshed ${result.success} tokens successfully. ${result.failed} failed.`,
-                errors: result.errors || []
-            });
+            if ('err' in result) {
+                setRefreshingAll(false);
+                setRefreshAllResult({
+                    success: false,
+                    message: result.err,
+                    errors: []
+                });
+                return;
+            }
             
-            // Refresh the list to show updated metadata
-            await fetchTokens();
+            // Start polling for progress
+            pollRefreshProgress(actor);
         } catch (err) {
-            console.error('Error refreshing all token metadata:', err);
+            console.error('Error starting refresh all token metadata:', err);
+            setRefreshingAll(false);
             setRefreshAllResult({
                 success: false,
-                message: `Failed to refresh: ${err.message || 'Unknown error'}`,
+                message: `Failed to start refresh: ${err.message || 'Unknown error'}`,
                 errors: []
             });
-        } finally {
-            setRefreshingAll(false);
+        }
+    };
+    
+    // Stop refresh all tokens
+    const handleStopRefreshAll = async () => {
+        try {
+            const actor = getBackendActor();
+            await actor.stop_refresh_all_token_metadata();
+            // The polling will detect is_running = false and update UI
+        } catch (err) {
+            console.error('Error stopping refresh:', err);
+            showInfo('Error', `Failed to stop refresh: ${err.message || 'Unknown error'}`, 'error');
         }
     };
     
@@ -725,13 +788,16 @@ export default function TokensAdmin() {
                             Refresh metadata for all {tokens.length} whitelisted tokens. This may take some time depending on the number of tokens.
                         </p>
                         <button
-                            onClick={handleRefreshAllTokens}
-                            style={{ ...styles.button, ...styles.secondaryButton }}
-                            disabled={refreshingAll || tokens.length === 0}
+                            onClick={refreshingAll ? handleStopRefreshAll : handleRefreshAllTokens}
+                            style={{ 
+                                ...styles.button, 
+                                ...(refreshingAll ? styles.dangerButton : styles.secondaryButton)
+                            }}
+                            disabled={tokens.length === 0}
                         >
                             {refreshingAll ? (
                                 <>
-                                    <FaSpinner className="spin" /> Refreshing {tokens.length} tokens...
+                                    <FaSpinner className="spin" /> Stop Refresh
                                 </>
                             ) : (
                                 <>
@@ -739,6 +805,71 @@ export default function TokensAdmin() {
                                 </>
                             )}
                         </button>
+                        
+                        {/* Progress display while refreshing */}
+                        {refreshingAll && refreshAllProgress.total > 0 && (
+                            <div style={{ marginTop: '16px' }}>
+                                {/* Progress bar */}
+                                <div style={{
+                                    width: '100%',
+                                    height: '8px',
+                                    backgroundColor: theme.colors.tertiaryBg,
+                                    borderRadius: '4px',
+                                    overflow: 'hidden',
+                                    marginBottom: '12px',
+                                }}>
+                                    <div style={{
+                                        width: `${(refreshAllProgress.current / refreshAllProgress.total) * 100}%`,
+                                        height: '100%',
+                                        backgroundColor: theme.colors.accent,
+                                        borderRadius: '4px',
+                                        transition: 'width 0.3s ease',
+                                    }} />
+                                </div>
+                                
+                                {/* Progress text */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                }}>
+                                    <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                        <FaSpinner className="spin" style={{ marginRight: '8px' }} />
+                                        Refreshing {refreshAllProgress.current} of {refreshAllProgress.total}...
+                                    </div>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        gap: '16px',
+                                        fontSize: '0.85rem',
+                                    }}>
+                                        <span style={{ color: '#2ecc71' }}>
+                                            <FaCheckCircle style={{ marginRight: '4px' }} />
+                                            {refreshAllProgress.success} success
+                                        </span>
+                                        {refreshAllProgress.failed > 0 && (
+                                            <span style={{ color: '#e74c3c' }}>
+                                                <FaExclamationTriangle style={{ marginRight: '4px' }} />
+                                                {refreshAllProgress.failed} failed
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Current token being processed */}
+                                {refreshAllProgress.currentToken && (
+                                    <div style={{ 
+                                        marginTop: '8px', 
+                                        color: theme.colors.secondaryText, 
+                                        fontSize: '0.85rem',
+                                        fontStyle: 'italic',
+                                    }}>
+                                        Current: {refreshAllProgress.currentToken}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         
                         {refreshAllResult && (
                             <div style={{

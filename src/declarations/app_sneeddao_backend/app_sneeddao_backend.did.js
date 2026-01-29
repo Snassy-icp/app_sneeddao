@@ -124,6 +124,15 @@ export const idlFactory = ({ IDL }) => {
     'index' : IDL.Opt(IDL.Nat),
     'project_type' : ProjectType,
   });
+  const RefreshAllProgress = IDL.Record({
+    'total' : IDL.Nat,
+    'errors' : IDL.Vec(IDL.Text),
+    'success' : IDL.Nat,
+    'current_token' : IDL.Text,
+    'is_running' : IDL.Bool,
+    'processed' : IDL.Nat,
+    'failed' : IDL.Nat,
+  });
   const Neuron = IDL.Record({
     'id' : IDL.Opt(NeuronId),
     'permissions' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Vec(IDL.Int32))),
@@ -341,6 +350,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'get_project' : IDL.Func([IDL.Nat], [IDL.Opt(Project)], ['query']),
     'get_projects' : IDL.Func([], [IDL.Vec(Project)], ['query']),
+    'get_refresh_all_progress' : IDL.Func([], [RefreshAllProgress], ['query']),
     'get_swap_canister_ids' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_tracked_canisters' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_user_ban_history' : IDL.Func([IDL.Principal], [Result_5], ['query']),
@@ -353,17 +363,6 @@ export const idlFactory = ({ IDL }) => {
       ),
     'import_whitelist_from_swaprunner' : IDL.Func([], [], []),
     'is_token_whitelisted' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
-    'refresh_all_token_metadata' : IDL.Func(
-        [],
-        [
-          IDL.Record({
-            'errors' : IDL.Vec(IDL.Text),
-            'success' : IDL.Nat,
-            'failed' : IDL.Nat,
-          }),
-        ],
-        [],
-      ),
     'refresh_token_metadata' : IDL.Func([IDL.Principal], [Result_3], []),
     'register_ledger_canister_id' : IDL.Func([IDL.Principal], [], []),
     'register_swap_canister_id' : IDL.Func([IDL.Principal], [], []),
@@ -434,6 +433,8 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
+    'start_refresh_all_token_metadata' : IDL.Func([], [Result_2], []),
+    'stop_refresh_all_token_metadata' : IDL.Func([], [], []),
     'test_calculate_ban_duration' : IDL.Func([IDL.Principal], [IDL.Nat], []),
     'transfer_position' : IDL.Func(
         [IDL.Principal, IDL.Principal, IDL.Nat],

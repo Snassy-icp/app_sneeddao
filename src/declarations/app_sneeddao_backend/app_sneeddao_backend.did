@@ -126,6 +126,16 @@ type Result =
    err: text;
    ok: nat;
  };
+type RefreshAllProgress = 
+ record {
+   current_token: text;
+   errors: vec text;
+   failed: nat;
+   is_running: bool;
+   processed: nat;
+   success: nat;
+   total: nat;
+ };
 type ProjectType = 
  variant {
    fork;
@@ -338,6 +348,7 @@ type AppSneedDaoBackend =
    get_principal_nickname: ("principal": principal) -> (opt text) query;
    get_project: (id: nat) -> (opt Project) query;
    get_projects: () -> (vec Project) query;
+   get_refresh_all_progress: () -> (RefreshAllProgress) query;
    get_swap_canister_ids: () -> (vec principal) query;
    get_tracked_canisters: () -> (vec principal) query;
    get_user_ban_history: (user: principal) -> (Result_5) query;
@@ -346,12 +357,6 @@ type AppSneedDaoBackend =
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
-   refresh_all_token_metadata: () ->
-    (record {
-       errors: vec text;
-       failed: nat;
-       success: nat;
-     });
    refresh_token_metadata: (ledger_id: principal) -> (Result_3);
    register_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    register_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
@@ -387,6 +392,8 @@ type AppSneedDaoBackend =
     sns_root_canister_id: opt principal) -> (Result_1);
    set_principal_nickname: ("principal": principal, nickname: text) ->
     (Result_1);
+   start_refresh_all_token_metadata: () -> (Result_2);
+   stop_refresh_all_token_metadata: () -> ();
    test_calculate_ban_duration: (user: principal) -> (nat);
    transfer_position: (swap_canister_id: principal, to: principal,
     position_id: nat) -> (TransferPositionResult);
