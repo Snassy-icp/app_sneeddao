@@ -45,7 +45,7 @@ import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette } from 'react-icons/fa';
+import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -829,14 +829,22 @@ export default function Me() {
                                     width: '72px',
                                     height: '72px',
                                     borderRadius: '18px',
-                                    background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                    background: isPremium && !premiumLoading 
+                                        ? `linear-gradient(135deg, #f59e0b, #eab308)` 
+                                        : `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     flexShrink: 0,
-                                    boxShadow: `0 4px 20px ${mePrimary}40`
+                                    boxShadow: isPremium && !premiumLoading 
+                                        ? `0 4px 20px #f59e0b40` 
+                                        : `0 4px 20px ${mePrimary}40`
                                 }}>
-                                    <FaUser size={32} color="white" />
+                                    {isPremium && !premiumLoading ? (
+                                        <FaCrown size={32} color="white" />
+                                    ) : (
+                                        <FaUser size={32} color="white" />
+                                    )}
                                 </div>
                                 
                                 {/* Profile Info */}
