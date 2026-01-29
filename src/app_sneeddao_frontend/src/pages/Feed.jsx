@@ -25,7 +25,7 @@ const feedAccent = '#fbbf24'; // Golden yellow
 const feedGreen = '#22c55e';
 const feedBlue = '#3b82f6';
 const feedPurple = '#a855f7';
-const feedAuction = '#ec4899'; // Pink for auctions
+const feedAuction = '#8b5cf6'; // Purple for auctions (less garish)
 
 // Format relative time (e.g., "5m", "2h", "3d")
 const formatRelativeTime = (timestamp) => {
@@ -599,6 +599,8 @@ function Feed() {
     });
     const [auctionItems, setAuctionItems] = useState([]); // Raw auction offers
     const [loadingAuctions, setLoadingAuctions] = useState(false);
+    const [auctionTokenMetadata, setAuctionTokenMetadata] = useState(new Map()); // ledger_id -> { symbol, decimals, logo }
+    const [loadingAuctionTokens, setLoadingAuctionTokens] = useState(new Set());
     
     // Ref to store the randomized SNS display list - only computed once per data change
     const randomizedSnsDisplayRef = useRef({ key: '', list: [] });
@@ -669,29 +671,14 @@ function Feed() {
         // Use public_note as body if available
         const publicNote = offer.public_note?.[0] || null;
         
-        // Build body description
-        let bodyParts = [];
-        if (publicNote) {
-            bodyParts.push(publicNote);
-        }
-        
-        // Add pricing info
-        if (offer.buyout_price?.[0]) {
-            bodyParts.push(`Buyout: ${formatAmount(offer.buyout_price[0])} tokens`);
-        }
-        if (offer.min_bid_price?.[0]) {
-            bodyParts.push(`Min bid: ${formatAmount(offer.min_bid_price[0])} tokens`);
-        }
-        if (offer.expiration?.[0]) {
-            const timeRemaining = formatTimeRemaining(offer.expiration[0]);
-            bodyParts.push(`Ends: ${timeRemaining}`);
-        }
+        // Get price token ledger ID
+        const priceTokenLedger = offer.price_token_ledger?.toString() || null;
         
         return {
             id: `auction_${offer.id}`, // Prefix to avoid ID collision with forum items
             item_type: { auction: null }, // Custom type
             title: title,
-            body: bodyParts.join(' • '),
+            body: publicNote || '', // Just the note, pricing will be rendered separately
             created_by: offer.creator,
             created_at: offer.activated_at?.[0] || offer.created_at, // Use activation time if available
             // Auction-specific fields
@@ -699,6 +686,10 @@ function Feed() {
             _offerId: Number(offer.id),
             _offer: offer,
             _assets: assets,
+            _priceTokenLedger: priceTokenLedger,
+            _buyoutPrice: offer.buyout_price?.[0] || null,
+            _minBidPrice: offer.min_bid_price?.[0] || null,
+            _expiration: offer.expiration?.[0] || null,
             // Compatibility fields (null/empty for auctions)
             sns_root_canister_id: null,
             forum_id: null,
@@ -711,6 +702,68 @@ function Feed() {
             replied_to_post: null
         };
     };
+    
+    // Fetch token metadata for auction price tokens
+    const fetchAuctionTokenMetadata = async (ledgerId) => {
+        if (!ledgerId || auctionTokenMetadata.has(ledgerId) || loadingAuctionTokens.has(ledgerId)) {
+            return;
+        }
+        
+        setLoadingAuctionTokens(prev => new Set([...prev, ledgerId]));
+        
+        try {
+            const agent = await HttpAgent.create({ host: 'https://icp-api.io' });
+            
+            // Create a minimal ICRC-1 actor for metadata
+            const { Actor } = await import('@dfinity/agent');
+            const icrc1IdlFactory = ({ IDL }) => {
+                return IDL.Service({
+                    icrc1_symbol: IDL.Func([], [IDL.Text], ['query']),
+                    icrc1_decimals: IDL.Func([], [IDL.Nat8], ['query']),
+                    icrc1_metadata: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Variant({
+                        Nat: IDL.Nat,
+                        Int: IDL.Int,
+                        Text: IDL.Text,
+                        Blob: IDL.Vec(IDL.Nat8)
+                    })))], ['query']),
+                });
+            };
+            
+            const ledgerActor = Actor.createActor(icrc1IdlFactory, {
+                agent,
+                canisterId: ledgerId,
+            });
+            
+            const [symbol, decimals, metadata] = await Promise.all([
+                ledgerActor.icrc1_symbol(),
+                ledgerActor.icrc1_decimals(),
+                ledgerActor.icrc1_metadata().catch(() => [])
+            ]);
+            
+            // Try to extract logo from metadata
+            let logo = null;
+            for (const [key, value] of metadata) {
+                if (key === 'icrc1:logo' && value.Text) {
+                    logo = value.Text;
+                    break;
+                }
+            }
+            
+            setAuctionTokenMetadata(prev => {
+                const newMap = new Map(prev);
+                newMap.set(ledgerId, { symbol, decimals: Number(decimals), logo });
+                return newMap;
+            });
+        } catch (e) {
+            console.warn(`Failed to fetch token metadata for ${ledgerId}:`, e);
+        } finally {
+            setLoadingAuctionTokens(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(ledgerId);
+                return newSet;
+            });
+        }
+    };
 
     // Toggle auction display
     const toggleShowAuctions = () => {
@@ -718,6 +771,18 @@ function Feed() {
         setShowAuctions(newValue);
         localStorage.setItem('feedShowAuctions', JSON.stringify(newValue));
     };
+    
+    // Fetch token metadata for auctions when feed items change
+    useEffect(() => {
+        const auctionFeedItems = feedItems.filter(item => item._isAuction && item._priceTokenLedger);
+        const uniqueLedgers = [...new Set(auctionFeedItems.map(item => item._priceTokenLedger))];
+        
+        uniqueLedgers.forEach(ledgerId => {
+            if (!auctionTokenMetadata.has(ledgerId) && !loadingAuctionTokens.has(ledgerId)) {
+                fetchAuctionTokenMetadata(ledgerId);
+            }
+        });
+    }, [feedItems]);
 
     // Get/set last seen ID from localStorage
     const getLastSeenId = () => {
@@ -1287,9 +1352,13 @@ function Feed() {
             } else if (direction === 'newer') {
                 if (filteredItems.length > 0) {
                     // Filter out items we already have (items with ID <= current first item ID)
-                    const currentFirstId = feedItems.length > 0 ? feedItems[0].id : 0n;
+                    // Only compare forum items (not auctions which have string IDs)
+                    const forumItems = feedItems.filter(item => !item._isAuction);
+                    const currentFirstId = forumItems.length > 0 ? forumItems[0].id : 0n;
                     const newerItems = filteredItems.filter(item => {
-                        // Handle BigInt comparison
+                        // Skip auction items in this comparison (they're handled separately)
+                        if (item._isAuction) return false;
+                        // Handle BigInt comparison for forum items
                         const itemId = typeof item.id === 'bigint' ? item.id : BigInt(item.id);
                         const currentId = typeof currentFirstId === 'bigint' ? currentFirstId : BigInt(currentFirstId);
                         return itemId > currentId;
@@ -1890,8 +1959,74 @@ function Feed() {
                         {displayTitle}
                     </h3>
                     
+                    {/* Auction pricing info */}
+                    {item._isAuction && (
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            marginBottom: '12px',
+                            padding: '12px',
+                            backgroundColor: theme.colors.tertiaryBg,
+                            borderRadius: '10px',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            {(() => {
+                                const tokenMeta = item._priceTokenLedger ? auctionTokenMetadata.get(item._priceTokenLedger) : null;
+                                const isLoadingToken = item._priceTokenLedger ? loadingAuctionTokens.has(item._priceTokenLedger) : false;
+                                const symbol = tokenMeta?.symbol || '...';
+                                const decimals = tokenMeta?.decimals ?? 8;
+                                const logo = tokenMeta?.logo;
+                                
+                                const formatPrice = (price) => {
+                                    if (!price) return null;
+                                    return formatAmount(price, decimals);
+                                };
+                                
+                                return (
+                                    <>
+                                        {item._buyoutPrice && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Buyout:</span>
+                                                {logo && (
+                                                    <TokenIcon logo={logo} size={16} borderRadius="4px" />
+                                                )}
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '600', color: feedGreen }}>
+                                                    {isLoadingToken ? '...' : formatPrice(item._buyoutPrice)} {symbol}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {item._minBidPrice && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Min bid:</span>
+                                                {logo && !item._buyoutPrice && (
+                                                    <TokenIcon logo={logo} size={16} borderRadius="4px" />
+                                                )}
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '500', color: theme.colors.primaryText }}>
+                                                    {isLoadingToken ? '...' : formatPrice(item._minBidPrice)} {symbol}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {item._expiration && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Ends:</span>
+                                                <span style={{ 
+                                                    fontSize: '0.85rem', 
+                                                    fontWeight: '500', 
+                                                    color: formatTimeRemaining(item._expiration) === 'Expired' ? '#ef4444' : feedPrimary 
+                                                }}>
+                                                    {formatTimeRemaining(item._expiration)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
+                    
                     {/* Body preview */}
-                    {item.body && item.body.length > 0 && (
+                    {item.body && item.body.length > 0 && !item._isAuction && (
                         <div style={getStyles(theme).feedItemBody}>
                             <MarkdownBody 
                                 text={(() => {
@@ -1909,6 +2044,18 @@ function Feed() {
                                 background: `linear-gradient(transparent, ${theme.colors.secondaryBg})`,
                                 pointerEvents: 'none'
                             }} />
+                        </div>
+                    )}
+                    
+                    {/* Auction public note */}
+                    {item._isAuction && item.body && item.body.length > 0 && (
+                        <div style={{
+                            fontSize: '0.85rem',
+                            color: theme.colors.secondaryText,
+                            lineHeight: '1.5',
+                            marginBottom: '8px'
+                        }}>
+                            {item.body.length > 200 ? `${item.body.substring(0, 200)}...` : item.body}
                         </div>
                     )}
 
