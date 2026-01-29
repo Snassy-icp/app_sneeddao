@@ -52,6 +52,7 @@ import CanisterGroupsAdmin from './pages/admin/CanisterGroups';
 import NetworkAdmin from './pages/admin/Network';
 import ProfitsAdmin from './pages/admin/Profits';
 import TokensAdmin from './pages/admin/Tokens';
+import AdminsAdmin from './pages/admin/Admins';
 import AdminSnsJailbreak from './pages/AdminSnsJailbreak';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
@@ -226,6 +227,7 @@ function App() {
                     <Route path="/admin/network" element={<NetworkAdmin />} />
                     <Route path="/admin/profits" element={<ProfitsAdmin />} />
                     <Route path="/admin/tokens" element={<TokensAdmin />} />
+                    <Route path="/admin/admins" element={<AdminsAdmin />} />
                     <Route path="/admin/sns_jailbreak" element={<AdminSnsJailbreak />} />
                   </Routes>
                   </Layout>
