@@ -93,14 +93,27 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     
     // Image loading state
     const [logoLoaded, setLogoLoaded] = useState(false);
+    const [logoError, setLogoError] = useState(false);
     
     // Preload logo
     useEffect(() => {
-        if (token.logo) {
+        setLogoError(false);
+        setLogoLoaded(false);
+        if (token.logo && token.logo.trim() !== '') {
             const img = new Image();
-            img.onload = () => setLogoLoaded(true);
-            img.onerror = () => setLogoLoaded(true);
+            img.onload = () => {
+                setLogoLoaded(true);
+                setLogoError(false);
+            };
+            img.onerror = () => {
+                setLogoLoaded(true);
+                setLogoError(true);
+            };
             img.src = token.logo;
+        } else {
+            // No logo provided
+            setLogoLoaded(true);
+            setLogoError(true);
         }
     }, [token.logo]);
     
@@ -1094,6 +1107,24 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {!logoLoaded ? (
                         <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+                    ) : logoError || !token.logo ? (
+                        // Fallback: styled box with token symbol initial
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '1.25rem',
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            boxShadow: '0 4px 12px rgba(107, 114, 128, 0.3)'
+                        }}>
+                            {token.symbol ? token.symbol.charAt(0) : '?'}
+                        </div>
                     ) : (
                         <img 
                             src={token.logo} 

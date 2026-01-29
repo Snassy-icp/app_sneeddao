@@ -140,25 +140,62 @@ const managementCanisterIdlFactory = ({ IDL }) => {
     });
 };
 
+// Fallback component for missing token logos
+const TokenLogoFallback = ({ symbol, size = 36, zIndex = 1, marginRight = 0 }) => (
+    <div style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '10px',
+        background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontSize: `${size * 0.4}px`,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        boxShadow: '0 2px 8px rgba(107, 114, 128, 0.3)',
+        zIndex,
+        marginRight: `${marginRight}px`,
+        flexShrink: 0
+    }}>
+        {symbol ? symbol.charAt(0) : '?'}
+    </div>
+);
+
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [logo0Loaded, setLogo0Loaded] = useState(false);
     const [logo1Loaded, setLogo1Loaded] = useState(false);
+    const [logo0Error, setLogo0Error] = useState(false);
+    const [logo1Error, setLogo1Error] = useState(false);
     
     // Preload logos
     useEffect(() => {
-        if (position.token0Logo) {
+        setLogo0Error(false);
+        setLogo1Error(false);
+        setLogo0Loaded(false);
+        setLogo1Loaded(false);
+        
+        if (position.token0Logo && position.token0Logo.trim() !== '') {
             const img = new Image();
-            img.onload = () => setLogo0Loaded(true);
-            img.onerror = () => setLogo0Loaded(true);
+            img.onload = () => { setLogo0Loaded(true); setLogo0Error(false); };
+            img.onerror = () => { setLogo0Loaded(true); setLogo0Error(true); };
             img.src = position.token0Logo;
+        } else {
+            setLogo0Loaded(true);
+            setLogo0Error(true);
         }
-        if (position.token1Logo) {
+        
+        if (position.token1Logo && position.token1Logo.trim() !== '') {
             const img = new Image();
-            img.onload = () => setLogo1Loaded(true);
-            img.onerror = () => setLogo1Loaded(true);
+            img.onload = () => { setLogo1Loaded(true); setLogo1Error(false); };
+            img.onerror = () => { setLogo1Loaded(true); setLogo1Error(true); };
             img.src = position.token1Logo;
+        } else {
+            setLogo1Loaded(true);
+            setLogo1Error(true);
         }
     }, [position.token0Logo, position.token1Logo]);
 
@@ -174,8 +211,16 @@ const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefres
                         <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
                     ) : (
                         <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                            <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
-                            <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
+                            {logo0Error || !position.token0Logo ? (
+                                <TokenLogoFallback symbol={position.token0Symbol} size={36} zIndex={2} marginRight={-8} />
+                            ) : (
+                                <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
+                            )}
+                            {logo1Error || !position.token1Logo ? (
+                                <TokenLogoFallback symbol={position.token1Symbol} size={36} zIndex={1} />
+                            ) : (
+                                <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
+                            )}
                         </div>
                     )}
                 </div>
@@ -4333,7 +4378,7 @@ function Wallet() {
                                         ${totalDollarValue}
                                     </div>
                                     {/* Breakdown badges inside portfolio card */}
-                                    {totalBreakdown && (totalBreakdown.liquid > 0 || totalBreakdown.staked > 0 || totalBreakdown.locked > 0 || totalBreakdown.liquidity > 0) && (
+                                    {totalBreakdown && (totalBreakdown.liquid > 0 || totalBreakdown.staked > 0 || totalBreakdown.locked > 0 || totalBreakdown.liquidity > 0 || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyFees || totalBreakdown.hasAnyMaturity) && (
                                         <div style={{ 
                                             display: 'flex', 
                                             flexWrap: 'wrap', 
@@ -4381,6 +4426,36 @@ function Wallet() {
                                                     gap: '0.2rem'
                                                 }}>
                                                     🌊 ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                            {totalBreakdown.hasAnyMaturity && totalBreakdown.maturity > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    🌱 ${totalBreakdown.maturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                            {totalBreakdown.hasAnyRewards && totalBreakdown.rewards > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    🎁 ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </span>
+                                            )}
+                                            {totalBreakdown.hasAnyFees && totalBreakdown.fees > 0 && (
+                                                <span style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem'
+                                                }}>
+                                                    💸 ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                         </div>

@@ -17,7 +17,7 @@ function getTokenLogo(metadata) {
     if (result) {
         result = result.Text;
     } else { 
-        result = "icp_symbol.svg"; 
+        result = ""; // Return empty string - let UI handle the fallback
     }
     return result;
 }
