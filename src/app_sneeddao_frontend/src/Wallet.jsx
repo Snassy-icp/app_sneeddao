@@ -4439,6 +4439,130 @@ function Wallet() {
                                     </div>
                                 </div>
                             )}
+                            
+                            {/* Consolidate Card */}
+                            {(totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyMaturity) && (
+                                <div style={{
+                                    background: `linear-gradient(135deg, ${walletPrimary}15 0%, ${walletAccent}10 100%)`,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '12px',
+                                    padding: '0.75rem 1rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.5rem'
+                                }}>
+                                    <div style={{ 
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '0.5rem'
+                                    }}>
+                                        <div>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.7rem', 
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                                fontWeight: '500'
+                                            }}>
+                                                Consolidate
+                                            </div>
+                                            <div style={{ 
+                                                color: walletPrimary, 
+                                                fontSize: '1.25rem', 
+                                                fontWeight: '700'
+                                            }}>
+                                                ${(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.maturity).toLocaleString(undefined, { 
+                                                    minimumFractionDigits: 2, 
+                                                    maximumFractionDigits: 2 
+                                                })}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleOpenConsolidateModal('all')}
+                                            style={{
+                                                background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                padding: '0.5rem 0.875rem',
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '600',
+                                                transition: 'all 0.2s ease',
+                                                whiteSpace: 'nowrap',
+                                                boxShadow: `0 2px 8px ${walletPrimary}30`
+                                            }}
+                                        >
+                                            Collect All
+                                        </button>
+                                    </div>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        flexWrap: 'wrap', 
+                                        gap: '0.5rem',
+                                        fontSize: '0.7rem'
+                                    }}>
+                                        {totalBreakdown.hasAnyFees && (
+                                            <span 
+                                                onClick={() => handleOpenConsolidateModal('fees')}
+                                                style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem',
+                                                    cursor: 'pointer',
+                                                    padding: '0.2rem 0.4rem',
+                                                    borderRadius: '4px',
+                                                    transition: 'background 0.2s ease'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
+                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                            >
+                                                💸 ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                        {totalBreakdown.hasAnyRewards && (
+                                            <span 
+                                                onClick={() => handleOpenConsolidateModal('rewards')}
+                                                style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem',
+                                                    cursor: 'pointer',
+                                                    padding: '0.2rem 0.4rem',
+                                                    borderRadius: '4px',
+                                                    transition: 'background 0.2s ease'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
+                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                            >
+                                                🎁 ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                        {totalBreakdown.hasAnyMaturity && (
+                                            <span 
+                                                onClick={() => handleOpenConsolidateModal('maturity')}
+                                                style={{ 
+                                                    color: theme.colors.secondaryText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.2rem',
+                                                    cursor: 'pointer',
+                                                    padding: '0.2rem 0.4rem',
+                                                    borderRadius: '4px',
+                                                    transition: 'background 0.2s ease'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
+                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                            >
+                                                🌱 ${totalBreakdown.maturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -4657,297 +4781,6 @@ function Wallet() {
                     </div>
                 )}
 
-                {/* Consolidation Section */}
-                {isAuthenticated && (totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyMaturity) && (
-                    <div style={{
-                        background: theme.colors.cardGradient,
-                        border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '12px',
-                        marginBottom: '20px',
-                        boxShadow: theme.colors.cardShadow,
-                        overflow: 'hidden'
-                    }}>
-                        {/* Collapsible Header */}
-                        <div 
-                            style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '16px 20px',
-                                borderBottom: consolidationExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                                cursor: 'pointer'
-                            }}
-                            onClick={() => setConsolidationExpanded(!consolidationExpanded)}
-                        >
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px'
-                            }}>
-                                <span style={{
-                                    fontSize: '1.2rem',
-                                    color: theme.colors.secondaryText,
-                                    transition: 'transform 0.2s ease'
-                                }}>
-                                    {consolidationExpanded ? '▼' : '▶'}
-                                </span>
-                                <div>
-                                    <h3 style={{
-                                        margin: 0,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '1.2rem',
-                                        fontWeight: '600'
-                                    }}>
-                                        Consolidate
-                                    </h3>
-                                    <div style={{
-                                        color: theme.colors.accent,
-                                        fontSize: '1rem',
-                                        fontWeight: '600',
-                                        marginTop: '4px'
-                                    }}>
-                                        ${(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.maturity).toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenConsolidateModal('all');
-                                }}
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    padding: '10px 20px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.9rem',
-                                    fontWeight: '600',
-                                    transition: 'all 0.2s ease',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = theme.colors.accentHover;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = theme.colors.accent;
-                                }}
-                            >
-                                <span style={{ fontSize: '1rem' }}>🎩</span>
-                                <span className="consolidate-all-full">Consolidate All</span>
-                                <span className="consolidate-all-short">All</span>
-                            </button>
-                        </div>
-
-                        {/* Collapsible Content */}
-                        {consolidationExpanded && (
-                        <div style={{ padding: '20px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {/* Fees Row */}
-                            {totalBreakdown.hasAnyFees && (
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '12px 16px',
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    borderRadius: '8px',
-                                    border: `1px solid ${theme.colors.border}`
-                                }}>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            marginBottom: '4px'
-                                        }}>
-                                            <span style={{ fontSize: '1.2rem' }}>💸</span>
-                                            <span style={{
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1rem',
-                                                fontWeight: '500'
-                                            }}>
-                                                Total Unclaimed Fees
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            color: theme.colors.accent,
-                                            fontSize: '1.3rem',
-                                            fontWeight: '600',
-                                            marginLeft: '28px'
-                                        }}>
-                                            ${totalBreakdown.fees.toLocaleString(undefined, { 
-                                                minimumFractionDigits: 2, 
-                                                maximumFractionDigits: 2 
-                                            })}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleOpenConsolidateModal('fees')}
-                                        style={{
-                                            background: theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: '600',
-                                            transition: 'all 0.2s ease',
-                                            whiteSpace: 'nowrap'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.background = theme.colors.accentHover;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.background = theme.colors.accent;
-                                        }}
-                                    >
-                                        Consolidate
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Rewards Row */}
-                            {totalBreakdown.hasAnyRewards && (
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '12px 16px',
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    borderRadius: '8px',
-                                    border: `1px solid ${theme.colors.border}`
-                                }}>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            marginBottom: '4px'
-                                        }}>
-                                            <span style={{ fontSize: '1.2rem' }}>🎁</span>
-                                            <span style={{
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1rem',
-                                                fontWeight: '500'
-                                            }}>
-                                                Total Unclaimed Rewards
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            color: theme.colors.accent,
-                                            fontSize: '1.3rem',
-                                            fontWeight: '600',
-                                            marginLeft: '28px'
-                                        }}>
-                                            ${totalBreakdown.rewards.toLocaleString(undefined, { 
-                                                minimumFractionDigits: 2, 
-                                                maximumFractionDigits: 2 
-                                            })}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleOpenConsolidateModal('rewards')}
-                                        style={{
-                                            background: theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: '600',
-                                            transition: 'all 0.2s ease',
-                                            whiteSpace: 'nowrap'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.background = theme.colors.accentHover;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.background = theme.colors.accent;
-                                        }}
-                                    >
-                                        Consolidate
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Maturity Row */}
-                            {totalBreakdown.hasAnyMaturity && (
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '12px 16px',
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    borderRadius: '8px',
-                                    border: `1px solid ${theme.colors.border}`
-                                }}>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            marginBottom: '4px'
-                                        }}>
-                                            <span style={{ fontSize: '1.2rem' }}>🌱</span>
-                                            <span style={{
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1rem',
-                                                fontWeight: '500'
-                                            }}>
-                                                Total Neuron Maturity
-                                            </span>
-                                        </div>
-                                        <div style={{
-                                            color: theme.colors.accent,
-                                            fontSize: '1.3rem',
-                                            fontWeight: '600',
-                                            marginLeft: '28px'
-                                        }}>
-                                            ${totalBreakdown.maturity.toLocaleString(undefined, { 
-                                                minimumFractionDigits: 2, 
-                                                maximumFractionDigits: 2 
-                                            })}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleOpenConsolidateModal('maturity')}
-                                        style={{
-                                            background: theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: '600',
-                                            transition: 'all 0.2s ease',
-                                            whiteSpace: 'nowrap'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.background = theme.colors.accentHover;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.background = theme.colors.accent;
-                                        }}
-                                    >
-                                        Consolidate
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        </div>
-                        )}
-                    </div>
-                )}
 
                 {!isAuthenticated ? (
                     <div style={{
