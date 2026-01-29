@@ -286,37 +286,49 @@ function SneedexOffers() {
         if (whitelistedTokens.some(t => t.ledger_id.toString() === ledgerId)) return;
         
         try {
-            const agent = new HttpAgent({ host: getHost(), identity });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
+            // Use same approach as Feed.jsx - create agent and inline actor definition
+            const { Actor } = await import('@dfinity/agent');
+            const agent = await HttpAgent.create({ host: 'https://icp-api.io' });
             
-            const ledgerActor = createLedgerActor(ledgerId, { agent });
-            const [metadata, fee] = await Promise.all([
-                ledgerActor.icrc1_metadata(),
-                ledgerActor.icrc1_fee()
+            const icrc1IdlFactory = ({ IDL }) => {
+                return IDL.Service({
+                    icrc1_symbol: IDL.Func([], [IDL.Text], ['query']),
+                    icrc1_name: IDL.Func([], [IDL.Text], ['query']),
+                    icrc1_decimals: IDL.Func([], [IDL.Nat8], ['query']),
+                    icrc1_fee: IDL.Func([], [IDL.Nat], ['query']),
+                    icrc1_metadata: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Variant({
+                        Nat: IDL.Nat,
+                        Int: IDL.Int,
+                        Text: IDL.Text,
+                        Blob: IDL.Vec(IDL.Nat8)
+                    })))], ['query']),
+                });
+            };
+            
+            const ledgerActor = Actor.createActor(icrc1IdlFactory, {
+                agent,
+                canisterId: ledgerId,
+            });
+            
+            const [symbol, name, decimals, fee, metadata] = await Promise.all([
+                ledgerActor.icrc1_symbol(),
+                ledgerActor.icrc1_name().catch(() => 'Unknown Token'),
+                ledgerActor.icrc1_decimals(),
+                ledgerActor.icrc1_fee(),
+                ledgerActor.icrc1_metadata().catch(() => [])
             ]);
             
-            // Extract token metadata from response
-            let symbol = 'TOKEN';
-            let name = 'Unknown Token';
-            let decimals = 8;
+            // Extract logo from metadata
             let logo = null;
-            
             for (const [key, value] of metadata) {
-                if ((key === 'icrc1:symbol' || key === 'symbol') && value?.Text) {
-                    symbol = value.Text;
-                } else if ((key === 'icrc1:name' || key === 'name') && value?.Text) {
-                    name = value.Text;
-                } else if ((key === 'icrc1:decimals' || key === 'decimals') && value?.Nat !== undefined) {
-                    decimals = Number(value.Nat);
-                } else if ((key === 'icrc1:logo' || key === 'logo') && value?.Text) {
+                if (key === 'icrc1:logo' && value.Text) {
                     logo = value.Text;
+                    break;
                 }
             }
             
             // Cache the metadata including fee
-            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals, logo, fee: BigInt(fee) }));
+            setTokenMetadataCache(prev => new Map(prev).set(ledgerId, { symbol, name, decimals: Number(decimals), logo, fee: BigInt(fee) }));
             
             // Also update tokenLogos for backward compatibility
             if (logo) {
@@ -325,7 +337,7 @@ function SneedexOffers() {
         } catch (e) {
             console.warn('Failed to fetch token metadata:', e);
         }
-    }, [tokenMetadataCache, whitelistedTokens, identity]);
+    }, [tokenMetadataCache, whitelistedTokens]);
     
     // Fetch ICP Neuron Manager info (total staked + maturity across all neurons)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
