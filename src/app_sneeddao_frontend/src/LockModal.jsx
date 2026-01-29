@@ -162,6 +162,64 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
         setNewLockAmount(formatAmount(max, token.decimals));
     };
     
+    // Helper function to pay the fee
+    const payFeeIfNeeded = async () => {
+        if (BigInt(requiredFee) === 0n || paymentBalance >= BigInt(requiredFee)) {
+            return true; // No payment needed or already paid
+        }
+        
+        if (!identity || !paymentSubaccount) {
+            setErrorText('Unable to process payment. Please try again.');
+            return false;
+        }
+        
+        try {
+            const icpLedgerActor = createLedgerActor(ICP_LEDGER_ID, { agentOptions: { identity } });
+            
+            // Calculate amount to send
+            const existingBalance = paymentBalance;
+            const amountNeeded = BigInt(requiredFee) - existingBalance;
+            const icpTxFee = 10_000n;
+            const amountToSend = amountNeeded + icpTxFee;
+            
+            if (icpWalletBalance < amountToSend) {
+                setErrorText(`Insufficient ICP balance. Need ${formatIcp(amountToSend)}, have ${formatIcp(icpWalletBalance)}`);
+                return false;
+            }
+            
+            // Transfer ICP to payment subaccount
+            const result = await icpLedgerActor.icrc1_transfer({
+                to: { owner: Principal.fromText(sneedLockCanisterId), subaccount: [paymentSubaccount] },
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: amountToSend - icpTxFee
+            });
+            
+            if (result.Err) {
+                throw new Error(`Payment failed: ${JSON.stringify(result.Err)}`);
+            }
+            
+            // Update balances
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const newBalance = await sneedLockActor.getPaymentBalance(identity.getPrincipal());
+            setPaymentBalance(BigInt(newBalance));
+            
+            const walletBal = await icpLedgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            setIcpWalletBalance(BigInt(walletBal));
+            
+            return true;
+        } catch (error) {
+            console.error('Payment error:', error);
+            setErrorText(error.message || 'Failed to process payment');
+            return false;
+        }
+    };
+
     const handleAddLock = async () => {
         setErrorText('');
 
@@ -197,10 +255,26 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
             return;
         }
 
+        // Check if fee payment is needed
+        const needsPayment = BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee);
+        const feeMessage = needsPayment 
+            ? ` A lock fee of ${formatIcp(requiredFee)} will be charged.`
+            : '';
+
         setConfirmAction(() => async () => {            
             try {
                 setIsLoading(true);
                 setErrorText('');
+                
+                // Pay fee if needed
+                if (needsPayment) {
+                    const paymentSuccess = await payFeeIfNeeded();
+                    if (!paymentSuccess) {
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+                
                 const result = await onAddLock(token, newLockAmount, new Date(newLockExpiry).getTime());
                 if (result["Err"]) {
                     var error_text = result["Err"].message;
@@ -211,7 +285,7 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                     onClose();
                 }
             } catch (error) {
-                setErrorText('Error adding lock:', error);
+                setErrorText('Error adding lock: ' + (error.message || error));
             } finally {
                 setIsLoading(false);
             }
@@ -220,7 +294,7 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
         setConfirmMessage(
             `You are about to lock ${newLockAmount} ${token.symbol} ` +
             `until ${dateToReadable(new Date(newLockExpiry))} ${get_short_timezone()} ` +
-            `(for ${format_duration(new Date(newLockExpiry) - new Date())}).`
+            `(for ${format_duration(new Date(newLockExpiry) - new Date())}).${feeMessage}`
         );
         setShowConfirmModal(true);
     };
@@ -572,31 +646,22 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                     }}>
                         <button 
                             onClick={handleAddLock}
-                            disabled={BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)}
                             style={{
                                 flex: '2',
-                                background: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
-                                    ? theme.colors.tertiaryBg 
-                                    : `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
-                                color: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
-                                    ? theme.colors.mutedText 
-                                    : 'white',
+                                background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                                color: 'white',
                                 border: 'none',
                                 borderRadius: '10px',
                                 padding: '14px 24px',
-                                cursor: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
-                                    ? 'not-allowed' 
-                                    : 'pointer',
+                                cursor: 'pointer',
                                 fontSize: '0.95rem',
                                 fontWeight: '600',
-                                boxShadow: (BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee)) 
-                                    ? 'none' 
-                                    : `0 4px 12px ${lockPrimary}40`
+                                boxShadow: `0 4px 12px ${lockPrimary}40`
                             }}
                         >
                             {BigInt(requiredFee) > 0n && paymentBalance < BigInt(requiredFee) 
-                                ? 'Pay First to Lock' 
-                                : 'Add Lock'}
+                                ? '💰 Pay & Lock' 
+                                : '🔒 Add Lock'}
                         </button>
                         <button 
                             onClick={onClose}

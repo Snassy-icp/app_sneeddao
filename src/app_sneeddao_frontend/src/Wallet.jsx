@@ -6942,23 +6942,13 @@ function Wallet() {
                                 }}>
                                     Recipient Principal ID
                                 </label>
-                                <input
-                                    type="text"
+                                <PrincipalInput
                                     value={transferRecipient}
-                                    onChange={(e) => setTransferRecipient(e.target.value)}
-                                    placeholder="e.g., aaaaa-aa"
+                                    onChange={setTransferRecipient}
+                                    placeholder="Enter recipient principal or name"
                                     disabled={transferring}
-                                    style={{
-                                        width: '100%',
-                                        padding: '12px',
-                                        borderRadius: '10px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        backgroundColor: theme.colors.secondaryBg,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '0.9rem',
-                                        fontFamily: 'monospace',
-                                        boxSizing: 'border-box'
-                                    }}
+                                    defaultFilter="users"
+                                    style={{ width: '100%' }}
                                 />
                             </div>
                             
@@ -7162,23 +7152,13 @@ function Wallet() {
                                 }}>
                                     Recipient Principal ID
                                 </label>
-                                <input
-                                    type="text"
+                                <PrincipalInput
                                     value={transferCanisterRecipient}
-                                    onChange={(e) => setTransferCanisterRecipient(e.target.value)}
-                                    placeholder="e.g., aaaaa-aa"
+                                    onChange={setTransferCanisterRecipient}
+                                    placeholder="Enter recipient principal or name"
                                     disabled={transferringCanister}
-                                    style={{
-                                        width: '100%',
-                                        padding: '12px',
-                                        borderRadius: '10px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        backgroundColor: theme.colors.secondaryBg,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '0.9rem',
-                                        fontFamily: 'monospace',
-                                        boxSizing: 'border-box'
-                                    }}
+                                    defaultFilter="users"
+                                    style={{ width: '100%' }}
                                 />
                             </div>
                             

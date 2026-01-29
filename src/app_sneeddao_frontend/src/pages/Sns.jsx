@@ -701,7 +701,11 @@ function Sns() {
                 color: theme.colors.primaryText,
                 minHeight: '100vh',
                 display: 'flex',
-                flexDirection: 'column'
+                flexDirection: 'column',
+                width: '100%',
+                maxWidth: '100%',
+                overflowX: 'hidden',
+                boxSizing: 'border-box'
             }}
         >
             <style>{customStyles}</style>
@@ -714,7 +718,9 @@ function Sns() {
                 padding: '1.5rem 2rem',
                 position: 'relative',
                 overflow: 'hidden',
-                flexShrink: 0
+                flexShrink: 0,
+                width: '100%',
+                boxSizing: 'border-box'
             }}>
                 {/* Background decorations */}
                 <div style={{
@@ -835,16 +841,32 @@ function Sns() {
                                                 <span><strong style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</strong></span>
                                             </div>
                                         )}
-                                        {tokenPriceUSD !== null && (
+                                        {(tokenPriceICP !== null || tokenPriceUSD !== null) && (
                                             <div style={{ 
                                                 display: 'flex', 
                                                 alignItems: 'center', 
-                                                gap: '6px',
-                                                color: theme.colors.success,
+                                                gap: '8px',
                                                 fontSize: '0.85rem',
                                                 fontWeight: '600'
                                             }}>
-                                                <span>${tokenPriceUSD < 0.01 ? tokenPriceUSD.toFixed(4) : tokenPriceUSD.toFixed(2)}</span>
+                                                {tokenPriceICP !== null && (
+                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                        {tokenPriceICP < 0.0001 
+                                                            ? tokenPriceICP.toExponential(2)
+                                                            : tokenPriceICP < 1
+                                                                ? tokenPriceICP.toFixed(4)
+                                                                : tokenPriceICP.toFixed(2)
+                                                        } ICP
+                                                    </span>
+                                                )}
+                                                {tokenPriceICP !== null && tokenPriceUSD !== null && (
+                                                    <span style={{ color: theme.colors.mutedText }}>•</span>
+                                                )}
+                                                {tokenPriceUSD !== null && (
+                                                    <span style={{ color: theme.colors.success }}>
+                                                        ${tokenPriceUSD < 0.01 ? tokenPriceUSD.toFixed(4) : tokenPriceUSD.toFixed(2)}
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </>
@@ -876,6 +898,16 @@ function Sns() {
                                 }}>
                                     <FaCoins style={{ color: snsAccent }} />
                                     <span><strong style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</strong></span>
+                                    {tokenPriceICP !== null && (
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {tokenPriceICP < 0.0001 
+                                                ? tokenPriceICP.toExponential(2)
+                                                : tokenPriceICP < 1
+                                                    ? tokenPriceICP.toFixed(4)
+                                                    : tokenPriceICP.toFixed(2)
+                                            } ICP
+                                        </span>
+                                    )}
                                     {tokenPriceUSD !== null && (
                                         <span style={{ color: theme.colors.success, fontWeight: '600' }}>
                                             ${tokenPriceUSD < 0.01 ? tokenPriceUSD.toFixed(4) : tokenPriceUSD.toFixed(2)}
@@ -899,7 +931,8 @@ function Sns() {
                 padding: isMobile ? '1rem' : '1.5rem 2rem',
                 gap: isMobile ? '1rem' : '1.5rem',
                 minHeight: 0, /* Important for flex children to scroll */
-                overflow: isMobile ? 'auto' : 'hidden'
+                overflow: isMobile ? 'auto' : 'hidden',
+                boxSizing: 'border-box'
             }}>
                     {/* Details Panel - Shows first on mobile, scrolls independently on desktop */}
                     <div style={{
