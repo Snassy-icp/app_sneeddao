@@ -20,6 +20,7 @@ import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
 import PrincipalInput from './components/PrincipalInput';
 import ConfirmDialog from './components/ConfirmDialog';
+import TokenIcon from './components/TokenIcon';
 import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion, FaCalendarAlt, FaPercent, FaChartLine, FaWallet, FaCheckCircle } from 'react-icons/fa';
 
 // Accent colors
@@ -1315,11 +1316,7 @@ function Neuron() {
                                         {/* Stake */}
                                         <div className="neuron-card-animate" style={{ ...cardStyle, opacity: 0, animationDelay: '0.25s', marginBottom: 0 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                {tokenLogo ? (
-                                                    <img src={tokenLogo} alt={symbol} style={{ width: '18px', height: '18px', borderRadius: '50%' }} />
-                                                ) : (
-                                                    <FaCoins size={14} style={{ color: neuronGold }} />
-                                                )}
+                                                <TokenIcon logo={tokenLogo} alt={symbol} size={18} fallbackColor={neuronGold} />
                                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Staked</span>
                                             </div>
                                             <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>

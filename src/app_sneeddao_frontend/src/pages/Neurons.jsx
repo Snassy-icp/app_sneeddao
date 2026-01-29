@@ -13,6 +13,7 @@ import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import NeuronInput from '../components/NeuronInput';
 import NeuronDisplay from '../components/NeuronDisplay';
+import TokenIcon from '../components/TokenIcon';
 import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt } from 'react-icons/fa';
 
 function Neurons() {
@@ -881,18 +882,26 @@ function Neurons() {
                     
                     <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                            {snsLogo ? (
-                                <img src={snsLogo} alt="SNS" style={{ width: '56px', height: '56px', borderRadius: '14px' }} />
-                            ) : (
-                                <div style={{
-                                    width: '56px', height: '56px', borderRadius: '14px',
-                                    background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: `0 4px 20px ${neuronPrimary}40`
-                                }}>
-                                    <FaUsers size={24} color="white" />
-                                </div>
-                            )}
+                            <div style={{
+                                width: '56px', height: '56px',
+                                minWidth: '56px', maxWidth: '56px',
+                                flexShrink: 0,
+                                borderRadius: '14px',
+                                overflow: 'hidden'
+                            }}>
+                                {snsLogo ? (
+                                    <img src={snsLogo} alt="SNS" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                    <div style={{
+                                        width: '100%', height: '100%',
+                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        boxShadow: `0 4px 20px ${neuronPrimary}40`
+                                    }}>
+                                        <FaUsers size={24} color="white" />
+                                    </div>
+                                )}
+                            </div>
                             <div>
                                 <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
                                     Neuron Explorer
@@ -940,17 +949,21 @@ function Neurons() {
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
                                 <div style={{
-                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    width: '40px', height: '40px',
+                                    minWidth: '40px', maxWidth: '40px',
+                                    flexShrink: 0,
+                                    borderRadius: '10px',
                                     background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     color: neuronPrimary,
                                     overflow: 'hidden'
                                 }}>
-                                    {snsLogo ? (
-                                        <img src={snsLogo} alt="" style={{ width: '24px', height: '24px', borderRadius: '6px' }} />
-                                    ) : (
-                                        <FaCoins size={18} />
-                                    )}
+                                    <TokenIcon 
+                                        logo={snsLogo} 
+                                        size={24} 
+                                        fallbackColor={neuronPrimary}
+                                        rounded={false}
+                                    />
                                 </div>
                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Active Stake</span>
                             </div>
@@ -1300,7 +1313,7 @@ function Neurons() {
                             Sort by:
                         </span>
                         {[
-                            { key: 'stake', label: 'Stake', icon: snsLogo ? <img src={snsLogo} alt="" style={{ width: '14px', height: '14px', borderRadius: '3px' }} /> : <FaCoins size={12} /> },
+                            { key: 'stake', label: 'Stake', icon: <TokenIcon logo={snsLogo} size={14} fallbackColor={neuronPrimary} rounded={false} /> },
                             { key: 'name', label: 'Name', icon: <FaUsers size={12} /> },
                             { key: 'lock', label: 'Lock Status', icon: <FaLock size={12} /> },
                             { key: 'votingPower', label: 'Voting Power', icon: <FaVoteYea size={12} /> }
@@ -1440,7 +1453,7 @@ function Neurons() {
                                                 {/* Stake */}
                                                 <div>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                        {snsLogo && <img src={snsLogo} alt="" style={{ width: '12px', height: '12px', borderRadius: '2px' }} />}
+                                                        <TokenIcon logo={snsLogo} size={12} fallbackColor={neuronPrimary} rounded={false} />
                                                         Stake
                                                     </div>
                                                     <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
