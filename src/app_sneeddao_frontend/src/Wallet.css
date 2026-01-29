@@ -74,6 +74,7 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1rem;
     width: 100%;
+    align-items: start; /* Don't stretch collapsed cards to match expanded ones */
 }
 
 @media (max-width: 768px) {
