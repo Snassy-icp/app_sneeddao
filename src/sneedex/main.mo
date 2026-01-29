@@ -3222,7 +3222,32 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 // Check public_only filter
                 switch (f.public_only) {
                     case (?publicOnly) {
-                        if (publicOnly and offer.approved_bidders != null) return false;
+                        if (publicOnly) {
+                            // public_only = true: only show offers with no approved_bidders (public offers)
+                            if (offer.approved_bidders != null) return false;
+                        } else {
+                            // public_only = false: only show private offers (has approved_bidders)
+                            switch (offer.approved_bidders) {
+                                case null { return false }; // Skip public offers
+                                case (?approvedList) {
+                                    // Must have a viewer to check access
+                                    switch (f.viewer) {
+                                        case null { return false }; // No viewer = can't show private offers
+                                        case (?viewer) {
+                                            // Check if viewer is creator
+                                            if (Principal.equal(offer.creator, viewer)) {
+                                                // Creator can see their private offers in any state
+                                            } else {
+                                                // For non-creators, only show Active offers they're approved for
+                                                if (offer.state != #Active) return false;
+                                                let isApproved = Array.find<Principal>(approvedList, func(p) { Principal.equal(p, viewer) });
+                                                if (isApproved == null) return false;
+                                            };
+                                        };
+                                    };
+                                };
+                            };
+                        };
                     };
                     case null {};
                 };

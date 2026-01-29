@@ -688,7 +688,11 @@ module {
         // Filter by whether offer has bids (null = don't filter)
         has_bids : ?Bool;
         // Filter to only public offers (no approved_bidders list)
+        // true = only public, false = only private (viewer required), null = all
         public_only : ?Bool;
+        // Viewer principal for filtering private offers (required when public_only = false)
+        // When set, only shows private offers where viewer is creator or approved bidder
+        viewer : ?Principal;
     };
     
     // Input for paginated offer feed

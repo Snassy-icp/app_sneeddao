@@ -678,7 +678,8 @@ function Feed() {
                     asset_types: [],
                     creator: [],
                     has_bids: [],
-                    public_only: [true] // Only public offers
+                    public_only: [true], // Only public offers
+                    viewer: [] // Not needed for public offers
                 }]
             };
             

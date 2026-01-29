@@ -387,6 +387,8 @@ function SneedexOffers() {
                 : [{ Active: null }]; // Only active offers
             
             // Use getOfferFeed to get offers with state filtering
+            // For public tab: only public offers (public_only = true)
+            // For private tab: only private offers the user has access to (public_only = false, viewer = principal)
             const feedInput = {
                 start_id: [], // Start from newest
                 length: 1000, // Get a large number
@@ -395,7 +397,8 @@ function SneedexOffers() {
                     asset_types: [],
                     creator: [],
                     has_bids: [],
-                    public_only: offerTab === 'public' ? [true] : []
+                    public_only: offerTab === 'public' ? [true] : [false],
+                    viewer: offerTab === 'private' && principal ? [principal] : []
                 }]
             };
             
@@ -415,18 +418,6 @@ function SneedexOffers() {
                 if (!showInactiveOffers) {
                     fetchedOffers = fetchedOffers.filter(o => 'Active' in o.state);
                 }
-            }
-            
-            // For private tab, also filter to only offers where user is creator or in approved bidders
-            if (offerTab === 'private' && principal) {
-                const principalStr = principal.toString();
-                fetchedOffers = fetchedOffers.filter(offer => {
-                    const isCreator = offer.creator.toString() === principalStr;
-                    const isApprovedBidder = offer.approved_bidders?.[0]?.some(
-                        p => p.toString() === principalStr
-                    );
-                    return isCreator || isApprovedBidder;
-                });
             }
             
             setOffers(fetchedOffers);
