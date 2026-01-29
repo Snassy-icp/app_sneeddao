@@ -8,8 +8,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
-import { useSns } from '../contexts/SnsContext';
-import { fetchAndCacheSnsData } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
+import { HttpAgent } from '@dfinity/agent';
 
 // Helper to convert hex string to Uint8Array
 const hexToBytes = (hex) => {
@@ -30,7 +30,11 @@ const bytesToHex = (bytes) => {
 function AdminSnsJailbreak() {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
-    const { snsList } = useSns();
+    
+    // SNS list and logos state
+    const [snsList, setSnsList] = useState([]);
+    const [snsLogos, setSnsLogos] = useState(new Map());
+    const [loadingLogos, setLoadingLogos] = useState(new Set());
     
     // Admin check
     const { isAdmin, loading: adminLoading } = useAdminCheck({
@@ -153,24 +157,81 @@ function AdminSnsJailbreak() {
         }
     }, [backendActor]);
     
-    // Load stats and logs on mount
+    // Load SNS logo
+    const loadSnsLogo = useCallback(async (governanceId) => {
+        if (snsLogos.has(governanceId) || loadingLogos.has(governanceId)) return;
+        
+        setLoadingLogos(prev => new Set([...prev, governanceId]));
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ host, ...(identity && { identity }) });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogos(prev => new Map(prev).set(governanceId, logo));
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${governanceId}:`, error);
+        } finally {
+            setLoadingLogos(prev => {
+                const next = new Set(prev);
+                next.delete(governanceId);
+                return next;
+            });
+        }
+    }, [identity, snsLogos, loadingLogos]);
+    
+    // Load stats, logs, and SNS data on mount
     useEffect(() => {
         if (backendActor && isAdmin) {
             loadStats();
             loadLogs(0);
-            // Also ensure SNS list is loaded for log display
-            if ((!snsList || snsList.length === 0) && identity) {
-                fetchAndCacheSnsData(identity);
-            }
+            
+            // Load SNS list for log display
+            const loadSnsList = async () => {
+                // First try to get from cache
+                let data = getAllSnses();
+                if (!data || data.length === 0) {
+                    // Fetch fresh data
+                    data = await fetchAndCacheSnsData(identity);
+                }
+                if (data && data.length > 0) {
+                    setSnsList(data);
+                }
+            };
+            loadSnsList();
         }
-    }, [backendActor, isAdmin, loadStats, loadLogs, snsList, identity]);
+    }, [backendActor, isAdmin, loadStats, loadLogs, identity]);
     
-    // Get SNS name from root canister ID
-    const getSnsName = useCallback((rootCanisterId) => {
-        if (!snsList) return rootCanisterId.toString().slice(0, 10) + '...';
-        const sns = snsList.find(s => s.root_canister_id.toString() === rootCanisterId.toString());
-        return sns?.name || rootCanisterId.toString().slice(0, 10) + '...';
-    }, [snsList]);
+    // Load logos when logs are updated
+    useEffect(() => {
+        if (logs.length > 0 && snsList.length > 0) {
+            logs.forEach(log => {
+                const sns = snsList.find(s => s.rootCanisterId === log.sns_root_canister_id.toString());
+                if (sns?.canisters?.governance) {
+                    loadSnsLogo(sns.canisters.governance);
+                }
+            });
+        }
+    }, [logs, snsList, loadSnsLogo]);
+    
+    // Get SNS info from root canister ID
+    const getSnsInfo = useCallback((rootCanisterId) => {
+        const rootStr = rootCanisterId.toString();
+        const sns = snsList.find(s => s.rootCanisterId === rootStr);
+        const logo = sns?.canisters?.governance ? snsLogos.get(sns.canisters.governance) : null;
+        const isLoadingLogo = sns?.canisters?.governance ? loadingLogos.has(sns.canisters.governance) : false;
+        return {
+            name: sns?.name || rootStr.slice(0, 10) + '...',
+            logo,
+            isLoadingLogo
+        };
+    }, [snsList, snsLogos, loadingLogos]);
     
     // Format timestamp
     const formatTimestamp = (timestamp) => {
@@ -877,7 +938,53 @@ function AdminSnsJailbreak() {
                                                                     <PrincipalDisplay principal={log.user.toString()} />
                                                                 </td>
                                                                 <td style={styles.tableCell}>
-                                                                    {getSnsName(log.sns_root_canister_id)}
+                                                                    {(() => {
+                                                                        const snsInfo = getSnsInfo(log.sns_root_canister_id);
+                                                                        return (
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                {snsInfo.isLoadingLogo ? (
+                                                                                    <div style={{
+                                                                                        width: '24px',
+                                                                                        height: '24px',
+                                                                                        borderRadius: '6px',
+                                                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'center',
+                                                                                        justifyContent: 'center'
+                                                                                    }}>
+                                                                                        <FaSpinner className="spin" size={12} style={{ color: theme.colors.mutedText }} />
+                                                                                    </div>
+                                                                                ) : snsInfo.logo ? (
+                                                                                    <img
+                                                                                        src={snsInfo.logo}
+                                                                                        alt={snsInfo.name}
+                                                                                        style={{
+                                                                                            width: '24px',
+                                                                                            height: '24px',
+                                                                                            borderRadius: '6px',
+                                                                                            objectFit: 'cover'
+                                                                                        }}
+                                                                                    />
+                                                                                ) : (
+                                                                                    <div style={{
+                                                                                        width: '24px',
+                                                                                        height: '24px',
+                                                                                        borderRadius: '6px',
+                                                                                        backgroundColor: theme.colors.accent,
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'center',
+                                                                                        justifyContent: 'center',
+                                                                                        color: '#fff',
+                                                                                        fontSize: '10px',
+                                                                                        fontWeight: '600'
+                                                                                    }}>
+                                                                                        {snsInfo.name.charAt(0).toUpperCase()}
+                                                                                    </div>
+                                                                                )}
+                                                                                <span>{snsInfo.name}</span>
+                                                                            </div>
+                                                                        );
+                                                                    })()}
                                                                 </td>
                                                                 <td style={styles.tableCell}>
                                                                     <strong>{formatE8s(log.amount_e8s)} ICP</strong>
