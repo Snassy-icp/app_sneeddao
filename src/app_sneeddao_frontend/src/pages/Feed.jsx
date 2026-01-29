@@ -581,23 +581,38 @@ function Feed() {
     const [selectedTypes, setSelectedTypes] = useState([]); // Array of selected types: 'forum', 'topic', 'thread', 'post', 'auction'
     const [appliedFilters, setAppliedFilters] = useState({});
     
-    // All available feed item types (forum items only - auctions have separate toggle)
+    // All available feed item types (including auctions)
     const allFeedTypes = [
         { id: 'forum', label: 'Forum', icon: <FaComments size={12} />, color: feedBlue },
         { id: 'topic', label: 'Topic', icon: <FaLayerGroup size={12} />, color: feedGreen },
         { id: 'thread', label: 'Thread', icon: <FaStream size={12} />, color: feedPurple },
         { id: 'post', label: 'Post', icon: <FaReply size={12} />, color: feedPrimary },
+        { id: 'auction', label: 'Auction', icon: <FaGavel size={12} />, color: feedAuction },
     ];
     
-    // Toggle a type selection
+    // Toggle a type selection (syncs auction with header toggle)
     const toggleTypeSelection = (typeId) => {
-        setSelectedTypes(prev => {
-            if (prev.includes(typeId)) {
-                return prev.filter(t => t !== typeId);
-            } else {
-                return [...prev, typeId];
-            }
-        });
+        if (typeId === 'auction') {
+            // Sync auction toggle with the header toggle
+            toggleShowAuctions();
+        } else {
+            setSelectedTypes(prev => {
+                if (prev.includes(typeId)) {
+                    return prev.filter(t => t !== typeId);
+                } else {
+                    return [...prev, typeId];
+                }
+            });
+        }
+    };
+    
+    // Check if a type is selected (auction uses showAuctions, others use selectedTypes)
+    const isTypeSelected = (typeId) => {
+        if (typeId === 'auction') {
+            return showAuctions;
+        }
+        // If no forum types selected, all forum types are shown
+        return selectedTypes.length === 0 || selectedTypes.includes(typeId);
     };
 
     // SNS logos state
@@ -620,6 +635,10 @@ function Feed() {
     const [loadingAuctions, setLoadingAuctions] = useState(false);
     const [auctionTokenMetadata, setAuctionTokenMetadata] = useState(new Map()); // ledger_id -> { symbol, decimals, logo }
     const [loadingAuctionTokens, setLoadingAuctionTokens] = useState(new Set());
+    
+    // ICP ledger ID and logo
+    const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+    const ICP_LOGO = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTQ3IiBoZWlnaHQ9IjE0NCIgdmlld0JveD0iMCAwIDE0NyAxNDQiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxNDciIGhlaWdodD0iMTQ0IiByeD0iNzIiIGZpbGw9IiMyOTJBMkUiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik02MC4xMjUgNDUuNjc0OEM0NC45OTk1IDQ4LjM5MyAzMy4yNjA3IDYwLjU3OTEgMzAuMzYxNiA3NS40NDA0QzMwLjEyNjcgNzYuNjQyIDMwLjAwMDYgNzcuODc1OCAzMCA3OS4xMjYxTDMwIDc5LjE2MzlDMzAuMDA0MiA5NC4yNzI2IDQyLjI0NzYgMTA2LjUxNSA1Ny4zNTg4IDEwNi41MTVDNjAuNTM4MSAxMDYuNTE1IDYzLjU4NjkgMTA1Ljk5OSA2Ni40MjU3IDEwNS4wNTFDNjYuODk2NyAxMDQuODgzIDY3LjQxMiAxMDQuODg2IDY3Ljg3NiAxMDUuMDU5QzcwLjk3NTEgMTA2LjEzNyA3NC4yOTQ1IDEwNi43MjkgNzcuNzU2NCAxMDYuNzI5QzgxLjIzODIgMTA2LjcyOSA4NC41NzU3IDEwNi4xMzYgODcuNjkwOCAxMDUuMDVDODguMTUxMSAxMDQuODc4IDg4LjY2MzcgMTA0Ljg3NCA4OS4xMzE2IDEwNS4wMzlDOTEuOTk0MiAxMDYuMDAxIDk1LjA3IDEwNi41MjMgOTguMjc3NiAxMDYuNTIzQzExMy4zODggMTA2LjUyMyAxMjUuNjMxIDk0LjI4MTMgMTI1LjYzNiA3OS4xNzI1TDEyNS42MzYgNzkuMTM0N0MxMjUuNjQxIDY0LjAxMDMgMTEzLjM4NyA1MS43NTcyIDk4LjI2MzggNTEuNzU3Mkw5OC4yNjI2IDUxLjc1NzJDOTUuMDgzNSA1MS43NTcyIDkyLjAzNDkgNTIuMjcyOSA4OS4xOTYzIDUzLjIyMTNDODguNzI4OSA1My4zODgxIDg4LjIxODMgNTMuMzg4MSA4Ny43NTA5IDUzLjIyMTFDODQuNjI5OSA1Mi4xMzA3IDgxLjI4NTQgNTEuNTMxNSA3Ny43OTU4IDUxLjUzMTVDNzQuMjkwMyA1MS41MzE1IDcwLjkzMjggNTIuMTM3MyA2Ny44MDQ3IDUzLjIzN0M2Ny4zMzU5IDUzLjQwNTEgNjYuODIzMSA1My40MDUgNjYuMzU0NSA1My4yMzY4QzYzLjUxNyA1Mi4yODg3IDYwLjQ2ODcgNTEuNzcyOSA1Ny4yODk4IDUxLjc3MjlDNTcuMjg5NiA1MS43NzI5IDU3LjI4OTMgNTEuNzcyOSA1Ny4yODkxIDUxLjc3MjlDNTcuMjU0NSA1MS43NzI5IDU3LjIyIDUxLjc3MjUgNTcuMTg1NiA1MS43NzE3QzUxLjQ2MTMgNTEuNjM2NCA0Ni4xNDU2IDQ5LjcxMDYgNDEuOTk0NyA0Ni41MjI2QzQxLjUzMiA0Ni4xNjU5IDQxLjM0ODQgNDUuNTM4NiA0MS41NTcxIDQ0Ljk2NjlDNDMuMTk4IDQwLjQzNjkgNDUuNzAzNSAzNi4zMDE0IDQ4LjkxNDYgMzIuNzcyQzQ5LjIyMDYgMzIuNDM5OSA0OS42ODA3IDMyLjMwNzUgNTAuMTA4NCAzMi40MzY2QzUyLjkwNjkgMzMuMjc4NiA1NS44OTM0IDMzLjcyODMgNTguOTg4NSAzMy43MjgzQzU5LjAzMTIgMzMuNzI4MyA1OS4wNzQgMzMuNzI4NCA1OS4xMTY3IDMzLjcyODdDNjYuMDU1NiAzMy43NjM3IDcyLjQ5OTMgMzEuNzE3NiA3Ny45NTAxIDI4LjE4M0M4My40MDQ3IDMxLjcxODEgODkuODU0NiAzMy43NjQzIDk2Ljc5NzkgMzMuNzI4OEM5Ni44NDA2IDMzLjcyODQgOTYuODgzNCAzMy43MjgzIDk2LjkyNjEgMzMuNzI4M0MxMDAuMDA0IDMzLjcyODMgMTAyLjk3NiAzMy4yODMxIDEwNS43NjIgMzIuNDUxMUMxMDYuMTkyIDMyLjMyMjggMTA2LjY1MiAzMi40NTkyIDEwNi45NTYgMzIuNzk0NkMxMTAuMjE2IDM2LjM3NzggMTEyLjc2MiA0MC41ODI0IDExNC40MjQgNDUuMTg5NUMxMTQuNjI2IDQ1Ljc2MjYgMTE0LjQzNCA0Ni4zODg2IDExMy45NjggNDYuNzQxNkMxMDkuOTI3IDQ5LjgzOTYgMTA0Ljc3MSA1MS42NzQ4IDk5LjE4MzMgNTEuNzc0MUM5NC4xNjA3IDQ4LjEwODIgODguMDI1IDQ1Ljk1NTIgODEuMzk2MiA0NS45NTUyQzc0LjQwNTMgNDUuOTU1MiA2Ny45NjQyIDQ4LjM0NDMgNjIuODE0MyA1Mi4zNTQ3QzYxLjkzOTUgNTAuMjU1NSA2MS4xMTY2IDQ4LjAwNDIgNjAuMTI1IDQ1LjY3NDhaIiBmaWxsPSJ1cmwoI3BhaW50MF9saW5lYXJfNTEzOV8xMjkzKSIvPgo8ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDBfbGluZWFyXzUxMzlfMTI5MyIgeDE9IjM3LjUiIHkxPSIzNy41IiB4Mj0iMTI4IiB5Mj0iMTExIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNGMTVBMjQiLz4KPHN0b3Agb2Zmc2V0PSIwLjIwODk3MSIgc3RvcC1jb2xvcj0iI0ZCQjAzQiIvPgo8c3RvcCBvZmZzZXQ9IjAuMjkxNjYyIiBzdG9wLWNvbG9yPSIjRTQ1RTM3Ii8+CjxzdG9wIG9mZnNldD0iMC41MDE4NDIiIHN0b3AtY29sb3I9IiNFRDFFNzkiLz4KPHN0b3Agb2Zmc2V0PSIwLjYwMzI2NSIgc3RvcC1jb2xvcj0iIzUyMjc4NSIvPgo8c3RvcCBvZmZzZXQ9IjAuODE3Mjk5IiBzdG9wLWNvbG9yPSIjMjlBQkUyIi8+CjwvbGluZWFyR3JhZGllbnQ+CjwvZGVmcz4KPC9zdmc+Cg=='; // ICP infinity logo as base64
     
     // Ref to store the randomized SNS display list - only computed once per data change
     const randomizedSnsDisplayRef = useRef({ key: '', list: [] });
@@ -650,7 +669,12 @@ function Feed() {
                 length: 20,
                 filter: [{
                     // Include Active, Completed, and Claimed offers
-                    states: [[{ Active: null }, { Completed: null }, { Claimed: null }]],
+                    // For Completed variant, must provide placeholder data for the record fields
+                    states: [[
+                        { Active: null }, 
+                        { Completed: { winning_bid_id: 0n, completion_time: 0n } }, 
+                        { Claimed: null }
+                    ]],
                     asset_types: [],
                     creator: [],
                     has_bids: [],
@@ -799,8 +823,23 @@ function Feed() {
     
     // Fetch token metadata for auctions when feed items change
     useEffect(() => {
-        const auctionFeedItems = feedItems.filter(item => item._isAuction && item._priceTokenLedger);
-        const uniqueLedgers = [...new Set(auctionFeedItems.map(item => item._priceTokenLedger))];
+        const auctionFeedItems = feedItems.filter(item => item._isAuction);
+        const uniqueLedgers = new Set();
+        
+        // Collect price token ledgers
+        auctionFeedItems.forEach(item => {
+            if (item._priceTokenLedger) {
+                uniqueLedgers.add(item._priceTokenLedger);
+            }
+            // Collect asset token ledgers
+            if (item._assets) {
+                item._assets.forEach(asset => {
+                    if (asset.type === 'ICRC1Token' && asset.ledger_id) {
+                        uniqueLedgers.add(asset.ledger_id);
+                    }
+                });
+            }
+        });
         
         uniqueLedgers.forEach(ledgerId => {
             if (!auctionTokenMetadata.has(ledgerId) && !loadingAuctionTokens.has(ledgerId)) {
@@ -808,6 +847,28 @@ function Feed() {
             }
         });
     }, [feedItems]);
+    
+    // Fetch SNS logos for auction assets that are SNS neurons
+    useEffect(() => {
+        const auctionFeedItems = feedItems.filter(item => item._isAuction && item._assets);
+        const uniqueGovernanceIds = new Set();
+        
+        // Collect governance IDs from SNS neuron assets
+        auctionFeedItems.forEach(item => {
+            item._assets.forEach(asset => {
+                if (asset.type === 'SNSNeuron' && asset.governance_id) {
+                    uniqueGovernanceIds.add(asset.governance_id);
+                }
+            });
+        });
+        
+        // Fetch logos for each governance ID
+        uniqueGovernanceIds.forEach(governanceId => {
+            if (!snsLogos.has(governanceId) && !loadingLogos.has(governanceId)) {
+                loadSnsLogo(governanceId);
+            }
+        });
+    }, [feedItems, snsLogos, loadingLogos]);
 
     // Get/set last seen ID from localStorage
     const getLastSeenId = () => {
@@ -2043,53 +2104,96 @@ function Feed() {
                                         For Sale:
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                        {item._assets.map((asset, idx) => (
-                                            <div key={idx} style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                padding: '4px 10px',
-                                                backgroundColor: theme.colors.secondaryBg,
-                                                borderRadius: '6px',
-                                                border: `1px solid ${theme.colors.border}`,
-                                                fontSize: '0.8rem'
-                                            }}>
-                                                {asset.type === 'SNSNeuron' && (
-                                                    <>
-                                                        <span style={{ color: feedPurple }}>🧠</span>
-                                                        <span style={{ color: theme.colors.primaryText }}>
-                                                            SNS Neuron
-                                                            {asset.cached_stake_e8s && (
-                                                                <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
-                                                                    ({formatAmount(asset.cached_stake_e8s)} staked)
-                                                                </span>
+                                        {item._assets.map((asset, idx) => {
+                                            // Get token metadata for this asset
+                                            const assetTokenMeta = asset.ledger_id ? auctionTokenMetadata.get(asset.ledger_id) : null;
+                                            const isLoadingAssetToken = asset.ledger_id ? loadingAuctionTokens.has(asset.ledger_id) : false;
+                                            
+                                            // For SNS neurons, get SNS info
+                                            const snsNeuronInfo = asset.type === 'SNSNeuron' && asset.governance_id 
+                                                ? allSnses.find(s => s.canisters?.governance === asset.governance_id)
+                                                : null;
+                                            const snsNeuronLogo = snsNeuronInfo ? snsLogos.get(snsNeuronInfo.canisters.governance) : null;
+                                            
+                                            // Check if it's an ICP Neuron Manager canister
+                                            const isNeuronManager = asset.type === 'Canister' && asset.canister_kind === 1;
+                                            
+                                            return (
+                                                <div key={idx} style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '4px 10px',
+                                                    backgroundColor: theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    fontSize: '0.8rem'
+                                                }}>
+                                                    {asset.type === 'SNSNeuron' && (
+                                                        <>
+                                                            {snsNeuronLogo ? (
+                                                                <TokenIcon logo={snsNeuronLogo} size={18} borderRadius="4px" />
+                                                            ) : (
+                                                                <span style={{ color: feedPurple }}>🧠</span>
                                                             )}
-                                                        </span>
-                                                    </>
-                                                )}
-                                                {asset.type === 'Canister' && (
-                                                    <>
-                                                        <span style={{ color: feedBlue }}>📦</span>
-                                                        <span style={{ color: theme.colors.primaryText }}>
-                                                            {asset.title || 'Canister'}
-                                                            {asset.cached_total_stake_e8s && (
-                                                                <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
-                                                                    ({formatAmount(asset.cached_total_stake_e8s)} ICP staked)
-                                                                </span>
+                                                            <span style={{ color: theme.colors.primaryText }}>
+                                                                {snsNeuronInfo?.name || 'SNS'} Neuron
+                                                                {asset.cached_stake_e8s && (
+                                                                    <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
+                                                                        ({formatAmount(asset.cached_stake_e8s)} staked)
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                    {asset.type === 'Canister' && (
+                                                        <>
+                                                            {isNeuronManager ? (
+                                                                <>
+                                                                    <TokenIcon logo={ICP_LOGO} size={18} borderRadius="4px" />
+                                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                                        {asset.title || 'ICP Neuron Manager'}
+                                                                        {asset.cached_total_stake_e8s && (
+                                                                            <span style={{ color: theme.colors.secondaryText, marginLeft: '4px' }}>
+                                                                                ({formatAmount(asset.cached_total_stake_e8s)} ICP)
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <span style={{ color: feedBlue }}>📦</span>
+                                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                                        {asset.title || 'Canister'}
+                                                                    </span>
+                                                                </>
                                                             )}
-                                                        </span>
-                                                    </>
-                                                )}
-                                                {asset.type === 'ICRC1Token' && (
-                                                    <>
-                                                        <span style={{ color: feedAccent }}>🪙</span>
-                                                        <span style={{ color: theme.colors.primaryText }}>
-                                                            {formatAmount(asset.amount)} tokens
-                                                        </span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        ))}
+                                                        </>
+                                                    )}
+                                                    {asset.type === 'ICRC1Token' && (
+                                                        <>
+                                                            {(() => {
+                                                                const tokenLogo = assetTokenMeta?.logo || (asset.ledger_id === ICP_LEDGER ? ICP_LOGO : null);
+                                                                const tokenSymbol = assetTokenMeta?.symbol || (asset.ledger_id === ICP_LEDGER ? 'ICP' : (isLoadingAssetToken ? '...' : 'tokens'));
+                                                                const tokenDecimals = assetTokenMeta?.decimals ?? 8;
+                                                                return (
+                                                                    <>
+                                                                        {tokenLogo ? (
+                                                                            <TokenIcon logo={tokenLogo} size={18} borderRadius="4px" />
+                                                                        ) : (
+                                                                            <span style={{ color: feedAccent }}>🪙</span>
+                                                                        )}
+                                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                                            {formatAmount(asset.amount, tokenDecimals)} {tokenSymbol}
+                                                                        </span>
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -2099,15 +2203,11 @@ function Feed() {
                                 {(() => {
                                     const tokenMeta = item._priceTokenLedger ? auctionTokenMetadata.get(item._priceTokenLedger) : null;
                                     const isLoadingToken = item._priceTokenLedger ? loadingAuctionTokens.has(item._priceTokenLedger) : false;
-                                    const symbol = tokenMeta?.symbol || (isLoadingToken ? '...' : 'tokens');
+                                    const isIcp = item._priceTokenLedger === ICP_LEDGER;
+                                    const symbol = tokenMeta?.symbol || (isIcp ? 'ICP' : (isLoadingToken ? '...' : 'tokens'));
                                     const decimals = tokenMeta?.decimals ?? 8;
                                     const logo = tokenMeta?.logo;
-                                    
-                                    // ICP ledger ID for fallback logo
-                                    const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
-                                    const isIcp = item._priceTokenLedger === ICP_LEDGER;
-                                    const icpLogo = 'https://nns.ic0.app/img/icp.8a03cbcd.svg';
-                                    const displayLogo = logo || (isIcp ? icpLogo : null);
+                                    const displayLogo = logo || (isIcp ? ICP_LOGO : null);
                                     
                                     const formatPrice = (price) => {
                                         if (!price) return null;
@@ -2682,7 +2782,7 @@ function Feed() {
                                     border: `1px solid ${theme.colors.border}`
                                 }}>
                                     {allFeedTypes.map(type => {
-                                        const isSelected = selectedTypes.includes(type.id);
+                                        const isSelected = isTypeSelected(type.id);
                                         return (
                                             <button
                                                 key={type.id}
@@ -2744,7 +2844,15 @@ function Feed() {
                                     color: theme.colors.mutedText, 
                                     marginTop: '4px' 
                                 }}>
-                                    {selectedTypes.length === 0 ? 'Showing all forum item types (auctions controlled by toggle above)' : `Showing: ${selectedTypes.map(t => allFeedTypes.find(ft => ft.id === t)?.label).join(', ')}`}
+                                    {(() => {
+                                        const activeForumTypes = selectedTypes.length === 0 
+                                            ? allFeedTypes.filter(t => t.id !== 'auction').map(t => t.label)
+                                            : selectedTypes.map(t => allFeedTypes.find(ft => ft.id === t)?.label).filter(Boolean);
+                                        const parts = [];
+                                        if (activeForumTypes.length > 0) parts.push(activeForumTypes.join(', '));
+                                        if (showAuctions) parts.push('Auctions');
+                                        return parts.length > 0 ? `Showing: ${parts.join(', ')}` : 'No types selected';
+                                    })()}
                                 </div>
                             </div>
                             
