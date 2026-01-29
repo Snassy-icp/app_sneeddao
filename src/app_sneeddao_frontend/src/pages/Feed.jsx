@@ -578,8 +578,28 @@ function Feed() {
             return [];
         }
     });
-    const [selectedType, setSelectedType] = useState('');
+    const [selectedTypes, setSelectedTypes] = useState([]); // Array of selected types: 'forum', 'topic', 'thread', 'post', 'auction'
     const [appliedFilters, setAppliedFilters] = useState({});
+    
+    // All available feed item types
+    const allFeedTypes = [
+        { id: 'forum', label: 'Forum', icon: <FaComments size={12} />, color: feedBlue },
+        { id: 'topic', label: 'Topic', icon: <FaLayerGroup size={12} />, color: feedGreen },
+        { id: 'thread', label: 'Thread', icon: <FaStream size={12} />, color: feedPurple },
+        { id: 'post', label: 'Post', icon: <FaReply size={12} />, color: feedPrimary },
+        { id: 'auction', label: 'Auction', icon: <FaGavel size={12} />, color: feedAuction },
+    ];
+    
+    // Toggle a type selection
+    const toggleTypeSelection = (typeId) => {
+        setSelectedTypes(prev => {
+            if (prev.includes(typeId)) {
+                return prev.filter(t => t !== typeId);
+            } else {
+                return [...prev, typeId];
+            }
+        });
+    };
 
     // SNS logos state
     const [snsLogos, setSnsLogos] = useState(new Map());
@@ -966,7 +986,7 @@ function Feed() {
         // Clear text, creator, and type filters but keep SNS selection
         setSearchText('');
         setSelectedCreator('');
-        setSelectedType('');
+        setSelectedTypes([]);
         
         // Update applied filters to only include SNS selection
         const newFilters = {};
@@ -1260,10 +1280,13 @@ function Feed() {
 
             const response = await forumActor.get_feed(input);
             
-            // Apply frontend type filtering
+            // Apply frontend type filtering (supports multiple types)
             let filteredItems = response.items;
-            if (appliedFilters.selectedType) {
-                filteredItems = filterFeedItemsByType(response.items, appliedFilters.selectedType);
+            if (appliedFilters.selectedTypes && appliedFilters.selectedTypes.length > 0) {
+                filteredItems = response.items.filter(item => {
+                    const typeStr = extractVariant(item.item_type);
+                    return appliedFilters.selectedTypes.includes(typeStr);
+                });
             }
             
             // Debug log to see the structure of the response
@@ -1272,10 +1295,11 @@ function Feed() {
             }
             
             if (direction === 'initial') {
-                // Fetch auctions in parallel if enabled and no type filter or auction filter
+                // Fetch auctions in parallel if enabled and auction type is selected (or no type filter)
                 let auctionsToMerge = [];
-                const shouldFetchAuctions = showAuctions && 
-                    (!appliedFilters.selectedType || appliedFilters.selectedType === 'auction');
+                const hasTypeFilter = appliedFilters.selectedTypes && appliedFilters.selectedTypes.length > 0;
+                const auctionTypeSelected = !hasTypeFilter || appliedFilters.selectedTypes.includes('auction');
+                const shouldFetchAuctions = showAuctions && auctionTypeSelected;
                 
                 if (shouldFetchAuctions) {
                     try {
@@ -1287,8 +1311,11 @@ function Feed() {
                     }
                 }
                 
-                // Skip forum items if type filter is auction-only
-                let forumItems = appliedFilters.selectedType === 'auction' ? [] : filteredItems;
+                // Skip forum items if only auction type is selected
+                const onlyAuctionSelected = hasTypeFilter && 
+                    appliedFilters.selectedTypes.length === 1 && 
+                    appliedFilters.selectedTypes.includes('auction');
+                let forumItems = onlyAuctionSelected ? [] : filteredItems;
                 
                 // Merge forum items and auctions by timestamp (newest first)
                 const mergedItems = [...forumItems, ...auctionsToMerge].sort((a, b) => {
@@ -1470,7 +1497,7 @@ function Feed() {
         // Clear text, creator, and type filters but preserve SNS selection
         setSearchText('');
         setSelectedCreator('');
-        setSelectedType('');
+        setSelectedTypes([]);
         
         // Set initial applied filters to only include SNS selection
         const initialFilters = {};
@@ -1618,7 +1645,7 @@ function Feed() {
         if (searchText.trim()) filters.searchText = searchText.trim();
         if (selectedCreator.trim()) filters.selectedCreator = selectedCreator.trim();
         if (selectedSnsList.length > 0) filters.selectedSnsList = selectedSnsList;
-        if (selectedType) filters.selectedType = selectedType;
+        if (selectedTypes.length > 0) filters.selectedTypes = selectedTypes;
         
         // Clear scroll position when manually applying filters (start from top)
         try {
@@ -1644,7 +1671,7 @@ function Feed() {
         
         setSearchText('');
         setSelectedCreator('');
-        setSelectedType('');
+        setSelectedTypes([]);
         
         // Keep SNS selection but clear other filters
         const newFilters = {};
@@ -2519,7 +2546,7 @@ function Feed() {
                             }}>
                                 Filters
                             </span>
-                            {(searchText || selectedCreator || selectedType) && (
+                            {(searchText || selectedCreator || selectedTypes.length > 0) && (
                                 <span style={{
                                     fontSize: '0.7rem',
                                     backgroundColor: feedPrimary,
@@ -2552,20 +2579,82 @@ function Feed() {
                                 <div style={getStyles(theme).filterGroup}>
                                     <label style={getStyles(theme).filterLabel}>
                                         <FaList size={10} style={{ marginRight: '6px' }} />
-                                        Type
+                                        Types {selectedTypes.length > 0 && `(${selectedTypes.length})`}
                                     </label>
-                                    <select
-                                        value={selectedType}
-                                        onChange={(e) => setSelectedType(e.target.value)}
-                                        style={getStyles(theme).filterSelect}
-                                    >
-                                        <option value="">All Types</option>
-                                        <option value="forum">🏛️ Forums</option>
-                                        <option value="topic">📂 Topics</option>
-                                        <option value="thread">💬 Threads</option>
-                                        <option value="post">✉️ Posts</option>
-                                        <option value="auction">🔨 Auctions</option>
-                                    </select>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '8px',
+                                        padding: '8px',
+                                        backgroundColor: theme.colors.primaryBg,
+                                        borderRadius: '10px',
+                                        border: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        {allFeedTypes.map(type => {
+                                            const isSelected = selectedTypes.includes(type.id);
+                                            return (
+                                                <button
+                                                    key={type.id}
+                                                    onClick={() => toggleTypeSelection(type.id)}
+                                                    className="feed-sns-avatar"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        padding: '6px 12px',
+                                                        borderRadius: '8px',
+                                                        border: `1.5px solid ${isSelected ? type.color : theme.colors.border}`,
+                                                        backgroundColor: isSelected ? `${type.color}20` : theme.colors.secondaryBg,
+                                                        color: isSelected ? type.color : theme.colors.mutedText,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: '500',
+                                                        opacity: isSelected ? 1 : 0.6,
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                    title={isSelected ? `Hide ${type.label}s` : `Show ${type.label}s`}
+                                                >
+                                                    <span style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center',
+                                                        color: isSelected ? type.color : theme.colors.mutedText
+                                                    }}>
+                                                        {type.icon}
+                                                    </span>
+                                                    {type.label}
+                                                </button>
+                                            );
+                                        })}
+                                        {selectedTypes.length > 0 && (
+                                            <button
+                                                onClick={() => setSelectedTypes([])}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px dashed ${theme.colors.border}`,
+                                                    backgroundColor: 'transparent',
+                                                    color: theme.colors.mutedText,
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '400'
+                                                }}
+                                                title="Show all types"
+                                            >
+                                                <FaTimes size={10} />
+                                                Clear
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div style={{ 
+                                        fontSize: '0.7rem', 
+                                        color: theme.colors.mutedText, 
+                                        marginTop: '4px' 
+                                    }}>
+                                        {selectedTypes.length === 0 ? 'Showing all types' : `Showing: ${selectedTypes.map(t => allFeedTypes.find(ft => ft.id === t)?.label).join(', ')}`}
+                                    </div>
                                 </div>
                                 
                                 <div style={getStyles(theme).filterGroup}>
