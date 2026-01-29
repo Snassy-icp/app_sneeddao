@@ -1863,8 +1863,7 @@ export default function PrincipalPage() {
                                                             gap: '8px',
                                                             marginBottom: '6px'
                                                         }}>
-                                                            <FaCrown size={12} color={principalAccent} />
-                                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Owner:</span>
+                                                            <FaCrown size={12} color={principalAccent} title="Owner" />
                                                             <PrincipalDisplay 
                                                                 principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
                                                                 displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
@@ -1882,8 +1881,7 @@ export default function PrincipalPage() {
                                                                 gap: '8px',
                                                                 marginBottom: '6px'
                                                             }}>
-                                                                <FaKey size={12} color={theme.colors.success} />
-                                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Hotkey:</span>
+                                                                <FaKey size={12} color={theme.colors.success} title="Hotkey" />
                                                                 <PrincipalDisplay 
                                                                     principal={p.principal}
                                                                     displayInfo={principalDisplayInfo.get(p.principal?.toString())}

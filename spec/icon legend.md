@@ -1,1 +1,3 @@
-This file lists the different icons we use for different concepts in the app, for consistency purposes. We update this file as we go when we notice there are icons that have not been listed. At the end of the file we log conflicts in how icons are used that we discover as we go, and that we can resolve eventually. 
+This file lists the different icons we use for different concepts in the app, for consistency purposes. We update this file as we go when we notice there are icons that have not been listed. Also make note of special uses of icons, such as liquidity positions (that are the first specific token's icon overlapped by the second specific token's icon), neurons (that are a brain icon overlapped by the specific token's icon) and ICP Neuron Managers (robot icon overlapped by with ICP token icon).
+
+At the end of the file we log conflicts in how icons are used that we discover as we go, and that we can resolve eventually. 
