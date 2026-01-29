@@ -171,10 +171,14 @@ function SneedexOffers() {
     
     // Helper to get token info from whitelisted tokens or cached metadata
     const getTokenInfo = useCallback((ledgerId) => {
-        // First check whitelisted tokens
+        // Get logo from tokenLogos map or tokenMetadataCache (fetched from ledger)
+        const cachedLogo = tokenLogos.get(ledgerId) || tokenMetadataCache.get(ledgerId)?.logo || null;
+        
+        // First check whitelisted tokens for basic metadata
         const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
         if (token) {
-            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: token.logo?.[0] || null, fee: token.fee ? BigInt(token.fee) : null };
+            // Use cached logo since whitelist doesn't include logo URLs
+            return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: cachedLogo, fee: token.fee ? BigInt(token.fee) : null };
         }
         // Then check dynamically fetched metadata cache
         const cachedMeta = tokenMetadataCache.get(ledgerId);
@@ -182,9 +186,9 @@ function SneedexOffers() {
             return cachedMeta;
         }
         // Fallback for known tokens
-        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: null, fee: BigInt(10000) };
-        return { symbol: 'TOKEN', decimals: 8, logo: null, fee: null };
-    }, [whitelistedTokens, tokenMetadataCache]);
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: cachedLogo, fee: BigInt(10000) };
+        return { symbol: 'TOKEN', decimals: 8, logo: cachedLogo, fee: null };
+    }, [whitelistedTokens, tokenMetadataCache, tokenLogos]);
     
     // Helper to get SNS info by governance id
     const getSnsInfo = useCallback((governanceId) => {
@@ -281,9 +285,10 @@ function SneedexOffers() {
     
     // Fetch token metadata from ledger (logo, symbol, name, decimals, fee)
     const fetchTokenMetadata = useCallback(async (ledgerId) => {
-        // Skip if we already have this token in whitelist or cache
-        if (tokenMetadataCache.has(ledgerId)) return;
-        if (whitelistedTokens.some(t => t.ledger_id.toString() === ledgerId)) return;
+        // Skip if we already have this token cached with a logo
+        if (tokenMetadataCache.has(ledgerId) && tokenMetadataCache.get(ledgerId)?.logo) return;
+        // Skip if we already have this token's logo in the tokenLogos map
+        if (tokenLogos.has(ledgerId)) return;
         
         try {
             // Use same approach as Feed.jsx - create agent and inline actor definition
@@ -358,7 +363,7 @@ function SneedexOffers() {
         } catch (e) {
             console.warn('Failed to fetch token metadata:', e);
         }
-    }, [tokenMetadataCache, whitelistedTokens]);
+    }, [tokenMetadataCache, tokenLogos]);
     
     // Fetch ICP Neuron Manager info (total staked + maturity across all neurons)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
@@ -2235,17 +2240,10 @@ function SneedexOffers() {
                                                     )}
                                                     {details.type === 'ICRC1Token' && (
                                                         <>
-                                                            {tokenLogos.get(details.ledger_id) ? (
-                                                                <img 
-                                                                    src={tokenLogos.get(details.ledger_id)} 
-                                                                    alt={assetTokenInfo?.symbol || 'Token'} 
-                                                                    style={{ width: 18, height: 18, borderRadius: '50%' }}
-                                                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                                                />
-                                                            ) : assetTokenInfo?.logo ? (
+                                                            {assetTokenInfo?.logo ? (
                                                                 <img 
                                                                     src={assetTokenInfo.logo} 
-                                                                    alt={assetTokenInfo.symbol} 
+                                                                    alt={assetTokenInfo?.symbol || 'Token'} 
                                                                     style={{ width: 18, height: 18, borderRadius: '50%' }}
                                                                     onError={(e) => { e.target.style.display = 'none'; }}
                                                                 />
