@@ -6,13 +6,183 @@ import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { FaSpinner, FaWallet, FaCheck, FaCrown } from 'react-icons/fa';
+import { FaSpinner, FaWallet, FaCheck, FaCrown, FaLock, FaCreditCard, FaCheckCircle } from 'react-icons/fa';
 
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
 // Accent colors for lock modal
 const lockPrimary = '#f59e0b';
 const lockSecondary = '#d97706';
+const successGreen = '#22c55e';
+
+// Progress Overlay Component
+function ProgressOverlay({ steps, currentStep, isComplete, onSuccess, position, expiry, theme }) {
+    return (
+        <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: `linear-gradient(135deg, ${theme.colors.primaryBg}f5 0%, ${isComplete ? successGreen : lockPrimary}15 100%)`,
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px',
+            zIndex: 10,
+            borderRadius: '16px',
+        }}>
+            {isComplete ? (
+                // Success State
+                <div style={{
+                    textAlign: 'center',
+                    animation: 'fadeIn 0.5s ease-out'
+                }}>
+                    <div style={{
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '50%',
+                        background: `linear-gradient(135deg, ${successGreen}, #16a34a)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 20px',
+                        boxShadow: `0 8px 32px ${successGreen}40`,
+                        animation: 'scaleIn 0.5s ease-out'
+                    }}>
+                        <FaCheckCircle size={40} color="white" />
+                    </div>
+                    <h3 style={{
+                        color: successGreen,
+                        fontSize: '1.5rem',
+                        fontWeight: '700',
+                        margin: '0 0 8px 0'
+                    }}>
+                        🎉 Position Locked!
+                    </h3>
+                    <p style={{
+                        color: theme.colors.primaryText,
+                        fontSize: '1rem',
+                        margin: '0 0 16px 0',
+                        fontWeight: '600'
+                    }}>
+                        {position?.symbols} #{position?.id?.toString()}
+                    </p>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.9rem',
+                        margin: '0 0 24px 0'
+                    }}>
+                        Locked until {dateToReadable(new Date(expiry))}
+                    </p>
+                    <button
+                        onClick={onSuccess}
+                        style={{
+                            background: `linear-gradient(135deg, ${successGreen}, #16a34a)`,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '10px',
+                            padding: '14px 32px',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            boxShadow: `0 4px 16px ${successGreen}40`
+                        }}
+                    >
+                        Done
+                    </button>
+                </div>
+            ) : (
+                // Progress Steps
+                <div style={{ width: '100%', maxWidth: '300px' }}>
+                    <h3 style={{
+                        color: theme.colors.primaryText,
+                        textAlign: 'center',
+                        marginBottom: '32px',
+                        fontSize: '1.1rem',
+                        fontWeight: '600'
+                    }}>
+                        Processing Lock...
+                    </h3>
+                    
+                    {steps.map((step, index) => {
+                        const isActive = index === currentStep;
+                        const isCompleted = index < currentStep;
+                        const isPending = index > currentStep;
+                        
+                        return (
+                            <div key={index} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '16px',
+                                marginBottom: index < steps.length - 1 ? '24px' : '0',
+                                opacity: isPending ? 0.4 : 1,
+                                transition: 'all 0.3s ease'
+                            }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '50%',
+                                    background: isCompleted 
+                                        ? successGreen 
+                                        : isActive 
+                                            ? `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`
+                                            : theme.colors.secondaryBg,
+                                    border: isPending ? `2px solid ${theme.colors.border}` : 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    boxShadow: isActive ? `0 4px 16px ${lockPrimary}40` : 'none',
+                                    transition: 'all 0.3s ease'
+                                }}>
+                                    {isCompleted ? (
+                                        <FaCheck color="white" size={16} />
+                                    ) : isActive ? (
+                                        <FaSpinner className="spin" color="white" size={16} />
+                                    ) : (
+                                        step.icon
+                                    )}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{
+                                        color: isActive ? theme.colors.primaryText : theme.colors.secondaryText,
+                                        fontWeight: isActive ? '600' : '500',
+                                        fontSize: '0.95rem'
+                                    }}>
+                                        {step.label}
+                                    </div>
+                                    {isActive && step.sublabel && (
+                                        <div style={{
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.8rem',
+                                            marginTop: '2px'
+                                        }}>
+                                            {step.sublabel}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            
+            <style>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes scaleIn {
+                    from { transform: scale(0.5); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
+            `}</style>
+        </div>
+    );
+}
 
 function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition, identity, isPremium }) {    
     const { theme } = useTheme();
@@ -22,6 +192,12 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
+    
+    // Progress overlay state
+    const [showProgress, setShowProgress] = useState(false);
+    const [progressStep, setProgressStep] = useState(0);
+    const [progressComplete, setProgressComplete] = useState(false);
+    const [progressSteps, setProgressSteps] = useState([]);
     
     // Payment state
     const [lockFeeConfig, setLockFeeConfig] = useState(null);
@@ -167,25 +343,50 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                 setIsLoading(true);
                 setErrorText('');
                 
+                // Build progress steps based on whether payment is needed
+                const steps = [];
+                if (needsPayment) {
+                    steps.push({
+                        label: 'Processing Payment',
+                        sublabel: `Paying ${formatIcp(requiredFee)} fee`,
+                        icon: <FaCreditCard color={theme.colors.mutedText} size={16} />
+                    });
+                }
+                steps.push({
+                    label: 'Creating Lock',
+                    sublabel: `Locking position #${liquidityPosition.id.toString()}`,
+                    icon: <FaLock color={theme.colors.mutedText} size={16} />
+                });
+                
+                setProgressSteps(steps);
+                setProgressStep(0);
+                setProgressComplete(false);
+                setShowProgress(true);
+                
                 // Pay fee if needed
                 if (needsPayment) {
                     const paymentSuccess = await payFeeIfNeeded();
                     if (!paymentSuccess) {
                         setIsLoading(false);
+                        setShowProgress(false);
                         return;
                     }
+                    // Move to next step
+                    setProgressStep(1);
                 }
                 
                 const result = await onAddLockPosition(liquidityPosition, new Date(newLockPositionExpiry).getTime());
                 if (result["Err"]) {
                     const error_text = result["Err"].message;
                     setErrorText(error_text);
+                    setShowProgress(false);
                 } else {
-                    setNewLockPositionExpiry('');
-                    onClose();
+                    // Show success state
+                    setProgressComplete(true);
                 }
             } catch (error) {
                 setErrorText('Error adding lock position: ' + (error.message || error.toString()));
+                setShowProgress(false);
             }
             finally {
                 setIsLoading(false);
@@ -226,8 +427,26 @@ function LockPositionModal({ show, onClose, liquidityPosition, onAddLockPosition
                 maxHeight: '90vh',
                 display: 'flex',
                 flexDirection: 'column',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                position: 'relative'
             }}>
+                {/* Progress Overlay */}
+                {showProgress && (
+                    <ProgressOverlay
+                        steps={progressSteps}
+                        currentStep={progressStep}
+                        isComplete={progressComplete}
+                        onSuccess={() => {
+                            setShowProgress(false);
+                            setNewLockPositionExpiry('');
+                            onClose();
+                        }}
+                        position={liquidityPosition}
+                        expiry={newLockPositionExpiry}
+                        theme={theme}
+                    />
+                )}
+                
                 {/* Header */}
                 <div style={{
                     background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
