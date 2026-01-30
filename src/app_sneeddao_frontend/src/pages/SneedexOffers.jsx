@@ -2301,15 +2301,16 @@ function SneedexOffers() {
                                         borderBottom: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <span>Seller:</span>
-                                        <PrincipalDisplay 
-                                            principal={offer.creator}
-                                            short={true}
-                                            showCopyButton={false}
-                                            enableContextMenu={true}
-                                            isAuthenticated={isAuthenticated}
-                                            noLink={true}
-                                            style={{ fontSize: '0.75rem' }}
-                                        />
+                                        <span onClick={(e) => e.stopPropagation()}>
+                                            <PrincipalDisplay 
+                                                principal={offer.creator}
+                                                short={true}
+                                                showCopyButton={false}
+                                                enableContextMenu={true}
+                                                isAuthenticated={isAuthenticated}
+                                                style={{ fontSize: '0.75rem' }}
+                                            />
+                                        </span>
                                     </div>
                                     
                                     <div style={styles.cardFooter}>
@@ -2379,15 +2380,16 @@ function SneedexOffers() {
                                                         marginTop: '2px'
                                                     }}>
                                                         <span>by</span>
-                                                        <PrincipalDisplay 
-                                                            principal={bidInfo.highest_bid.bidder}
-                                                            short={true}
-                                                            showCopyButton={false}
-                                                            enableContextMenu={true}
-                                                            isAuthenticated={isAuthenticated}
-                                                            noLink={true}
-                                                            style={{ fontSize: '0.7rem' }}
-                                                        />
+                                                        <span onClick={(e) => e.stopPropagation()}>
+                                                            <PrincipalDisplay 
+                                                                principal={bidInfo.highest_bid.bidder}
+                                                                short={true}
+                                                                showCopyButton={false}
+                                                                enableContextMenu={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                style={{ fontSize: '0.7rem' }}
+                                                            />
+                                                        </span>
                                                     </div>
                                                 </>
                                             )}

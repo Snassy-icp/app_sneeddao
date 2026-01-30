@@ -487,13 +487,6 @@ export default function PrincipalPage() {
         fetchPrincipalInfo();
     }, [neurons, principalNames, principalNicknames]);
 
-    // Auto-expand neurons section if there are neurons
-    useEffect(() => {
-        if (neurons.length > 0) {
-            setIsNeuronsCollapsed(false);
-        }
-    }, [neurons]);
-
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
         if (error) {
