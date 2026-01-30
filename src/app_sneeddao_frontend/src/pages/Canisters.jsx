@@ -1194,7 +1194,9 @@ export default function CanistersPage() {
 
     // Check if dropping is allowed for this target
     const isDropAllowed = (targetType, targetId) => {
-        if (!draggedItem) return false;
+        // If draggedItem isn't set yet (due to setTimeout race condition),
+        // allow the drop - the actual validation happens in handleDrop
+        if (!draggedItem) return true;
         
         // Groups can only be dropped into other groups (within Custom Canisters)
         // They cannot be dropped into wallet or neuron_managers
