@@ -383,19 +383,35 @@ export default function Me() {
     }, [selectedSnsInfo?.canisters?.governance, identity]);
 
     // Group neurons by owner
+    // If user has MANAGE_PRINCIPALS permission on a neuron, it's considered "owned" by the user
     const groupedNeurons = React.useMemo(() => {
         const groups = new Map();
         const userPrincipal = identity?.getPrincipal().toString();
+        const MANAGE_PRINCIPALS = 2; // Permission type for managing principals
 
         const neuronsByOwner = new Map();
         neurons.forEach(neuron => {
-            const ownerPrincipals = getOwnerPrincipals(neuron);
-            if (ownerPrincipals.length > 0) {
-                const owner = ownerPrincipals[0];
-                if (!neuronsByOwner.has(owner)) {
-                    neuronsByOwner.set(owner, []);
+            // Check if user has MANAGE_PRINCIPALS permission on this neuron
+            const userHasManagePermissions = neuron.permissions?.some(p => 
+                p.principal?.toString() === userPrincipal && 
+                (p.permission_type || []).includes(MANAGE_PRINCIPALS)
+            );
+
+            let effectiveOwner;
+            if (userHasManagePermissions) {
+                // If user has manage permissions, consider them the owner
+                effectiveOwner = userPrincipal;
+            } else {
+                // Otherwise, use the first owner from getOwnerPrincipals
+                const ownerPrincipals = getOwnerPrincipals(neuron);
+                effectiveOwner = ownerPrincipals.length > 0 ? ownerPrincipals[0] : null;
+            }
+
+            if (effectiveOwner) {
+                if (!neuronsByOwner.has(effectiveOwner)) {
+                    neuronsByOwner.set(effectiveOwner, []);
                 }
-                neuronsByOwner.get(owner).push(neuron);
+                neuronsByOwner.get(effectiveOwner).push(neuron);
             }
         });
 
@@ -1815,7 +1831,7 @@ export default function Me() {
 
                         {/* Transactions Tab */}
                         {activeTab === 'transactions' && (
-                            <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                            <div style={{ padding: '1rem' }}>
                                 {/* Transactions Header */}
                                 <div style={{ 
                                     display: 'flex', 
