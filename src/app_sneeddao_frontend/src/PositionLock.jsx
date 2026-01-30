@@ -14,6 +14,47 @@ import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
 import Header from './components/Header';
 import { useAuth } from './AuthContext';
+import { FaWater, FaShieldAlt, FaSpinner } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.positionlock-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.positionlock-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.positionlock-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - indigo/blue theme
+const lockPrimary = '#6366f1';
+const lockSecondary = '#818cf8';
 
 function PositionLock() {
     const { theme } = useTheme();
@@ -208,50 +249,135 @@ function PositionLock() {
         }
     };
 
+    // Get position symbols for subtitle
+    const positionSymbols = positions[0] ? `${positions[0].token0Symbol}/${positions[0].token1Symbol}` : null;
+    
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header customLogo="/sneedlock-logo4.png" />
+            
+            {/* Hero Banner */}
             <div style={{
-                textAlign: 'center',
-                padding: '2rem 1rem 1rem 1rem',
-                background: theme.colors.background
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${lockPrimary}12 50%, ${lockSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
             }}>
-                <h1 style={{
-                    fontSize: '2.5rem',
-                    fontWeight: '700',
-                    color: theme.colors.text,
-                    margin: '0 0 0.5rem 0',
-                    letterSpacing: '-0.025em'
-                }}>
-                    Sneed Lock 2.0
-                </h1>
-                <h2 style={{
-                    fontSize: '1.5rem',
-                    fontWeight: '500',
-                    color: theme.colors.textSecondary,
-                    margin: '0',
-                    letterSpacing: '-0.01em'
-                }}>
-                    Position Lock
-                </h2>
-            </div>
-            <main className="wallet-container centered">
-                {positions[0] && positions[0].details && (
-                    <PositionCard
-                        position={positions[0]}
-                        positionDetails={positions[0].details}
-                        principalDisplayInfo={principalDisplayInfo}
-                        hideButtons={true}
-                        hideUnclaimedFees={true}
-                        defaultExpanded={true}
-                        defaultLocksExpanded={true}
-                    />
-                )}
-                {showSpinner && (
-                    <div className="card">
-                        <div className="spinner"></div>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${lockPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-40%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${lockSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div className="positionlock-fade-in" style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: `${lockPrimary}20`,
+                        color: lockPrimary,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '1rem'
+                    }}>
+                        <FaShieldAlt size={12} /> SneedLock
                     </div>
-                )}
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '0.5rem' }}>
+                        <div className="positionlock-float" style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 24px ${lockPrimary}40`,
+                        }}>
+                            <FaWater size={22} style={{ color: '#fff' }} />
+                        </div>
+                        <h1 style={{
+                            fontSize: '1.75rem',
+                            fontWeight: '700',
+                            color: theme.colors.primaryText,
+                            margin: 0,
+                            letterSpacing: '-0.5px'
+                        }}>
+                            Position Lock
+                        </h1>
+                    </div>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.95rem',
+                        margin: 0
+                    }}>
+                        {positionSymbols ? `Viewing ${positionSymbols} position lock details` : 'Loading position lock details...'}
+                    </p>
+                </div>
+            </div>
+            
+            <main style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem 1rem' }}>
+                {positions[0] && positions[0].details ? (
+                    <div className="positionlock-fade-in">
+                        <PositionCard
+                            position={positions[0]}
+                            positionDetails={positions[0].details}
+                            principalDisplayInfo={principalDisplayInfo}
+                            hideButtons={true}
+                            hideUnclaimedFees={true}
+                            defaultExpanded={true}
+                            defaultLocksExpanded={true}
+                        />
+                    </div>
+                ) : showSpinner ? (
+                    <div className="positionlock-fade-in" style={{
+                        textAlign: 'center',
+                        padding: '3rem',
+                        background: theme.colors.cardGradient,
+                        borderRadius: '20px',
+                        border: `1px solid ${theme.colors.border}`,
+                        boxShadow: theme.colors.cardShadow,
+                    }}>
+                        <FaSpinner className="positionlock-spin" size={32} style={{ color: lockPrimary, marginBottom: '1rem' }} />
+                        <p style={{ color: theme.colors.secondaryText, margin: 0 }}>Loading position lock details...</p>
+                    </div>
+                ) : null}
+                
+                {/* Back Link */}
+                <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+                    <Link 
+                        to="/sneedlock_info" 
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            color: lockPrimary,
+                            textDecoration: 'none',
+                            fontSize: '0.9rem',
+                            fontWeight: '500',
+                        }}
+                    >
+                        <FaShieldAlt size={14} /> View All Locks
+                    </Link>
+                </div>
             </main>
         </div>
     );
