@@ -1622,7 +1622,7 @@ export default function CanistersPage() {
                                 </button>
                                 <button
                                     onClick={() => { setEditingGroup(group.id); setEditingGroupName(group.name); }}
-                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.textSecondary, border: 'none', cursor: 'pointer' }}
+                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.mutedText, border: 'none', cursor: 'pointer' }}
                                     title="Rename group"
                                 >
                                     <FaEdit size={12} />
@@ -3348,7 +3348,7 @@ export default function CanistersPage() {
                                         >
                                             <div style={{ 
                                                 fontSize: '12px', 
-                                                color: theme.colors.textSecondary, 
+                                                color: theme.colors.mutedText, 
                                                 marginBottom: '8px',
                                                 fontWeight: 500,
                                             }}>

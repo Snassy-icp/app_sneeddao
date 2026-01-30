@@ -1028,34 +1028,64 @@ function SneedexOffers() {
             justifyItems: 'center',
         },
         card: {
-            background: theme.colors.cardGradient,
+            background: `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '16px',
-            padding: '1.5rem',
-            transition: 'all 0.3s ease',
+            borderRadius: '20px',
+            overflow: 'hidden',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             cursor: 'pointer',
             width: '100%',
             maxWidth: '450px',
             boxSizing: 'border-box',
+            boxShadow: `0 4px 20px rgba(0,0,0,0.15)`,
+        },
+        cardHeaderSection: {
+            background: `linear-gradient(135deg, ${sneedexPrimary}15, ${sneedexSecondary}08)`,
+            padding: '1rem 1.25rem',
+            borderBottom: `1px solid ${theme.colors.border}`,
         },
         cardHeader: {
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            marginBottom: '1rem',
+            alignItems: 'center',
+            gap: '0.75rem',
+        },
+        offerIdContainer: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            flex: 1,
+            minWidth: 0,
         },
         offerId: {
+            fontSize: '0.95rem',
+            fontWeight: '700',
+            color: sneedexPrimary,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        },
+        offerTitle: {
             fontSize: '0.85rem',
-            color: theme.colors.mutedText,
-            fontFamily: 'monospace',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            opacity: 0.9,
         },
         cardBadge: {
-            background: `${theme.colors.success}20`,
-            color: theme.colors.success,
-            padding: '4px 10px',
-            borderRadius: '6px',
-            fontSize: '0.8rem',
-            fontWeight: '600',
+            background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+            color: '#fff',
+            padding: '5px 12px',
+            borderRadius: '20px',
+            fontSize: '0.7rem',
+            fontWeight: '700',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            boxShadow: `0 2px 8px ${theme.colors.success}40`,
+            flexShrink: 0,
+        },
+        cardBody: {
+            padding: '1.25rem',
         },
         assetsRow: {
             display: 'flex',
@@ -1067,65 +1097,79 @@ function SneedexOffers() {
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            background: theme.colors.tertiaryBg,
-            padding: '6px 12px',
-            borderRadius: '8px',
+            background: `linear-gradient(135deg, ${theme.colors.tertiaryBg}, ${theme.colors.secondaryBg})`,
+            border: `1px solid ${theme.colors.border}`,
+            padding: '8px 12px',
+            borderRadius: '10px',
             fontSize: '0.85rem',
-            color: theme.colors.secondaryText,
+            fontWeight: '500',
+            color: theme.colors.primaryText,
+            transition: 'all 0.2s ease',
         },
         priceSection: {
             display: 'grid',
             gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '1rem',
+            gap: '0.75rem',
             marginBottom: '1rem',
-            padding: '1rem',
-            background: theme.colors.tertiaryBg,
-            borderRadius: '10px',
         },
         priceItem: {
+            background: theme.colors.primaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
+            padding: '0.875rem',
             textAlign: 'center',
+            transition: 'all 0.2s ease',
         },
         priceLabel: {
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
             color: theme.colors.mutedText,
             textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            marginBottom: '4px',
+            letterSpacing: '0.8px',
+            fontWeight: '600',
+            marginBottom: '6px',
         },
         priceValue: {
-            fontSize: '1.2rem',
+            fontSize: '1.15rem',
             fontWeight: '700',
             color: theme.colors.primaryText,
+            lineHeight: 1.2,
         },
         priceToken: {
-            fontSize: '0.85rem',
+            fontSize: '0.8rem',
             color: theme.colors.mutedText,
+            fontWeight: '500',
+            marginTop: '2px',
         },
         cardFooter: {
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             paddingTop: '1rem',
             borderTop: `1px solid ${theme.colors.border}`,
+            gap: '1rem',
         },
         timeInfo: {
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.9rem',
+            gap: '8px',
+            fontSize: '0.85rem',
             color: theme.colors.mutedText,
+            fontWeight: '500',
         },
         bidInfo: {
             textAlign: 'right',
+            flex: 1,
         },
         bidCount: {
-            fontSize: '0.85rem',
+            fontSize: '0.8rem',
             color: theme.colors.mutedText,
+            fontWeight: '500',
         },
         highestBid: {
-            fontSize: '1rem',
-            fontWeight: '600',
+            fontSize: '1.05rem',
+            fontWeight: '700',
             color: theme.colors.success,
+            marginTop: '2px',
         },
         emptyState: {
             textAlign: 'center',
@@ -1989,17 +2033,17 @@ function SneedexOffers() {
                             return (
                                 <div
                                     key={Number(offer.id)}
-                                    style={{...styles.card, position: 'relative', overflow: 'hidden'}}
+                                    style={{...styles.card, position: 'relative'}}
                                     onClick={() => navigate(`/sneedex_offer/${offer.id}`)}
                                     onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(-4px)';
-                                        e.currentTarget.style.borderColor = theme.colors.accent;
-                                        e.currentTarget.style.boxShadow = `0 12px 40px ${theme.colors.accent}15`;
+                                        e.currentTarget.style.transform = 'translateY(-6px)';
+                                        e.currentTarget.style.borderColor = sneedexPrimary;
+                                        e.currentTarget.style.boxShadow = `0 20px 50px rgba(0,0,0,0.25), 0 0 0 1px ${sneedexPrimary}30`;
                                     }}
                                     onMouseLeave={(e) => {
                                         e.currentTarget.style.transform = 'translateY(0)';
                                         e.currentTarget.style.borderColor = theme.colors.border;
-                                        e.currentTarget.style.boxShadow = 'none';
+                                        e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.15)';
                                     }}
                                 >
                                     {/* Status Banner for inactive offers */}
@@ -2009,7 +2053,7 @@ function SneedexOffers() {
                                         
                                         if ('Completed' in offer.state || 'Claimed' in offer.state) {
                                             bannerText = 'SOLD';
-                                            bannerColor = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+                                            bannerColor = 'linear-gradient(135deg, #22c55e, #16a34a)';
                                         } else if ('Expired' in offer.state) {
                                             bannerText = 'EXPIRED';
                                             bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
@@ -2024,57 +2068,72 @@ function SneedexOffers() {
                                         return bannerText ? (
                                             <div style={{
                                                 position: 'absolute',
-                                                top: '16px',
-                                                right: '-32px',
+                                                top: '18px',
+                                                right: '-30px',
                                                 background: bannerColor,
                                                 color: '#fff',
-                                                padding: '4px 45px',
+                                                padding: '5px 45px',
                                                 fontWeight: '700',
-                                                fontSize: '0.65rem',
+                                                fontSize: '0.6rem',
                                                 transform: 'rotate(45deg)',
-                                                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                                boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
                                                 zIndex: 10,
-                                                letterSpacing: '0.5px',
+                                                letterSpacing: '0.8px',
+                                                textTransform: 'uppercase',
                                             }}>
                                                 {bannerText}
                                             </div>
                                         ) : null;
                                     })()}
-                                    <div style={styles.cardHeader}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                            <span style={styles.offerId}>Offer #{Number(offer.id)}</span>
-                                            {singleCanisterTitle && (
-                                                <span style={{
-                                                    fontSize: '0.85rem',
-                                                    fontWeight: '600',
-                                                    color: theme.colors.primaryText,
-                                                    maxWidth: '200px',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                }}>
-                                                    – {singleCanisterTitle}
-                                                </span>
-                                            )}
-                                            {offer.approved_bidders && offer.approved_bidders[0] && offer.approved_bidders[0].length > 0 && (
-                                                <span style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px',
-                                                    background: `${theme.colors.warning}20`,
-                                                    color: theme.colors.warning,
-                                                    padding: '2px 8px',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '500',
-                                                }}>
-                                                    <FaLock size={10} />
-                                                    {offer.approved_bidders[0].length} bidder{offer.approved_bidders[0].length !== 1 ? 's' : ''}
-                                                </span>
-                                            )}
+                                    
+                                    {/* Card Header Section */}
+                                    <div style={styles.cardHeaderSection}>
+                                        <div style={styles.cardHeader}>
+                                            <div style={styles.offerIdContainer}>
+                                                <span style={styles.offerId}>#{Number(offer.id)}</span>
+                                                {singleCanisterTitle && (
+                                                    <span style={styles.offerTitle}>
+                                                        {singleCanisterTitle}
+                                                    </span>
+                                                )}
+                                                {offer.approved_bidders && offer.approved_bidders[0] && offer.approved_bidders[0].length > 0 && (
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                        background: `linear-gradient(135deg, ${theme.colors.warning}25, ${theme.colors.warning}15)`,
+                                                        color: theme.colors.warning,
+                                                        padding: '3px 8px',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: '600',
+                                                        border: `1px solid ${theme.colors.warning}30`,
+                                                    }}>
+                                                        <FaLock size={8} />
+                                                        {offer.approved_bidders[0].length}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span style={{
+                                                ...styles.cardBadge,
+                                                background: 'Active' in offer.state 
+                                                    ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`
+                                                    : ('Completed' in offer.state || 'Claimed' in offer.state)
+                                                        ? `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`
+                                                        : `linear-gradient(135deg, ${theme.colors.mutedText}, ${theme.colors.mutedText}dd)`,
+                                                boxShadow: 'Active' in offer.state 
+                                                    ? `0 2px 8px ${theme.colors.success}40`
+                                                    : ('Completed' in offer.state || 'Claimed' in offer.state)
+                                                        ? `0 2px 8px ${sneedexPrimary}40`
+                                                        : 'none',
+                                            }}>
+                                                {getOfferStateString(offer.state)}
+                                            </span>
                                         </div>
-                                        <span style={styles.cardBadge}>{getOfferStateString(offer.state)}</span>
                                     </div>
+                                    
+                                    {/* Card Body */}
+                                    <div style={styles.cardBody}>
                                     
                                     <div style={styles.assetsRow}>
                                         {offer.assets.map((assetEntry, idx) => {
@@ -2222,26 +2281,51 @@ function SneedexOffers() {
                                     </div>
                                     
                                     <div style={styles.priceSection}>
-                                        <div style={styles.priceItem}>
-                                            <div style={styles.priceLabel}>Min Bid</div>
+                                        <div style={{
+                                            ...styles.priceItem,
+                                            background: `linear-gradient(135deg, ${theme.colors.primaryBg}, ${sneedexPrimary}05)`,
+                                        }}>
+                                            <div style={{
+                                                ...styles.priceLabel,
+                                                color: sneedexPrimary,
+                                            }}>Min Bid</div>
                                             <div style={styles.priceValue}>
                                                 {offer.min_bid_price[0] ? formatAmount(offer.min_bid_price[0], tokenInfo.decimals) : '—'}
                                             </div>
                                             <div style={styles.priceToken}>{tokenInfo.symbol}</div>
                                             {minBidUsd > 0 && (
-                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                <div style={{ 
+                                                    fontSize: '0.75rem', 
+                                                    color: theme.colors.mutedText, 
+                                                    marginTop: '4px',
+                                                    fontWeight: '500',
+                                                }}>
                                                     {formatUsd(minBidUsd)}
                                                 </div>
                                             )}
                                         </div>
-                                        <div style={styles.priceItem}>
-                                            <div style={styles.priceLabel}>Buyout</div>
-                                            <div style={styles.priceValue}>
+                                        <div style={{
+                                            ...styles.priceItem,
+                                            background: `linear-gradient(135deg, ${theme.colors.primaryBg}, ${theme.colors.success}08)`,
+                                        }}>
+                                            <div style={{
+                                                ...styles.priceLabel,
+                                                color: theme.colors.success,
+                                            }}>Buyout</div>
+                                            <div style={{
+                                                ...styles.priceValue,
+                                                color: offer.buyout_price[0] ? theme.colors.success : theme.colors.mutedText,
+                                            }}>
                                                 {offer.buyout_price[0] ? formatAmount(offer.buyout_price[0], tokenInfo.decimals) : '—'}
                                             </div>
                                             <div style={styles.priceToken}>{tokenInfo.symbol}</div>
                                             {buyoutUsd > 0 && (
-                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                <div style={{ 
+                                                    fontSize: '0.75rem', 
+                                                    color: theme.colors.mutedText, 
+                                                    marginTop: '4px',
+                                                    fontWeight: '500',
+                                                }}>
                                                     {formatUsd(buyoutUsd)}
                                                 </div>
                                             )}
@@ -2254,24 +2338,35 @@ function SneedexOffers() {
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            gap: '8px',
-                                            marginBottom: '0.5rem',
-                                            padding: '4px 8px',
-                                            background: isGoodDeal ? `${theme.colors.success}15` : `${theme.colors.accent}10`,
-                                            borderRadius: '6px',
-                                            fontSize: '0.75rem',
+                                            gap: '10px',
+                                            marginBottom: '0.875rem',
+                                            padding: '8px 12px',
+                                            background: isGoodDeal 
+                                                ? `linear-gradient(135deg, ${theme.colors.success}18, ${theme.colors.success}08)`
+                                                : `linear-gradient(135deg, ${sneedexPrimary}12, ${sneedexPrimary}06)`,
+                                            borderRadius: '10px',
+                                            border: `1px solid ${isGoodDeal ? theme.colors.success : sneedexPrimary}20`,
                                         }}>
-                                            <span style={{ color: theme.colors.mutedText }}>
-                                                Est. Value: <strong style={{ color: theme.colors.primaryText }}>{formatUsd(estimatedValue)}</strong>
+                                            <span style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.8rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Est. Value: <strong style={{ 
+                                                    color: isGoodDeal ? theme.colors.success : theme.colors.primaryText,
+                                                    fontWeight: '700'
+                                                }}>{formatUsd(estimatedValue)}</strong>
                                             </span>
                                             {isGoodDeal && (
                                                 <span style={{
-                                                    background: theme.colors.success,
+                                                    background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
                                                     color: '#fff',
-                                                    padding: '2px 6px',
-                                                    borderRadius: '4px',
-                                                    fontWeight: '600',
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    fontWeight: '700',
                                                     fontSize: '0.65rem',
+                                                    letterSpacing: '0.3px',
+                                                    boxShadow: `0 2px 8px ${theme.colors.success}40`,
                                                 }}>
                                                     🔥 GOOD DEAL
                                                 </span>
@@ -2282,8 +2377,10 @@ function SneedexOffers() {
                                         <div style={{ 
                                             fontSize: '0.75rem', 
                                             color: theme.colors.mutedText,
-                                            marginBottom: '0.75rem',
-                                            textAlign: 'center'
+                                            marginBottom: '0.875rem',
+                                            textAlign: 'center',
+                                            fontWeight: '500',
+                                            opacity: 0.8
                                         }}>
                                             Min increment: {formatAmount(BigInt(Number(offer.min_bid_increment_fee_multiple[0])) * tokenInfo.fee, tokenInfo.decimals)} {tokenInfo.symbol}
                                         </div>
@@ -2293,14 +2390,16 @@ function SneedexOffers() {
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '6px',
-                                        fontSize: '0.75rem',
+                                        gap: '8px',
+                                        fontSize: '0.8rem',
                                         color: theme.colors.mutedText,
-                                        marginBottom: '0.5rem',
-                                        paddingBottom: '0.5rem',
-                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                        marginBottom: '0.75rem',
+                                        padding: '8px 12px',
+                                        background: theme.colors.primaryBg,
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
                                     }}>
-                                        <span>Seller:</span>
+                                        <span style={{ fontWeight: '500' }}>Seller:</span>
                                         <span onClick={(e) => e.stopPropagation()}>
                                             <PrincipalDisplay 
                                                 principal={offer.creator}
@@ -2308,7 +2407,7 @@ function SneedexOffers() {
                                                 showCopyButton={false}
                                                 enableContextMenu={true}
                                                 isAuthenticated={isAuthenticated}
-                                                style={{ fontSize: '0.75rem' }}
+                                                style={{ fontSize: '0.8rem' }}
                                             />
                                         </span>
                                     </div>
@@ -2326,47 +2425,81 @@ function SneedexOffers() {
                                                 return (
                                                     <div style={{
                                                         ...styles.timeInfo,
-                                                        color: theme.colors.mutedText
+                                                        color: theme.colors.mutedText,
+                                                        background: theme.colors.primaryBg,
+                                                        padding: '6px 10px',
+                                                        borderRadius: '8px',
                                                     }}>
-                                                        <FaClock />
-                                                        {getOfferStateString(offer.state)}
+                                                        <FaClock size={12} />
+                                                        <span>{getOfferStateString(offer.state)}</span>
                                                     </div>
                                                 );
                                             }
                                             
+                                            const isPastExpiration = isOfferPastExpiration(offer.expiration[0]);
                                             return (
                                                 <div style={{
                                                     ...styles.timeInfo,
-                                                    color: isOfferPastExpiration(offer.expiration[0]) 
-                                                        ? theme.colors.warning 
-                                                        : styles.timeInfo?.color
+                                                    color: isPastExpiration ? theme.colors.warning : theme.colors.mutedText,
+                                                    background: isPastExpiration 
+                                                        ? `${theme.colors.warning}15` 
+                                                        : theme.colors.primaryBg,
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: isPastExpiration ? `1px solid ${theme.colors.warning}30` : 'none',
                                                 }}>
-                                                    <FaClock />
-                                                    {formatTimeRemaining(offer.expiration[0])}
-                                                    {isOfferPastExpiration(offer.expiration[0]) && (
+                                                    <FaClock size={12} />
+                                                    <span>{formatTimeRemaining(offer.expiration[0])}</span>
+                                                    {isPastExpiration && (
                                                         <span style={{ 
-                                                            marginLeft: '6px', 
-                                                            fontSize: '0.75rem',
-                                                            background: `${theme.colors.warning}20`,
+                                                            fontSize: '0.7rem',
+                                                            background: theme.colors.warning,
+                                                            color: '#fff',
                                                             padding: '2px 6px',
-                                                            borderRadius: '4px'
+                                                            borderRadius: '4px',
+                                                            fontWeight: '600',
+                                                            marginLeft: '4px',
                                                         }}>
-                                                            Action needed
+                                                            !
                                                         </span>
                                                     )}
                                                 </div>
                                             );
                                         })()}
                                         <div style={styles.bidInfo}>
-                                            <div style={styles.bidCount}>
+                                            <div style={{
+                                                ...styles.bidCount,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'flex-end',
+                                                gap: '4px',
+                                            }}>
+                                                <FaGavel size={10} style={{ opacity: 0.6 }} />
                                                 {bidInfo.bids?.length || 0} bid{(bidInfo.bids?.length || 0) !== 1 ? 's' : ''}
                                             </div>
                                             {bidInfo.highest_bid && (
                                                 <>
-                                                    <div style={styles.highestBid}>
-                                                        {formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                    <div style={{
+                                                        ...styles.highestBid,
+                                                        display: 'flex',
+                                                        alignItems: 'baseline',
+                                                        justifyContent: 'flex-end',
+                                                        gap: '4px',
+                                                    }}>
+                                                        <span>{formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)}</span>
+                                                        <span style={{ 
+                                                            fontSize: '0.8rem', 
+                                                            color: theme.colors.mutedText,
+                                                            fontWeight: '500',
+                                                        }}>
+                                                            {tokenInfo.symbol}
+                                                        </span>
                                                         {highestBidUsd > 0 && (
-                                                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                            <span style={{ 
+                                                                fontSize: '0.75rem', 
+                                                                color: theme.colors.mutedText, 
+                                                                fontWeight: '400',
+                                                            }}>
                                                                 ({formatUsd(highestBidUsd)})
                                                             </span>
                                                         )}
@@ -2374,10 +2507,12 @@ function SneedexOffers() {
                                                     <div style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
+                                                        justifyContent: 'flex-end',
                                                         gap: '4px',
-                                                        fontSize: '0.7rem',
+                                                        fontSize: '0.75rem',
                                                         color: theme.colors.mutedText,
-                                                        marginTop: '2px'
+                                                        marginTop: '4px',
+                                                        fontWeight: '500',
                                                     }}>
                                                         <span>by</span>
                                                         <span onClick={(e) => e.stopPropagation()}>
@@ -2387,7 +2522,7 @@ function SneedexOffers() {
                                                                 showCopyButton={false}
                                                                 enableContextMenu={true}
                                                                 isAuthenticated={isAuthenticated}
-                                                                style={{ fontSize: '0.7rem' }}
+                                                                style={{ fontSize: '0.75rem' }}
                                                             />
                                                         </span>
                                                     </div>
@@ -2395,6 +2530,7 @@ function SneedexOffers() {
                                             )}
                                         </div>
                                     </div>
+                                    </div>{/* End cardBody */}
                                 </div>
                             );
                         })}
