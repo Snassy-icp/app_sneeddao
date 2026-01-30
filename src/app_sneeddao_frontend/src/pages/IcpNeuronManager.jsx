@@ -14,9 +14,55 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
-import { FaGasPump, FaRobot, FaBrain } from 'react-icons/fa';
+import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet, FaCog } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.neuron-mgr-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.neuron-mgr-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - purple/violet theme for neurons/brain
+const neuronPrimary = '#8b5cf6';
+const neuronSecondary = '#a78bfa';
+const neuronAccent = '#c4b5fd';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const NNS_GOVERNANCE_CANISTER_ID = 'rrkah-fqaaa-aaaaa-aaaaq-cai';
@@ -2039,70 +2085,101 @@ function IcpNeuronManager() {
 
     // Styles
     const cardStyle = {
-        background: theme.colors.cardBackground,
-        borderRadius: '12px',
-        padding: '20px',
-        marginBottom: '20px',
+        background: theme.colors.cardGradient || theme.colors.cardBackground,
+        borderRadius: '14px',
+        padding: '1.25rem',
+        marginBottom: '1rem',
         border: `1px solid ${theme.colors.border}`,
+        boxShadow: theme.colors.cardShadow || 'none',
     };
 
     const buttonStyle = {
-        background: theme.colors.accent,
+        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
         color: '#fff',
         border: 'none',
-        borderRadius: '8px',
-        padding: '10px 20px',
-        fontSize: '14px',
+        borderRadius: '10px',
+        padding: '0.65rem 1.25rem',
+        fontSize: '0.9rem',
         fontWeight: '600',
         cursor: 'pointer',
-        transition: 'opacity 0.2s',
+        transition: 'all 0.2s',
+        boxShadow: `0 4px 12px ${neuronPrimary}30`,
     };
 
     const secondaryButtonStyle = {
         ...buttonStyle,
         background: 'transparent',
-        color: theme.colors.accent,
-        border: `1px solid ${theme.colors.accent}`,
+        color: neuronPrimary,
+        border: `1px solid ${neuronPrimary}50`,
+        boxShadow: 'none',
     };
 
     const inputStyle = {
-        background: theme.colors.inputBackground || theme.colors.cardBackground,
+        background: theme.colors.inputBackground || theme.colors.primaryBg,
         color: theme.colors.primaryText,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
-        padding: '10px 14px',
-        fontSize: '14px',
+        borderRadius: '10px',
+        padding: '0.65rem 0.9rem',
+        fontSize: '0.9rem',
         width: '100%',
         boxSizing: 'border-box',
+        outline: 'none',
     };
 
     const tabStyle = (isActive) => ({
-        padding: '10px 20px',
+        padding: '0.6rem 1rem',
         cursor: 'pointer',
-        borderBottom: isActive ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-        color: isActive ? theme.colors.accent : theme.colors.mutedText,
-        fontWeight: isActive ? '600' : '400',
-        background: 'none',
-        border: 'none',
-        fontSize: '14px',
+        borderBottom: 'none',
+        borderRadius: isActive ? '8px' : '8px',
+        color: isActive ? '#fff' : theme.colors.secondaryText,
+        fontWeight: isActive ? '600' : '500',
+        background: isActive ? `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})` : 'transparent',
+        border: isActive ? 'none' : `1px solid ${theme.colors.border}`,
+        fontSize: '0.85rem',
+        transition: 'all 0.2s',
+        marginRight: '0.5rem',
+        marginBottom: '0.5rem',
     });
 
     const statBoxStyle = {
         textAlign: 'center',
-        padding: '15px',
-        background: `${theme.colors.accent}10`,
-        borderRadius: '8px',
+        padding: '1rem',
+        background: `linear-gradient(135deg, ${neuronPrimary}15, ${neuronPrimary}05)`,
+        borderRadius: '12px',
         flex: 1,
-        minWidth: '120px',
+        minWidth: '100px',
+        border: `1px solid ${neuronPrimary}20`,
     };
 
     if (!isAuthenticated) {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header />
-                <main className="wallet-container">
-                    <div style={{ ...cardStyle, textAlign: 'center' }}>
-                        <p style={{ color: theme.colors.mutedText, marginBottom: '20px' }}>
+                <main style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1rem' }}>
+                    <div className="neuron-mgr-fade-in" style={{ 
+                        ...cardStyle, 
+                        textAlign: 'center',
+                        padding: '2.5rem 1.5rem'
+                    }}>
+                        <div className="neuron-mgr-float" style={{
+                            width: '64px',
+                            height: '64px',
+                            borderRadius: '16px',
+                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${neuronPrimary}40`,
+                            fontSize: '1.75rem'
+                        }}>
+                            🧠
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem' }}>
+                            ICP Neuron Manager
+                        </h2>
+                        <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem' }}>
                             Please log in to manage your neuron.
                         </p>
                         <button style={buttonStyle} onClick={login}>
@@ -2116,63 +2193,165 @@ function IcpNeuronManager() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
-            <main className="wallet-container">
-                <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                        <FaRobot style={{ 
-                            color: theme.colors.mutedText, 
-                            fontSize: '32px',
-                            position: 'absolute',
-                            left: -12,
-                            opacity: 0.7,
-                        }} />
-                        <span style={{ fontSize: '32px', position: 'relative', zIndex: 1 }}>🧠</span>
-                    </span>
-                    <PrincipalDisplay
-                        principal={canisterId}
-                        displayInfo={displayInfo}
-                        showCopyButton={false}
-                        isAuthenticated={isAuthenticated}
-                        noLink={true}
-                    />
-                </h1>
-                <div style={{ marginBottom: '20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Link 
-                        to="/help/icp-neuron-manager" 
-                        style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        Learn how it works →
-                    </Link>
-                    <span style={{ color: theme.colors.border }}>|</span>
-                    <button
-                        onClick={() => setShowNamingSection(!showNamingSection)}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: theme.colors.accent,
-                            fontSize: '14px',
-                            cursor: 'pointer',
-                            padding: 0,
-                        }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        {showNamingSection ? 'Hide naming options ↑' : (isController ? 'Set name or nickname →' : 'Set nickname →')}
-                    </button>
+            
+            {/* Hero Section */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${neuronPrimary}15 50%, ${neuronSecondary}10 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${neuronPrimary}20 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${neuronSecondary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                        <div className="neuron-mgr-float" style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '16px',
+                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 32px ${neuronPrimary}50`,
+                            fontSize: '1.75rem',
+                            flexShrink: 0
+                        }}>
+                            🧠
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '8px',
+                                marginBottom: '4px'
+                            }}>
+                                <h1 style={{
+                                    fontSize: '1.5rem',
+                                    fontWeight: '700',
+                                    color: theme.colors.primaryText,
+                                    margin: 0,
+                                    letterSpacing: '-0.5px'
+                                }}>
+                                    ICP Neuron Manager
+                                </h1>
+                                {managerInfo?.version && (
+                                    <span style={{
+                                        background: matchedOfficialVersion ? `${theme.colors.success}20` : `${neuronPrimary}20`,
+                                        color: matchedOfficialVersion ? theme.colors.success : neuronPrimary,
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.7rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        v{managerInfo.version} {matchedOfficialVersion && '✓'}
+                                    </span>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <PrincipalDisplay
+                                    principal={canisterId}
+                                    displayInfo={displayInfo}
+                                    showCopyButton={true}
+                                    isAuthenticated={isAuthenticated}
+                                    noLink={true}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                        <Link 
+                            to="/help/icp-neuron-manager" 
+                            style={{ 
+                                color: neuronPrimary, 
+                                fontSize: '0.85rem', 
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            Learn how it works <FaArrowRight size={10} />
+                        </Link>
+                        <span style={{ color: theme.colors.border }}>|</span>
+                        <button
+                            onClick={() => setShowNamingSection(!showNamingSection)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: neuronPrimary,
+                                fontSize: '0.85rem',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}
+                        >
+                            {showNamingSection ? (
+                                <>Hide naming options <FaChevronUp size={10} /></>
+                            ) : (
+                                <>{isController ? 'Set name or nickname' : 'Set nickname'} <FaChevronDown size={10} /></>
+                            )}
+                        </button>
+                    </div>
                 </div>
+            </div>
+            
+            <main style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem' }}>
                 
                 {/* Naming Section */}
                 {showNamingSection && (
-                    <div style={{ 
+                    <div className="neuron-mgr-fade-in" style={{ 
                         ...cardStyle, 
-                        marginBottom: '20px',
-                        backgroundColor: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                        marginBottom: '1.25rem',
+                        background: `linear-gradient(135deg, ${neuronPrimary}08 0%, ${theme.colors.cardGradient || theme.colors.secondaryBg} 100%)`,
+                        border: `1px solid ${neuronPrimary}20`,
                     }}>
-                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px', fontSize: '16px' }}>
-                            🏷️ Name This Manager
+                        <h3 style={{ 
+                            color: theme.colors.primaryText, 
+                            marginBottom: '1rem', 
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <span style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '8px',
+                                background: `${neuronPrimary}20`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '14px'
+                            }}>🏷️</span>
+                            Name This Manager
                         </h3>
                         
                         {namingError && (
@@ -2316,8 +2495,16 @@ function IcpNeuronManager() {
                 )}
                 
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.primaryText }}>
-                        Loading manager...
+                    <div className="neuron-mgr-fade-in" style={{ 
+                        textAlign: 'center', 
+                        padding: '3rem', 
+                        color: theme.colors.primaryText,
+                        background: theme.colors.cardGradient,
+                        borderRadius: '16px',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        <FaSync className="spin" style={{ fontSize: '2rem', color: neuronPrimary, marginBottom: '1rem' }} />
+                        <div style={{ color: theme.colors.secondaryText }}>Loading manager...</div>
                     </div>
                 ) : error && !managerInfo ? (
                     <div style={{ 
@@ -2363,7 +2550,7 @@ function IcpNeuronManager() {
                         {/* ============================================ */}
                         {/* CANISTER SECTION */}
                         {/* ============================================ */}
-                        <div style={{ marginBottom: '20px' }}>
+                        <div className="neuron-mgr-fade-in" style={{ marginBottom: '1.25rem' }}>
                             {/* Section Header */}
                             <button
                                 onClick={() => setCanisterSectionExpanded(!canisterSectionExpanded)}
@@ -2372,36 +2559,54 @@ function IcpNeuronManager() {
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    padding: '16px 20px',
-                                    backgroundColor: theme.colors.secondaryBg,
+                                    padding: '1rem 1.25rem',
+                                    background: canisterSectionExpanded 
+                                        ? `linear-gradient(90deg, ${neuronPrimary}15 0%, transparent 100%)`
+                                        : theme.colors.cardGradient,
                                     border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: canisterSectionExpanded ? '12px 12px 0 0' : '12px',
+                                    borderRadius: canisterSectionExpanded ? '14px 14px 0 0' : '14px',
                                     cursor: 'pointer',
                                     color: theme.colors.primaryText,
+                                    transition: 'all 0.2s',
+                                    boxShadow: theme.colors.cardShadow,
                                 }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <span style={{ fontSize: '20px' }}>🏛️</span>
-                                    <span style={{ fontSize: '18px', fontWeight: '600' }}>Canister</span>
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronPrimary}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}>
+                                        <FaCog style={{ color: neuronPrimary, fontSize: '16px' }} />
+                                    </div>
+                                    <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>Canister</span>
                                     {canisterStatus && (
                                         <span style={{ 
-                                            fontSize: '12px', 
-                                            color: theme.colors.mutedText,
-                                            backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                            fontSize: '0.75rem', 
+                                            color: getCyclesColor(canisterStatus.cycles, cycleSettings),
+                                            backgroundColor: `${getCyclesColor(canisterStatus.cycles, cycleSettings)}15`,
                                             padding: '4px 10px',
-                                            borderRadius: '12px',
+                                            borderRadius: '8px',
+                                            fontWeight: '600',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
                                         }}>
-                                            {formatCycles(canisterStatus.cycles)}
+                                            ⚡ {formatCycles(canisterStatus.cycles)}
                                         </span>
                                     )}
                                 </div>
                                 <span style={{ 
-                                    fontSize: '18px',
+                                    fontSize: '14px',
                                     transform: canisterSectionExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                                     transition: 'transform 0.2s ease',
                                     color: theme.colors.mutedText,
                                 }}>
-                                    ▼
+                                    {canisterSectionExpanded ? <FaChevronUp /> : <FaChevronDown />}
                                 </span>
                             </button>
                             
@@ -3075,15 +3280,28 @@ function IcpNeuronManager() {
                                 display: 'flex', 
                                 justifyContent: 'space-between', 
                                 alignItems: 'center',
-                                marginBottom: showTopUpSection ? '16px' : '0'
+                                marginBottom: showTopUpSection ? '1rem' : '0',
+                                flexWrap: 'wrap',
+                                gap: '0.75rem'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <FaGasPump style={{ color: theme.colors.accent, fontSize: '18px' }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${neuronPrimary}25, ${neuronPrimary}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0
+                                    }}>
+                                        <FaGasPump style={{ color: neuronPrimary, fontSize: '16px' }} />
+                                    </div>
                                     <div>
-                                        <h3 style={{ color: theme.colors.primaryText, margin: '0 0 2px 0', fontSize: '16px' }}>
-                                            ⛽ Top Up Cycles
+                                        <h3 style={{ color: theme.colors.primaryText, margin: '0 0 2px 0', fontSize: '1rem', fontWeight: '600' }}>
+                                            Top Up Cycles
                                         </h3>
-                                        <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.8rem', margin: 0 }}>
                                             Convert ICP to cycles for this canister
                                         </p>
                                     </div>
@@ -3092,10 +3310,11 @@ function IcpNeuronManager() {
                                     onClick={() => setShowTopUpSection(!showTopUpSection)}
                                     style={{
                                         ...showTopUpSection ? secondaryButtonStyle : buttonStyle,
-                                        padding: '8px 16px',
+                                        padding: '0.5rem 1rem',
+                                        fontSize: '0.85rem'
                                     }}
                                 >
-                                    {showTopUpSection ? 'Cancel' : 'Add Cycles'}
+                                    {showTopUpSection ? 'Cancel' : '⛽ Add Cycles'}
                                 </button>
                             </div>
                             
@@ -3398,17 +3617,30 @@ function IcpNeuronManager() {
 
                         {/* Message for non-controllers */}
                         {!isInvalidManager && !isController && (
-                            <div style={{
+                            <div className="neuron-mgr-fade-in" style={{
                                 ...cardStyle,
-                                backgroundColor: `${theme.colors.warning || '#f59e0b'}10`,
-                                border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                                background: `linear-gradient(135deg, ${theme.colors.warning}10, ${theme.colors.warning}05)`,
+                                border: `1px solid ${theme.colors.warning || '#f59e0b'}30`,
                                 textAlign: 'center',
+                                padding: '2rem 1.5rem',
                             }}>
-                                <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔒</div>
-                                <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px 0' }}>
+                                <div style={{ 
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '14px',
+                                    background: `${theme.colors.warning}20`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    margin: '0 auto 1rem',
+                                    fontSize: '24px'
+                                }}>
+                                    🔒
+                                </div>
+                                <h3 style={{ color: theme.colors.primaryText, margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: '600' }}>
                                     View Only Mode
                                 </h3>
-                                <p style={{ color: theme.colors.mutedText, margin: 0, fontSize: '14px' }}>
+                                <p style={{ color: theme.colors.secondaryText, margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
                                     You are not a controller of this neuron manager canister.
                                     <br />
                                     Only controllers can view neurons, manage stakes, and withdraw tokens.
@@ -3422,7 +3654,7 @@ function IcpNeuronManager() {
                         {/* ============================================ */}
                         {/* NEURONS SECTION */}
                         {/* ============================================ */}
-                        <div style={{ marginBottom: '20px' }}>
+                        <div className="neuron-mgr-fade-in" style={{ marginBottom: '1.25rem' }}>
                             {/* Section Header */}
                             <button
                                 onClick={() => setNeuronSectionExpanded(!neuronSectionExpanded)}
@@ -3431,34 +3663,50 @@ function IcpNeuronManager() {
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    padding: '16px 20px',
-                                    backgroundColor: theme.colors.secondaryBg,
+                                    padding: '1rem 1.25rem',
+                                    background: neuronSectionExpanded 
+                                        ? `linear-gradient(90deg, ${neuronPrimary}15 0%, transparent 100%)`
+                                        : theme.colors.cardGradient,
                                     border: `1px solid ${theme.colors.border}`,
-                                    borderRadius: neuronSectionExpanded ? '12px 12px 0 0' : '12px',
+                                    borderRadius: neuronSectionExpanded ? '14px 14px 0 0' : '14px',
                                     cursor: 'pointer',
                                     color: theme.colors.primaryText,
+                                    transition: 'all 0.2s',
+                                    boxShadow: theme.colors.cardShadow,
                                 }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <span style={{ fontSize: '20px' }}>🧠</span>
-                                    <span style={{ fontSize: '18px', fontWeight: '600' }}>Neurons</span>
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronPrimary}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '18px'
+                                    }}>
+                                        🧠
+                                    </div>
+                                    <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>Neurons</span>
                                     <span style={{ 
-                                        fontSize: '12px', 
-                                        color: theme.colors.mutedText,
-                                        backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                        fontSize: '0.75rem', 
+                                        color: neuronIds.length > 0 ? theme.colors.success : theme.colors.warning,
+                                        backgroundColor: neuronIds.length > 0 ? `${theme.colors.success}15` : `${theme.colors.warning}15`,
                                         padding: '4px 10px',
-                                        borderRadius: '12px',
+                                        borderRadius: '8px',
+                                        fontWeight: '600'
                                     }}>
                                         {neuronIds.length} neuron{neuronIds.length !== 1 ? 's' : ''}
                                     </span>
                                 </div>
                                 <span style={{ 
-                                    fontSize: '18px',
+                                    fontSize: '14px',
                                     transform: neuronSectionExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                                     transition: 'transform 0.2s ease',
                                     color: theme.colors.mutedText,
                                 }}>
-                                    ▼
+                                    {neuronSectionExpanded ? <FaChevronUp /> : <FaChevronDown />}
                                 </span>
                             </button>
                             
@@ -3619,16 +3867,35 @@ function IcpNeuronManager() {
                         {selectedNeuronId && (
                             <>
                                 {/* Neuron Summary */}
-                                <div style={cardStyle}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
-                                        <h2 style={{ color: theme.colors.primaryText, margin: 0 }}>Neuron #{selectedNeuronId.id.toString()}</h2>
+                                <div style={{
+                                    ...cardStyle,
+                                    background: `linear-gradient(135deg, ${neuronPrimary}08, ${theme.colors.cardGradient || theme.colors.cardBackground})`,
+                                    border: `1px solid ${neuronPrimary}25`,
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '10px',
+                                            background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronPrimary}10)`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '20px',
+                                            flexShrink: 0
+                                        }}>
+                                            🧠
+                                        </div>
+                                        <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1.15rem', fontWeight: '600' }}>
+                                            Neuron #{selectedNeuronId.id.toString()}
+                                        </h2>
                                         {neuronInfo && (
                                             <span style={{
                                                 background: getNeuronState(neuronInfo.state).color,
                                                 color: '#fff',
                                                 padding: '4px 12px',
                                                 borderRadius: '20px',
-                                                fontSize: '12px',
+                                                fontSize: '0.75rem',
                                                 fontWeight: '600',
                                             }}>
                                                 {getNeuronState(neuronInfo.state).label}
@@ -3637,35 +3904,35 @@ function IcpNeuronManager() {
                                     </div>
                                     
                                     {neuronInfo && (
-                                        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                                             <div style={statBoxStyle}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Stake</div>
-                                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '700' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Stake</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '700' }}>
                                                     {formatIcp(Number(neuronInfo.stake_e8s))} ICP
                                                 </div>
                                             </div>
                                             <div style={statBoxStyle}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Voting Power</div>
-                                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '700' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Voting Power</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '700' }}>
                                                     {formatIcp(Number(neuronInfo.voting_power))}
                                                 </div>
                                             </div>
                                             <div style={statBoxStyle}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Dissolve Delay</div>
-                                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '700' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Dissolve Delay</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '700' }}>
                                                     {formatDuration(Number(neuronInfo.dissolve_delay_seconds))}
                                                 </div>
                                             </div>
                                             <div style={statBoxStyle}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Age</div>
-                                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '700' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Age</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '700' }}>
                                                     {formatDuration(Number(neuronInfo.age_seconds))}
                                                 </div>
                                             </div>
                                             {fullNeuron && (
                                                 <div style={statBoxStyle}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Maturity</div>
-                                                    <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '700' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Maturity</div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '700' }}>
                                                         {formatIcp(Number(fullNeuron.maturity_e8s_equivalent))} ICP
                                                     </div>
                                                 </div>
@@ -3675,7 +3942,12 @@ function IcpNeuronManager() {
                                 </div>
 
                                 {/* Tabs */}
-                                <div style={{ display: 'flex', borderBottom: `1px solid ${theme.colors.border}`, marginBottom: '20px', flexWrap: 'wrap' }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    marginBottom: '1.25rem', 
+                                    flexWrap: 'wrap',
+                                    gap: '0'
+                                }}>
                                     <button style={tabStyle(activeTab === 'overview')} onClick={() => setActiveTab('overview')}>
                                         Overview
                                     </button>
