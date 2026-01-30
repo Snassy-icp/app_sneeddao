@@ -190,6 +190,7 @@ export default function CanistersPage() {
     const [draggedItem, setDraggedItem] = useState(null); // { type: 'canister' | 'group', id: string, sourceGroupId?: string }
     const [dragOverTarget, setDragOverTarget] = useState(null); // { type: 'group' | 'wallet' | 'neuron_managers' | 'ungrouped', id?: string }
     const dragCounterRef = React.useRef({}); // Track drag enter/leave counts per target
+    const [dropInProgress, setDropInProgress] = useState(null); // { itemType, itemId, targetType } - shown in progress dialog
 
     // Helper to compare versions
     const compareVersions = (a, b) => {
@@ -1317,48 +1318,72 @@ export default function CanistersPage() {
             return;
         }
         
-        // Handle canister drops
-        if (itemType === 'canister') {
-            // From wallet
-            if (sourceGroupId === 'wallet') {
-                if (targetType === 'group' || targetType === 'ungrouped') {
-                    await handleMoveFromWallet(itemId, targetId || 'ungrouped');
-                } else if (targetType === 'neuron_managers') {
-                    await handleMoveFromWallet(itemId, 'neuron_managers');
-                }
-                // If dropping on wallet again, do nothing
+        // Helper to check if a move will actually happen (not dropping on same location)
+        const willMove = () => {
+            if (itemType === 'canister') {
+                if (sourceGroupId === 'wallet' && targetType === 'wallet') return false;
+                if (sourceGroupId === 'neuron_managers' && targetType === 'neuron_managers') return false;
+                if (sourceGroupId === targetId) return false;
+                if (sourceGroupId === 'ungrouped' && targetType === 'ungrouped') return false;
+                return true;
             }
-            // From neuron managers
-            else if (sourceGroupId === 'neuron_managers') {
-                if (targetType === 'wallet') {
-                    await handleMoveFromNeuronManagers(Principal.fromText(itemId), 'wallet');
-                } else if (targetType === 'group' || targetType === 'ungrouped') {
-                    await handleMoveFromNeuronManagers(Principal.fromText(itemId), targetId || 'ungrouped');
-                }
-                // If dropping on neuron_managers again, do nothing
+            if (itemType === 'group' && targetType === 'group') {
+                return itemId !== targetId;
             }
-            // From groups/ungrouped
-            else if (sourceGroupId) {
-                if (targetType === 'wallet') {
-                    await handleMoveFromGroups(itemId, sourceGroupId, 'wallet');
-                } else if (targetType === 'neuron_managers') {
-                    await handleMoveFromGroups(itemId, sourceGroupId, 'neuron_managers');
-                } else if (targetType === 'group') {
-                    if (sourceGroupId !== targetId) {
-                        await handleMoveCanister(itemId, sourceGroupId, targetId);
-                    }
-                } else if (targetType === 'ungrouped') {
-                    if (sourceGroupId !== 'ungrouped') {
-                        await handleMoveCanister(itemId, sourceGroupId, 'ungrouped');
+            return false;
+        };
+        
+        // Only show progress if we're actually moving something
+        if (!willMove()) return;
+        
+        // Show progress dialog
+        setDropInProgress({ itemType, itemId, targetType, targetId });
+        
+        try {
+            // Handle canister drops
+            if (itemType === 'canister') {
+                // From wallet
+                if (sourceGroupId === 'wallet') {
+                    if (targetType === 'group' || targetType === 'ungrouped') {
+                        await handleMoveFromWallet(itemId, targetId || 'ungrouped');
+                    } else if (targetType === 'neuron_managers') {
+                        await handleMoveFromWallet(itemId, 'neuron_managers');
                     }
                 }
+                // From neuron managers
+                else if (sourceGroupId === 'neuron_managers') {
+                    if (targetType === 'wallet') {
+                        await handleMoveFromNeuronManagers(Principal.fromText(itemId), 'wallet');
+                    } else if (targetType === 'group' || targetType === 'ungrouped') {
+                        await handleMoveFromNeuronManagers(Principal.fromText(itemId), targetId || 'ungrouped');
+                    }
+                }
+                // From groups/ungrouped
+                else if (sourceGroupId) {
+                    if (targetType === 'wallet') {
+                        await handleMoveFromGroups(itemId, sourceGroupId, 'wallet');
+                    } else if (targetType === 'neuron_managers') {
+                        await handleMoveFromGroups(itemId, sourceGroupId, 'neuron_managers');
+                    } else if (targetType === 'group') {
+                        if (sourceGroupId !== targetId) {
+                            await handleMoveCanister(itemId, sourceGroupId, targetId);
+                        }
+                    } else if (targetType === 'ungrouped') {
+                        if (sourceGroupId !== 'ungrouped') {
+                            await handleMoveCanister(itemId, sourceGroupId, 'ungrouped');
+                        }
+                    }
+                }
             }
-        }
-        // Handle group drops (reordering groups)
-        else if (itemType === 'group' && targetType === 'group') {
-            if (itemId !== targetId) {
-                await handleMoveGroup(itemId, targetId);
+            // Handle group drops (reordering groups)
+            else if (itemType === 'group' && targetType === 'group') {
+                if (itemId !== targetId) {
+                    await handleMoveGroup(itemId, targetId);
+                }
             }
+        } finally {
+            // Clear progress dialog
+            setDropInProgress(null);
         }
     };
 
@@ -2782,6 +2807,53 @@ export default function CanistersPage() {
                             >
                                 View Premium <FaArrowRight size={14} />
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Drop Progress Dialog */}
+            {dropInProgress && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10002,
+                    backdropFilter: 'blur(2px)',
+                }}>
+                    <div style={{
+                        background: theme.colors.cardGradient,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '16px',
+                        padding: '24px 32px',
+                        textAlign: 'center',
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+                        minWidth: '200px',
+                    }}>
+                        <FaSpinner 
+                            className="spin" 
+                            size={28} 
+                            style={{ color: canisterPrimary, marginBottom: '12px' }} 
+                        />
+                        <div style={{ 
+                            color: theme.colors.primaryText, 
+                            fontWeight: 600,
+                            fontSize: '0.95rem',
+                            marginBottom: '4px'
+                        }}>
+                            Moving {dropInProgress.itemType === 'group' ? 'folder' : 'canister'}...
+                        </div>
+                        <div style={{ 
+                            color: theme.colors.mutedText, 
+                            fontSize: '0.8rem' 
+                        }}>
+                            Please wait
                         </div>
                     </div>
                 </div>
