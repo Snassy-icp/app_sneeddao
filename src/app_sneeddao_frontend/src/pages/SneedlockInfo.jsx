@@ -14,6 +14,57 @@ import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUti
 import { useTheme } from '../contexts/ThemeContext';
 import PrincipalInput from '../components/PrincipalInput';
 import TokenSelector from '../components/TokenSelector';
+import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSpinner, FaUser, FaClock, FaShieldAlt } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.lock-info-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.lock-info-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.lock-info-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.lock-info-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - indigo/blue theme
+const lockPrimary = '#6366f1';
+const lockSecondary = '#818cf8';
+const lockAccent = '#a5b4fc';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
@@ -914,520 +965,636 @@ function SneedlockInfo() {
 
     if (initialLoading) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header customLogo="/sneedlock-logo4.png" />
-                <main className="wallet-container">
-                    <div style={{ 
-                        padding: '20px 0',
-                        textAlign: 'center'
+                <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1rem' }}>
+                    <div className="lock-info-fade-in" style={{ 
+                        textAlign: 'center',
+                        padding: '3rem',
+                        background: theme.colors.cardGradient,
+                        borderRadius: '20px',
+                        border: `1px solid ${theme.colors.border}`,
+                        boxShadow: theme.colors.cardShadow,
                     }}>
-                        <img 
-                            src="/sneedlock-logo-cropped.png" 
-                            alt="SneedLock" 
-                            style={{ height: '64px', width: 'auto' }}
-                        />
+                        <div className="lock-info-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${lockPrimary}50`,
+                        }}>
+                            <FaShieldAlt size={28} style={{ color: '#fff' }} />
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                            Loading Locks
+                        </h2>
+                        <p style={{ color: theme.colors.mutedText, fontSize: '0.95rem' }}>
+                            <FaSpinner className="lock-info-spin" style={{ marginRight: '8px' }} />
+                            Fetching lock data...
+                        </p>
                     </div>
                 </main>
             </div>
         );
     }
 
+    // Styles for the redesigned card-based layout
+    const styles = {
+        container: {
+            maxWidth: '1000px',
+            margin: '0 auto',
+            padding: '1.5rem 1rem',
+        },
+        cardBase: {
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '16px',
+            boxShadow: theme.colors.cardShadow,
+        },
+        filterCard: {
+            padding: '1.25rem',
+            marginBottom: '1rem',
+        },
+        filterRow: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '12px',
+            alignItems: 'center',
+        },
+        filterButton: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.primaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '0.85rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+        },
+        clearButton: {
+            padding: '10px 12px',
+            borderRadius: '10px',
+            border: `1px solid ${theme.colors.border}`,
+            background: theme.colors.primaryBg,
+            color: theme.colors.mutedText,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+        },
+        tabRow: {
+            display: 'flex',
+            gap: '8px',
+            padding: '1rem',
+            borderBottom: `1px solid ${theme.colors.border}`,
+            flexWrap: 'wrap',
+        },
+        tab: (isActive) => ({
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            borderRadius: '10px',
+            border: 'none',
+            background: isActive ? `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})` : theme.colors.primaryBg,
+            color: isActive ? '#fff' : theme.colors.secondaryText,
+            fontSize: '0.9rem',
+            fontWeight: isActive ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: isActive ? `0 4px 16px ${lockPrimary}40` : 'none',
+        }),
+        tabBadge: (isActive) => ({
+            padding: '2px 8px',
+            borderRadius: '10px',
+            background: isActive ? 'rgba(255,255,255,0.2)' : theme.colors.tertiaryBg,
+            fontSize: '0.75rem',
+            fontWeight: '600',
+        }),
+        tokenCard: (isExpanded) => ({
+            background: isExpanded ? `linear-gradient(135deg, ${lockPrimary}08, ${lockPrimary}03)` : theme.colors.cardGradient,
+            border: `1px solid ${isExpanded ? lockPrimary + '40' : theme.colors.border}`,
+            borderRadius: '14px',
+            marginBottom: '10px',
+            overflow: 'hidden',
+            transition: 'all 0.2s ease',
+        }),
+        tokenHeader: {
+            display: 'flex',
+            alignItems: 'center',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            gap: '12px',
+            flexWrap: 'wrap',
+        },
+        tokenLogo: {
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            border: `2px solid ${theme.colors.border}`,
+            flexShrink: 0,
+        },
+        tokenInfo: {
+            flex: '1 1 150px',
+            minWidth: '120px',
+        },
+        tokenSymbol: {
+            fontSize: '1.05rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+        },
+        tokenSubtitle: {
+            fontSize: '0.8rem',
+            color: theme.colors.mutedText,
+            marginTop: '2px',
+        },
+        statGroup: {
+            display: 'flex',
+            gap: '16px',
+            flexWrap: 'wrap',
+            flex: '1 1 auto',
+            justifyContent: 'flex-end',
+        },
+        statBox: {
+            textAlign: 'right',
+            minWidth: '90px',
+        },
+        statValue: {
+            fontSize: '0.95rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+        },
+        statLabel: {
+            fontSize: '0.75rem',
+            color: theme.colors.mutedText,
+            marginTop: '2px',
+        },
+        chevron: {
+            color: lockPrimary,
+            flexShrink: 0,
+        },
+        locksList: {
+            borderTop: `1px solid ${theme.colors.border}`,
+            padding: '12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+        },
+        lockCard: {
+            background: theme.colors.primaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
+            padding: '12px 14px',
+        },
+        lockHeader: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '10px',
+            flexWrap: 'wrap',
+        },
+        lockIcon: {
+            width: '28px',
+            height: '28px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+        },
+        lockTitle: {
+            fontSize: '0.9rem',
+            fontWeight: '600',
+            color: theme.colors.primaryText,
+        },
+        lockDetails: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: '10px',
+        },
+        lockDetail: {
+            fontSize: '0.85rem',
+        },
+        lockDetailLabel: {
+            color: theme.colors.mutedText,
+            marginBottom: '2px',
+        },
+        lockDetailValue: {
+            color: theme.colors.primaryText,
+            fontWeight: '500',
+        },
+        totalsCard: {
+            background: `linear-gradient(135deg, ${lockPrimary}10, ${lockSecondary}05)`,
+            border: `1px solid ${lockPrimary}30`,
+            borderRadius: '16px',
+            padding: '1.25rem',
+            marginTop: '1rem',
+        },
+        totalsGrid: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: '16px',
+        },
+        totalBox: {
+            textAlign: 'center',
+            padding: '12px',
+            background: theme.colors.primaryBg,
+            borderRadius: '12px',
+            border: `1px solid ${theme.colors.border}`,
+        },
+        totalValue: {
+            fontSize: '1.1rem',
+            fontWeight: '700',
+            color: theme.colors.primaryText,
+        },
+        totalLabel: {
+            fontSize: '0.75rem',
+            color: theme.colors.mutedText,
+            marginTop: '4px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+        },
+        emptyState: {
+            textAlign: 'center',
+            padding: '3rem 1.5rem',
+            color: theme.colors.mutedText,
+        },
+    };
+
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header customLogo="/sneedlock-logo4.png" />
-            <main className="wallet-container">
-                <div style={{ 
-                    padding: '20px 0',
-                    borderBottom: `1px solid ${theme.colors.border}`,
-                    marginBottom: '20px'
-                }}>
-                    <div style={{
-                        textAlign: 'center'
-                    }}>
-                        <img 
-                            src="/sneedlock-logo-cropped.png" 
-                            alt="SneedLock" 
-                            style={{ 
-                                height: '64px', 
-                                width: 'auto',
-                                marginBottom: '16px'
-                            }}
-                        />
-                        <div style={{ color: theme.colors.mutedText, fontSize: '14px', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
-                            Total Value Locked
-                        </div>
-                        <div style={{ 
-                            color: theme.colors.primaryText,
-                            fontSize: '48px',
-                            fontWeight: '400',
-                            letterSpacing: '0.5px'
-                        }}>
-                            {formatUSD(calculateTotalTVL())}
-                        </div>
-                    </div>
-                </div>
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${lockPrimary}12 50%, ${lockSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${lockPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-40%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${lockSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
                 
-                <div style={{ background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, borderRadius: '12px', padding: '20px', boxShadow: theme.colors.cardShadow }}>
-                    <div style={{ 
-                        marginBottom: '20px',
-                        display: 'flex',
+                <div style={{ maxWidth: '1000px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '10px',
-                        flexWrap: 'wrap'
+                        gap: '8px',
+                        background: `${lockPrimary}20`,
+                        color: lockPrimary,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '1rem'
                     }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <FaShieldAlt size={12} /> SneedLock
+                    </div>
+                    
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
+                        Total Value Locked
+                    </div>
+                    <div className="lock-info-pulse" style={{ 
+                        color: theme.colors.primaryText,
+                        fontSize: '2.5rem',
+                        fontWeight: '700',
+                        letterSpacing: '-0.5px',
+                        marginBottom: '0.5rem'
+                    }}>
+                        {formatUSD(calculateTotalTVL())}
+                    </div>
+                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', margin: 0 }}>
+                        Secured tokens and liquidity positions
+                    </p>
+                </div>
+            </div>
+            
+            <main style={styles.container}>
+                {/* Filters Card */}
+                <div className="lock-info-fade-in" style={{ ...styles.cardBase, ...styles.filterCard }}>
+                    <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FaFilter size={14} style={{ color: lockPrimary }} />
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>Filters</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* Owner Filter Row */}
+                        <div style={styles.filterRow}>
                             {identity && (
-                                <div>
-                                    <button
-                                        onClick={() => handleOwnerFilterChange(identity.getPrincipal().toString())}
-                                        style={{
-                                            padding: '8px 12px',
-                                            borderRadius: '4px',
-                                            border: `1px solid ${theme.colors.border}`,
-                                            background: theme.colors.tertiaryBg,
-                                            color: theme.colors.primaryText,
-                                            cursor: 'pointer'
-                                        }}
-                                        title="Show only your locks"
-                                    >
-                                        My Locks
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={() => handleOwnerFilterChange(identity.getPrincipal().toString())}
+                                    style={{
+                                        ...styles.filterButton,
+                                        background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                                        color: '#fff',
+                                        border: 'none',
+                                        boxShadow: `0 4px 12px ${lockPrimary}30`,
+                                    }}
+                                    title="Show only your locks"
+                                >
+                                    <FaUser size={12} /> My Locks
+                                </button>
                             )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
                                 <PrincipalInput
                                     value={ownerFilter}
                                     onChange={handleOwnerFilterChange}
-                                    placeholder="Filter by owner"
-                                    style={{ width: '300px' }}
+                                    placeholder="Filter by owner..."
+                                    style={{ width: '100%' }}
                                     isAuthenticated={!!identity}
                                 />
-                                {ownerFilter && (
-                                    <button
-                                        onClick={() => handleOwnerFilterChange('')}
-                                        style={{
-                                            padding: '8px 12px',
-                                            borderRadius: '4px',
-                                            border: `1px solid ${theme.colors.border}`,
-                                            background: theme.colors.tertiaryBg,
-                                            color: theme.colors.primaryText,
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        Clear
-                                    </button>
-                                )}
                             </div>
+                            {ownerFilter && (
+                                <button onClick={() => handleOwnerFilterChange('')} style={styles.clearButton}>
+                                    Clear
+                                </button>
+                            )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                            <TokenSelector
-                                value={ledgerFilter}
-                                onChange={handleLedgerFilterChange}
-                                placeholder="Select token..."
-                                style={{ width: '200px' }}
-                            />
-                            <span style={{ color: theme.colors.mutedText, fontSize: '14px' }}>or</span>
-                            <PrincipalInput
-                                value={ledgerFilter}
-                                onChange={handleLedgerFilterChange}
-                                placeholder="Filter by ledger"
-                                style={{ width: '280px' }}
-                                isAuthenticated={!!identity}
-                            />
+                        
+                        {/* Token Filter Row */}
+                        <div style={styles.filterRow}>
+                            <div style={{ flex: '0 1 180px', minWidth: '150px' }}>
+                                <TokenSelector
+                                    value={ledgerFilter}
+                                    onChange={handleLedgerFilterChange}
+                                    placeholder="Select token..."
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>or</span>
+                            <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+                                <PrincipalInput
+                                    value={ledgerFilter}
+                                    onChange={handleLedgerFilterChange}
+                                    placeholder="Filter by ledger..."
+                                    style={{ width: '100%' }}
+                                    isAuthenticated={!!identity}
+                                />
+                            </div>
                             {ledgerFilter && (
-                                <button
-                                    onClick={() => handleLedgerFilterChange('')}
-                                    style={{
-                                        padding: '8px 12px',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.tertiaryBg,
-                                        color: theme.colors.primaryText,
-                                        cursor: 'pointer'
-                                    }}
-                                >
+                                <button onClick={() => handleLedgerFilterChange('')} style={styles.clearButton}>
                                     Clear
                                 </button>
                             )}
                         </div>
                     </div>
-                    
-                    {/* Active / Expired Tabs */}
-                    <div style={{ 
-                        display: 'flex', 
-                        gap: '0', 
-                        marginBottom: '20px',
-                        borderBottom: `1px solid ${theme.colors.border}`
-                    }}>
-                        <button
-                            onClick={() => handleTabChange('active')}
-                            style={{
-                                padding: '12px 24px',
-                                border: 'none',
-                                background: 'transparent',
-                                color: activeTab === 'active' ? theme.colors.accent : theme.colors.mutedText,
-                                borderBottom: activeTab === 'active' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-                                cursor: 'pointer',
-                                fontSize: '14px',
-                                fontWeight: activeTab === 'active' ? '600' : '400',
-                                transition: 'all 0.2s ease'
-                            }}
-                        >
-                            🔒 Active Locks
+                </div>
+                
+                {/* Main Content Card */}
+                <div className="lock-info-fade-in" style={{ ...styles.cardBase, overflow: 'hidden' }}>
+                    {/* Tabs */}
+                    <div style={styles.tabRow}>
+                        <button onClick={() => handleTabChange('active')} style={styles.tab(activeTab === 'active')}>
+                            <FaLock size={14} /> Active
                             {Object.keys(activeTokenData).length > 0 && (
-                                <span style={{ 
-                                    marginLeft: '8px', 
-                                    background: theme.colors.secondaryBg,
-                                    padding: '2px 8px',
-                                    borderRadius: '12px',
-                                    fontSize: '12px'
-                                }}>
+                                <span style={styles.tabBadge(activeTab === 'active')}>
                                     {Object.values(activeTokenData).reduce((sum, d) => sum + (d.tokenLockCount || 0) + (d.positionLockCount || 0), 0)}
                                 </span>
                             )}
                         </button>
-                        <button
-                            onClick={() => handleTabChange('expired')}
-                            style={{
-                                padding: '12px 24px',
-                                border: 'none',
-                                background: 'transparent',
-                                color: activeTab === 'expired' ? theme.colors.accent : theme.colors.mutedText,
-                                borderBottom: activeTab === 'expired' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
-                                cursor: 'pointer',
-                                fontSize: '14px',
-                                fontWeight: activeTab === 'expired' ? '600' : '400',
-                                transition: 'all 0.2s ease'
-                            }}
-                        >
-                            ⏰ Expired Locks
+                        <button onClick={() => handleTabChange('expired')} style={styles.tab(activeTab === 'expired')}>
+                            <FaClock size={14} /> Expired
                             {expiredLoaded && Object.keys(expiredTokenData).length > 0 && (
-                                <span style={{ 
-                                    marginLeft: '8px', 
-                                    background: theme.colors.secondaryBg,
-                                    padding: '2px 8px',
-                                    borderRadius: '12px',
-                                    fontSize: '12px'
-                                }}>
+                                <span style={styles.tabBadge(activeTab === 'expired')}>
                                     {Object.values(expiredTokenData).reduce((sum, d) => sum + (d.tokenLockCount || 0) + (d.positionLockCount || 0), 0)}
                                 </span>
                             )}
-                            {expiredLoading && (
-                                <span style={{ marginLeft: '8px', fontSize: '12px' }}>⏳</span>
-                            )}
+                            {expiredLoading && <FaSpinner className="lock-info-spin" size={12} />}
                         </button>
                     </div>
-
-                    {/* Loading state for expired tab */}
-                    {activeTab === 'expired' && expiredLoading && (
-                        <div style={{ 
-                            textAlign: 'center', 
-                            padding: '40px 20px',
-                            color: theme.colors.mutedText
-                        }}>
-                            <div style={{ fontSize: '24px', marginBottom: '12px' }}>⏳</div>
-                            Loading expired locks...
-                        </div>
-                    )}
-
-                    {/* Empty state for expired tab */}
-                    {activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length === 0 && (
-                        <div style={{ 
-                            textAlign: 'center', 
-                            padding: '40px 20px',
-                            color: theme.colors.mutedText
-                        }}>
-                            <div style={{ fontSize: '24px', marginBottom: '12px' }}>✨</div>
-                            No expired locks found
-                        </div>
-                    )}
-
-                    {/* Table - only show when we have data */}
-                    {((activeTab === 'active') || (activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length > 0)) && (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                <th style={{ 
-                                    padding: '10px 20px', 
-                                    textAlign: 'left', 
-                                    color: theme.colors.mutedText, 
-                                    width: '200px',
-                                    position: 'relative'  // Add positioning context
-                                }}>Token</th>
-                                <th style={{ padding: '10px', textAlign: 'right', color: theme.colors.mutedText }}>Token Locks</th>
-                                <th style={{ padding: '10px', textAlign: 'right', color: theme.colors.mutedText }}>Position Locks</th>
-                                <th style={{ padding: '10px', textAlign: 'right', color: theme.colors.mutedText }}>Total Locked</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {Object.entries(getFilteredData()).map(([tokenKey, data]) => {
-                                const token = tokenMetadata[tokenKey];
-                                const isExpanded = expandedRows.has(tokenKey);
-                                return (
-                                    <React.Fragment key={tokenKey}>
-                                        <tr 
-                                            onClick={() => toggleRow(tokenKey)}
-                                            style={{ 
-                                                borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                                cursor: 'pointer',
-                                                background: isExpanded ? theme.colors.tertiaryBg : 'transparent'
-                                            }}
-                                        >
-                                            <td style={{ 
-                                                padding: '10px 20px', 
-                                                color: theme.colors.primaryText,
-                                                width: '200px',
-                                                position: 'relative'  // Add positioning context
-                                            }}>
-                                                <div style={{
-                                                    position: 'absolute',  // Position the container absolutely
-                                                    left: '20px',         // Match the padding
-                                                    top: '50%',           // Center vertically
-                                                    transform: 'translateY(-50%)',  // Center vertically
-                                                    display: 'grid',      // Use grid instead of flex
-                                                    gridTemplateColumns: '20px 1fr',  // Fixed width for logo, auto for text
-                                                    gap: '8px',
-                                                    alignItems: 'center',
-                                                    width: 'calc(100% - 40px)'  // Account for padding
-                                                }}>
-                                                    {token?.logo ? (
-                                                        <img 
-                                                            src={token.logo} 
-                                                            alt={token?.symbol || tokenKey} 
-                                                            style={{ 
-                                                                width: '20px', 
-                                                                height: '20px', 
-                                                                borderRadius: '50%',
-                                                                gridColumn: '1'
-                                                            }}
-                                                        />
-                                                    ) : (
-                                                        <div style={{ 
-                                                            width: '20px', 
-                                                            height: '20px',
-                                                            gridColumn: '1'
-                                                        }} />
-                                                    )}
-                                                    <span style={{ 
-                                                        whiteSpace: 'nowrap',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        gridColumn: '2'
-                                                    }}>
-                                                        {token?.symbol || tokenKey}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: theme.colors.primaryText }}>
-                                                {data.positionsLoading ? (
-                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                                ) : (
-                                                    <>
-                                                        {formatAmount(data.tokenLockAmount, token?.decimals || 8)}{' '}
-                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
-                                                            {formatUSD(getUSDValue(data.tokenLockAmount, token?.decimals || 8, token?.symbol))}
-                                                        </span>
-                                                        <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                                            {data.tokenLockCount} lock{data.tokenLockCount !== 1 ? 's' : ''}
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: theme.colors.primaryText }}>
-                                                {data.positionsLoading ? (
-                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                                ) : (
-                                                    <>
-                                                        {formatAmount(data.positionLockAmount, token?.decimals || 8)}{' '}
-                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
-                                                            {formatUSD(getUSDValue(data.positionLockAmount, token?.decimals || 8, token?.symbol))}
-                                                        </span>
-                                                        <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                                            {data.positionLockCount} position{data.positionLockCount !== 1 ? 's' : ''}
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: theme.colors.primaryText }}>
-                                                {data.positionsLoading ? (
-                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                                ) : (
-                                                    <>
-                                                        {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}{' '}
-                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
-                                                            {formatUSD(getUSDValue(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8, token?.symbol))}
-                                                        </span>
-                                                        <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                                            {data.tokenLockCount + data.positionLockCount} total lock{data.tokenLockCount + data.positionLockCount !== 1 ? 's' : ''}
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </td>
-                                        </tr>
-                                        {isExpanded && (
-                                            <>
-                                                {/* Token Locks */}
-                                                {data.tokenLocks.map(lock => (
-                                                    <tr key={`token-${lock.id}`} style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }}>
-                                                        <td colSpan="4" style={{ padding: '8px 40px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.mutedText, fontSize: '0.9em', alignItems: 'center' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <a 
-                                                                        href={`/tokenlock?ledger=${tokenKey}&locks=${lock.lockId?.toString() || ''}`}
-                                                                        style={{ 
-                                                                            color: theme.colors.mutedText,
-                                                                            textDecoration: 'none',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '8px',
-                                                                            cursor: 'pointer'
-                                                                        }}
-                                                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                                    >
-                                                                        <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
-                                                                        <div>
-                                                                            <span style={{ color: theme.colors.mutedText }}>Token Lock</span>{' '}
-                                                                            <span>#{lock.lockId?.toString() || 'Unknown'}</span>
-                                                                        </div>
-                                                                    </a>
-                                                                </div>
-                                                                <div>
-                                                                    Amount: {formatAmount(lock.amount, token?.decimals || 8)}{' '}
-                                                                    <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
-                                                                        {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
-                                                                    </span>
-                                                                </div>
-                                                                <div>
-                                                                    Expires: {formatExpirationWithColor(lock.expiry)}
-                                                                </div>
-                                                                <div style={{ opacity: 0.7 }}>
-                                                                    <span>Owner: </span>
-                                                                    <PrincipalDisplay 
-                                                                        principal={lock.owner} 
-                                                                        displayInfo={principalDisplayInfo.get(lock.owner)}
-                                                                        style={{ display: 'inline-flex' }}
-                                                                        short={true}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                                {/* Position Locks */}
-                                                {data.positionLocks.map(lock => (
-                                                    <tr key={`position-${lock.id}`} style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }}>
-                                                        <td colSpan="4" style={{ padding: '8px 40px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.mutedText, fontSize: '0.9em', alignItems: 'center' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <a 
-                                                                        href={`/positionlock?swap=${lock.swapCanisterId}&positions=${lock.positionId}`}
-                                                                        style={{ 
-                                                                            color: theme.colors.mutedText,
-                                                                            textDecoration: 'none',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '8px',
-                                                                            cursor: 'pointer'
-                                                                        }}
-                                                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                                    >
-                                                                        <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
-                                                                        <div>
-                                                                            <span style={{ color: theme.colors.mutedText }}>Position Lock</span>{' '}
-                                                                            <span>#{lock.positionId?.toString() || 'Unknown'}</span>
-                                                                        </div>
-                                                                    </a>
-                                                                </div>
-                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                                                                    <div>
-                                                                        {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey}{' '}
-                                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
-                                                                            {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div>
-                                                                        {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}{' '}
-                                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
-                                                                            {formatUSD(getUSDValue(
-                                                                                lock.otherAmount,
-                                                                                tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8,
-                                                                                tokenMetadata[lock.otherToken?.toText() || '']?.symbol
-                                                                            ))}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    Expires: {formatExpirationWithColor(lock.expiry)}
-                                                                </div>
-                                                                <div style={{ opacity: 0.7 }}>
-                                                                    <span>Owner: </span>
-                                                                    <PrincipalDisplay 
-                                                                        principal={lock.owner} 
-                                                                        displayInfo={principalDisplayInfo.get(lock.owner)}
-                                                                        style={{ display: 'inline-flex' }}
-                                                                        short={true}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            })}
-                        </tbody>
-                        {metadataLoading && (
-                            <tbody>
-                                <tr>
-                                    <td colSpan="4" style={{ padding: '20px', textAlign: 'center' }}>
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'center',
-                                            gap: '10px',
-                                            color: theme.colors.mutedText
-                                        }}>
-                                            <div className="spinner" style={{ width: '20px', height: '20px' }} />
-                                            <span>Loading more locks...</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
+                    
+                    {/* Content */}
+                    <div style={{ padding: '1rem' }}>
+                        {/* Loading state for expired tab */}
+                        {activeTab === 'expired' && expiredLoading && (
+                            <div style={styles.emptyState}>
+                                <FaSpinner className="lock-info-spin" size={32} style={{ color: lockPrimary, marginBottom: '1rem' }} />
+                                <p>Loading expired locks...</p>
+                            </div>
                         )}
-                        <tfoot>
-                            <tr style={{ 
-                                borderTop: `2px solid ${theme.colors.success}`,
-                                background: theme.colors.cardGradient,
-                                fontWeight: 'bold'
-                            }}>
-                                <td style={{ padding: '15px' }}>Total Value</td>
-                                <td style={{ padding: '15px', textAlign: 'right', color: theme.colors.primaryText }}>
-                                    {formatUSD(calculateTotals().tokenLockTotal)}
-                                    <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        Total Token Locks
+                        
+                        {/* Empty state for expired tab */}
+                        {activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length === 0 && (
+                            <div style={styles.emptyState}>
+                                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>✨</div>
+                                <p style={{ fontSize: '1rem', color: theme.colors.secondaryText }}>No expired locks found</p>
+                            </div>
+                        )}
+                        
+                        {/* Token Cards */}
+                        {((activeTab === 'active') || (activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length > 0)) && (
+                            <>
+                                {Object.entries(getFilteredData()).map(([tokenKey, data]) => {
+                                    const token = tokenMetadata[tokenKey];
+                                    const isExpanded = expandedRows.has(tokenKey);
+                                    const totalLocks = data.tokenLockCount + data.positionLockCount;
+                                    
+                                    return (
+                                        <div key={tokenKey} style={styles.tokenCard(isExpanded)}>
+                                            {/* Token Header */}
+                                            <div style={styles.tokenHeader} onClick={() => toggleRow(tokenKey)}>
+                                                {token?.logo ? (
+                                                    <img src={token.logo} alt={token?.symbol || tokenKey} style={styles.tokenLogo} />
+                                                ) : (
+                                                    <div style={{ ...styles.tokenLogo, background: theme.colors.tertiaryBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <FaCoins style={{ color: theme.colors.mutedText }} />
+                                                    </div>
+                                                )}
+                                                
+                                                <div style={styles.tokenInfo}>
+                                                    <div style={styles.tokenSymbol}>{token?.symbol || tokenKey.slice(0, 8) + '...'}</div>
+                                                    <div style={styles.tokenSubtitle}>
+                                                        {totalLocks} lock{totalLocks !== 1 ? 's' : ''} • {data.tokenLockCount} token, {data.positionLockCount} position
+                                                    </div>
+                                                </div>
+                                                
+                                                {data.positionsLoading ? (
+                                                    <FaSpinner className="lock-info-spin" style={{ color: lockPrimary }} />
+                                                ) : (
+                                                    <div style={styles.statGroup}>
+                                                        <div style={styles.statBox}>
+                                                            <div style={styles.statValue}>
+                                                                {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}
+                                                            </div>
+                                                            <div style={styles.statLabel}>
+                                                                {formatUSD(getUSDValue(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8, token?.symbol))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {isExpanded ? <FaChevronDown style={styles.chevron} /> : <FaChevronRight style={styles.chevron} />}
+                                            </div>
+                                            
+                                            {/* Expanded Locks List */}
+                                            {isExpanded && (
+                                                <div style={styles.locksList}>
+                                                    {/* Token Locks */}
+                                                    {data.tokenLocks.map(lock => (
+                                                        <a
+                                                            key={`token-${lock.id}`}
+                                                            href={`/tokenlock?ledger=${tokenKey}&locks=${lock.lockId?.toString() || ''}`}
+                                                            style={{ textDecoration: 'none' }}
+                                                        >
+                                                            <div style={styles.lockCard}>
+                                                                <div style={styles.lockHeader}>
+                                                                    <div style={{ ...styles.lockIcon, background: `${lockPrimary}20` }}>
+                                                                        <FaCoins size={14} style={{ color: lockPrimary }} />
+                                                                    </div>
+                                                                    <div style={styles.lockTitle}>
+                                                                        Token Lock #{lock.lockId?.toString() || 'Unknown'}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={styles.lockDetails}>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Amount</div>
+                                                                        <div style={styles.lockDetailValue}>
+                                                                            {formatAmount(lock.amount, token?.decimals || 8)} {token?.symbol || ''}
+                                                                            <span style={{ fontSize: '0.85em', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                                                {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Expires</div>
+                                                                        <div style={styles.lockDetailValue}>{formatExpirationWithColor(lock.expiry)}</div>
+                                                                    </div>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Owner</div>
+                                                                        <div style={styles.lockDetailValue}>
+                                                                            <PrincipalDisplay 
+                                                                                principal={lock.owner} 
+                                                                                displayInfo={principalDisplayInfo.get(lock.owner)}
+                                                                                style={{ display: 'inline-flex' }}
+                                                                                short={true}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </a>
+                                                    ))}
+                                                    
+                                                    {/* Position Locks */}
+                                                    {data.positionLocks.map(lock => (
+                                                        <a
+                                                            key={`position-${lock.id}-${lock.positionId}`}
+                                                            href={`/positionlock?swap=${lock.swapCanisterId}&positions=${lock.positionId}`}
+                                                            style={{ textDecoration: 'none' }}
+                                                        >
+                                                            <div style={styles.lockCard}>
+                                                                <div style={styles.lockHeader}>
+                                                                    <div style={{ ...styles.lockIcon, background: `${theme.colors.accent}20` }}>
+                                                                        <FaWater size={14} style={{ color: theme.colors.accent }} />
+                                                                    </div>
+                                                                    <div style={styles.lockTitle}>
+                                                                        Position Lock #{lock.positionId?.toString() || 'Unknown'}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={styles.lockDetails}>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Token 1</div>
+                                                                        <div style={styles.lockDetailValue}>
+                                                                            {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey.slice(0,6)}
+                                                                            <span style={{ fontSize: '0.85em', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                                                {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Token 2</div>
+                                                                        <div style={styles.lockDetailValue}>
+                                                                            {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || 'Unknown'}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Expires</div>
+                                                                        <div style={styles.lockDetailValue}>{formatExpirationWithColor(lock.expiry)}</div>
+                                                                    </div>
+                                                                    <div style={styles.lockDetail}>
+                                                                        <div style={styles.lockDetailLabel}>Owner</div>
+                                                                        <div style={styles.lockDetailValue}>
+                                                                            <PrincipalDisplay 
+                                                                                principal={lock.owner} 
+                                                                                displayInfo={principalDisplayInfo.get(lock.owner)}
+                                                                                style={{ display: 'inline-flex' }}
+                                                                                short={true}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                
+                                {/* Loading more indicator */}
+                                {metadataLoading && (
+                                    <div style={{ textAlign: 'center', padding: '1.5rem', color: theme.colors.mutedText }}>
+                                        <FaSpinner className="lock-info-spin" style={{ marginRight: '8px' }} />
+                                        Loading more locks...
                                     </div>
-                                </td>
-                                <td style={{ padding: '15px', textAlign: 'right', color: theme.colors.primaryText }}>
-                                    {formatUSD(calculateTotals().positionLockTotal)}
-                                    <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        Total Position Locks
-                                    </div>
-                                </td>
-                                <td style={{ padding: '15px', textAlign: 'right', color: theme.colors.primaryText }}>
-                                    {formatUSD(calculateTotals().combinedTotal)}
-                                    <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        Grand Total
-                                    </div>
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                    )}
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
+                
+                {/* Totals Card */}
+                {((activeTab === 'active') || (activeTab === 'expired' && expiredLoaded && Object.keys(expiredTokenData).length > 0)) && (
+                    <div className="lock-info-fade-in" style={styles.totalsCard}>
+                        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                <FaShieldAlt style={{ marginRight: '8px', color: lockPrimary }} />
+                                {activeTab === 'active' ? 'Active' : 'Expired'} Locks Summary
+                            </span>
+                        </div>
+                        <div style={styles.totalsGrid}>
+                            <div style={styles.totalBox}>
+                                <div style={styles.totalValue}>{formatUSD(calculateTotals().tokenLockTotal)}</div>
+                                <div style={styles.totalLabel}>Token Locks</div>
+                            </div>
+                            <div style={styles.totalBox}>
+                                <div style={styles.totalValue}>{formatUSD(calculateTotals().positionLockTotal)}</div>
+                                <div style={styles.totalLabel}>Position Locks</div>
+                            </div>
+                            <div style={{ ...styles.totalBox, background: `linear-gradient(135deg, ${lockPrimary}15, ${lockSecondary}10)`, border: `1px solid ${lockPrimary}30` }}>
+                                <div style={{ ...styles.totalValue, color: lockPrimary }}>{formatUSD(calculateTotals().combinedTotal)}</div>
+                                <div style={styles.totalLabel}>Grand Total</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );
