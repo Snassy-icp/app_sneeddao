@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaWallet } from 'react-icons/fa';
+import { FaCoins, FaWater, FaArrowRight, FaArrowLeft, FaLock, FaCheck, FaSpinner, FaCrown, FaWallet, FaShieldAlt } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
@@ -15,6 +15,56 @@ import { formatAmount } from '../utils/StringUtils';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from '../utils/DateUtils';
 import ConfirmationModal from '../ConfirmationModal';
 import { usePremiumStatus, PremiumBadge } from '../hooks/usePremiumStatus';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.lock-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.lock-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.lock-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - indigo/blue theme for locking/security
+const lockPrimary = '#6366f1';
+const lockSecondary = '#818cf8';
+const lockAccent = '#a5b4fc';
 
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const dex_icpswap = 1;
@@ -580,41 +630,46 @@ function LockWizard() {
 
     const styles = {
         container: {
-            maxWidth: '900px',
+            maxWidth: '800px',
             margin: '0 auto',
-            padding: '2rem',
+            padding: '1.5rem 1rem',
             color: theme.colors.primaryText,
         },
         hero: {
             textAlign: 'center',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
         },
         title: {
-            fontSize: '2.2rem',
+            fontSize: '1.75rem',
             marginBottom: '0.5rem',
             color: theme.colors.primaryText,
-            fontWeight: 'bold',
+            fontWeight: '700',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '12px',
         },
         subtitle: {
-            fontSize: '1.1rem',
-            color: theme.colors.mutedText,
+            fontSize: '1rem',
+            color: theme.colors.secondaryText,
             marginBottom: '0.5rem',
-            lineHeight: '1.5',
+            lineHeight: '1.6',
         },
         stepProgress: {
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             justifyContent: 'center',
             gap: '0',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
+            padding: '1.25rem',
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
+            border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
         },
         stepCircle: (stepNum, isActive, isCompleted) => ({
-            width: '40px',
-            height: '40px',
+            width: '44px',
+            height: '44px',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
@@ -622,91 +677,101 @@ function LockWizard() {
             fontWeight: '600',
             fontSize: '1rem',
             background: isCompleted 
-                ? theme.colors.success 
+                ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
                 : isActive 
-                    ? theme.colors.accent 
+                    ? `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})` 
                     : theme.colors.tertiaryBg,
-            color: isCompleted || isActive ? theme.colors.primaryBg : theme.colors.mutedText,
-            border: `2px solid ${isCompleted ? theme.colors.success : isActive ? theme.colors.accent : theme.colors.border}`,
+            color: isCompleted || isActive ? '#fff' : theme.colors.mutedText,
+            border: 'none',
             cursor: isCompleted ? 'pointer' : 'default',
             transition: 'all 0.3s ease',
+            boxShadow: isActive ? `0 4px 16px ${lockPrimary}50` : isCompleted ? `0 4px 12px ${theme.colors.success}40` : 'none',
         }),
         stepLine: (isCompleted) => ({
-            width: '60px',
+            width: '40px',
             height: '3px',
-            background: isCompleted ? theme.colors.success : theme.colors.border,
+            background: isCompleted 
+                ? `linear-gradient(90deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
+                : theme.colors.border,
             transition: 'all 0.3s ease',
+            marginTop: '20px',
+            borderRadius: '2px',
         }),
         stepLabel: (isActive) => ({
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
+            fontWeight: isActive ? '600' : '500',
             color: isActive ? theme.colors.primaryText : theme.colors.mutedText,
-            marginTop: '6px',
+            marginTop: '8px',
             textAlign: 'center',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
         }),
         optionsGrid: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1.5rem',
-            marginBottom: '2rem',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1.5rem',
         },
         optionCard: (isSelected, isHovered) => ({
             background: isSelected 
-                ? theme.colors.accentGradient 
+                ? `linear-gradient(135deg, ${lockPrimary}15, ${lockPrimary}05)` 
                 : theme.colors.cardGradient,
-            border: `2px solid ${isSelected ? theme.colors.accent : isHovered ? theme.colors.borderHover : theme.colors.border}`,
+            border: `2px solid ${isSelected ? lockPrimary : isHovered ? `${lockPrimary}50` : theme.colors.border}`,
             borderRadius: '16px',
             padding: '1.5rem',
             cursor: 'pointer',
             transition: 'all 0.3s ease',
             transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
             boxShadow: isSelected || isHovered 
-                ? `0 12px 40px ${theme.colors.accent}20` 
+                ? `0 12px 40px ${lockPrimary}20` 
                 : theme.colors.cardShadow,
         }),
         optionIcon: (isSelected) => ({
             fontSize: '2.5rem',
             marginBottom: '0.75rem',
-            color: isSelected ? theme.colors.accent : theme.colors.mutedText,
+            color: isSelected ? lockPrimary : theme.colors.mutedText,
             transition: 'color 0.3s ease',
         }),
         optionTitle: {
-            fontSize: '1.25rem',
+            fontSize: '1.15rem',
             fontWeight: '600',
             marginBottom: '0.5rem',
             color: theme.colors.primaryText,
         },
         optionDescription: {
-            fontSize: '0.9rem',
+            fontSize: '0.85rem',
             color: theme.colors.secondaryText,
-            lineHeight: '1.4',
+            lineHeight: '1.5',
         },
         tokenList: {
             display: 'grid',
-            gap: '12px',
-            marginBottom: '2rem',
+            gap: '10px',
+            marginBottom: '1.5rem',
         },
         tokenItem: (isSelected) => ({
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
-            background: isSelected ? theme.colors.accentGradient : theme.colors.cardGradient,
-            border: `2px solid ${isSelected ? theme.colors.accent : theme.colors.border}`,
-            borderRadius: '12px',
+            gap: '14px',
+            padding: '14px',
+            background: isSelected ? `linear-gradient(135deg, ${lockPrimary}15, ${lockPrimary}05)` : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? lockPrimary : theme.colors.border}`,
+            borderRadius: '14px',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
+            boxShadow: isSelected ? `0 4px 16px ${lockPrimary}20` : 'none',
         }),
         tokenLogo: {
-            width: '40px',
-            height: '40px',
+            width: '44px',
+            height: '44px',
             borderRadius: '50%',
             objectFit: 'cover',
+            border: `2px solid ${theme.colors.border}`,
         },
         tokenInfo: {
             flex: 1,
         },
         tokenSymbol: {
-            fontSize: '1.1rem',
+            fontSize: '1.05rem',
             fontWeight: '600',
             color: theme.colors.primaryText,
         },
@@ -717,70 +782,78 @@ function LockWizard() {
         positionItem: (isSelected) => ({
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
-            background: isSelected ? theme.colors.accentGradient : theme.colors.cardGradient,
-            border: `2px solid ${isSelected ? theme.colors.accent : theme.colors.border}`,
-            borderRadius: '12px',
+            gap: '14px',
+            padding: '14px',
+            background: isSelected ? `linear-gradient(135deg, ${lockPrimary}15, ${lockPrimary}05)` : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? lockPrimary : theme.colors.border}`,
+            borderRadius: '14px',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
+            boxShadow: isSelected ? `0 4px 16px ${lockPrimary}20` : 'none',
         }),
         positionLogos: {
             display: 'flex',
             alignItems: 'center',
         },
         positionLogo: (index) => ({
-            width: '32px',
-            height: '32px',
+            width: '36px',
+            height: '36px',
             borderRadius: '50%',
             objectFit: 'cover',
-            marginLeft: index > 0 ? '-10px' : '0',
-            border: `2px solid ${theme.colors.primaryBg}`,
+            marginLeft: index > 0 ? '-12px' : '0',
+            border: `3px solid ${theme.colors.primaryBg}`,
         }),
         configCard: {
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '16px',
-            padding: '2rem',
-            marginBottom: '1.5rem',
+            padding: '1.5rem',
+            marginBottom: '1.25rem',
+            boxShadow: theme.colors.cardShadow,
         },
         inputGroup: {
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
         },
         label: {
             display: 'block',
             color: theme.colors.primaryText,
             marginBottom: '8px',
-            fontWeight: '500',
+            fontWeight: '600',
+            fontSize: '0.9rem',
         },
         inputRow: {
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
+            flexWrap: 'wrap',
         },
         input: {
             flex: 1,
-            padding: '12px',
-            background: theme.colors.secondaryBg,
+            minWidth: '150px',
+            padding: '12px 14px',
+            background: theme.colors.primaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '8px',
+            borderRadius: '10px',
             color: theme.colors.primaryText,
-            fontSize: '0.95rem',
+            fontSize: '1rem',
+            outline: 'none',
         },
         maxButton: {
-            background: theme.colors.accent,
-            color: theme.colors.primaryBg,
+            background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+            color: '#fff',
             border: 'none',
-            borderRadius: '8px',
+            borderRadius: '10px',
             padding: '12px 16px',
             cursor: 'pointer',
             fontWeight: '600',
             fontSize: '0.85rem',
+            boxShadow: `0 4px 12px ${lockPrimary}30`,
         },
         buttonRow: {
             display: 'flex',
             gap: '12px',
-            marginTop: '2rem',
+            marginTop: '1.5rem',
+            flexWrap: 'wrap',
         },
         backButton: {
             display: 'flex',
@@ -788,12 +861,13 @@ function LockWizard() {
             justifyContent: 'center',
             gap: '8px',
             flex: 1,
-            padding: '14px 24px',
-            background: theme.colors.secondaryBg,
+            minWidth: '120px',
+            padding: '14px 20px',
+            background: theme.colors.cardGradient || theme.colors.secondaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '10px',
+            borderRadius: '12px',
             color: theme.colors.primaryText,
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             fontWeight: '500',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
@@ -804,40 +878,43 @@ function LockWizard() {
             justifyContent: 'center',
             gap: '8px',
             flex: 2,
+            minWidth: '180px',
             padding: '14px 24px',
             background: isEnabled 
-                ? `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)` 
+                ? `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})` 
                 : theme.colors.tertiaryBg,
             border: 'none',
-            borderRadius: '10px',
-            color: isEnabled ? theme.colors.primaryBg : theme.colors.mutedText,
-            fontSize: '1rem',
+            borderRadius: '12px',
+            color: isEnabled ? '#fff' : theme.colors.mutedText,
+            fontSize: '0.95rem',
             fontWeight: '600',
             cursor: isEnabled ? 'pointer' : 'not-allowed',
             transition: 'all 0.2s ease',
-            boxShadow: isEnabled ? theme.colors.accentShadow : 'none',
+            boxShadow: isEnabled ? `0 4px 20px ${lockPrimary}40` : 'none',
         }),
         errorBox: {
             color: theme.colors.error,
-            padding: '12px',
+            padding: '14px',
             background: `${theme.colors.error}15`,
             border: `1px solid ${theme.colors.error}30`,
-            borderRadius: '8px',
+            borderRadius: '12px',
             marginBottom: '1rem',
             fontSize: '0.9rem',
         },
         successCard: {
             textAlign: 'center',
-            padding: '3rem',
-            background: theme.colors.cardGradient,
-            border: `2px solid ${theme.colors.success}`,
-            borderRadius: '16px',
+            padding: '2.5rem 1.5rem',
+            background: `linear-gradient(135deg, ${theme.colors.success}10 0%, ${theme.colors.cardGradient || theme.colors.cardBackground} 100%)`,
+            border: `2px solid ${theme.colors.success}40`,
+            borderRadius: '20px',
+            boxShadow: `0 8px 32px ${theme.colors.success}20`,
         },
         successIcon: {
             width: '80px',
             height: '80px',
             borderRadius: '50%',
-            background: `${theme.colors.success}20`,
+            background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}10)`,
+            border: `2px solid ${theme.colors.success}40`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -858,32 +935,44 @@ function LockWizard() {
             textAlign: 'center',
             padding: '3rem',
             color: theme.colors.mutedText,
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
+            border: `1px solid ${theme.colors.border}`,
         },
         loginPrompt: {
             textAlign: 'center',
-            padding: '3rem',
+            padding: '2.5rem 1.5rem',
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '16px',
+            borderRadius: '20px',
+            boxShadow: theme.colors.cardShadow,
         },
     };
-
-    // Add keyframes for spinner
-    const spinnerKeyframes = `
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-    `;
 
     if (!isAuthenticated) {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header customLogo="/sneedlock-logo4.png" />
                 <main style={styles.container}>
-                    <div style={styles.loginPrompt}>
-                        <FaLock size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
-                        <p style={{ fontSize: '1.2rem', color: theme.colors.secondaryText }}>
+                    <div className="lock-fade-in" style={styles.loginPrompt}>
+                        <div className="lock-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${lockPrimary}50`,
+                        }}>
+                            <FaLock size={28} style={{ color: '#fff' }} />
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                            Lock Wizard
+                        </h2>
+                        <p style={{ fontSize: '1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem', lineHeight: '1.6' }}>
                             Please log in to access the Lock Wizard
                         </p>
                     </div>
@@ -895,8 +984,7 @@ function LockWizard() {
     const stepLabels = ['Type', 'Select', 'Payment', 'Configure'];
     
     const renderStepProgress = () => (
-        <div style={styles.stepProgress}>
-            <style>{spinnerKeyframes}</style>
+        <div className="lock-fade-in" style={styles.stepProgress}>
             {[1, 2, 3, 4].map((stepNum, index) => (
                 <React.Fragment key={stepNum}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -918,17 +1006,30 @@ function LockWizard() {
 
     const renderStep1 = () => (
         <>
-            <div style={styles.hero}>
-                <h1 style={styles.title}>
-                    <FaLock style={{ color: theme.colors.accent }} />
-                    Lock Wizard
-                </h1>
+            <div className="lock-fade-in" style={styles.hero}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
+                    <div className="lock-float" style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '14px',
+                        background: `linear-gradient(135deg, ${lockPrimary}, ${lockSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: `0 4px 16px ${lockPrimary}40`,
+                    }}>
+                        <FaLock size={20} style={{ color: '#fff' }} />
+                    </div>
+                    <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                        Lock Wizard
+                    </h1>
+                </div>
                 <p style={styles.subtitle}>
                     What would you like to lock?
                 </p>
             </div>
 
-            <div style={styles.optionsGrid}>
+            <div className="lock-fade-in" style={styles.optionsGrid}>
                 <div
                     style={styles.optionCard(lockType === 'token', isHovering === 'token')}
                     onClick={() => setLockType('token')}
@@ -980,11 +1081,23 @@ function LockWizard() {
         
         return (
             <>
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
-                        <FaLock style={{ color: theme.colors.accent }} />
-                        Select {lockType === 'token' ? 'Token' : 'Position'}
-                    </h1>
+                <div className="lock-fade-in" style={styles.hero}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${lockPrimary}30, ${lockPrimary}10)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            {lockType === 'token' ? <FaCoins size={22} style={{ color: lockPrimary }} /> : <FaWater size={22} style={{ color: lockPrimary }} />}
+                        </div>
+                        <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                            Select {lockType === 'token' ? 'Token' : 'Position'}
+                        </h1>
+                    </div>
                     <p style={styles.subtitle}>
                         Choose the {lockType === 'token' ? 'token' : 'liquidity position'} you want to lock
                     </p>
@@ -1101,19 +1214,31 @@ function LockWizard() {
         
         return (
             <>
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
-                        <FaWallet style={{ color: theme.colors.accent }} />
-                        Payment
-                    </h1>
+                <div className="lock-fade-in" style={styles.hero}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${lockPrimary}30, ${lockPrimary}10)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaWallet size={22} style={{ color: lockPrimary }} />
+                        </div>
+                        <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                            Payment
+                        </h1>
+                    </div>
                     <p style={styles.subtitle}>
                         {isFreeToLock 
-                            ? 'No payment required for this lock!' 
+                            ? '✨ No payment required for this lock!' 
                             : 'Send the required ICP to proceed with your lock'}
                     </p>
                 </div>
 
-                <div style={styles.configCard}>
+                <div className="lock-fade-in" style={styles.configCard}>
                     {/* Premium status */}
                     <div style={{ 
                         display: 'flex', 
@@ -1300,22 +1425,22 @@ function LockWizard() {
     const renderStep4 = () => {
         if (lockSuccess) {
             return (
-                <div style={styles.successCard}>
-                    <div style={styles.successIcon}>
+                <div className="lock-fade-in" style={styles.successCard}>
+                    <div className="lock-pulse" style={styles.successIcon}>
                         <FaCheck size={40} style={{ color: theme.colors.success }} />
                     </div>
-                    <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1.8rem' }}>
-                        Lock Created Successfully!
+                    <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                        🎉 Lock Created Successfully!
                     </h2>
-                    <p style={{ color: theme.colors.secondaryText, marginBottom: '2rem', fontSize: '1.1rem' }}>
-                        Your {lockType === 'token' ? 'tokens have' : 'liquidity position has'} been locked until {dateToReadable(new Date(lockExpiry))}.
+                    <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem', lineHeight: '1.6' }}>
+                        Your {lockType === 'token' ? 'tokens have' : 'liquidity position has'} been locked until <strong style={{ color: theme.colors.primaryText }}>{dateToReadable(new Date(lockExpiry))}</strong>.
                     </p>
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <button
                             style={{
                                 ...styles.backButton,
                                 flex: 'none',
-                                padding: '14px 28px',
+                                padding: '12px 20px',
                             }}
                             onClick={() => {
                                 setCurrentStep(1);
@@ -1326,17 +1451,19 @@ function LockWizard() {
                                 setLockSuccess(false);
                             }}
                         >
-                            Create Another Lock
+                            <FaLock size={14} /> Create Another Lock
                         </button>
                         <button
                             style={{
                                 ...styles.continueButton(true),
                                 flex: 'none',
-                                padding: '14px 28px',
+                                padding: '12px 20px',
+                                background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                boxShadow: `0 4px 16px ${theme.colors.success}40`,
                             }}
                             onClick={() => navigate(`/sneedlock_info?owner=${identity.getPrincipal().toString()}`)}
                         >
-                            View My Locks
+                            <FaShieldAlt size={14} /> View My Locks
                         </button>
                     </div>
                 </div>
@@ -1345,17 +1472,29 @@ function LockWizard() {
 
         return (
             <>
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
-                        <FaLock style={{ color: theme.colors.accent }} />
-                        Configure Lock
-                    </h1>
+                <div className="lock-fade-in" style={styles.hero}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${lockPrimary}30, ${lockPrimary}10)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaLock size={22} style={{ color: lockPrimary }} />
+                        </div>
+                        <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                            Configure Lock
+                        </h1>
+                    </div>
                     <p style={styles.subtitle}>
-                        Set the lock parameters for your {lockType === 'token' ? selectedToken?.symbol : selectedPosition?.symbols}
+                        Set the lock parameters for your <strong style={{ color: lockPrimary }}>{lockType === 'token' ? selectedToken?.symbol : selectedPosition?.symbols}</strong>
                     </p>
                 </div>
 
-                <div style={styles.configCard}>
+                <div className="lock-fade-in" style={styles.configCard}>
                     {/* Summary of what's being locked */}
                     <div style={{ 
                         display: 'flex', 
@@ -1478,7 +1617,71 @@ function LockWizard() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header customLogo="/sneedlock-logo4.png" />
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${lockPrimary}12 50%, ${lockSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '1.5rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${lockPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-40%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${lockSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: `${lockPrimary}20`,
+                        color: lockPrimary,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '0.5rem'
+                    }}>
+                        <FaLock size={12} /> SneedLock
+                    </div>
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0.5rem 0',
+                        letterSpacing: '-0.5px'
+                    }}>
+                        Lock Wizard
+                    </h1>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.95rem',
+                        margin: 0
+                    }}>
+                        Secure your tokens and liquidity positions
+                    </p>
+                </div>
+            </div>
+            
             <main style={styles.container}>
                 {renderStepProgress()}
                 {currentStep === 1 && renderStep1()}
