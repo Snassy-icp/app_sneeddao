@@ -11,7 +11,7 @@ import Notification from '../Notification';
 import priceService from '../services/PriceService';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
-import { FaExternalLinkAlt } from 'react-icons/fa';
+import { FaExternalLinkAlt, FaGift, FaCoins, FaHistory, FaCheckCircle, FaWallet, FaChevronDown } from 'react-icons/fa';
 
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 
@@ -22,14 +22,25 @@ const customStyles = `
     to { transform: rotate(360deg); }
 }
 
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 @keyframes shimmer {
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
 }
 
-@keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
-    50% { box-shadow: 0 0 40px rgba(212, 175, 55, 0.5); }
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
 }
 
 @keyframes float {
@@ -37,13 +48,21 @@ const customStyles = `
     50% { transform: translateY(-5px); }
 }
 
+.rewards-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
 .rewards-card {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .rewards-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(212, 175, 55, 0.15);
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
 }
 
 .claim-btn {
@@ -67,26 +86,12 @@ const customStyles = `
     left: 100%;
 }
 
-.gold-gradient {
-    background: linear-gradient(135deg, #d4af37 0%, #f4d03f 50%, #d4af37 100%);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+.rewards-pulse {
+    animation: pulse 2s ease-in-out infinite;
 }
 
-.token-logo-container {
-    position: relative;
-}
-
-.token-logo-container::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    background: linear-gradient(135deg, #d4af37, #f4d03f, #d4af37);
-    border-radius: 50%;
-    z-index: -1;
-    opacity: 0.5;
+.rewards-float {
+    animation: float 3s ease-in-out infinite;
 }
 `;
 
@@ -482,58 +487,150 @@ function Rewards() {
     );
 
     return (
-        <div style={{ 
-            background: theme.colors.primaryGradient, 
-            minHeight: '100vh',
-            paddingBottom: '3rem'
-        }}>
+        <div className='page-container'>
             <style>{customStyles}</style>
             <Header />
             
             <main style={{
-                maxWidth: '900px',
-                margin: '0 auto',
-                padding: '2rem 1.5rem'
+                background: theme.colors.primaryGradient,
+                minHeight: '100vh'
             }}>
-                {/* Hero Header */}
-                        <div style={{
-                            textAlign: 'center',
-                    marginBottom: '3rem'
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${goldPrimary}15 50%, ${goldLight}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    <h1 style={{
-                        fontSize: '2.5rem',
-                        fontWeight: '700',
-                        marginBottom: '0.5rem',
-                        background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight}, ${goldPrimary})`,
-                        backgroundSize: '200% auto',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        backgroundClip: 'text',
-                        letterSpacing: '-0.02em'
-                        }}>
-                        💰 Sneed Rewards
-                    </h1>
-                            <p style={{ 
-                        color: theme.colors.mutedText,
-                        fontSize: '1.1rem',
-                        maxWidth: '500px',
-                        margin: '0 auto'
+                    {/* Background decorations */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${goldPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${goldLight}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{
+                        maxWidth: '900px',
+                        margin: '0 auto',
+                        position: 'relative',
+                        zIndex: 1
                     }}>
-                        Claim your voting rewards earned through DAO participation
-                    </p>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1.25rem',
+                            marginBottom: '1rem'
+                        }}>
+                            {/* Icon */}
+                            <div className="rewards-float" style={{
+                                width: '64px',
+                                height: '64px',
+                                minWidth: '64px',
+                                maxWidth: '64px',
+                                flexShrink: 0,
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${goldPrimary}40`
+                            }}>
+                                <FaGift size={28} color="#1a1a1a" />
+                            </div>
+                            
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{
+                                    color: theme.colors.primaryText,
+                                    fontSize: '2rem',
+                                    fontWeight: '700',
+                                    margin: 0,
+                                    lineHeight: '1.2'
+                                }}>
+                                    Sneed Rewards
+                                </h1>
+                                <p style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '1rem',
+                                    margin: '0.35rem 0 0 0'
+                                }}>
+                                    Claim your voting rewards earned through DAO participation
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Info Row */}
+                        <div style={{
+                            display: 'flex',
+                            gap: '1.5rem',
+                            flexWrap: 'wrap',
+                            marginTop: '0.75rem'
+                        }}>
+                            {isAuthenticated && !loadingUserBalances && userBalances.length > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <FaCoins size={14} style={{ color: goldPrimary }} />
+                                    <span><strong style={{ color: goldPrimary }}>{userBalances.filter(([_, b]) => b && Number(b) > 0).length}</strong> tokens to claim</span>
+                                </div>
+                            )}
+                            {!isAuthenticated && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    color: '#f39c12',
+                                    background: 'rgba(243, 156, 18, 0.1)',
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '20px',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <FaWallet size={14} />
+                                    <span>Connect wallet to view rewards</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
+
+                {/* Main Content */}
+                <div style={{
+                    maxWidth: '900px',
+                    margin: '0 auto',
+                    padding: '2rem 1.5rem'
+                }}>
 
                 {!isAuthenticated ? (
                     /* Login Card */
-                    <div className="rewards-card" style={{
-                        background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
+                    <div className="rewards-card rewards-card-animate" style={{
+                        background: theme.colors.secondaryBg,
                         borderRadius: '20px',
                         padding: '3rem 2rem',
                         textAlign: 'center',
                         border: `1px solid ${theme.colors.border}`,
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+                        opacity: 0,
+                        animationDelay: '0.1s'
                     }}>
-                        <div style={{
+                        <div className="rewards-float" style={{
                             width: '80px',
                             height: '80px',
                             margin: '0 auto 1.5rem',
@@ -542,213 +639,210 @@ function Rewards() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '2.5rem',
                             boxShadow: `0 8px 30px ${goldPrimary}40`
                         }}>
-                            🏆
+                            <FaGift size={32} color="#1a1a1a" />
                         </div>
                         <h2 style={{
-                                color: theme.colors.primaryText, 
-                            fontSize: '1.5rem',
+                            color: theme.colors.primaryText, 
+                            fontSize: '1.75rem',
                             marginBottom: '1rem',
-                            fontWeight: '600'
+                            fontWeight: '700'
                         }}>
                             Unlock Your Rewards
                         </h2>
                         <p style={{
+                            color: theme.colors.secondaryText,
+                            marginBottom: '0.75rem',
+                            maxWidth: '400px',
+                            margin: '0 auto 0.75rem',
+                            lineHeight: '1.6',
+                            fontSize: '1.05rem'
+                        }}>
+                            Connect your wallet to view and claim rewards earned through Sneed DAO governance participation.
+                        </p>
+                        <p style={{
                             color: theme.colors.mutedText,
                             marginBottom: '2rem',
-                            maxWidth: '350px',
+                            maxWidth: '400px',
                             margin: '0 auto 2rem',
-                            lineHeight: '1.6'
-                            }}>
-                            Connect your wallet to view and claim rewards earned through Sneed DAO governance participation.
-                            </p>
-                            <button 
-                                onClick={login}
+                            lineHeight: '1.5',
+                            fontSize: '0.95rem'
+                        }}>
+                            Hotkey your neurons to the app to automatically accumulate rewards from voting.
+                        </p>
+                        <button 
+                            onClick={login}
                             className="claim-btn"
-                                style={{
+                            style={{
                                 background: `linear-gradient(135deg, ${goldPrimary}, ${goldDark})`,
                                 color: '#1a1a1a',
-                                    border: 'none',
-                                padding: '14px 40px',
+                                border: 'none',
+                                padding: '1rem 2.5rem',
                                 borderRadius: '12px',
                                 fontSize: '1.1rem',
                                 fontWeight: '600',
-                                    cursor: 'pointer',
-                                boxShadow: `0 4px 20px ${goldPrimary}50`
-                                }}
-                            >
+                                cursor: 'pointer',
+                                boxShadow: `0 4px 20px ${goldPrimary}40`
+                            }}
+                        >
                             Connect Wallet
-                            </button>
-                        </div>
+                        </button>
+                    </div>
                 ) : loadingUserBalances ? (
                     /* Loading State */
                     <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '20px',
                         padding: '4rem 2rem',
-                        gap: '1.5rem'
+                        textAlign: 'center',
+                        border: `1px solid ${theme.colors.border}`
                     }}>
-                        <Spinner size={48} />
-                        <p style={{ color: theme.colors.mutedText, fontSize: '1.1rem' }}>
+                        <div className="rewards-pulse" style={{
+                            width: '60px',
+                            height: '60px',
+                            borderRadius: '50%',
+                            background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight})`,
+                            margin: '0 auto 1.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <FaCoins size={24} color="#1a1a1a" />
+                        </div>
+                        <p style={{ color: theme.colors.secondaryText, fontSize: '1.1rem' }}>
                             Loading your rewards...
                         </p>
                     </div>
                 ) : (
                     <>
-                        {/* Total Value Cards */}
-                            {(userBalances.length > 0 || getTotalClaimedRewardsUSD() > 0) && (
-                                <div style={{ 
+                        {/* Statistics Cards */}
+                        {(userBalances.length > 0 || getTotalClaimedRewardsUSD() > 0) && (
+                            <div style={{ 
                                 display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                                gap: '1.5rem',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                                gap: '1rem',
                                 marginBottom: '2rem'
-                                }}>
+                            }}>
                                 {/* Unclaimed Rewards Card */}
-                                    {userBalances.length > 0 && (
-                                    <div className="rewards-card" style={{
-                                        background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
-                                        borderRadius: '20px',
-                                        padding: '1.5rem 2rem',
-                                        border: `2px solid ${goldPrimary}40`,
-                                        position: 'relative',
-                                        overflow: 'hidden'
-                                        }}>
-                                            <div style={{ 
-                                            position: 'absolute',
-                                            top: '-50px',
-                                            right: '-50px',
-                                            width: '150px',
-                                            height: '150px',
-                                            background: `radial-gradient(circle, ${goldPrimary}15, transparent 70%)`,
-                                            borderRadius: '50%'
-                                        }} />
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.5rem',
-                                            marginBottom: '0.75rem'
-                                        }}>
-                                            <span style={{ fontSize: '1.25rem' }}>✨</span>
-                                            <span style={{
-                                                color: theme.colors.mutedText,
-                                                fontSize: '0.9rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em'
+                                {userBalances.filter(([_, b]) => b && Number(b) > 0).length > 0 && (
+                                    <div className="stat-card rewards-card-animate" style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '16px',
+                                        padding: '1.25rem',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transition: 'all 0.3s ease',
+                                        opacity: 0,
+                                        animationDelay: '0.1s'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                            <div style={{
+                                                width: '44px', 
+                                                height: '44px',
+                                                minWidth: '44px',
+                                                maxWidth: '44px',
+                                                flexShrink: 0,
+                                                borderRadius: '12px',
+                                                background: `linear-gradient(135deg, ${goldPrimary}30, ${goldLight}20)`,
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'center',
+                                                color: goldPrimary
                                             }}>
+                                                <FaCoins size={20} />
+                                            </div>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>
                                                 Unclaimed Rewards
                                             </span>
-                                            </div>
-                                            <div style={{ 
-                                            fontSize: '2.5rem',
+                                        </div>
+                                        <div style={{ 
+                                            fontSize: '2rem',
                                             fontWeight: '700',
                                             background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight})`,
                                             WebkitBackgroundClip: 'text',
                                             WebkitTextFillColor: 'transparent',
                                             backgroundClip: 'text'
-                                            }}>
-                                                {formatUSD(getTotalRewardsUSD())}
-                                            </div>
+                                        }}>
+                                            {formatUSD(getTotalRewardsUSD())}
                                         </div>
-                                    )}
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                                            {userBalances.filter(([_, b]) => b && Number(b) > 0).length} token{userBalances.filter(([_, b]) => b && Number(b) > 0).length !== 1 ? 's' : ''} available
+                                        </div>
+                                    </div>
+                                )}
                                     
                                 {/* Claimed Rewards Card */}
-                                    {getTotalClaimedRewardsUSD() > 0 && (
-                                    <div className="rewards-card" style={{
-                                        background: `linear-gradient(145deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
-                                        borderRadius: '20px',
-                                        padding: '1.5rem 2rem',
-                                        border: `2px solid ${theme.colors.success}40`,
-                                        position: 'relative',
-                                        overflow: 'hidden'
-                                        }}>
-                                            <div style={{ 
-                                            position: 'absolute',
-                                            top: '-50px',
-                                            right: '-50px',
-                                            width: '150px',
-                                            height: '150px',
-                                            background: `radial-gradient(circle, ${theme.colors.success}15, transparent 70%)`,
-                                            borderRadius: '50%'
-                                        }} />
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.5rem',
-                                            marginBottom: '0.75rem'
-                                        }}>
-                                            <span style={{ fontSize: '1.25rem' }}>✅</span>
-                                            <span style={{
-                                                color: theme.colors.mutedText,
-                                                fontSize: '0.9rem',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em'
+                                {getTotalClaimedRewardsUSD() > 0 && (
+                                    <div className="stat-card rewards-card-animate" style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '16px',
+                                        padding: '1.25rem',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transition: 'all 0.3s ease',
+                                        opacity: 0,
+                                        animationDelay: '0.2s'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                            <div style={{
+                                                width: '44px', 
+                                                height: '44px',
+                                                minWidth: '44px',
+                                                maxWidth: '44px',
+                                                flexShrink: 0,
+                                                borderRadius: '12px',
+                                                background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}20)`,
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'center',
+                                                color: theme.colors.success
                                             }}>
+                                                <FaCheckCircle size={20} />
+                                            </div>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>
                                                 Total Claimed
                                             </span>
-                                            </div>
-                                            <div style={{ 
-                                            fontSize: '2.5rem',
-                                            fontWeight: '700',
-                                            color: theme.colors.success
-                                            }}>
-                                                {formatUSD(getTotalClaimedRewardsUSD())}
-                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                        <div style={{ color: theme.colors.success, fontSize: '2rem', fontWeight: '700' }}>
+                                            {formatUSD(getTotalClaimedRewardsUSD())}
+                                        </div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                                            Lifetime earnings
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                             
-                        {/* Rewards List */}
-                        {userBalances.filter(([_, balance]) => balance && Number(balance) > 0).length > 0 ? (
-                            <div className="rewards-card" style={{
-                                background: theme.colors.secondaryBg,
-                                borderRadius: '20px',
-                                padding: '1.5rem',
-                                border: `1px solid ${theme.colors.border}`,
-                                marginBottom: '1.5rem'
+                        {/* Rewards List Section */}
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <h2 style={{
+                                color: theme.colors.primaryText,
+                                fontSize: '1.35rem',
+                                fontWeight: '600',
+                                marginBottom: '1rem',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem'
                             }}>
-                                <div style={{
+                                <span style={{
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '10px',
+                                    background: `linear-gradient(135deg, ${goldPrimary}, ${goldLight})`,
                                     display: 'flex',
-                                    justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    marginBottom: '1.5rem',
-                                    paddingBottom: '1rem',
-                                    borderBottom: `1px solid ${theme.colors.border}`
+                                    justifyContent: 'center'
                                 }}>
-                                    <h2 style={{
-                                color: theme.colors.primaryText, 
-                                        fontSize: '1.25rem',
-                                        fontWeight: '600',
-                                        margin: 0,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem'
-                            }}>
-                                        <span>🎁</span> Your Rewards
-                                    </h2>
-                                    <Link 
-                                    to="/wallet"
-                                    style={{ 
-                                        color: theme.colors.accent,
-                                        textDecoration: 'none',
-                                            fontSize: '0.9rem',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.25rem'
-                                        }}
-                                    >
-                                        View Wallet →
-                                    </Link>
-                                </div>
+                                    <FaGift size={16} color="#1a1a1a" />
+                                </span>
+                                Available Rewards
+                            </h2>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {userBalances.filter(([_, balance]) => balance && Number(balance) > 0).length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                     {userBalances
                                         .filter(([tokenId, balance]) => balance && Number(balance) > 0)
-                                        .map(([tokenId, balance]) => {
+                                        .map(([tokenId, balance], index) => {
                                         const tokenIdStr = tokenId.toString();
                                         const decimals = tokenDecimals[tokenIdStr] || 8;
                                         const usdValue = getTokenUSDValue(balance, tokenId);
@@ -758,33 +852,35 @@ function Rewards() {
                                         
                                         return (
                                             <div 
-                                                key={tokenIdStr} 
+                                                key={tokenIdStr}
+                                                className="rewards-card rewards-card-animate"
                                                 style={{
-                                                    background: theme.colors.tertiaryBg,
-                                                    borderRadius: '16px',
+                                                    background: theme.colors.secondaryBg,
+                                                    borderRadius: '14px',
                                                     padding: '1.25rem',
-                                                display: 'flex',
+                                                    display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '1rem',
                                                     border: `1px solid ${theme.colors.border}`,
-                                                    transition: 'all 0.2s ease'
+                                                    opacity: 0,
+                                                    animationDelay: `${(index + 1) * 0.1}s`
                                                 }}
                                             >
                                                 {/* Token Logo */}
-                                                {renderTokenLogo(tokenIdStr, 52)}
+                                                {renderTokenLogo(tokenIdStr, 48)}
                                                 
                                                 {/* Token Info */}
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{
                                                         color: theme.colors.primaryText,
-                                                        fontSize: '1.1rem',
+                                                        fontSize: '1.05rem',
                                                         fontWeight: '600',
-                                                        marginBottom: '0.25rem'
+                                                        marginBottom: '0.2rem'
                                                     }}>
                                                         {symbol}
                                                     </div>
                                                     <div style={{
-                                                        color: theme.colors.mutedText,
+                                                        color: theme.colors.secondaryText,
                                                         fontSize: '0.9rem'
                                                     }}>
                                                         {formatBalance(balance, decimals)} {symbol}
@@ -792,9 +888,9 @@ function Rewards() {
                                                     {usdValue > 0 && (
                                                         <div style={{ 
                                                             color: goldPrimary,
-                                                            fontSize: '0.95rem',
+                                                            fontSize: '0.9rem',
                                                             fontWeight: '600',
-                                                            marginTop: '0.25rem'
+                                                            marginTop: '0.2rem'
                                                         }}>
                                                             ≈ {formatUSD(usdValue)}
                                                         </div>
@@ -809,12 +905,12 @@ function Rewards() {
                                                     style={{
                                                         background: canClaim 
                                                             ? `linear-gradient(135deg, ${goldPrimary}, ${goldDark})`
-                                                            : theme.colors.border,
+                                                            : theme.colors.tertiaryBg,
                                                         color: canClaim ? '#1a1a1a' : theme.colors.mutedText,
                                                         border: 'none',
-                                                        borderRadius: '12px',
-                                                        padding: '12px 24px',
-                                                        fontSize: '0.95rem',
+                                                        borderRadius: '10px',
+                                                        padding: '0.7rem 1.5rem',
+                                                        fontSize: '0.9rem',
                                                         fontWeight: '600',
                                                         cursor: canClaim ? 'pointer' : 'not-allowed',
                                                         display: 'flex',
@@ -827,7 +923,7 @@ function Rewards() {
                                                 >
                                                     {isClaiming ? (
                                                         <>
-                                                            <Spinner size={18} />
+                                                            <Spinner size={16} />
                                                             <span>Claiming...</span>
                                                         </>
                                                     ) : (
@@ -838,82 +934,135 @@ function Rewards() {
                                         );
                                     })}
                                 </div>
-                                </div>
                             ) : (
-                            <div className="rewards-card" style={{
-                                background: theme.colors.secondaryBg,
-                                borderRadius: '20px',
-                                padding: '3rem 2rem',
-                                textAlign: 'center',
-                                border: `1px solid ${theme.colors.border}`
-                            }}>
-                                <div style={{
-                                    fontSize: '3rem',
-                                    marginBottom: '1rem'
+                                <div className="rewards-card-animate" style={{
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '16px',
+                                    padding: '3rem 2rem',
+                                    textAlign: 'center',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    opacity: 0,
+                                    animationDelay: '0.1s'
                                 }}>
-                                    📭
+                                    <div className="rewards-float" style={{
+                                        width: '60px',
+                                        height: '60px',
+                                        borderRadius: '50%',
+                                        background: `linear-gradient(135deg, ${goldPrimary}30, ${goldLight}20)`,
+                                        margin: '0 auto 1rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: goldPrimary
+                                    }}>
+                                        <FaGift size={24} />
+                                    </div>
+                                    <h3 style={{
+                                        color: theme.colors.primaryText,
+                                        marginBottom: '0.75rem',
+                                        fontWeight: '600',
+                                        fontSize: '1.1rem'
+                                    }}>
+                                        No Rewards Available
+                                    </h3>
+                                    <p style={{
+                                        color: theme.colors.secondaryText,
+                                        maxWidth: '400px',
+                                        margin: '0 auto 1.5rem',
+                                        lineHeight: '1.6',
+                                        fontSize: '0.95rem'
+                                    }}>
+                                        Participate in Sneed DAO governance to start earning rewards.
+                                    </p>
+                                    <Link to="/governance" style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        background: `linear-gradient(135deg, ${goldPrimary}, ${goldDark})`,
+                                        color: '#1a1a1a',
+                                        padding: '0.75rem 1.5rem',
+                                        borderRadius: '10px',
+                                        textDecoration: 'none',
+                                        fontWeight: '600',
+                                        fontSize: '0.9rem'
+                                    }}>
+                                        Start Earning →
+                                    </Link>
                                 </div>
-                                <h3 style={{
-                                    color: theme.colors.primaryText,
-                                    marginBottom: '0.75rem',
-                                    fontWeight: '600'
-                                }}>
-                                    No Rewards Available
-                                </h3>
-                                <p style={{
-                                    color: theme.colors.mutedText,
-                                    maxWidth: '400px',
-                                    margin: '0 auto',
-                                    lineHeight: '1.6'
-                                }}>
-                                    Participate in Sneed DAO governance to start earning rewards. Add this app as a hotkey to your neuron to begin!
-                                </p>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         {/* Claim History Section */}
-                        <div className="rewards-card" style={{
-                            background: theme.colors.secondaryBg,
-                            borderRadius: '20px',
-                            padding: '1.5rem',
-                            border: `1px solid ${theme.colors.border}`
-                        }}>
-                                <button 
-                                    onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <button 
+                                onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
                                 style={{
                                     width: '100%',
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    background: 'none',
-                                    border: 'none',
-                                    padding: 0,
+                                    background: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '14px',
+                                    padding: '1rem 1.25rem',
                                     cursor: 'pointer',
-                                    color: theme.colors.primaryText
+                                    transition: 'all 0.2s ease'
                                 }}
                             >
-                                <h2 style={{
-                                    fontSize: '1.25rem',
-                                    fontWeight: '600',
-                                    margin: 0,
+                                <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.5rem'
+                                    gap: '0.75rem'
                                 }}>
-                                    <span>📜</span> Claim History
-                                </h2>
-                                <span style={{
-                                    fontSize: '1.5rem',
+                                    <span style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${theme.colors.accent}30, ${theme.colors.accent}20)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: theme.colors.accent
+                                    }}>
+                                        <FaHistory size={16} />
+                                    </span>
+                                    <span style={{
+                                        color: theme.colors.primaryText,
+                                        fontSize: '1.1rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        Claim History
+                                    </span>
+                                    {userClaimEvents.length > 0 && (
+                                        <span style={{
+                                            background: `${theme.colors.accent}20`,
+                                            color: theme.colors.accent,
+                                            padding: '0.2rem 0.6rem',
+                                            borderRadius: '10px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            {userClaimEvents.length}
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{
                                     color: theme.colors.mutedText,
                                     transition: 'transform 0.2s ease',
                                     transform: isClaimHistoryExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
                                 }}>
-                                    ▼
-                                </span>
-                                </button>
+                                    <FaChevronDown size={16} />
+                                </div>
+                            </button>
 
                             {isClaimHistoryExpanded && (
-                                <div style={{ marginTop: '1.5rem' }}>
+                                <div style={{ 
+                                    marginTop: '0.75rem',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '14px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    overflow: 'hidden'
+                                }}>
                                     {loadingUserEvents ? (
                                         <div style={{ 
                                             display: 'flex', 
@@ -921,25 +1070,23 @@ function Rewards() {
                                             padding: '2rem' 
                                         }}>
                                             <Spinner size={32} />
-                                    </div>
-                                ) : userClaimEvents.length > 0 ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        {Object.entries(groupEventsBySequence(userClaimEvents))
+                                        </div>
+                                    ) : userClaimEvents.length > 0 ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            {Object.entries(groupEventsBySequence(userClaimEvents))
                                                 .sort((a, b) => {
-                                                    // Sort by latest event timestamp (newest first)
                                                     const aLatest = a[1][a[1].length - 1];
                                                     const bLatest = b[1][b[1].length - 1];
                                                     return Number(bLatest.timestamp) - Number(aLatest.timestamp);
                                                 })
                                                 .slice(0, 10)
-                                            .map(([seqNum, events]) => {
-                                                const status = getGroupStatus(events);
-                                                const latestEvent = events[events.length - 1];
+                                                .map(([seqNum, events], index, array) => {
+                                                    const status = getGroupStatus(events);
+                                                    const latestEvent = events[events.length - 1];
                                                     const tokenIdStr = latestEvent.token_id.toString();
                                                     const symbol = tokenSymbols[tokenIdStr] || tokenIdStr.slice(0, 8) + '...';
                                                     const usdValue = getTokenUSDValue(latestEvent.amount, latestEvent.token_id);
                                                     
-                                                    // Get transaction ID if available
                                                     const txEvent = events.find(e => e.tx_index && e.tx_index.length > 0);
                                                     const txId = txEvent?.tx_index?.[0];
 
@@ -949,37 +1096,37 @@ function Rewards() {
                                                         'Failed': theme.colors.error
                                                     };
 
-                                                return (
+                                                    return (
                                                         <div 
                                                             key={seqNum} 
                                                             style={{
-                                                                background: theme.colors.tertiaryBg,
-                                                                borderRadius: '12px',
                                                                 padding: '1rem 1.25rem',
-                                                                border: `1px solid ${theme.colors.border}`,
                                                                 display: 'flex',
                                                                 alignItems: 'center',
-                                                                gap: '1rem'
+                                                                gap: '1rem',
+                                                                borderBottom: index < array.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                                                transition: 'background 0.2s ease'
                                                             }}
                                                         >
                                                             {/* Token Logo */}
                                                             {renderTokenLogo(tokenIdStr, 40)}
                                                             
                                                             {/* Event Info */}
-                                                            <div style={{ flex: 1 }}>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
                                                                 <div style={{
                                                                     display: 'flex',
                                                                     alignItems: 'center',
                                                                     gap: '0.75rem',
-                                                                    marginBottom: '0.25rem',
+                                                                    marginBottom: '0.2rem',
                                                                     flexWrap: 'wrap'
                                                                 }}>
-                                                            <span style={{
+                                                                    <span style={{
                                                                         color: theme.colors.primaryText,
-                                                                        fontWeight: '600'
-                                                            }}>
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.95rem'
+                                                                    }}>
                                                                         {formatBalance(latestEvent.amount, 8)} {symbol}
-                                                            </span>
+                                                                    </span>
                                                                     {usdValue > 0 && (
                                                                         <span style={{ 
                                                                             color: goldPrimary,
@@ -988,7 +1135,6 @@ function Rewards() {
                                                                             ({formatUSD(usdValue)})
                                                                         </span>
                                                                     )}
-                                                                    {/* Transaction Link */}
                                                                     {txId !== undefined && status === 'Success' && (
                                                                         <Link
                                                                             to={`/transaction?sns=${SNEED_SNS_ROOT}&id=${txId}&ledger=${tokenIdStr}`}
@@ -1011,7 +1157,7 @@ function Rewards() {
                                                                 <div 
                                                                     style={{
                                                                         color: theme.colors.mutedText,
-                                                                        fontSize: '0.85rem',
+                                                                        fontSize: '0.8rem',
                                                                         cursor: 'default'
                                                                     }}
                                                                     title={getFullDate(latestEvent.timestamp)}
@@ -1022,28 +1168,29 @@ function Rewards() {
                                                             
                                                             {/* Status Badge */}
                                                             <div style={{
-                                                                background: `${statusColors[status] || theme.colors.mutedText}20`,
+                                                                background: `${statusColors[status] || theme.colors.mutedText}15`,
                                                                 color: statusColors[status] || theme.colors.mutedText,
-                                                                padding: '0.35rem 0.75rem',
-                                                                borderRadius: '20px',
-                                                                fontSize: '0.8rem',
+                                                                padding: '0.3rem 0.7rem',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.75rem',
                                                                 fontWeight: '600',
                                                                 textTransform: 'uppercase',
                                                                 letterSpacing: '0.03em'
                                                             }}>
                                                                 {status}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
-                                    </div>
-                                ) : (
+                                                    );
+                                                })}
+                                        </div>
+                                    ) : (
                                         <div style={{
                                             textAlign: 'center',
-                                            padding: '2rem',
+                                            padding: '2.5rem 2rem',
                                             color: theme.colors.mutedText
                                         }}>
-                                            No claim history yet
+                                            <FaHistory size={32} style={{ opacity: 0.3, marginBottom: '0.75rem' }} />
+                                            <div>No claim history yet</div>
                                         </div>
                                     )}
                                 </div>
@@ -1059,6 +1206,7 @@ function Rewards() {
                         onClose={() => setNotification(null)}
                     />
                 )}
+                </div>
             </main>
         </div>
     );
