@@ -1504,10 +1504,10 @@ export default function CanistersPage() {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '10px 14px',
-                        backgroundColor: isDropTarget ? `${theme.colors.primary}20` : theme.colors.card,
+                        backgroundColor: isDropTarget ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
                         borderRadius: '8px',
                         border: isDropTarget 
-                            ? `2px dashed ${theme.colors.primary}` 
+                            ? `2px dashed ${theme.colors.accent}` 
                             : `1px solid ${theme.colors.border}`,
                         cursor: isBeingDragged ? 'grabbing' : 'grab',
                         opacity: isBeingDragged ? 0.4 : 1,
@@ -1558,10 +1558,10 @@ export default function CanistersPage() {
                                 style={{ 
                                     padding: '4px 8px', 
                                     fontSize: '14px',
-                                    backgroundColor: theme.colors.inputBackground,
+                                    backgroundColor: theme.colors.tertiaryBg,
                                     border: `1px solid ${theme.colors.border}`,
                                     borderRadius: '4px',
-                                    color: theme.colors.text,
+                                    color: theme.colors.primaryText,
                                 }}
                                 autoFocus
                             />
@@ -1570,8 +1570,8 @@ export default function CanistersPage() {
                         )}
                         <span style={{ 
                             fontSize: '11px', 
-                            color: theme.colors.textSecondary,
-                            backgroundColor: theme.colors.inputBackground,
+                            color: theme.colors.secondaryText,
+                            backgroundColor: theme.colors.tertiaryBg,
                             padding: '2px 8px',
                             borderRadius: '10px',
                         }}>
@@ -1580,7 +1580,7 @@ export default function CanistersPage() {
                         {isDropTarget && (
                             <span style={{ 
                                 fontSize: '11px', 
-                                color: theme.colors.primary,
+                                color: theme.colors.accent,
                                 fontWeight: 600,
                                 marginLeft: '8px',
                             }}>
@@ -1599,7 +1599,7 @@ export default function CanistersPage() {
                                 </button>
                                 <button
                                     onClick={() => { setEditingGroup(null); setEditingGroupName(''); }}
-                                    style={{ padding: '4px 8px', backgroundColor: theme.colors.card, color: theme.colors.textSecondary, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
+                                    style={{ padding: '4px 8px', backgroundColor: theme.colors.secondaryBg, color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
                                 >
                                     <FaTimes size={10} />
                                 </button>
@@ -1608,7 +1608,7 @@ export default function CanistersPage() {
                             <>
                                 <button
                                     onClick={() => { setAddingCanisterToGroupId(group.id); setNewCanisterForGroup(''); }}
-                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.primary || '#3b82f6', border: 'none', cursor: 'pointer' }}
+                                    style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.accent, border: 'none', cursor: 'pointer' }}
                                     title="Add canister to this group"
                                 >
                                     <FaCube size={12} />
@@ -1654,10 +1654,10 @@ export default function CanistersPage() {
                                 alignItems: 'center', 
                                 marginBottom: '8px',
                                 padding: '10px',
-                                backgroundColor: theme.colors.inputBackground,
+                                backgroundColor: theme.colors.tertiaryBg,
                                 borderRadius: '6px',
                             }}>
-                                <FaCube size={14} style={{ color: theme.colors.primary || '#3b82f6' }} />
+                                <FaCube size={14} style={{ color: theme.colors.accent }} />
                                 <PrincipalInput
                                     value={newCanisterForGroup}
                                     onChange={setNewCanisterForGroup}
@@ -1689,7 +1689,7 @@ export default function CanistersPage() {
                                 </button>
                                 <button
                                     onClick={() => { setAddingCanisterToGroupId(null); setNewCanisterForGroup(''); }}
-                                    style={{ padding: '6px 10px', backgroundColor: theme.colors.card, color: theme.colors.textSecondary, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
+                                    style={{ padding: '6px 10px', backgroundColor: theme.colors.secondaryBg, color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
                                 >
                                     <FaTimes size={10} />
                                 </button>
@@ -1704,7 +1704,7 @@ export default function CanistersPage() {
                                 alignItems: 'center', 
                                 marginBottom: '8px',
                                 padding: '10px',
-                                backgroundColor: theme.colors.inputBackground,
+                                backgroundColor: theme.colors.tertiaryBg,
                                 borderRadius: '6px',
                             }}>
                                 <FaFolder size={14} style={{ color: '#f59e0b' }} />
@@ -1721,10 +1721,10 @@ export default function CanistersPage() {
                                         flex: 1,
                                         padding: '6px 10px', 
                                         fontSize: '12px',
-                                        backgroundColor: theme.colors.card,
+                                        backgroundColor: theme.colors.secondaryBg,
                                         border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '4px',
-                                        color: theme.colors.text,
+                                        color: theme.colors.primaryText,
                                     }}
                                     autoFocus
                                 />
@@ -1745,7 +1745,7 @@ export default function CanistersPage() {
                                 </button>
                                 <button
                                     onClick={() => { setNewSubgroupParent(null); setNewSubgroupName(''); }}
-                                    style={{ padding: '6px 10px', backgroundColor: theme.colors.card, color: theme.colors.textSecondary, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
+                                    style={{ padding: '6px 10px', backgroundColor: theme.colors.secondaryBg, color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
                                 >
                                     <FaTimes size={10} />
                                 </button>
@@ -1836,7 +1836,7 @@ export default function CanistersPage() {
                             <div style={{ 
                                 padding: '16px', 
                                 textAlign: 'center', 
-                                color: theme.colors.textSecondary,
+                                color: theme.colors.secondaryText,
                                 fontSize: '13px',
                                 fontStyle: 'italic',
                             }}>
@@ -2186,8 +2186,8 @@ export default function CanistersPage() {
                         <span 
                             style={{
                                 ...styles.managerVersion,
-                                backgroundColor: `${theme.colors.primary || '#3b82f6'}20`,
-                                color: theme.colors.primary || '#3b82f6',
+                                backgroundColor: `${theme.colors.accent}20`,
+                                color: theme.colors.accent,
                             }}
                             title={`${memory.toLocaleString()} bytes`}
                         >
@@ -2198,8 +2198,8 @@ export default function CanistersPage() {
                         <span 
                             style={{
                                 ...styles.managerVersion,
-                                backgroundColor: `${theme.colors.mutedText || theme.colors.textSecondary}20`,
-                                color: theme.colors.mutedText || theme.colors.textSecondary,
+                                backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
+                                color: theme.colors.mutedText || theme.colors.secondaryText,
                                 marginLeft: '8px',
                             }}
                         >
@@ -2225,8 +2225,8 @@ export default function CanistersPage() {
                             padding: '6px 8px',
                             borderRadius: '6px',
                             border: `1px solid ${theme.colors.border}`,
-                            backgroundColor: theme.colors.card,
-                            color: theme.colors.textSecondary,
+                            backgroundColor: theme.colors.secondaryBg,
+                            color: theme.colors.secondaryText,
                             fontSize: '11px',
                             cursor: 'pointer',
                             maxWidth: '110px',
@@ -2271,8 +2271,8 @@ export default function CanistersPage() {
                             <button
                                 onClick={() => setConfirmRemoveCanister(null)}
                                 style={{
-                                    backgroundColor: theme.colors.card,
-                                    color: theme.colors.text,
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
                                     border: `1px solid ${theme.colors.border}`,
                                     borderRadius: '4px',
                                     padding: '4px 10px',
@@ -2320,12 +2320,12 @@ export default function CanistersPage() {
             gap: '12px',
         },
         addSection: {
-            background: theme.colors.cardGradient,
+            background: theme.colors.secondaryBgGradient,
             borderRadius: '12px',
             padding: '1rem 1.25rem',
             marginBottom: '1.25rem',
             border: `1px solid ${theme.colors.border}`,
-            boxShadow: theme.colors.cardShadow,
+            boxShadow: theme.colors.secondaryBgShadow,
         },
         addSectionTitle: {
             fontSize: '0.9rem',
@@ -2373,7 +2373,7 @@ export default function CanistersPage() {
             gap: '0.5rem',
         },
         canisterCard: {
-            background: theme.colors.cardGradient,
+            background: theme.colors.secondaryBgGradient,
             borderRadius: '10px',
             padding: '0.75rem 1rem',
             border: `1px solid ${theme.colors.border}`,
@@ -2383,7 +2383,7 @@ export default function CanistersPage() {
             transition: 'all 0.2s',
             flexWrap: 'wrap',
             gap: '0.5rem',
-            boxShadow: theme.colors.cardShadow,
+            boxShadow: theme.colors.secondaryBgShadow,
         },
         canisterInfo: {
             display: 'flex',
@@ -2435,10 +2435,10 @@ export default function CanistersPage() {
         emptyState: {
             textAlign: 'center',
             padding: '2.5rem 1.5rem',
-            background: theme.colors.cardGradient,
+            background: theme.colors.secondaryBgGradient,
             borderRadius: '12px',
             border: `1px solid ${theme.colors.border}`,
-            boxShadow: theme.colors.cardShadow,
+            boxShadow: theme.colors.secondaryBgShadow,
         },
         emptyIcon: {
             fontSize: '2.5rem',
@@ -2483,10 +2483,10 @@ export default function CanistersPage() {
         notLoggedIn: {
             textAlign: 'center',
             padding: '3rem 1.5rem',
-            background: theme.colors.cardGradient,
+            background: theme.colors.secondaryBgGradient,
             borderRadius: '16px',
             border: `1px solid ${theme.colors.border}`,
-            boxShadow: theme.colors.cardShadow,
+            boxShadow: theme.colors.secondaryBgShadow,
         },
         viewLink: {
             padding: '0.5rem 1rem',
@@ -2527,7 +2527,7 @@ export default function CanistersPage() {
             fontSize: '0.85rem',
         },
         managerCard: {
-            background: theme.colors.cardGradient,
+            background: theme.colors.secondaryBgGradient,
             borderRadius: '10px',
             padding: '0.75rem 1rem',
             border: `1px solid ${theme.colors.border}`,
@@ -2536,7 +2536,7 @@ export default function CanistersPage() {
             justifyContent: 'space-between',
             gap: '0.5rem',
             flexWrap: 'wrap',
-            boxShadow: theme.colors.cardShadow,
+            boxShadow: theme.colors.secondaryBgShadow,
         },
         managerInfo: {
             display: 'flex',
@@ -2682,7 +2682,7 @@ export default function CanistersPage() {
                     backdropFilter: 'blur(4px)',
                 }}>
                     <div style={{
-                        background: `linear-gradient(135deg, ${theme.colors.card} 0%, ${theme.colors.primaryBg} 100%)`,
+                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
                         border: `2px solid #ffd700`,
                         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.15)',
                         borderRadius: '20px',
@@ -2729,7 +2729,7 @@ export default function CanistersPage() {
                         
                         {/* Benefits teaser */}
                         <div style={{
-                            background: `${theme.colors.inputBackground}`,
+                            background: `${theme.colors.tertiaryBg}`,
                             borderRadius: '12px',
                             padding: '16px',
                             marginBottom: '24px',
@@ -2828,7 +2828,7 @@ export default function CanistersPage() {
                     backdropFilter: 'blur(2px)',
                 }}>
                     <div style={{
-                        background: theme.colors.cardGradient,
+                        background: theme.colors.secondaryBgGradient,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '16px',
                         padding: '24px 32px',
@@ -2868,12 +2868,12 @@ export default function CanistersPage() {
                     justifyContent: 'center',
                     gap: '1rem',
                     padding: '0.75rem 1rem',
-                    background: theme.colors.cardGradient,
+                    background: theme.colors.secondaryBgGradient,
                     borderRadius: '12px',
                     border: `1px solid ${theme.colors.border}`,
                     marginBottom: '1.25rem',
                     fontSize: '0.8rem',
-                    boxShadow: theme.colors.cardShadow,
+                    boxShadow: theme.colors.secondaryBgShadow,
                 }}>
                     <span style={{ color: theme.colors.mutedText, fontWeight: '600', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cycle Status</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2991,7 +2991,7 @@ export default function CanistersPage() {
                                 {getAllCanisterIds(canisterGroups).length > 0 && (
                                     <span style={styles.sectionCount}>{getAllCanisterIds(canisterGroups).length}</span>
                                 )}
-                                {saving && <FaSpinner className="spin" size={12} style={{ marginLeft: '8px', color: theme.colors.textSecondary }} />}
+                                {saving && <FaSpinner className="spin" size={12} style={{ marginLeft: '8px', color: theme.colors.secondaryText }} />}
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
                                 {showNewGroupInput ? (
@@ -3034,7 +3034,7 @@ export default function CanistersPage() {
                                             borderRadius: '8px',
                                             border: `1px solid ${theme.colors.border}`,
                                             backgroundColor: 'transparent',
-                                            color: theme.colors.textSecondary,
+                                            color: theme.colors.secondaryText,
                                             fontSize: '12px',
                                             fontWeight: 500,
                                             cursor: 'pointer',
@@ -3058,13 +3058,13 @@ export default function CanistersPage() {
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         padding: '0.65rem 1rem',
-                                        background: theme.colors.cardGradient,
+                                        background: theme.colors.secondaryBgGradient,
                                         borderRadius: '10px',
                                         border: `1px solid ${theme.colors.border}`,
                                         marginBottom: '1rem',
                                         flexWrap: 'wrap',
                                         gap: '0.75rem',
-                                        boxShadow: theme.colors.cardShadow,
+                                        boxShadow: theme.colors.secondaryBgShadow,
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                                             <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
@@ -3123,13 +3123,13 @@ export default function CanistersPage() {
                                                     alignItems: 'center',
                                                     justifyContent: 'space-between',
                                                     padding: '0.875rem 1.25rem',
-                                                    background: theme.colors.cardGradient,
+                                                    background: theme.colors.secondaryBgGradient,
                                                     borderRadius: '12px',
                                                     border: `1px solid ${theme.colors.border}`,
                                                     marginBottom: '1rem',
                                                     flexWrap: 'wrap',
                                                     gap: '0.75rem',
-                                                    boxShadow: theme.colors.cardShadow,
+                                                    boxShadow: theme.colors.secondaryBgShadow,
                                                 }}>
                                                     {/* Overall status lamp */}
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -3335,8 +3335,8 @@ export default function CanistersPage() {
                                             style={{ 
                                                 marginTop: canisterGroups.groups.length > 0 ? '16px' : '0',
                                                 padding: draggedItem ? '8px' : '0',
-                                                backgroundColor: dragOverTarget?.type === 'ungrouped' ? `${theme.colors.primary}15` : 'transparent',
-                                                border: dragOverTarget?.type === 'ungrouped' ? `2px dashed ${theme.colors.primary}` : '2px dashed transparent',
+                                                backgroundColor: dragOverTarget?.type === 'ungrouped' ? `${theme.colors.accent}15` : 'transparent',
+                                                border: dragOverTarget?.type === 'ungrouped' ? `2px dashed ${theme.colors.accent}` : '2px dashed transparent',
                                                 borderRadius: '8px',
                                                 transition: 'all 0.2s ease',
                                                 minHeight: draggedItem && canisterGroups.ungrouped.length === 0 ? '60px' : 'auto',
@@ -3354,7 +3354,7 @@ export default function CanistersPage() {
                                             }}>
                                                 Ungrouped ({canisterGroups.ungrouped.length})
                                                 {dragOverTarget?.type === 'ungrouped' && (
-                                                    <span style={{ marginLeft: '8px', color: theme.colors.primary }}>
+                                                    <span style={{ marginLeft: '8px', color: theme.colors.accent }}>
                                                         Drop here
                                                     </span>
                                                 )}
@@ -3399,8 +3399,8 @@ export default function CanistersPage() {
                             onDragLeave={(e) => handleDragLeave(e, 'wallet')}
                             onDrop={(e) => handleDrop(e, 'wallet')}
                             style={{
-                                backgroundColor: dragOverTarget?.type === 'wallet' ? `${theme.colors.primary}10` : 'transparent',
-                                border: dragOverTarget?.type === 'wallet' ? `2px dashed ${theme.colors.primary}` : '2px dashed transparent',
+                                backgroundColor: dragOverTarget?.type === 'wallet' ? `${theme.colors.accent}10` : 'transparent',
+                                border: dragOverTarget?.type === 'wallet' ? `2px dashed ${theme.colors.accent}` : '2px dashed transparent',
                                 borderRadius: '12px',
                                 transition: 'all 0.2s ease',
                                 padding: dragOverTarget?.type === 'wallet' ? '8px' : '0',
@@ -3419,7 +3419,7 @@ export default function CanistersPage() {
                                     <span style={styles.sectionCount}>{trackedCanisters.length}</span>
                                 )}
                                 {dragOverTarget?.type === 'wallet' && (
-                                    <span style={{ marginLeft: '8px', color: theme.colors.primary, fontSize: '12px' }}>
+                                    <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '12px' }}>
                                         Drop here to add to wallet
                                     </span>
                                 )}
@@ -3432,7 +3432,7 @@ export default function CanistersPage() {
                                     borderRadius: '8px',
                                     border: `1px solid ${theme.colors.border}`,
                                     backgroundColor: 'transparent',
-                                    color: theme.colors.textSecondary,
+                                    color: theme.colors.secondaryText,
                                     fontSize: '12px',
                                     fontWeight: 500,
                                     cursor: 'pointer',
@@ -3516,7 +3516,7 @@ export default function CanistersPage() {
                                             return (
                                                 <div style={{
                                                     padding: '12px 16px',
-                                                    backgroundColor: theme.colors.card,
+                                                    backgroundColor: theme.colors.secondaryBg,
                                                     borderRadius: '10px',
                                                     border: `1px solid ${theme.colors.border}`,
                                                     marginBottom: '16px',
@@ -3541,7 +3541,7 @@ export default function CanistersPage() {
                                                         <span style={{ 
                                                             fontWeight: 600, 
                                                             fontSize: '13px',
-                                                            color: theme.colors.text,
+                                                            color: theme.colors.primaryText,
                                                         }}>
                                                             Wallet Health
                                                         </span>
@@ -3715,8 +3715,8 @@ export default function CanistersPage() {
                                                                 <span 
                                                                     style={{
                                                                         ...styles.managerVersion,
-                                                                        backgroundColor: `${theme.colors.primary || '#3b82f6'}20`,
-                                                                        color: theme.colors.primary || '#3b82f6',
+                                                                        backgroundColor: `${theme.colors.accent}20`,
+                                                                        color: theme.colors.accent,
                                                                     }}
                                                                     title={`${memory.toLocaleString()} bytes`}
                                                                 >
@@ -3727,8 +3727,8 @@ export default function CanistersPage() {
                                                                 <span 
                                                                     style={{
                                                                         ...styles.managerVersion,
-                                                                        backgroundColor: `${theme.colors.mutedText || theme.colors.textSecondary}20`,
-                                                                        color: theme.colors.mutedText || theme.colors.textSecondary,
+                                                                        backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
+                                                                        color: theme.colors.mutedText || theme.colors.secondaryText,
                                                                         marginLeft: '8px',
                                                                     }}
                                                                 >
@@ -3749,8 +3749,8 @@ export default function CanistersPage() {
                                                                     padding: '6px 8px',
                                                                     borderRadius: '6px',
                                                                     border: `1px solid ${theme.colors.border}`,
-                                                                    backgroundColor: theme.colors.card,
-                                                                    color: theme.colors.textSecondary,
+                                                                    backgroundColor: theme.colors.secondaryBg,
+                                                                    color: theme.colors.secondaryText,
                                                                     fontSize: '11px',
                                                                     cursor: 'pointer',
                                                                     maxWidth: '110px',
@@ -3795,8 +3795,8 @@ export default function CanistersPage() {
                                                                     <button
                                                                         onClick={() => setConfirmRemoveWalletCanister(null)}
                                                                         style={{
-                                                                            backgroundColor: theme.colors.card,
-                                                                            color: theme.colors.text,
+                                                                            backgroundColor: theme.colors.secondaryBg,
+                                                                            color: theme.colors.primaryText,
                                                                             border: `1px solid ${theme.colors.border}`,
                                                                             borderRadius: '4px',
                                                                             padding: '4px 10px',
@@ -3834,8 +3834,8 @@ export default function CanistersPage() {
                             onDragLeave={(e) => handleDragLeave(e, 'neuron_managers')}
                             onDrop={(e) => handleDrop(e, 'neuron_managers')}
                             style={{
-                                backgroundColor: dragOverTarget?.type === 'neuron_managers' ? `${theme.colors.primary}10` : 'transparent',
-                                border: dragOverTarget?.type === 'neuron_managers' ? `2px dashed ${theme.colors.primary}` : '2px dashed transparent',
+                                backgroundColor: dragOverTarget?.type === 'neuron_managers' ? `${theme.colors.accent}10` : 'transparent',
+                                border: dragOverTarget?.type === 'neuron_managers' ? `2px dashed ${theme.colors.accent}` : '2px dashed transparent',
                                 borderRadius: '12px',
                                 transition: 'all 0.2s ease',
                                 padding: dragOverTarget?.type === 'neuron_managers' ? '8px' : '0',
@@ -3854,7 +3854,7 @@ export default function CanistersPage() {
                                     <span style={styles.sectionCount}>{neuronManagers.length}</span>
                                 )}
                                 {dragOverTarget?.type === 'neuron_managers' && (
-                                    <span style={{ marginLeft: '8px', color: theme.colors.primary, fontSize: '12px' }}>
+                                    <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '12px' }}>
                                         Drop here to add as manager
                                     </span>
                                 )}
@@ -3934,7 +3934,7 @@ export default function CanistersPage() {
                                         <div style={styles.emptyIcon}>🧠</div>
                                         <div style={styles.emptyText}>No ICP Neuron Managers</div>
                                         <div style={styles.emptySubtext}>
-                                            <Link to="/create_icp_neuron" style={{ color: theme.colors.primary }}>
+                                            <Link to="/create_icp_neuron" style={{ color: theme.colors.accent }}>
                                                 Create your first neuron manager →
                                             </Link>
                                         </div>
@@ -3952,7 +3952,7 @@ export default function CanistersPage() {
                                                     alignItems: 'center',
                                                     justifyContent: 'space-between',
                                                     padding: '12px 16px',
-                                                    backgroundColor: theme.colors.card,
+                                                    backgroundColor: theme.colors.secondaryBg,
                                                     borderRadius: '8px',
                                                     border: `1px solid ${theme.colors.border}`,
                                                     marginBottom: '16px',
@@ -3974,7 +3974,7 @@ export default function CanistersPage() {
                                                         />
                                                         <span style={{ 
                                                             fontWeight: 600, 
-                                                            color: theme.colors.text,
+                                                            color: theme.colors.primaryText,
                                                             fontSize: '14px',
                                                         }}>
                                                             {stats.total} {stats.total === 1 ? 'Manager' : 'Managers'}
@@ -4158,8 +4158,8 @@ export default function CanistersPage() {
                                                                 </span>
                                                                 <span style={{
                                                                     ...styles.managerVersion,
-                                                                    backgroundColor: manager.neuronCount > 0 ? '#8b5cf620' : theme.colors.inputBackground,
-                                                                    color: manager.neuronCount > 0 ? '#8b5cf6' : theme.colors.textSecondary,
+                                                                    backgroundColor: manager.neuronCount > 0 ? '#8b5cf620' : theme.colors.tertiaryBg,
+                                                                    color: manager.neuronCount > 0 ? '#8b5cf6' : theme.colors.secondaryText,
                                                                 }}>
                                                                     🧠 {manager.neuronCount} neuron{manager.neuronCount !== 1 ? 's' : ''}
                                                                 </span>
@@ -4179,8 +4179,8 @@ export default function CanistersPage() {
                                                                     <span 
                                                                         style={{
                                                                             ...styles.managerVersion,
-                                                                            backgroundColor: `${theme.colors.primary || '#3b82f6'}20`,
-                                                                            color: theme.colors.primary || '#3b82f6',
+                                                                            backgroundColor: `${theme.colors.accent}20`,
+                                                                            color: theme.colors.accent,
                                                                         }}
                                                                         title={`${manager.memory.toLocaleString()} bytes`}
                                                                     >
@@ -4205,8 +4205,8 @@ export default function CanistersPage() {
                                                                 padding: '6px 8px',
                                                                 borderRadius: '6px',
                                                                 border: `1px solid ${theme.colors.border}`,
-                                                                backgroundColor: theme.colors.card,
-                                                                color: theme.colors.textSecondary,
+                                                                backgroundColor: theme.colors.secondaryBg,
+                                                                color: theme.colors.secondaryText,
                                                                 fontSize: '11px',
                                                                 cursor: 'pointer',
                                                                 maxWidth: '110px',

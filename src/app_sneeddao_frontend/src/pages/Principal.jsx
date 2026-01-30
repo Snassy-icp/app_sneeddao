@@ -1659,6 +1659,33 @@ export default function PrincipalPage() {
                         <span>Posts & Threads</span>
                     </button>
                     <button
+                        onClick={() => setActiveTab('trades')}
+                        style={{
+                            flex: '1 1 auto',
+                            minWidth: '100px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 0.75rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                            background: activeTab === 'trades' 
+                                ? `linear-gradient(135deg, #8b5cf6, #a78bfa)`
+                                : 'transparent',
+                            color: activeTab === 'trades' 
+                                ? 'white' 
+                                : theme.colors.secondaryText,
+                        }}
+                    >
+                        <FaGavel size={14} />
+                        <span>Trades</span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab('neurons')}
                         style={{
                             flex: '1 1 auto',
@@ -1711,33 +1738,6 @@ export default function PrincipalPage() {
                     >
                         <FaExchangeAlt size={14} />
                         <span>Transactions</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('trades')}
-                        style={{
-                            flex: '1 1 auto',
-                            minWidth: '100px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                            padding: '0.75rem 0.75rem',
-                            borderRadius: '12px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            fontSize: '0.9rem',
-                            transition: 'all 0.2s ease',
-                            background: activeTab === 'trades' 
-                                ? `linear-gradient(135deg, #8b5cf6, #a78bfa)`
-                                : 'transparent',
-                            color: activeTab === 'trades' 
-                                ? 'white' 
-                                : theme.colors.secondaryText,
-                        }}
-                    >
-                        <FaGavel size={14} />
-                        <span>Trades</span>
                     </button>
                 </div>
 
