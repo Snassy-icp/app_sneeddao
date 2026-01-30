@@ -19,7 +19,17 @@ import TransactionList from '../components/TransactionList';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
-import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain } from 'react-icons/fa';
+import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes } from 'react-icons/fa';
+import { 
+    createSneedexActor, 
+    formatAmount, 
+    formatTimeRemaining,
+    isOfferPastExpiration,
+    getOfferStateString,
+    getBidStateString,
+    getAssetType
+} from '../utils/SneedexUtils';
+import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 
 // Helper to determine if a principal is a canister (shorter) or user (longer)
 const isCanisterPrincipal = (principalStr) => {
@@ -126,8 +136,16 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [activeTab, setActiveTab] = useState('posts'); // 'posts', 'neurons', 'transactions'
+    const [activeTab, setActiveTab] = useState('posts'); // 'posts', 'neurons', 'transactions', 'trades'
     const [postsActiveTab, setPostsActiveTab] = useState('posts');
+    const [tradesActiveTab, setTradesActiveTab] = useState('offers'); // 'offers' or 'bids'
+    
+    // Trades state (Sneedex offers & bids)
+    const [userOffers, setUserOffers] = useState([]);
+    const [userBids, setUserBids] = useState([]);
+    const [loadingTrades, setLoadingTrades] = useState(false);
+    const [tradesError, setTradesError] = useState(null);
+    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [userPosts, setUserPosts] = useState([]);
     const [userThreads, setUserThreads] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(false);
@@ -622,6 +640,112 @@ export default function PrincipalPage() {
             fetchThreadPostCounts(userThreads);
         }
     }, [userThreads, fetchThreadPostCounts]);
+
+    // Fetch trades (Sneedex offers and bids) for the user
+    const fetchUserTrades = useCallback(async () => {
+        if (!identity || !stablePrincipalId.current) return;
+        
+        setLoadingTrades(true);
+        setTradesError(null);
+        
+        try {
+            const actor = createSneedexActor(identity);
+            const targetPrincipal = stablePrincipalId.current;
+            
+            // Fetch offers created by this principal and bids made by this principal
+            const [offersData, bidsData] = await Promise.all([
+                actor.getOffersByCreator(targetPrincipal),
+                actor.getBidsByBidder(targetPrincipal)
+            ]);
+            
+            setUserOffers(offersData || []);
+            setUserBids(bidsData || []);
+            
+        } catch (err) {
+            console.error('Error fetching user trades:', err);
+            setTradesError(err.message || 'Failed to load trades');
+        } finally {
+            setLoadingTrades(false);
+        }
+    }, [identity]);
+
+    // Fetch whitelisted tokens for trade metadata
+    useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const tokens = await backendActor.get_whitelisted_tokens();
+                setWhitelistedTokens(tokens);
+            } catch (e) {
+                console.error('Failed to fetch whitelisted tokens:', e);
+            }
+        };
+        if (identity) {
+            fetchTokens();
+        }
+    }, [identity]);
+
+    // Auto-fetch trades when principal changes
+    useEffect(() => {
+        if (stablePrincipalId.current && identity) {
+            fetchUserTrades();
+        }
+    }, [searchParams.get('id'), fetchUserTrades]);
+
+    // Helper to get token info for trades
+    const getTradeTokenInfo = useCallback((ledgerId) => {
+        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        if (token) {
+            return {
+                symbol: token.symbol || 'TOKEN',
+                decimals: token.decimals || 8
+            };
+        }
+        return { symbol: 'TOKEN', decimals: 8 };
+    }, [whitelistedTokens]);
+
+    // Get asset icons for offer display
+    const getOfferAssetIcons = (assets) => {
+        const icons = [];
+        assets.forEach((assetEntry, idx) => {
+            const assetType = getAssetType(assetEntry);
+            if (assetType === 'Canister') icons.push(<FaCube key={idx} size={12} title="Canister" />);
+            else if (assetType === 'SNSNeuron') icons.push(<FaBrain key={idx} size={12} title="SNS Neuron" />);
+            else if (assetType === 'ICRC1Token') icons.push(<FaCoins key={idx} size={12} title="Token" />);
+        });
+        return icons.length > 0 ? icons : null;
+    };
+
+    // Get state badge style for offers/bids
+    const getTradeStateBadgeStyle = (state, isOffer = true) => {
+        let bgColor = principalPrimary;
+        let textColor = 'white';
+        
+        if (isOffer) {
+            if ('Active' in state) { bgColor = '#22c55e'; }
+            else if ('Completed' in state || 'Claimed' in state) { bgColor = '#3b82f6'; }
+            else if ('Cancelled' in state) { bgColor = '#f59e0b'; }
+            else if ('Expired' in state || 'Reclaimed' in state) { bgColor = '#6b7280'; }
+            else if ('Draft' in state || 'PendingEscrow' in state) { bgColor = '#8b5cf6'; }
+        } else {
+            if ('Pending' in state) { bgColor = '#f59e0b'; }
+            else if ('Won' in state) { bgColor = '#22c55e'; }
+            else if ('Lost' in state) { bgColor = '#ef4444'; }
+            else if ('Refunded' in state) { bgColor = '#6b7280'; }
+        }
+        
+        return {
+            padding: '4px 10px',
+            borderRadius: '6px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            background: bgColor,
+            color: textColor
+        };
+    };
 
     // Format vote scores
     const formatScore = (score) => {
@@ -1593,6 +1717,33 @@ export default function PrincipalPage() {
                         <FaExchangeAlt size={14} />
                         <span>Transactions</span>
                     </button>
+                    <button
+                        onClick={() => setActiveTab('trades')}
+                        style={{
+                            flex: '1 1 auto',
+                            minWidth: '100px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 0.75rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                            background: activeTab === 'trades' 
+                                ? `linear-gradient(135deg, #8b5cf6, #a78bfa)`
+                                : 'transparent',
+                            color: activeTab === 'trades' 
+                                ? 'white' 
+                                : theme.colors.secondaryText,
+                        }}
+                    >
+                        <FaGavel size={14} />
+                        <span>Trades</span>
+                    </button>
                 </div>
 
                 {/* Tab Content */}
@@ -2016,6 +2167,334 @@ export default function PrincipalPage() {
                                 showHeader={false}
                                 embedded={true}
                             />
+                        </div>
+                    )}
+
+                    {/* Trades Tab */}
+                    {activeTab === 'trades' && (
+                        <div style={{ padding: '1.25rem' }}>
+                            {/* Sub-tab Navigation for Offers/Bids */}
+                            <div style={{
+                                display: 'flex',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                marginBottom: '1.25rem'
+                            }}>
+                                <button
+                                    onClick={() => setTradesActiveTab('offers')}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: tradesActiveTab === 'offers' ? '#8b5cf6' : theme.colors.mutedText,
+                                        fontSize: '0.95rem',
+                                        fontWeight: '600',
+                                        padding: '12px 20px',
+                                        cursor: 'pointer',
+                                        borderBottom: tradesActiveTab === 'offers' ? '2px solid #8b5cf6' : '2px solid transparent',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    <FaGavel size={12} />
+                                    Offers ({userOffers.length})
+                                </button>
+                                <button
+                                    onClick={() => setTradesActiveTab('bids')}
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: tradesActiveTab === 'bids' ? '#8b5cf6' : theme.colors.mutedText,
+                                        fontSize: '0.95rem',
+                                        fontWeight: '600',
+                                        padding: '12px 20px',
+                                        cursor: 'pointer',
+                                        borderBottom: tradesActiveTab === 'bids' ? '2px solid #8b5cf6' : '2px solid transparent',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    <FaHandHoldingUsd size={12} />
+                                    Bids ({userBids.length})
+                                </button>
+                            </div>
+
+                            {loadingTrades ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    <div className="principal-spin" style={{
+                                        width: '30px',
+                                        height: '30px',
+                                        border: `3px solid ${theme.colors.border}`,
+                                        borderTopColor: '#8b5cf6',
+                                        borderRadius: '50%',
+                                        margin: '0 auto 1rem'
+                                    }} />
+                                    Loading trades...
+                                </div>
+                            ) : tradesError ? (
+                                <div style={{ 
+                                    background: `${theme.colors.error}15`,
+                                    border: `1px solid ${theme.colors.error}40`,
+                                    color: theme.colors.error,
+                                    padding: '1rem',
+                                    borderRadius: '10px'
+                                }}>
+                                    {tradesError}
+                                </div>
+                            ) : (
+                                <div>
+                                    {tradesActiveTab === 'offers' ? (
+                                        userOffers.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                No offers found
+                                            </div>
+                                        ) : (
+                                            <div style={{ 
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                                gap: '1rem'
+                                            }}>
+                                                {userOffers.map((offer) => {
+                                                    const tokenInfo = getTradeTokenInfo(offer.price_token_ledger.toString());
+                                                    const stateStr = getOfferStateString(offer.state);
+                                                    const isActive = 'Active' in offer.state;
+                                                    
+                                                    return (
+                                                        <Link
+                                                            key={Number(offer.id)}
+                                                            to={`/sneedex_offer/${offer.id}`}
+                                                            style={{
+                                                                textDecoration: 'none',
+                                                                color: 'inherit'
+                                                            }}
+                                                        >
+                                                            <div
+                                                                style={{
+                                                                    background: theme.colors.primaryBg,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '12px',
+                                                                    padding: '1rem',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease',
+                                                                    position: 'relative',
+                                                                    overflow: 'hidden'
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                    e.currentTarget.style.borderColor = '#8b5cf6';
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                                                }}
+                                                            >
+                                                                {/* Status Banner for inactive offers */}
+                                                                {(() => {
+                                                                    let bannerText = null;
+                                                                    let bannerColor = null;
+                                                                    
+                                                                    if ('Completed' in offer.state || 'Claimed' in offer.state) {
+                                                                        bannerText = 'SOLD';
+                                                                        bannerColor = 'linear-gradient(135deg, #22c55e, #16a34a)';
+                                                                    } else if ('Expired' in offer.state || 'Reclaimed' in offer.state) {
+                                                                        bannerText = 'EXPIRED';
+                                                                        bannerColor = 'linear-gradient(135deg, #6b7280, #4b5563)';
+                                                                    } else if ('Cancelled' in offer.state) {
+                                                                        bannerText = 'CANCELLED';
+                                                                        bannerColor = 'linear-gradient(135deg, #f59e0b, #d97706)';
+                                                                    }
+                                                                    
+                                                                    return bannerText ? (
+                                                                        <div style={{
+                                                                            position: 'absolute',
+                                                                            top: '12px',
+                                                                            right: '-28px',
+                                                                            background: bannerColor,
+                                                                            color: '#fff',
+                                                                            padding: '3px 35px',
+                                                                            fontWeight: '700',
+                                                                            fontSize: '0.6rem',
+                                                                            transform: 'rotate(45deg)',
+                                                                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                                                            zIndex: 10,
+                                                                            letterSpacing: '0.5px',
+                                                                        }}>
+                                                                            {bannerText}
+                                                                        </div>
+                                                                    ) : null;
+                                                                })()}
+                                                                
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'space-between', 
+                                                                    alignItems: 'flex-start', 
+                                                                    marginBottom: '0.75rem' 
+                                                                }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        <span style={{
+                                                                            color: '#8b5cf6',
+                                                                            fontWeight: '600',
+                                                                            fontSize: '0.9rem'
+                                                                        }}>
+                                                                            Offer #{Number(offer.id)}
+                                                                        </span>
+                                                                        <div style={{ display: 'flex', gap: '4px', color: theme.colors.mutedText }}>
+                                                                            {getOfferAssetIcons(offer.assets)}
+                                                                        </div>
+                                                                    </div>
+                                                                    <span style={getTradeStateBadgeStyle(offer.state, true)}>
+                                                                        {stateStr}
+                                                                    </span>
+                                                                </div>
+                                                                
+                                                                <div style={{ 
+                                                                    display: 'grid', 
+                                                                    gridTemplateColumns: '1fr 1fr', 
+                                                                    gap: '0.5rem',
+                                                                    fontSize: '0.85rem'
+                                                                }}>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>Min Bid</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                                            {offer.min_bid_price[0] 
+                                                                                ? `${formatAmount(offer.min_bid_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}`
+                                                                                : '—'}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>Buyout</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                                            {offer.buyout_price[0] 
+                                                                                ? `${formatAmount(offer.buyout_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}`
+                                                                                : '—'}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={{ gridColumn: '1 / -1' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                                            {isActive ? 'Time Left' : 'Status'}
+                                                                        </div>
+                                                                        <div style={{ 
+                                                                            color: isActive && isOfferPastExpiration(offer.expiration[0]) 
+                                                                                ? theme.colors.warning 
+                                                                                : theme.colors.primaryText, 
+                                                                            fontWeight: '500',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px'
+                                                                        }}>
+                                                                            {isActive && <FaClock size={10} />}
+                                                                            {isActive ? formatTimeRemaining(offer.expiration[0]) : stateStr}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </Link>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
+                                    ) : (
+                                        userBids.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                No bids found
+                                            </div>
+                                        ) : (
+                                            <div style={{ 
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                                gap: '1rem'
+                                            }}>
+                                                {userBids.map((bid) => {
+                                                    const stateStr = getBidStateString(bid.state);
+                                                    const isWon = 'Won' in bid.state;
+                                                    const isLost = 'Lost' in bid.state;
+                                                    const isPending = 'Pending' in bid.state;
+                                                    
+                                                    return (
+                                                        <Link
+                                                            key={Number(bid.id)}
+                                                            to={`/sneedex_offer/${bid.offer_id}`}
+                                                            style={{
+                                                                textDecoration: 'none',
+                                                                color: 'inherit'
+                                                            }}
+                                                        >
+                                                            <div
+                                                                style={{
+                                                                    background: theme.colors.primaryBg,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '12px',
+                                                                    padding: '1rem',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                    e.currentTarget.style.borderColor = '#8b5cf6';
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                                                }}
+                                                            >
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'space-between', 
+                                                                    alignItems: 'flex-start', 
+                                                                    marginBottom: '0.75rem' 
+                                                                }}>
+                                                                    <span style={{
+                                                                        color: '#8b5cf6',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.9rem'
+                                                                    }}>
+                                                                        Bid on Offer #{Number(bid.offer_id)}
+                                                                    </span>
+                                                                    <span style={getTradeStateBadgeStyle(bid.state, false)}>
+                                                                        {stateStr}
+                                                                    </span>
+                                                                </div>
+                                                                
+                                                                <div style={{ 
+                                                                    fontSize: '0.85rem'
+                                                                }}>
+                                                                    <div style={{ marginBottom: '0.5rem' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>Bid Amount</div>
+                                                                        <div style={{ 
+                                                                            color: isWon ? theme.colors.success : isLost ? theme.colors.error : theme.colors.primaryText, 
+                                                                            fontWeight: '600',
+                                                                            fontSize: '1rem'
+                                                                        }}>
+                                                                            {formatAmount(bid.amount, 8)} tokens
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>Status</div>
+                                                                        <div style={{ 
+                                                                            color: isWon ? theme.colors.success : isLost ? theme.colors.error : isPending ? theme.colors.warning : theme.colors.primaryText, 
+                                                                            fontWeight: '500',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px'
+                                                                        }}>
+                                                                            {isWon && <FaCheckCircle size={10} />}
+                                                                            {isLost && <FaTimes size={10} />}
+                                                                            {isPending && <FaClock size={10} />}
+                                                                            {stateStr}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </Link>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
