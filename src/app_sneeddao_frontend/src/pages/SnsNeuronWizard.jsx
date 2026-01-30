@@ -106,6 +106,17 @@ export default function SnsNeuronWizard() {
     const [stakingError, setStakingError] = useState('');
     const [stakingSuccess, setStakingSuccess] = useState(false);
     const [createdNeuronId, setCreatedNeuronId] = useState(null);
+    const [stakingStepIndex, setStakingStepIndex] = useState(0); // For progress overlay
+    
+    // Staking steps for the progress overlay
+    const stakingSteps = [
+        { id: 1, label: 'Registering token', icon: '📝' },
+        { id: 2, label: 'Finding neuron slot', icon: '🔍' },
+        { id: 3, label: 'Transferring tokens', icon: '💸' },
+        { id: 4, label: 'Confirming transfer', icon: '⏳' },
+        { id: 5, label: 'Claiming neuron', icon: '🧠' },
+        { id: 6, label: 'Setting dissolve delay', icon: '⚙️' },
+    ];
 
     // Computed values
   const selectedSns = useMemo(() => {
@@ -367,7 +378,8 @@ export default function SnsNeuronWizard() {
         
         setIsStaking(true);
         setStakingError('');
-        setStakingProgress('Preparing to stake...');
+        setStakingStepIndex(1);
+        setStakingProgress('Registering token...');
         
         try {
             const amountFloat = parseFloat(stakeAmount);
@@ -375,10 +387,10 @@ export default function SnsNeuronWizard() {
             const dissolveDelaySeconds = dissolveDelayDays ? Number(dissolveDelayDays) * 24 * 60 * 60 : 0;
             
             // Step 1: Register token silently
-            setStakingProgress('Registering token...');
             await registerTokenSilently();
             
             // Step 2: Find unused nonce
+            setStakingStepIndex(2);
             setStakingProgress('Finding available neuron slot...');
             const governanceActor = createSnsGovernanceActor(selectedGovernanceId, {
                 agentOptions: { identity }
@@ -388,6 +400,7 @@ export default function SnsNeuronWizard() {
             const { nonce, subaccount } = await findUnusedNonce(governanceActor, principal);
             
             // Step 3: Transfer tokens
+            setStakingStepIndex(3);
             setStakingProgress('Transferring tokens to neuron...');
             const ledgerActor = createLedgerActor(selectedLedgerId, {
                 agentOptions: { identity }
@@ -428,10 +441,12 @@ export default function SnsNeuronWizard() {
             }
             
             // Step 4: Wait for transfer
+            setStakingStepIndex(4);
             setStakingProgress('Waiting for transfer confirmation...');
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Step 5: Claim neuron
+            setStakingStepIndex(5);
             setStakingProgress('Claiming neuron stake...');
             const claimSubaccount = new Uint8Array(32);
             claimSubaccount.set(subaccount, 0);
@@ -454,6 +469,7 @@ export default function SnsNeuronWizard() {
             
             // Step 6: Set dissolve delay if specified
             if (dissolveDelaySeconds > 0) {
+                setStakingStepIndex(6);
                 setStakingProgress('Setting dissolve delay...');
                 await governanceActor.manage_neuron({
                     subaccount: Array.from(claimSubaccount),
@@ -472,10 +488,12 @@ export default function SnsNeuronWizard() {
             setCreatedNeuronId(neuronIdHex);
             setStakingSuccess(true);
             setStakingProgress('');
+            setStakingStepIndex(0);
         } catch (error) {
             console.error('Staking error:', error);
             setStakingError(error.message || 'Failed to stake neuron');
             setStakingProgress('');
+            setStakingStepIndex(0);
         } finally {
             setIsStaking(false);
         }
@@ -1505,6 +1523,161 @@ export default function SnsNeuronWizard() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <style>{customStyles}</style>
+            
+            {/* Staking Progress Overlay */}
+            {isStaking && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10002,
+                    backdropFilter: 'blur(6px)',
+                }}>
+                    <div className="stake-fade-in" style={{
+                        background: theme.colors.cardGradient || theme.colors.cardBackground,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '20px',
+                        padding: '2rem',
+                        boxShadow: '0 16px 64px rgba(0, 0, 0, 0.5)',
+                        maxWidth: '420px',
+                        width: '90%',
+                    }}>
+                        {/* Header */}
+                        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                            <div className="stake-pulse" style={{
+                                width: '64px',
+                                height: '64px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${stakePrimary}30, ${stakePrimary}10)`,
+                                border: `2px solid ${stakePrimary}40`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                margin: '0 auto 1rem',
+                                fontSize: '1.75rem'
+                            }}>
+                                🪙
+                            </div>
+                            <h3 style={{
+                                color: theme.colors.primaryText,
+                                fontSize: '1.25rem',
+                                fontWeight: '700',
+                                margin: '0 0 0.5rem 0'
+                            }}>
+                                Creating Your Neuron
+                            </h3>
+                            <p style={{
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.9rem',
+                                margin: 0
+                            }}>
+                                Please wait while we stake your tokens
+                            </p>
+                        </div>
+                        
+                        {/* Steps List */}
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '14px',
+                            padding: '1rem',
+                            marginBottom: '1rem'
+                        }}>
+                            {stakingSteps.map((step, index) => {
+                                const isCompleted = step.id < stakingStepIndex;
+                                const isCurrent = step.id === stakingStepIndex;
+                                const isPending = step.id > stakingStepIndex;
+                                
+                                // Skip step 6 if no dissolve delay
+                                if (step.id === 6 && !dissolveDelayDays) return null;
+                                
+                                return (
+                                    <div 
+                                        key={step.id}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '10px 0',
+                                            borderBottom: index < stakingSteps.length - 1 && !(step.id === 5 && !dissolveDelayDays) 
+                                                ? `1px solid ${theme.colors.border}` 
+                                                : 'none',
+                                            opacity: isPending ? 0.5 : 1,
+                                            transition: 'all 0.3s ease'
+                                        }}
+                                    >
+                                        {/* Step Icon */}
+                                        <div style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            flexShrink: 0,
+                                            background: isCompleted 
+                                                ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`
+                                                : isCurrent
+                                                    ? `linear-gradient(135deg, ${stakePrimary}, ${stakeSecondary})`
+                                                    : theme.colors.tertiaryBg,
+                                            boxShadow: isCurrent ? `0 4px 12px ${stakePrimary}50` : 'none',
+                                            fontSize: isCompleted || isCurrent ? '14px' : '12px',
+                                        }}>
+                                            {isCompleted ? (
+                                                <FaCheck size={14} style={{ color: '#fff' }} />
+                                            ) : isCurrent ? (
+                                                <FaSpinner className="spin" size={14} style={{ color: '#fff' }} />
+                                            ) : (
+                                                <span style={{ color: theme.colors.mutedText }}>{step.icon}</span>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Step Label */}
+                                        <span style={{
+                                            color: isCompleted 
+                                                ? theme.colors.success 
+                                                : isCurrent 
+                                                    ? theme.colors.primaryText 
+                                                    : theme.colors.mutedText,
+                                            fontSize: '0.9rem',
+                                            fontWeight: isCurrent ? '600' : '500',
+                                        }}>
+                                            {step.label}
+                                        </span>
+                                        
+                                        {/* Status */}
+                                        {isCompleted && (
+                                            <span style={{
+                                                marginLeft: 'auto',
+                                                color: theme.colors.success,
+                                                fontSize: '0.75rem',
+                                                fontWeight: '600'
+                                            }}>
+                                                Done
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        
+                        {/* Current Step Progress */}
+                        <div style={{
+                            textAlign: 'center',
+                            color: theme.colors.secondaryText,
+                            fontSize: '0.85rem'
+                        }}>
+                            Step {stakingStepIndex} of {dissolveDelayDays ? 6 : 5}
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <Header />
             
             {/* Hero Banner */}
