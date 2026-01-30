@@ -900,16 +900,6 @@ export default function Me() {
                                             <PremiumBadge size="small" />
                                         )}
                                     </div>
-                                    
-                                    <div style={{
-                                        fontFamily: 'monospace',
-                                        color: theme.colors.mutedText,
-                                        fontSize: '0.9rem',
-                                        wordBreak: 'break-all',
-                                        marginBottom: '1rem'
-                                    }}>
-                                        {identity?.getPrincipal().toString()}
-                                    </div>
 
                                     {!editingPrincipalName ? (
                                         <button
