@@ -2660,7 +2660,7 @@ export default function CanisterPage() {
                                                             fontSize: '13px',
                                                             boxSizing: 'border-box'
                                                         }}
-                                                        defaultPrincipalType="principal"
+                                                        defaultPrincipalType="both"
                                                     />
                                                     {initArgMode === 'optPrincipal' && (
                                                         <p style={{ 
@@ -3073,7 +3073,7 @@ export default function CanisterPage() {
                                                 disabled={updating}
                                                 style={{ flex: 1, minWidth: '250px', maxWidth: 'none' }}
                                                 inputStyle={{ fontFamily: 'monospace', fontSize: '14px' }}
-                                                defaultPrincipalType="principal"
+                                                defaultPrincipalType="both"
                                             />
                                             <button
                                                 onClick={handleAddController}
