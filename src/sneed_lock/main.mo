@@ -203,9 +203,23 @@ shared (deployer) persistent actor class SneedLock() = this {
     Array.append(expired_active, archived_array);
   };
 
+  // Get all token locks for a specific ledger (includes both active and archived locks)
   public query func get_ledger_token_locks(ledger_canister_id : T.TokenType) : async [T.FullyQualifiedLock] {
+    // Get active locks for this ledger
     let all_locks = get_fully_qualified_locks();
-    Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.1 == ledger_canister_id; });
+    let active_locks = Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.1 == ledger_canister_id; });
+    
+    // Get archived locks for this ledger
+    var archived_list = List.nil<T.FullyQualifiedLock>();
+    for ((_lock_id, archived) in archived_token_locks.entries()) {
+      if (archived.token_type == ledger_canister_id) {
+        archived_list := List.push((archived.owner, archived.token_type, archived.lock), archived_list);
+      };
+    };
+    let archived_array = List.toArray(archived_list);
+    
+    // Combine both arrays
+    Array.append(active_locks, archived_array);
   };
 
   public query func get_all_position_locks() : async [T.FullyQualifiedPositionLock] {
@@ -238,9 +252,23 @@ shared (deployer) persistent actor class SneedLock() = this {
     Array.append(expired_active, archived_array);
   };
 
+  // Get all position locks for a specific swap canister (includes both active and archived locks)
   public query func get_swap_position_locks(swap_canister_id : T.SwapCanisterId) : async [T.FullyQualifiedPositionLock] {
+    // Get active locks for this swap canister
     let all_position_locks = get_fully_qualified_position_locks();
-    Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (position_lock) { position_lock.1 == swap_canister_id; });
+    let active_locks = Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (position_lock) { position_lock.1 == swap_canister_id; });
+    
+    // Get archived locks for this swap canister
+    var archived_list = List.nil<T.FullyQualifiedPositionLock>();
+    for ((_lock_id, archived) in archived_position_locks.entries()) {
+      if (archived.swap_canister_id == swap_canister_id) {
+        archived_list := List.push((archived.owner, archived.swap_canister_id, archived.lock), archived_list);
+      };
+    };
+    let archived_array = List.toArray(archived_list);
+    
+    // Combine both arrays
+    Array.append(active_locks, archived_array);
   };
 
   // sum everything for each token and return an array of tuples for the amount locked for each token for this principal.
