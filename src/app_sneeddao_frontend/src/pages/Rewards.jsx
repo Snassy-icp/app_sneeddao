@@ -968,26 +968,12 @@ function Rewards() {
                                     <p style={{
                                         color: theme.colors.secondaryText,
                                         maxWidth: '400px',
-                                        margin: '0 auto 1.5rem',
+                                        margin: '0 auto',
                                         lineHeight: '1.6',
                                         fontSize: '0.95rem'
                                     }}>
                                         Participate in Sneed DAO governance to start earning rewards.
                                     </p>
-                                    <Link to="/governance" style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem',
-                                        background: `linear-gradient(135deg, ${goldPrimary}, ${goldDark})`,
-                                        color: '#1a1a1a',
-                                        padding: '0.75rem 1.5rem',
-                                        borderRadius: '10px',
-                                        textDecoration: 'none',
-                                        fontWeight: '600',
-                                        fontSize: '0.9rem'
-                                    }}>
-                                        Start Earning →
-                                    </Link>
                                 </div>
                             )}
                         </div>

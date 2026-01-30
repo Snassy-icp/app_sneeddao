@@ -1145,33 +1145,65 @@ const SMS = () => {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
                         display: 'flex',
                         justifyContent: 'center',
                         alignItems: 'center',
-                        zIndex: 1100
-                    }}>
-                        <div style={{
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '8px',
-                            padding: '24px',
-                            width: '90%',
+                        zIndex: 1100,
+                        padding: '1rem'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !submitting) {
+                            setShowComposeModal(false);
+                            setComposeForm({ recipients: [''], subject: '', body: '', replyTo: null });
+                            setRecipientValidation('');
+                            setError(null);
+                        }
+                    }}
+                    >
+                        <div className="sms-card-animate" style={{
+                            background: `linear-gradient(180deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
+                            borderRadius: '20px',
+                            width: '100%',
                             maxWidth: '600px',
-                            maxHeight: '80vh',
-                            overflow: 'auto',
+                            maxHeight: '85vh',
+                            overflow: 'hidden',
                             border: `1px solid ${theme.colors.border}`,
                             fontFamily: SYSTEM_FONT,
-                            fontSize: '14px'
+                            boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px ${smsPrimary}20`,
+                            opacity: 0,
+                            animationDelay: '0.05s'
                         }}>
+                            {/* Modal Header */}
                             <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
+                                background: `linear-gradient(135deg, ${smsPrimary}20, ${smsSecondary}10)`,
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
                                 alignItems: 'center',
-                                marginBottom: '20px'
+                                gap: '1rem'
                             }}>
-                                <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '18px', fontFamily: SYSTEM_FONT }}>
-                                    {composeForm.replyTo ? 'Reply to Message' : 'Compose Message'}
-                                </h2>
+                                <div style={{
+                                    width: '44px',
+                                    height: '44px',
+                                    borderRadius: '12px',
+                                    background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 4px 15px ${smsPrimary}40`,
+                                    flexShrink: 0
+                                }}>
+                                    {composeForm.replyTo ? <FaReply size={18} color="white" /> : <FaPen size={18} color="white" />}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>
+                                        {composeForm.replyTo ? 'Reply to Message' : 'Compose Message'}
+                                    </h2>
+                                    <p style={{ color: theme.colors.mutedText, margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
+                                        {composeForm.replyTo ? 'Continue the conversation' : 'Send a private message'}
+                                    </p>
+                                </div>
                                 <button
                                     onClick={() => {
                                         setShowComposeModal(false);
@@ -1179,289 +1211,348 @@ const SMS = () => {
                                         setRecipientValidation('');
                                         setError(null);
                                     }}
+                                    disabled={submitting}
                                     style={{
-                                        background: 'none',
-                                        border: 'none',
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: theme.colors.tertiaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
                                         color: theme.colors.mutedText,
-                                        cursor: 'pointer',
-                                        fontSize: '24px'
+                                        cursor: submitting ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        transition: 'all 0.2s ease'
                                     }}
                                 >
-                                    ×
+                                    <FaTimes size={14} />
                                 </button>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                <div>
-                                    <label style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '13px', fontFamily: SYSTEM_FONT, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <span>Recipients:</span>
-                                        <span style={{ 
-                                            fontSize: '12px', 
-                                            color: composeForm.recipients.filter(r => r.trim()).length > effectiveMaxRecipients 
-                                                ? theme.colors.error 
-                                                : theme.colors.mutedText 
+                            {/* Modal Body */}
+                            <div style={{ padding: '1.5rem', maxHeight: 'calc(85vh - 180px)', overflowY: 'auto' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                    {/* Recipients Section */}
+                                    <div>
+                                        <label style={{ 
+                                            color: theme.colors.primaryText, 
+                                            marginBottom: '0.75rem', 
+                                            fontSize: '0.9rem', 
+                                            fontWeight: '600',
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '0.75rem' 
                                         }}>
-                                            ({composeForm.recipients.filter(r => r.trim()).length}/{effectiveMaxRecipients})
-                                        </span>
-                                        {hasPremiumMaxRecipients && (
-                                            <span style={{
-                                                backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                                                color: '#ffd700',
-                                                padding: '2px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '10px',
-                                                fontWeight: 'bold'
+                                            <FaUsers size={14} style={{ color: smsPrimary }} />
+                                            <span>Recipients</span>
+                                            <span style={{ 
+                                                fontSize: '0.8rem', 
+                                                fontWeight: '500',
+                                                color: composeForm.recipients.filter(r => r.trim()).length > effectiveMaxRecipients 
+                                                    ? theme.colors.error 
+                                                    : theme.colors.mutedText 
                                             }}>
-                                                ⭐ PREMIUM
+                                                ({composeForm.recipients.filter(r => r.trim()).length}/{effectiveMaxRecipients})
                                             </span>
-                                        )}
-                                    </label>
-                                    {composeForm.recipients.map((recipient, index) => (
-                                        <div key={index} style={{ marginBottom: '10px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                                <div style={{ flex: '1', minWidth: '0', maxWidth: composeForm.recipients.length > 1 ? 'calc(100% - 56px)' : '100%' }}>
-                                                    <PrincipalInput
-                                                        value={recipient}
-                                                        onChange={(value) => updateRecipient(index, value)}
-                                                        placeholder="Enter principal ID or search by name"
-                                                        style={{ 
-                                                            marginBottom: '0'
-                                                        }}
-                                                    />
+                                            {hasPremiumMaxRecipients && (
+                                                <span style={{
+                                                    background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                                                    color: '#1a1a1a',
+                                                    padding: '0.15rem 0.5rem',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.65rem',
+                                                    fontWeight: '700',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.25rem'
+                                                }}>
+                                                    <FaStar size={8} /> PREMIUM
+                                                </span>
+                                            )}
+                                        </label>
+                                        {composeForm.recipients.map((recipient, index) => (
+                                            <div key={index} style={{ marginBottom: '0.5rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                                    <div style={{ flex: '1', minWidth: '0' }}>
+                                                        <PrincipalInput
+                                                            value={recipient}
+                                                            onChange={(value) => updateRecipient(index, value)}
+                                                            placeholder="Enter principal ID or search by name"
+                                                        />
+                                                    </div>
+                                                    {composeForm.recipients.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeRecipient(index)}
+                                                            style={{
+                                                                width: '36px',
+                                                                height: '36px',
+                                                                background: `${theme.colors.error}15`,
+                                                                color: theme.colors.error,
+                                                                border: `1px solid ${theme.colors.error}30`,
+                                                                borderRadius: '10px',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                flexShrink: 0,
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                            title="Remove recipient"
+                                                        >
+                                                            <FaTrash size={12} />
+                                                        </button>
+                                                    )}
                                                 </div>
-                                                {composeForm.recipients.length > 1 && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeRecipient(index)}
-                                                        style={{
-                                                            padding: '8px 10px',
-                                                            backgroundColor: '#e74c3c',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            fontSize: '16px',
-                                                            flexShrink: 0,
-                                                            alignSelf: 'flex-start',
-                                                            marginTop: '0',
-                                                            width: '36px',
-                                                            height: '36px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center'
-                                                        }}
-                                                        title="Remove recipient"
-                                                    >
-                                                        ×
-                                                    </button>
-                                                )}
                                             </div>
-                                        </div>
-                                    ))}
-                                    <button
-                                        type="button"
-                                        onClick={addRecipient}
-                                        disabled={composeForm.recipients.length >= effectiveMaxRecipients}
-                                        style={{
-                                            padding: '8px 16px',
-                                            backgroundColor: composeForm.recipients.length >= effectiveMaxRecipients 
-                                                ? theme.colors.mutedText 
-                                                : theme.colors.success,
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            cursor: composeForm.recipients.length >= effectiveMaxRecipients 
-                                                ? 'not-allowed' 
-                                                : 'pointer',
-                                            fontSize: '14px',
-                                            marginBottom: '15px',
-                                            opacity: composeForm.recipients.length >= effectiveMaxRecipients ? 0.6 : 1
-                                        }}
-                                    >
-                                        + Add Recipient {composeForm.recipients.length >= effectiveMaxRecipients && `(max ${effectiveMaxRecipients})`}
-                                    </button>
-                                </div>
-
-                                <div>
-                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
-                                        Subject:
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={composeForm.subject}
-                                        onChange={(e) => setComposeForm(prev => ({ ...prev, subject: e.target.value }))}
-                                        placeholder="Enter subject..."
-                                        maxLength={effectiveSubjectLimit}
-                                        style={{
-                                            width: '100%',
-                                            padding: '10px',
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            border: `1px solid ${composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : theme.colors.border}`,
-                                            borderRadius: '4px',
-                                            color: theme.colors.primaryText,
-                                            fontSize: '13px',
-                                            fontFamily: SYSTEM_FONT
-                                        }}
-                                    />
-                                    <div style={{ 
-                                        fontSize: '12px', 
-                                        color: composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : 
-                                               (effectiveSubjectLimit - composeForm.subject.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
-                                        marginTop: '5px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px'
-                                    }}>
-                                        <span>{composeForm.subject.length}/{effectiveSubjectLimit} characters</span>
-                                        {hasPremiumSubjectLimit && (
-                                            <span style={{
-                                                backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                                                color: '#ffd700',
-                                                padding: '2px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '10px',
-                                                fontWeight: 'bold'
-                                            }}>
-                                                ⭐ PREMIUM
-                                            </span>
-                                        )}
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={addRecipient}
+                                            disabled={composeForm.recipients.length >= effectiveMaxRecipients}
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                background: composeForm.recipients.length >= effectiveMaxRecipients 
+                                                    ? theme.colors.tertiaryBg
+                                                    : `${theme.colors.success}15`,
+                                                color: composeForm.recipients.length >= effectiveMaxRecipients 
+                                                    ? theme.colors.mutedText
+                                                    : theme.colors.success,
+                                                border: `1px solid ${composeForm.recipients.length >= effectiveMaxRecipients ? theme.colors.border : theme.colors.success}30`,
+                                                borderRadius: '10px',
+                                                cursor: composeForm.recipients.length >= effectiveMaxRecipients 
+                                                    ? 'not-allowed' 
+                                                    : 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '600',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem',
+                                                opacity: composeForm.recipients.length >= effectiveMaxRecipients ? 0.5 : 1,
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                        >
+                                            <FaPlus size={10} />
+                                            Add Recipient
+                                        </button>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px', fontSize: '13px', fontFamily: SYSTEM_FONT }}>
-                                        Message:
-                                    </label>
-                                    <EmojiPicker
-                                        targetRef={composeBodyRef}
-                                        getValue={() => composeForm.body}
-                                        setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
-                                        ariaLabel="Insert emoji into message body"
-                                        rightSlot={
-                                            <MarkdownButtons
-                                                targetRef={composeBodyRef}
-                                                getValue={() => composeForm.body}
-                                                setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
-                                            />
-                                        }
-                                    />
-                                    <textarea
-                                        value={composeForm.body}
-                                        onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
-                                        placeholder="Enter your message..."
-                                        maxLength={effectiveBodyLimit}
-                                        rows={8}
-                                        ref={composeBodyRef}
-                                        style={{
-                                            width: '100%',
-                                            padding: '10px',
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            border: `1px solid ${composeForm.body.length > effectiveBodyLimit ? theme.colors.error : theme.colors.border}`,
-                                            borderRadius: '4px',
-                                            color: theme.colors.primaryText,
-                                            fontSize: '13px',
-                                            fontFamily: SYSTEM_FONT,
-                                            resize: 'vertical'
-                                        }}
-                                    />
-                                    <div style={{ 
-                                        fontSize: '12px', 
-                                        color: composeForm.body.length > effectiveBodyLimit ? theme.colors.error : 
-                                               (effectiveBodyLimit - composeForm.body.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
-                                        marginTop: '5px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px'
-                                    }}>
-                                        <span>{composeForm.body.length}/{effectiveBodyLimit} characters</span>
-                                        {hasPremiumBodyLimit && (
-                                            <span style={{
-                                                backgroundColor: 'rgba(255, 215, 0, 0.2)',
-                                                color: '#ffd700',
-                                                padding: '2px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '10px',
-                                                fontWeight: 'bold'
-                                            }}>
-                                                ⭐ PREMIUM
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Error display in compose modal */}
-                                {error && (
-                                    <div style={{ 
-                                        backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                                        border: '1px solid #e74c3c',
-                                        color: '#e74c3c',
-                                        padding: '10px',
-                                        borderRadius: '4px',
-                                        marginTop: '15px',
-                                        fontSize: '14px'
-                                    }}>
-                                        {error}
-                                    </div>
-                                )}
-
-                                <div style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'flex-end', 
-                                    gap: '10px',
-                                    marginTop: '10px'
-                                }}>
-                                    <button
-                                        onClick={() => {
-                                            setShowComposeModal(false);
-                                            setComposeForm({ recipients: [''], subject: '', body: '', replyTo: null });
-                                            setRecipientValidation('');
-                                            setError(null);
-                                        }}
-                                        disabled={submitting}
-                                        style={{
-                                            backgroundColor: '#6c757d',
-                                            color: theme.colors.primaryText,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '10px 20px',
-                                            cursor: submitting ? 'not-allowed' : 'pointer',
-                                            opacity: submitting ? 0.6 : 1
-                                        }}
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={sendMessage}
-                                        disabled={!isFormValid()}
-                                        style={{
-                                            backgroundColor: theme.colors.accent,
-                                            color: theme.colors.primaryText,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '10px 20px',
-                                            cursor: isFormValid() ? 'pointer' : 'not-allowed',
-                                            opacity: isFormValid() ? 1 : 0.6,
+                                    {/* Subject Section */}
+                                    <div>
+                                        <label style={{ 
+                                            color: theme.colors.primaryText, 
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px'
-                                        }}
-                                    >
-                                        {submitting ? (
-                                            <>
-                                                <span style={{ 
-                                                    display: 'inline-block',
-                                                    animation: 'spin 1s linear infinite',
-                                                    fontSize: '14px'
-                                                }}>⟳</span>
-                                                Sending...
-                                            </>
-                                        ) : (
-                                            <>
-                                                ✉️ Send Message
-                                            </>
-                                        )}
-                                    </button>
+                                            gap: '0.5rem',
+                                            marginBottom: '0.5rem', 
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            Subject
+                                            {hasPremiumSubjectLimit && (
+                                                <span style={{
+                                                    background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                                                    color: '#1a1a1a',
+                                                    padding: '0.15rem 0.5rem',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.65rem',
+                                                    fontWeight: '700',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.25rem'
+                                                }}>
+                                                    <FaStar size={8} /> PREMIUM
+                                                </span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={composeForm.subject}
+                                            onChange={(e) => setComposeForm(prev => ({ ...prev, subject: e.target.value }))}
+                                            placeholder="Enter subject..."
+                                            maxLength={effectiveSubjectLimit}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem 1rem',
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                border: `1px solid ${composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : theme.colors.border}`,
+                                                borderRadius: '10px',
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.9rem',
+                                                fontFamily: SYSTEM_FONT,
+                                                transition: 'border-color 0.2s ease'
+                                            }}
+                                        />
+                                        <div style={{ 
+                                            fontSize: '0.75rem', 
+                                            color: composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : 
+                                                   (effectiveSubjectLimit - composeForm.subject.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
+                                            marginTop: '0.5rem',
+                                            textAlign: 'right'
+                                        }}>
+                                            {composeForm.subject.length}/{effectiveSubjectLimit}
+                                        </div>
+                                    </div>
+
+                                    {/* Message Section */}
+                                    <div>
+                                        <label style={{ 
+                                            color: theme.colors.primaryText, 
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            marginBottom: '0.5rem', 
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            Message
+                                            {hasPremiumBodyLimit && (
+                                                <span style={{
+                                                    background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                                                    color: '#1a1a1a',
+                                                    padding: '0.15rem 0.5rem',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.65rem',
+                                                    fontWeight: '700',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.25rem'
+                                                }}>
+                                                    <FaStar size={8} /> PREMIUM
+                                                </span>
+                                            )}
+                                        </label>
+                                        <EmojiPicker
+                                            targetRef={composeBodyRef}
+                                            getValue={() => composeForm.body}
+                                            setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
+                                            ariaLabel="Insert emoji into message body"
+                                            rightSlot={
+                                                <MarkdownButtons
+                                                    targetRef={composeBodyRef}
+                                                    getValue={() => composeForm.body}
+                                                    setValue={(v) => setComposeForm(prev => ({ ...prev, body: v }))}
+                                                />
+                                            }
+                                        />
+                                        <textarea
+                                            value={composeForm.body}
+                                            onChange={(e) => setComposeForm(prev => ({ ...prev, body: e.target.value }))}
+                                            placeholder="Enter your message..."
+                                            maxLength={effectiveBodyLimit}
+                                            rows={6}
+                                            ref={composeBodyRef}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem 1rem',
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                border: `1px solid ${composeForm.body.length > effectiveBodyLimit ? theme.colors.error : theme.colors.border}`,
+                                                borderRadius: '10px',
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.9rem',
+                                                fontFamily: SYSTEM_FONT,
+                                                resize: 'vertical',
+                                                minHeight: '120px',
+                                                transition: 'border-color 0.2s ease'
+                                            }}
+                                        />
+                                        <div style={{ 
+                                            fontSize: '0.75rem', 
+                                            color: composeForm.body.length > effectiveBodyLimit ? theme.colors.error : 
+                                                   (effectiveBodyLimit - composeForm.body.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
+                                            marginTop: '0.5rem',
+                                            textAlign: 'right'
+                                        }}>
+                                            {composeForm.body.length}/{effectiveBodyLimit}
+                                        </div>
+                                    </div>
+
+                                    {/* Error Display */}
+                                    {error && (
+                                        <div style={{ 
+                                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                                            border: `1px solid ${theme.colors.error}30`,
+                                            borderRadius: '12px',
+                                            padding: '1rem',
+                                            color: theme.colors.error,
+                                            fontSize: '0.9rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem'
+                                        }}>
+                                            <FaTimes size={14} />
+                                            {error}
+                                        </div>
+                                    )}
                                 </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div style={{ 
+                                borderTop: `1px solid ${theme.colors.border}`,
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                gap: '0.75rem',
+                                background: theme.colors.secondaryBg
+                            }}>
+                                <button
+                                    onClick={() => {
+                                        setShowComposeModal(false);
+                                        setComposeForm({ recipients: [''], subject: '', body: '', replyTo: null });
+                                        setRecipientValidation('');
+                                        setError(null);
+                                    }}
+                                    disabled={submitting}
+                                    style={{
+                                        background: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '10px',
+                                        padding: '0.75rem 1.5rem',
+                                        cursor: submitting ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        opacity: submitting ? 0.5 : 1,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={sendMessage}
+                                    disabled={!isFormValid()}
+                                    style={{
+                                        background: isFormValid() 
+                                            ? `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`
+                                            : theme.colors.tertiaryBg,
+                                        color: isFormValid() ? 'white' : theme.colors.mutedText,
+                                        border: 'none',
+                                        borderRadius: '10px',
+                                        padding: '0.75rem 1.5rem',
+                                        cursor: isFormValid() ? 'pointer' : 'not-allowed',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        boxShadow: isFormValid() ? `0 4px 15px ${smsPrimary}40` : 'none',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    {submitting ? (
+                                        <>
+                                            <FaSync size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                                            Sending...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FaPaperPlane size={14} />
+                                            Send Message
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1476,213 +1567,309 @@ const SMS = () => {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.85)',
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',
-                            zIndex: 1000
+                            zIndex: 1000,
+                            padding: '1rem'
                         }}
                         onClick={(e) => {
-                            // Close modal when clicking on backdrop
                             if (e.target === e.currentTarget) {
                                 setShowMessageModal(false);
                                 setSelectedMessage(null);
                             }
                         }}
                     >
-                        <div 
-                            style={{
-                            backgroundColor: theme.colors.secondaryBg,
-                            borderRadius: '8px',
-                            padding: '24px',
-                            width: '90%',
+                        <div className="sms-card-animate" style={{
+                            background: `linear-gradient(180deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
+                            borderRadius: '20px',
+                            width: '100%',
                             maxWidth: '700px',
-                            maxHeight: '80vh',
-                            overflow: 'auto',
+                            maxHeight: '85vh',
+                            overflow: 'hidden',
                             border: `1px solid ${theme.colors.border}`,
                             fontFamily: SYSTEM_FONT,
-                            fontSize: '14px'
+                            boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px ${smsPrimary}20`,
+                            opacity: 0,
+                            animationDelay: '0.05s'
                         }}>
+                            {/* Modal Header */}
                             <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
+                                background: `linear-gradient(135deg, ${smsPrimary}20, ${smsSecondary}10)`,
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
                                 alignItems: 'center',
-                                marginBottom: '20px'
+                                gap: '1rem'
                             }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, marginRight: '15px' }}>
-                                    <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '16px', fontFamily: SYSTEM_FONT }}>
-                                        {truncateSubject(selectedMessage.subject)}
-                                    </h2>
-                                    <button
-                                        onClick={() => navigate(`/msg/${selectedMessage.id}`)}
-                                        style={{
-                                            background: 'none',
-                                            border: '1px solid #3498db',
-                                            color: '#3498db',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                            padding: '4px 8px',
-                                            borderRadius: '4px',
-                                            alignSelf: 'flex-start',
-                                            textDecoration: 'none'
-                                        }}
-                                        onMouseOver={(e) => e.target.style.backgroundColor = `${theme.colors.accent}20`}
-                                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                                    >
-                                        🔗 View Thread
-                                    </button>
+                                <div style={{
+                                    width: '44px',
+                                    height: '44px',
+                                    borderRadius: '12px',
+                                    background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 4px 15px ${smsPrimary}40`,
+                                    flexShrink: 0
+                                }}>
+                                    <FaEnvelope size={18} color="white" />
                                 </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <h2 style={{ 
+                                        color: theme.colors.primaryText, 
+                                        margin: 0, 
+                                        fontSize: '1.1rem', 
+                                        fontWeight: '600',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {selectedMessage.subject}
+                                    </h2>
+                                    <p style={{ color: theme.colors.mutedText, margin: '0.25rem 0 0 0', fontSize: '0.8rem' }}>
+                                        {getRelativeTime(selectedMessage.created_at)}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => navigate(`/msg/${selectedMessage.id}`)}
+                                    style={{
+                                        background: `${smsPrimary}15`,
+                                        border: `1px solid ${smsPrimary}30`,
+                                        color: smsPrimary,
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem',
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    <FaExternalLinkAlt size={10} />
+                                    Thread
+                                </button>
                                 <button
                                     onClick={() => {
                                         setShowMessageModal(false);
                                         setSelectedMessage(null);
                                     }}
                                     style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        color: theme.colors.mutedText,
-                                        cursor: 'pointer',
-                                        fontSize: '24px'
-                                    }}
-                                >
-                                    ×
-                                </button>
-                            </div>
-
-                            {/* Collapsible Message Details */}
-                            <div style={{ marginBottom: '20px' }}>
-                                <button
-                                    onClick={() => setShowMessageDetails(!showMessageDetails)}
-                                    style={{
-                                        background: 'none',
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: theme.colors.tertiaryBg,
                                         border: `1px solid ${theme.colors.border}`,
                                         color: theme.colors.mutedText,
                                         cursor: 'pointer',
-                                        fontSize: '14px',
-                                        padding: '8px 12px',
-                                        borderRadius: '4px',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px',
-                                        marginBottom: '10px',
-                                        width: '100%',
-                                        justifyContent: 'space-between'
+                                        justifyContent: 'center',
+                                        flexShrink: 0
                                     }}
-                                    onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(58, 58, 58, 0.3)'}
-                                    onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                                 >
-                                    <span>Message Details</span>
-                                    <span style={{ fontSize: '12px' }}>
-                                        {showMessageDetails ? '▼' : '▶'}
+                                    <FaTimes size={14} />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div style={{ padding: '1.5rem', maxHeight: 'calc(85vh - 180px)', overflowY: 'auto' }}>
+                                {/* Collapsible Message Details */}
+                                <button
+                                    onClick={() => setShowMessageDetails(!showMessageDetails)}
+                                    style={{
+                                        width: '100%',
+                                        background: theme.colors.tertiaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        color: theme.colors.primaryText,
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        padding: '0.75rem 1rem',
+                                        borderRadius: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        marginBottom: '1rem',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUser size={12} style={{ color: smsPrimary }} />
+                                        Message Details
                                     </span>
+                                    {showMessageDetails ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
                                 </button>
 
                                 {showMessageDetails && (
                                     <div style={{ 
-                                        backgroundColor: theme.colors.tertiaryBg,
-                                        padding: '15px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #3a3a3a'
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        padding: '1rem',
+                                        marginBottom: '1rem'
                                     }}>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <strong style={{ color: theme.colors.mutedText }}>Subject:</strong>
-                                            <div style={{ color: theme.colors.primaryText, fontSize: '16px', marginTop: '5px' }}>
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.75rem', 
+                                                textTransform: 'uppercase', 
+                                                letterSpacing: '0.5px',
+                                                marginBottom: '0.5rem',
+                                                fontWeight: '600'
+                                            }}>
+                                                Subject
+                                            </div>
+                                            <div style={{ color: theme.colors.primaryText, fontSize: '1rem', fontWeight: '500' }}>
                                                 {selectedMessage.subject}
                                             </div>
                                         </div>
 
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <strong style={{ color: theme.colors.mutedText }}>From:</strong>
-                                            <div style={{ marginTop: '8px' }}>
-                                                <PrincipalDisplay 
-                                                    principal={selectedMessage.sender}
-                                                    displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
-                                                    showCopyButton={true}
-                                                    short={true}
-                                                    style={{ color: '#3498db', fontSize: '14px' }}
-                                                />
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.75rem', 
+                                                textTransform: 'uppercase', 
+                                                letterSpacing: '0.5px',
+                                                marginBottom: '0.5rem',
+                                                fontWeight: '600'
+                                            }}>
+                                                From
                                             </div>
+                                            <PrincipalDisplay 
+                                                principal={selectedMessage.sender}
+                                                displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
+                                                showCopyButton={true}
+                                                short={true}
+                                                style={{ color: smsPrimary, fontSize: '0.9rem' }}
+                                            />
                                         </div>
 
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <strong style={{ color: theme.colors.mutedText }}>To:</strong>
-                                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                {selectedMessage.recipients.map((recipient, index) => (
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.75rem', 
+                                                textTransform: 'uppercase', 
+                                                letterSpacing: '0.5px',
+                                                marginBottom: '0.5rem',
+                                                fontWeight: '600'
+                                            }}>
+                                                To ({selectedMessage.recipients.length})
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                {selectedMessage.recipients.map((recipient) => (
                                                     <PrincipalDisplay 
                                                         key={recipient.toString()}
                                                         principal={recipient}
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                         short={true}
                                                         showCopyButton={true}
-                                                        style={{ color: '#3498db', fontSize: '14px' }}
+                                                        style={{ color: smsPrimary, fontSize: '0.9rem' }}
                                                     />
                                                 ))}
                                             </div>
                                         </div>
 
-                                        <div style={{ marginBottom: '0' }}>
-                                            <strong style={{ color: theme.colors.mutedText }}>Date:</strong>
-                                            <div style={{ color: theme.colors.primaryText, marginTop: '5px' }}>
+                                        <div>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.75rem', 
+                                                textTransform: 'uppercase', 
+                                                letterSpacing: '0.5px',
+                                                marginBottom: '0.5rem',
+                                                fontWeight: '600'
+                                            }}>
+                                                Date
+                                            </div>
+                                            <div style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
                                                 {formatDate(selectedMessage.created_at)}
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
-                                <div style={{ marginBottom: '20px' }}>
-                                    <strong style={{ color: theme.colors.mutedText }}>Message:</strong>
-                                    <MarkdownBody
-                                        text={selectedMessage.body}
-                                        style={{
-                                            color: theme.colors.primaryText,
-                                            marginTop: '10px',
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            padding: '15px',
-                                            borderRadius: '6px'
-                                        }}
-                                    />
+                                {/* Message Body */}
+                                <div>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.75rem', 
+                                        textTransform: 'uppercase', 
+                                        letterSpacing: '0.5px',
+                                        marginBottom: '0.75rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        Message
+                                    </div>
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        padding: '1.25rem'
+                                    }}>
+                                        <MarkdownBody
+                                            text={selectedMessage.body}
+                                            style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.95rem',
+                                                lineHeight: '1.6'
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
+                            {/* Modal Footer */}
                             <div style={{ 
-                                display: 'flex', 
-                                flexWrap: 'wrap',
-                                justifyContent: 'flex-end', 
-                                gap: '10px',
                                 borderTop: `1px solid ${theme.colors.border}`,
-                                paddingTop: '15px'
+                                padding: '1.25rem 1.5rem',
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                justifyContent: 'flex-end',
+                                gap: '0.5rem',
+                                background: theme.colors.secondaryBg
                             }}>
                                 <button
                                     onClick={() => replyToMessage(selectedMessage)}
                                     style={{
-                                        backgroundColor: theme.colors.accent,
-                                        color: theme.colors.primaryText,
+                                        background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '10px 20px',
+                                        borderRadius: '10px',
+                                        padding: '0.65rem 1.25rem',
                                         cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px'
+                                        gap: '0.5rem',
+                                        boxShadow: `0 4px 15px ${smsPrimary}40`
                                     }}
                                 >
-                                    ↩️ Reply
+                                    <FaReply size={12} />
+                                    Reply
                                 </button>
                                 <button
                                     onClick={() => replyToAllMessage(selectedMessage)}
                                     style={{
-                                        backgroundColor: '#9b59b6',
-                                        color: theme.colors.primaryText,
+                                        background: 'linear-gradient(135deg, #9b59b6, #8e44ad)',
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '10px 20px',
+                                        borderRadius: '10px',
+                                        padding: '0.65rem 1.25rem',
                                         cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px'
+                                        gap: '0.5rem',
+                                        boxShadow: '0 4px 15px rgba(155, 89, 182, 0.4)'
                                     }}
                                 >
-                                    ↩️ Reply All
+                                    <FaReplyAll size={12} />
+                                    Reply All
                                 </button>
                                 {selectedMessage.can_remove_self && (
                                     <button
@@ -1692,18 +1879,21 @@ const SMS = () => {
                                             }
                                         }}
                                         style={{
-                                            backgroundColor: '#e74c3c',
-                                            color: theme.colors.primaryText,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '10px 20px',
+                                            background: `${theme.colors.error}15`,
+                                            color: theme.colors.error,
+                                            border: `1px solid ${theme.colors.error}30`,
+                                            borderRadius: '10px',
+                                            padding: '0.65rem 1.25rem',
                                             cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px'
+                                            gap: '0.5rem'
                                         }}
                                     >
-                                        🗑️ Remove
+                                        <FaTrash size={12} />
+                                        Remove
                                     </button>
                                 )}
                                 <button
@@ -1712,18 +1902,21 @@ const SMS = () => {
                                         setSelectedMessage(null);
                                     }}
                                     style={{
-                                        backgroundColor: '#6c757d',
+                                        background: theme.colors.tertiaryBg,
                                         color: theme.colors.primaryText,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '10px 20px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '10px',
+                                        padding: '0.65rem 1.25rem',
                                         cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '8px'
+                                        gap: '0.5rem'
                                     }}
                                 >
-                                    ✕ Close
+                                    <FaTimes size={12} />
+                                    Close
                                 </button>
                             </div>
                         </div>
