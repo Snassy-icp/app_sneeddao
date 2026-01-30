@@ -9,7 +9,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import MarkdownBody from '../components/MarkdownBody';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
-import { FaEnvelope, FaArrowLeft, FaExpandAlt, FaCompressAlt, FaReply, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaClock, FaLock, FaBookOpen, FaStar } from 'react-icons/fa';
+import { FaEnvelope, FaArrowLeft, FaExpandAlt, FaCompressAlt, FaReply, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaClock, FaLock, FaBookOpen } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -643,80 +643,66 @@ const Message = () => {
                     className="msg-card"
                     style={{
                         background: isFocused 
-                            ? `linear-gradient(135deg, ${msgPrimary}15, ${msgPrimary}08)` 
-                            : theme.colors.tertiaryBg,
+                            ? `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, ${msgPrimary}12 100%)` 
+                            : `linear-gradient(145deg, ${theme.colors.tertiaryBg} 0%, ${theme.colors.secondaryBg} 100%)`,
                         border: isFocused 
                             ? `2px solid ${msgPrimary}` 
                             : `1px solid ${theme.colors.border}`,
-                        borderRadius: '14px',
-                        padding: '1rem',
-                        marginBottom: '0.75rem',
-                        position: 'relative'
+                        borderRadius: '16px',
+                        padding: '1.25rem',
+                        marginBottom: '1rem',
+                        position: 'relative',
+                        boxShadow: isFocused 
+                            ? `0 8px 32px ${msgPrimary}25, 0 2px 8px rgba(0,0,0,0.15)` 
+                            : '0 2px 8px rgba(0,0,0,0.1)',
+                        borderLeft: isFocused ? `4px solid ${msgPrimary}` : 'none'
                     }}
                 >
-                    {/* Focus Badge */}
-                    {isFocused && (
-                        <div style={{
-                            position: 'absolute',
-                            top: '-10px',
-                            left: '2.5rem',
-                            background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
-                            color: 'white',
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '20px',
-                            fontSize: '0.7rem',
-                            fontWeight: '700',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            boxShadow: `0 2px 10px ${msgPrimary}40`
-                        }}>
-                            <FaStar size={10} />
-                            FOCUS
-                        </div>
-                    )}
-
                     {/* Header Row */}
                     <div style={{ 
                         display: 'flex', 
                         alignItems: 'flex-start',
-                        gap: '0.75rem',
-                        marginBottom: isCollapsed ? '0' : '0.75rem'
+                        gap: '1rem',
+                        marginBottom: isCollapsed ? '0' : '1rem'
                     }}>
                         {/* Collapse Toggle */}
                         <button
                             onClick={() => toggleMessageCollapse(messageId)}
                             style={{
-                                width: '28px',
-                                height: '28px',
-                                minWidth: '28px',
-                                borderRadius: '8px',
-                                background: theme.colors.secondaryBg,
-                                border: `1px solid ${theme.colors.border}`,
-                                color: theme.colors.mutedText,
+                                width: '36px',
+                                height: '36px',
+                                minWidth: '36px',
+                                borderRadius: '10px',
+                                background: isFocused 
+                                    ? `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`
+                                    : theme.colors.secondaryBg,
+                                border: isFocused ? 'none' : `1px solid ${theme.colors.border}`,
+                                color: isFocused ? 'white' : theme.colors.mutedText,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'all 0.2s ease',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                boxShadow: isFocused ? `0 4px 12px ${msgPrimary}40` : 'none'
                             }}
                             title={isCollapsed ? 'Expand message' : 'Collapse message'}
                         >
-                            {isCollapsed ? <FaChevronRight size={10} /> : <FaChevronDown size={10} />}
+                            {isCollapsed ? <FaChevronRight size={12} /> : <FaChevronDown size={12} />}
                         </button>
 
                         {/* Message Info */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '0.4rem' }}>
                                 <h4 style={{ 
-                                    color: theme.colors.primaryText, 
+                                    color: isFocused ? msgPrimary : theme.colors.primaryText, 
                                     margin: '0', 
-                                    fontSize: '1rem',
+                                    fontSize: isFocused ? '1.1rem' : '1rem',
                                     fontWeight: '600',
                                     cursor: isCollapsed ? 'pointer' : 'default',
                                     overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                    textOverflow: 'ellipsis',
+                                    lineHeight: '1.3'
                                 }}
                                 onClick={isCollapsed ? () => toggleMessageCollapse(messageId) : undefined}
                                 >
@@ -724,13 +710,15 @@ const Message = () => {
                                 </h4>
                                 <span 
                                     style={{ 
-                                        color: msgPrimary, 
-                                        fontSize: '0.8rem', 
+                                        color: msgAccent, 
+                                        fontSize: '0.75rem', 
                                         fontWeight: '600',
                                         cursor: 'pointer',
-                                        background: `${msgPrimary}15`,
-                                        padding: '0.15rem 0.5rem',
-                                        borderRadius: '6px'
+                                        background: `${msgPrimary}12`,
+                                        padding: '0.2rem 0.6rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${msgPrimary}20`,
+                                        transition: 'all 0.2s ease'
                                     }}
                                     onClick={() => navigate(`/msg/${message.id}`)}
                                     title="Click to focus this message"
@@ -740,32 +728,32 @@ const Message = () => {
                             </div>
                             
                             {/* Time and Header Toggle */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                                 <span style={{ 
                                     color: theme.colors.mutedText, 
                                     fontSize: '0.8rem',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.35rem'
+                                    gap: '0.4rem'
                                 }}
                                 title={getFullDate(message.created_at)}
                                 >
-                                    <FaClock size={10} />
+                                    <FaClock size={11} style={{ opacity: 0.7 }} />
                                     {getRelativeTime(message.created_at)}
                                 </span>
                                 <button
                                     onClick={() => toggleHeaderCollapse(messageId)}
                                     style={{
-                                        background: 'none',
-                                        border: 'none',
+                                        background: `${theme.colors.tertiaryBg}`,
+                                        border: `1px solid ${theme.colors.border}`,
                                         color: theme.colors.mutedText,
                                         fontSize: '0.75rem',
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '0.25rem',
-                                        padding: '0.15rem 0.35rem',
-                                        borderRadius: '4px',
+                                        gap: '0.3rem',
+                                        padding: '0.25rem 0.6rem',
+                                        borderRadius: '6px',
                                         transition: 'all 0.2s ease'
                                     }}
                                     title={isHeaderCollapsed ? 'Show details' : 'Hide details'}
@@ -778,37 +766,59 @@ const Message = () => {
                             {/* Expandable From/To Details */}
                             {!isCollapsed && !isHeaderCollapsed && (
                                 <div style={{ 
-                                    marginTop: '0.75rem',
-                                    padding: '0.75rem',
-                                    background: theme.colors.secondaryBg,
-                                    borderRadius: '10px',
-                                    border: `1px solid ${theme.colors.border}`
+                                    marginTop: '1rem',
+                                    padding: '1rem',
+                                    background: `linear-gradient(135deg, ${theme.colors.primaryBg}80, ${theme.colors.secondaryBg})`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    backdropFilter: 'blur(4px)'
                                 }}>
-                                    <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <FaUser size={10} style={{ color: theme.colors.mutedText }} />
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', fontWeight: '600' }}>From:</span>
+                                    <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                        <div style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '6px',
+                                            background: `${msgPrimary}15`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <FaUser size={10} style={{ color: msgPrimary }} />
+                                        </div>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>From</span>
                                         <PrincipalDisplay 
                                             principal={message.sender} 
                                             displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                             showCopyButton={false}
                                             short={true}
-                                            style={{ color: msgPrimary, fontSize: '0.85rem' }}
+                                            style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '500' }}
                                         />
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                        <FaUsers size={10} style={{ color: theme.colors.mutedText, marginTop: '3px' }} />
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', fontWeight: '600' }}>To:</span>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                                        <div style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '6px',
+                                            background: `${theme.colors.success}15`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            flexShrink: 0
+                                        }}>
+                                            <FaUsers size={10} style={{ color: theme.colors.success }} />
+                                        </div>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '2px' }}>To</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
                                             {message.recipients.map((recipient, idx) => (
-                                                <span key={idx}>
+                                                <span key={idx} style={{ display: 'inline-flex', alignItems: 'center' }}>
                                                     <PrincipalDisplay 
                                                         principal={recipient} 
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                         showCopyButton={false}
                                                         short={true}
-                                                        style={{ color: msgPrimary, fontSize: '0.85rem' }}
+                                                        style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '500' }}
                                                     />
-                                                    {idx < message.recipients.length - 1 && <span style={{ color: theme.colors.mutedText }}>, </span>}
+                                                    {idx < message.recipients.length - 1 && <span style={{ color: theme.colors.mutedText, marginLeft: '0.25rem' }}>,</span>}
                                                 </span>
                                             ))}
                                         </div>
@@ -823,19 +833,20 @@ const Message = () => {
                         <>
                             {/* Message Body */}
                             <div style={{ 
-                                marginLeft: '2.5rem', 
-                                marginBottom: '0.75rem',
-                                padding: '1rem',
-                                background: theme.colors.secondaryBg,
-                                borderRadius: '10px',
-                                border: `1px solid ${theme.colors.border}`
+                                marginLeft: '3rem', 
+                                marginBottom: '1rem',
+                                padding: '1.25rem',
+                                background: theme.colors.primaryBg,
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.border}`,
+                                borderLeft: `3px solid ${msgAccent}40`
                             }}>
                                 <MarkdownBody
                                     text={displayBody}
                                     style={{
                                         color: theme.colors.secondaryText,
-                                        fontSize: '0.9rem',
-                                        lineHeight: '1.6',
+                                        fontSize: '0.95rem',
+                                        lineHeight: '1.7',
                                         wordBreak: 'break-word'
                                     }}
                                 />
@@ -843,14 +854,16 @@ const Message = () => {
                                     <button
                                         onClick={() => toggleMessageExpansion(messageId)}
                                         style={{
-                                            background: 'none',
-                                            border: 'none',
+                                            background: `${msgPrimary}10`,
+                                            border: `1px solid ${msgPrimary}30`,
                                             color: msgPrimary,
                                             cursor: 'pointer',
                                             fontSize: '0.8rem',
                                             fontWeight: '600',
-                                            marginTop: '0.5rem',
-                                            padding: 0
+                                            marginTop: '0.75rem',
+                                            padding: '0.4rem 0.8rem',
+                                            borderRadius: '6px',
+                                            transition: 'all 0.2s ease'
                                         }}
                                     >
                                         {isExpanded ? 'Show Less' : 'Show More'}
@@ -860,9 +873,9 @@ const Message = () => {
 
                             {/* Action Buttons */}
                             <div style={{ 
-                                marginLeft: '2.5rem',
+                                marginLeft: '3rem',
                                 display: 'flex', 
-                                gap: '0.5rem', 
+                                gap: '0.75rem', 
                                 flexWrap: 'wrap'
                             }}>
                                 <button
@@ -871,18 +884,19 @@ const Message = () => {
                                         background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
                                         color: 'white',
                                         border: 'none',
-                                        borderRadius: '8px',
-                                        padding: '0.5rem 1rem',
+                                        borderRadius: '10px',
+                                        padding: '0.6rem 1.25rem',
                                         cursor: 'pointer',
-                                        fontSize: '0.8rem',
+                                        fontSize: '0.85rem',
                                         fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '0.4rem',
-                                        boxShadow: `0 2px 10px ${msgPrimary}30`
+                                        gap: '0.5rem',
+                                        boxShadow: `0 4px 15px ${msgPrimary}35`,
+                                        transition: 'all 0.2s ease'
                                     }}
                                 >
-                                    <FaReply size={10} />
+                                    <FaReply size={12} />
                                     Reply
                                 </button>
                             </div>
