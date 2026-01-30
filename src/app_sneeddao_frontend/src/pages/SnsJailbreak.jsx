@@ -15,6 +15,56 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.jailbreak-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.jailbreak-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.jailbreak-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.jailbreak-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - orange/red theme for jailbreak
+const jailbreakPrimary = '#f97316';
+const jailbreakSecondary = '#fb923c';
+const jailbreakAccent = '#fdba74';
+
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -795,37 +845,42 @@ const NEW_CONTROLLER = "${targetPrincipal}";
     // Styles
     const styles = {
         container: {
-            maxWidth: '900px',
+            maxWidth: '800px',
             margin: '0 auto',
-            padding: '2rem',
+            padding: '1.5rem 1rem',
             color: theme.colors.primaryText,
         },
         hero: {
             textAlign: 'center',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
         },
         title: {
-            fontSize: '2.2rem',
+            fontSize: '1.75rem',
             marginBottom: '0.5rem',
             color: theme.colors.primaryText,
-            fontWeight: 'bold',
+            fontWeight: '700',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '12px',
         },
         subtitle: {
-            fontSize: '1.1rem',
-            color: theme.colors.mutedText,
+            fontSize: '1rem',
+            color: theme.colors.secondaryText,
             marginBottom: '0.5rem',
-            lineHeight: '1.5',
+            lineHeight: '1.6',
         },
         stepProgress: {
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             justifyContent: 'center',
             gap: '0',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
+            padding: '1.25rem',
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
+            border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
         },
         stepCircle: (stepNum, isActive, isCompleted) => ({
             width: '40px',
@@ -835,111 +890,126 @@ const NEW_CONTROLLER = "${targetPrincipal}";
             alignItems: 'center',
             justifyContent: 'center',
             fontWeight: '600',
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             background: isCompleted 
-                ? theme.colors.success 
+                ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
                 : isActive 
-                    ? theme.colors.accent 
+                    ? `linear-gradient(135deg, ${jailbreakPrimary}, ${jailbreakSecondary})` 
                     : theme.colors.tertiaryBg,
-            color: isCompleted || isActive ? theme.colors.primaryBg : theme.colors.mutedText,
-            border: `2px solid ${isCompleted ? theme.colors.success : isActive ? theme.colors.accent : theme.colors.border}`,
+            color: isCompleted || isActive ? '#fff' : theme.colors.mutedText,
+            border: 'none',
             cursor: isCompleted ? 'pointer' : 'default',
             transition: 'all 0.3s ease',
+            boxShadow: isActive ? `0 4px 16px ${jailbreakPrimary}50` : isCompleted ? `0 4px 12px ${theme.colors.success}40` : 'none',
         }),
         stepLine: (isCompleted) => ({
-            width: '60px',
+            width: '32px',
             height: '3px',
-            background: isCompleted ? theme.colors.success : theme.colors.border,
+            background: isCompleted 
+                ? `linear-gradient(90deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
+                : theme.colors.border,
             transition: 'all 0.3s ease',
+            marginTop: '18px',
+            borderRadius: '2px',
         }),
         stepLabel: (isActive) => ({
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
+            fontWeight: isActive ? '600' : '500',
             color: isActive ? theme.colors.primaryText : theme.colors.mutedText,
             marginTop: '6px',
             textAlign: 'center',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
         }),
         card: {
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '16px',
-            padding: '2rem',
-            marginBottom: '1.5rem',
+            padding: '1.5rem',
+            marginBottom: '1.25rem',
+            boxShadow: theme.colors.cardShadow,
         },
         snsItem: (isSelected) => ({
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
-            background: isSelected ? theme.colors.accentGradient : theme.colors.cardGradient,
-            border: `2px solid ${isSelected ? theme.colors.accent : theme.colors.border}`,
-            borderRadius: '12px',
+            gap: '14px',
+            padding: '14px',
+            background: isSelected ? `linear-gradient(135deg, ${jailbreakPrimary}15, ${jailbreakPrimary}05)` : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? jailbreakPrimary : theme.colors.border}`,
+            borderRadius: '14px',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
             marginBottom: '8px',
+            boxShadow: isSelected ? `0 4px 16px ${jailbreakPrimary}20` : 'none',
         }),
         snsLogo: {
-            width: '40px',
-            height: '40px',
-            minWidth: '40px',
-            minHeight: '40px',
-            maxWidth: '40px',
-            maxHeight: '40px',
+            width: '44px',
+            height: '44px',
+            minWidth: '44px',
+            minHeight: '44px',
+            maxWidth: '44px',
+            maxHeight: '44px',
             borderRadius: '50%',
             objectFit: 'cover',
             background: theme.colors.secondaryBg,
             flexShrink: 0,
             padding: 0,
             margin: 0,
+            border: `2px solid ${theme.colors.border}`,
         },
         snsName: {
-            fontSize: '1.1rem',
+            fontSize: '1.05rem',
             fontWeight: '600',
             color: theme.colors.primaryText,
         },
         neuronCard: (isSelected) => ({
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
-            background: isSelected ? theme.colors.accentGradient : theme.colors.cardGradient,
-            border: `2px solid ${isSelected ? theme.colors.accent : theme.colors.border}`,
-            borderRadius: '12px',
+            gap: '14px',
+            padding: '14px',
+            background: isSelected ? `linear-gradient(135deg, ${jailbreakPrimary}15, ${jailbreakPrimary}05)` : theme.colors.cardGradient,
+            border: `2px solid ${isSelected ? jailbreakPrimary : theme.colors.border}`,
+            borderRadius: '14px',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
             marginBottom: '8px',
+            boxShadow: isSelected ? `0 4px 16px ${jailbreakPrimary}20` : 'none',
         }),
         input: {
             width: '100%',
-            padding: '12px',
-            background: theme.colors.secondaryBg,
+            padding: '12px 14px',
+            background: theme.colors.primaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '8px',
+            borderRadius: '10px',
             color: theme.colors.primaryText,
             fontSize: '0.95rem',
+            outline: 'none',
         },
         label: {
             display: 'block',
             color: theme.colors.primaryText,
             marginBottom: '8px',
-            fontWeight: '500',
+            fontWeight: '600',
+            fontSize: '0.9rem',
         },
         codeBlock: {
-            background: theme.colors.secondaryBg,
+            background: theme.colors.primaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '8px',
+            borderRadius: '10px',
             padding: '1rem',
             fontFamily: 'monospace',
-            fontSize: '0.85rem',
+            fontSize: '0.8rem',
             color: theme.colors.primaryText,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
-            maxHeight: '300px',
+            maxHeight: '250px',
             overflow: 'auto',
         },
         buttonRow: {
             display: 'flex',
             gap: '12px',
-            marginTop: '2rem',
+            marginTop: '1.5rem',
+            flexWrap: 'wrap',
         },
         backButton: {
             display: 'flex',
@@ -947,12 +1017,13 @@ const NEW_CONTROLLER = "${targetPrincipal}";
             justifyContent: 'center',
             gap: '8px',
             flex: 1,
-            padding: '14px 24px',
-            background: theme.colors.secondaryBg,
+            minWidth: '120px',
+            padding: '12px 20px',
+            background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '10px',
+            borderRadius: '12px',
             color: theme.colors.primaryText,
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             fontWeight: '500',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
@@ -963,25 +1034,26 @@ const NEW_CONTROLLER = "${targetPrincipal}";
             justifyContent: 'center',
             gap: '8px',
             flex: 2,
-            padding: '14px 24px',
+            minWidth: '180px',
+            padding: '12px 24px',
             background: isEnabled 
-                ? `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)` 
+                ? `linear-gradient(135deg, ${jailbreakPrimary}, ${jailbreakSecondary})` 
                 : theme.colors.tertiaryBg,
             border: 'none',
-            borderRadius: '10px',
-            color: isEnabled ? theme.colors.primaryBg : theme.colors.mutedText,
-            fontSize: '1rem',
+            borderRadius: '12px',
+            color: isEnabled ? '#fff' : theme.colors.mutedText,
+            fontSize: '0.95rem',
             fontWeight: '600',
             cursor: isEnabled ? 'pointer' : 'not-allowed',
             transition: 'all 0.2s ease',
-            boxShadow: isEnabled ? theme.colors.accentShadow : 'none',
+            boxShadow: isEnabled ? `0 4px 20px ${jailbreakPrimary}40` : 'none',
         }),
         warningBox: {
             background: `${theme.colors.warning}15`,
             border: `1px solid ${theme.colors.warning}30`,
-            borderRadius: '12px',
+            borderRadius: '14px',
             padding: '1rem',
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
             display: 'flex',
             gap: '12px',
             alignItems: 'flex-start',
@@ -1101,11 +1173,27 @@ const NEW_CONTROLLER = "${targetPrincipal}";
     if (!isAuthenticated) {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header />
                 <main style={styles.container}>
-                    <div style={styles.loginPrompt}>
-                        <FaUnlock size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
-                        <p style={{ fontSize: '1.2rem', color: theme.colors.secondaryText }}>
+                    <div className="jailbreak-fade-in" style={styles.loginPrompt}>
+                        <div className="jailbreak-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${jailbreakPrimary}, ${jailbreakSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${jailbreakPrimary}50`,
+                        }}>
+                            <FaUnlock size={28} style={{ color: '#fff' }} />
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                            SNS Jailbreak
+                        </h2>
+                        <p style={{ fontSize: '1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem', lineHeight: '1.6' }}>
                             Please log in to access the SNS Jailbreak Wizard
                         </p>
                     </div>
@@ -1117,8 +1205,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
     const stepLabels = ['SNS', 'Neuron', 'Principal', 'Generate', 'Done'];
     
     const renderStepProgress = () => (
-        <div style={styles.stepProgress}>
-            <style>{spinnerKeyframes}</style>
+        <div className="jailbreak-fade-in" style={styles.stepProgress}>
             {[1, 2, 3, 4, 5].map((stepNum, index) => (
                 <React.Fragment key={stepNum}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -1126,7 +1213,7 @@ const NEW_CONTROLLER = "${targetPrincipal}";
                             style={styles.stepCircle(stepNum, stepNum === currentStep, stepNum < currentStep)}
                             onClick={() => stepNum < currentStep && goToStep(stepNum)}
                         >
-                            {stepNum < currentStep ? <FaCheck size={16} /> : stepNum}
+                            {stepNum < currentStep ? <FaCheck size={14} /> : stepNum}
                         </div>
                         <div style={styles.stepLabel(stepNum === currentStep)}>
                             {stepLabels[stepNum - 1]}
@@ -2543,7 +2630,71 @@ const NEW_CONTROLLER = "${targetPrincipal}";
     
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${jailbreakPrimary}12 50%, ${jailbreakSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '1.5rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${jailbreakPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-40%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${jailbreakSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: `${jailbreakPrimary}20`,
+                        color: jailbreakPrimary,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '0.5rem'
+                    }}>
+                        <FaUnlock size={12} /> Premium Tool
+                    </div>
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0.5rem 0',
+                        letterSpacing: '-0.5px'
+                    }}>
+                        SNS Jailbreak Wizard
+                    </h1>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.95rem',
+                        margin: 0
+                    }}>
+                        Regain full control of your SNS neurons
+                    </p>
+                </div>
+            </div>
+            
             <main style={styles.container}>
                 {renderStepProgress()}
                 {currentStep === 1 && renderStep1()}
