@@ -2305,7 +2305,8 @@ function SneedexOffers() {
                                             principal={offer.creator}
                                             short={true}
                                             showCopyButton={false}
-                                            enableContextMenu={false}
+                                            enableContextMenu={true}
+                                            isAuthenticated={isAuthenticated}
                                             noLink={true}
                                             style={{ fontSize: '0.75rem' }}
                                         />
@@ -2360,14 +2361,35 @@ function SneedexOffers() {
                                                 {bidInfo.bids?.length || 0} bid{(bidInfo.bids?.length || 0) !== 1 ? 's' : ''}
                                             </div>
                                             {bidInfo.highest_bid && (
-                                                <div style={styles.highestBid}>
-                                                    {formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
-                                                    {highestBidUsd > 0 && (
-                                                        <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '4px' }}>
-                                                            ({formatUsd(highestBidUsd)})
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                <>
+                                                    <div style={styles.highestBid}>
+                                                        {formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)} {tokenInfo.symbol}
+                                                        {highestBidUsd > 0 && (
+                                                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '4px' }}>
+                                                                ({formatUsd(highestBidUsd)})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        fontSize: '0.7rem',
+                                                        color: theme.colors.mutedText,
+                                                        marginTop: '2px'
+                                                    }}>
+                                                        <span>by</span>
+                                                        <PrincipalDisplay 
+                                                            principal={bidInfo.highest_bid.bidder}
+                                                            short={true}
+                                                            showCopyButton={false}
+                                                            enableContextMenu={true}
+                                                            isAuthenticated={isAuthenticated}
+                                                            noLink={true}
+                                                            style={{ fontSize: '0.7rem' }}
+                                                        />
+                                                    </div>
+                                                </>
                                             )}
                                         </div>
                                     </div>
