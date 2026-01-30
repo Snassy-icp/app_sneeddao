@@ -184,11 +184,23 @@ shared (deployer) persistent actor class SneedLock() = this {
     Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry > now; });
   };
 
-  // Get only expired token locks
+  // Get only expired token locks (includes both active expired locks and archived locks)
   public query func get_expired_token_locks() : async [T.FullyQualifiedLock] {
     let now = Nat64.fromIntWrap(Time.now());
+    
+    // Get expired locks from active locks (not yet archived)
     let all_locks = get_fully_qualified_locks();
-    Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry <= now; });
+    let expired_active = Array.filter<T.FullyQualifiedLock>(all_locks, func (lock) { lock.2.expiry <= now; });
+    
+    // Get all archived locks (these are by definition expired)
+    var archived_list = List.nil<T.FullyQualifiedLock>();
+    for ((_lock_id, archived) in archived_token_locks.entries()) {
+      archived_list := List.push((archived.owner, archived.token_type, archived.lock), archived_list);
+    };
+    let archived_array = List.toArray(archived_list);
+    
+    // Combine both arrays
+    Array.append(expired_active, archived_array);
   };
 
   public query func get_ledger_token_locks(ledger_canister_id : T.TokenType) : async [T.FullyQualifiedLock] {
@@ -207,11 +219,23 @@ shared (deployer) persistent actor class SneedLock() = this {
     Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry > now; });
   };
 
-  // Get only expired position locks
+  // Get only expired position locks (includes both active expired locks and archived locks)
   public query func get_expired_position_locks() : async [T.FullyQualifiedPositionLock] {
     let now = Nat64.fromIntWrap(Time.now());
+    
+    // Get expired locks from active locks (not yet archived)
     let all_position_locks = get_fully_qualified_position_locks();
-    Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry <= now; });
+    let expired_active = Array.filter<T.FullyQualifiedPositionLock>(all_position_locks, func (lock) { lock.2.expiry <= now; });
+    
+    // Get all archived position locks (these are by definition expired)
+    var archived_list = List.nil<T.FullyQualifiedPositionLock>();
+    for ((_lock_id, archived) in archived_position_locks.entries()) {
+      archived_list := List.push((archived.owner, archived.swap_canister_id, archived.lock), archived_list);
+    };
+    let archived_array = List.toArray(archived_list);
+    
+    // Combine both arrays
+    Array.append(expired_active, archived_array);
   };
 
   public query func get_swap_position_locks(swap_canister_id : T.SwapCanisterId) : async [T.FullyQualifiedPositionLock] {

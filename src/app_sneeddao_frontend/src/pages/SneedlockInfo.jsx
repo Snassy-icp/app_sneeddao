@@ -747,73 +747,95 @@ function SneedlockInfo() {
                 aggregatedData[tokenKey].tokenLocks.push(lockDetails);
             }
 
-            // Create a Set of tokens that appear in position locks
-            const tokensInPositions = new Set();
+            // Pre-process position locks to create initial entries for all tokens
             for (const lock of expiredPositionLocks) {
-                tokensInPositions.add(lock[2].token0.toText());
-                tokensInPositions.add(lock[2].token1.toText());
-            }
-
-            // Fetch metadata for tokens in positions
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
-
-            for (const tokenKey of tokensInPositions) {
-                if (!aggregatedData[tokenKey]) {
-                    aggregatedData[tokenKey] = {
-                        tokenId: Principal.fromText(tokenKey),
+                const token0 = lock[2].token0;
+                const token1 = lock[2].token1;
+                
+                // Initialize token0 data if not exists
+                const token0Key = token0.toText();
+                if (!aggregatedData[token0Key]) {
+                    aggregatedData[token0Key] = {
+                        tokenId: token0,
                         tokenLockAmount: 0n,
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: true,
+                        positionsLoading: true,  // Set to true because this token has positions
                         tokenLocks: [],
                         positionLocks: []
                     };
                 } else {
-                    aggregatedData[tokenKey].positionsLoading = true;
+                    aggregatedData[token0Key].positionsLoading = true;
                 }
                 
-                // Fetch token metadata if not already present
-                if (!tokenMetadata[tokenKey]) {
-                    const whitelistedToken = whitelistedTokenMap.get(tokenKey);
-                    try {
-                        const ledgerActor = createLedgerActor(tokenKey, { agentOptions: { identity } });
-                        const metadata = await ledgerActor.icrc1_metadata();
-                        const logo = getTokenLogo(metadata);
-                        const symbol = await ledgerActor.icrc1_symbol();
-                        const decimals = await ledgerActor.icrc1_decimals();
-                        
-                        setTokenMetadata(prev => ({
-                            ...prev,
-                            [tokenKey]: {
-                                ledger_id: tokenKey,
-                                symbol,
-                                decimals,
-                                logo,
-                                ...(whitelistedToken || {})
-                            }
-                        }));
-                    } catch (error) {
-                        console.error(`Error fetching metadata for token ${tokenKey}:`, error);
-                        setTokenMetadata(prev => ({
-                            ...prev,
-                            [tokenKey]: whitelistedToken || {
-                                ledger_id: tokenKey,
-                                symbol: tokenKey.slice(0, 8) + '...',
-                                decimals: 8,
-                                logo: ''
-                            }
-                        }));
-                    }
+                // Initialize token1 data if not exists
+                const token1Key = token1.toText();
+                if (!aggregatedData[token1Key]) {
+                    aggregatedData[token1Key] = {
+                        tokenId: token1,
+                        tokenLockAmount: 0n,
+                        positionLockAmount: 0n,
+                        tokenLockCount: 0,
+                        positionLockCount: 0,
+                        positionsLoading: true,  // Set to true because this token has positions
+                        tokenLocks: [],
+                        positionLocks: []
+                    };
+                } else {
+                    aggregatedData[token1Key].positionsLoading = true;
                 }
             }
 
-            // Update state with expired data
+            // Update state with initial expired data IMMEDIATELY to show locks
             setExpiredTokenData(aggregatedData);
+            setExpiredLoaded(true);
+            setExpiredLoading(false);
 
-            // Process expired position locks
+            // Now load metadata and position details in the background
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+
+            // Process metadata for ALL tokens (both from token locks and position locks)
+            for (const tokenKey of Object.keys(aggregatedData)) {
+                // Skip if metadata already loaded from active tab
+                if (tokenMetadata[tokenKey]) continue;
+                
+                const whitelistedToken = whitelistedTokenMap.get(tokenKey);
+                
+                try {
+                    const ledgerActor = createLedgerActor(tokenKey, { agentOptions: { identity } });
+                    const metadata = await ledgerActor.icrc1_metadata();
+                    const logo = getTokenLogo(metadata);
+                    const symbol = await ledgerActor.icrc1_symbol();
+                    const decimals = await ledgerActor.icrc1_decimals();
+                    
+                    setTokenMetadata(prev => ({
+                        ...prev,
+                        [tokenKey]: {
+                            ledger_id: tokenKey,
+                            symbol,
+                            decimals,
+                            logo,
+                            ...(whitelistedToken || {})
+                        }
+                    }));
+                } catch (error) {
+                    console.error(`Error fetching metadata for token ${tokenKey}:`, error);
+                    setTokenMetadata(prev => ({
+                        ...prev,
+                        [tokenKey]: whitelistedToken || {
+                            ledger_id: tokenKey,
+                            symbol: tokenKey.slice(0, 8) + '...',
+                            decimals: 8,
+                            logo: ''
+                        }
+                    }));
+                }
+            }
+
+            // Process expired position locks with detailed information
             for (const lock of expiredPositionLocks) {
                 const swapCanisterId = lock[1];
                 const positionId = lock[2].position_id;
@@ -890,11 +912,8 @@ function SneedlockInfo() {
                     }
                 }
             }
-
-            setExpiredLoaded(true);
         } catch (error) {
             console.error('Error fetching expired data:', error);
-        } finally {
             setExpiredLoading(false);
         }
     };
