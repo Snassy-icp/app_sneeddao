@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaBrain, FaTrash, FaPlus, FaExclamationTriangle, FaCode } from 'react-icons/fa';
+import { FaArrowLeft, FaCheck, FaSpinner, FaUnlock, FaCopy, FaExternalLinkAlt, FaBrain, FaTrash, FaPlus, FaExclamationTriangle, FaCode, FaList } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
@@ -11,6 +11,46 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { HttpAgent } from '@dfinity/agent';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { NeuronDisplay } from '../components/NeuronDisplay';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.jailbreak-list-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.jailbreak-list-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.jailbreak-list-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - orange theme
+const jailbreakPrimary = '#f97316';
+const jailbreakSecondary = '#fb923c';
 
 const RAW_GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Snassy-icp/app_sneeddao/main/resources/sns_jailbreak/base_script.js';
 
@@ -245,30 +285,10 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
     
     const styles = {
         container: {
-            maxWidth: '1000px',
+            maxWidth: '900px',
             margin: '0 auto',
-            padding: '2rem',
+            padding: '1.5rem 1rem',
             color: theme.colors.primaryText,
-        },
-        hero: {
-            textAlign: 'center',
-            marginBottom: '2rem',
-        },
-        title: {
-            fontSize: '2.2rem',
-            marginBottom: '0.5rem',
-            color: theme.colors.primaryText,
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-        },
-        subtitle: {
-            fontSize: '1.1rem',
-            color: theme.colors.mutedText,
-            marginBottom: '1rem',
-            lineHeight: '1.5',
         },
         card: {
             background: theme.colors.cardGradient,
@@ -276,23 +296,27 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
             borderRadius: '16px',
             padding: '1.5rem',
             marginBottom: '1rem',
+            boxShadow: theme.colors.cardShadow,
         },
         emptyState: {
             textAlign: 'center',
-            padding: '3rem',
+            padding: '2.5rem 1.5rem',
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '16px',
+            borderRadius: '20px',
+            boxShadow: theme.colors.cardShadow,
         },
         configItem: {
             display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
+            alignItems: 'flex-start',
+            gap: '14px',
+            padding: '14px',
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '12px',
-            marginBottom: '12px',
+            borderRadius: '14px',
+            marginBottom: '10px',
+            flexWrap: 'wrap',
+            boxShadow: theme.colors.cardShadow,
         },
         snsLogo: {
             width: '48px',
@@ -307,40 +331,43 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
             flexShrink: 0,
             padding: 0,
             margin: 0,
+            border: `2px solid ${theme.colors.border}`,
         },
         configInfo: {
-            flex: 1,
-            minWidth: 0,
+            flex: '1 1 200px',
+            minWidth: '150px',
         },
         configActions: {
             display: 'flex',
             gap: '8px',
             flexShrink: 0,
+            flexWrap: 'wrap',
         },
         actionButton: (color) => ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '6px',
-            padding: '8px 16px',
-            background: color || theme.colors.accent,
+            padding: '10px 16px',
+            background: `linear-gradient(135deg, ${color || jailbreakPrimary}, ${color || jailbreakPrimary}dd)`,
             border: 'none',
-            borderRadius: '8px',
-            color: theme.colors.primaryBg,
+            borderRadius: '10px',
+            color: '#fff',
             cursor: 'pointer',
-            fontSize: '0.9rem',
-            fontWeight: '500',
+            fontSize: '0.85rem',
+            fontWeight: '600',
             transition: 'all 0.2s ease',
+            boxShadow: `0 4px 12px ${color || jailbreakPrimary}30`,
         }),
         iconButton: (color) => ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: '36px',
-            height: '36px',
-            background: `${color || theme.colors.border}20`,
-            border: `1px solid ${color || theme.colors.border}`,
-            borderRadius: '8px',
+            width: '38px',
+            height: '38px',
+            background: `${color || theme.colors.border}15`,
+            border: `1px solid ${color || theme.colors.border}50`,
+            borderRadius: '10px',
             color: color || theme.colors.mutedText,
             cursor: 'pointer',
             transition: 'all 0.2s ease',
@@ -351,40 +378,42 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.8)',
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            padding: '2rem',
+            padding: '1rem',
         },
         modalContent: {
             background: theme.colors.primaryBg,
-            borderRadius: '16px',
-            maxWidth: '800px',
+            borderRadius: '20px',
+            maxWidth: '700px',
             width: '100%',
             maxHeight: '90vh',
             overflow: 'auto',
-            padding: '2rem',
+            padding: '1.5rem',
             border: `1px solid ${theme.colors.border}`,
+            boxShadow: `0 20px 60px rgba(0,0,0,0.4)`,
         },
         modalHeader: {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
         },
         codeBlock: {
-            background: theme.colors.secondaryBg,
+            background: theme.colors.primaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '8px',
+            borderRadius: '10px',
             padding: '1rem',
             fontFamily: 'monospace',
-            fontSize: '0.85rem',
+            fontSize: '0.8rem',
             color: theme.colors.primaryText,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-all',
-            maxHeight: '400px',
+            maxHeight: '350px',
             overflow: 'auto',
         },
         loadingContainer: {
@@ -395,41 +424,57 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
             padding: '3rem',
             gap: '1rem',
         },
-        spinner: {
-            animation: 'spin 1s linear infinite',
-        },
         backLink: {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '8px',
-            color: theme.colors.accent,
+            color: jailbreakPrimary,
             textDecoration: 'none',
             marginBottom: '1rem',
+            fontWeight: '500',
+            fontSize: '0.9rem',
         },
         deleteConfirm: {
             background: `${theme.colors.error}10`,
             border: `1px solid ${theme.colors.error}30`,
-            borderRadius: '8px',
+            borderRadius: '10px',
             padding: '12px',
-            marginTop: '8px',
+            marginTop: '10px',
+        },
+        loginPrompt: {
+            textAlign: 'center',
+            padding: '2.5rem 1.5rem',
+            background: theme.colors.cardGradient,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '20px',
+            boxShadow: theme.colors.cardShadow,
         },
     };
-    
-    const spinnerKeyframes = `
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-    `;
     
     if (!isAuthenticated) {
         return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header />
                 <main style={styles.container}>
-                    <div style={styles.emptyState}>
-                        <FaUnlock size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
-                        <p style={{ fontSize: '1.2rem', color: theme.colors.secondaryText }}>
+                    <div className="jailbreak-list-fade-in" style={styles.loginPrompt}>
+                        <div className="jailbreak-list-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${jailbreakPrimary}, ${jailbreakSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${jailbreakPrimary}50`,
+                        }}>
+                            <FaList size={28} style={{ color: '#fff' }} />
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                            My Jailbreak Scripts
+                        </h2>
+                        <p style={{ fontSize: '1rem', color: theme.colors.secondaryText }}>
                             Please log in to view your saved jailbreak scripts
                         </p>
                     </div>
@@ -440,36 +485,91 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
     
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
-            <style>{spinnerKeyframes}</style>
-            <main style={styles.container}>
-                <Link to="/tools/sns_jailbreak" style={styles.backLink}>
-                    <FaArrowLeft size={14} />
-                    Back to SNS Jailbreak Wizard
-                </Link>
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${jailbreakPrimary}12 50%, ${jailbreakSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '1.5rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${jailbreakPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
                 
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
-                        <FaUnlock style={{ color: theme.colors.accent }} />
+                <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: `${jailbreakPrimary}20`,
+                        color: jailbreakPrimary,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '0.5rem'
+                    }}>
+                        <FaList size={12} /> Saved Configurations
+                    </div>
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0.5rem 0',
+                        letterSpacing: '-0.5px'
+                    }}>
                         My Jailbreak Scripts
                     </h1>
-                    <p style={styles.subtitle}>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.95rem',
+                        margin: 0
+                    }}>
                         View and regenerate scripts for previously configured neuron jailbreaks
                     </p>
                 </div>
+            </div>
+            
+            <main style={styles.container}>
+                <Link to="/tools/sns_jailbreak" style={styles.backLink}>
+                    <FaArrowLeft size={12} />
+                    Back to SNS Jailbreak Wizard
+                </Link>
                 
                 {loading ? (
-                    <div style={styles.loadingContainer}>
-                        <FaSpinner size={32} style={{ ...styles.spinner, color: theme.colors.accent }} />
+                    <div className="jailbreak-list-fade-in" style={styles.loadingContainer}>
+                        <FaSpinner size={32} className="jailbreak-list-spin" style={{ color: jailbreakPrimary }} />
                         <p style={{ color: theme.colors.mutedText }}>Loading saved scripts...</p>
                     </div>
                 ) : configs.length === 0 ? (
-                    <div style={styles.emptyState}>
-                        <FaBrain size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
-                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem' }}>
+                    <div className="jailbreak-list-fade-in" style={styles.emptyState}>
+                        <div style={{
+                            width: '64px',
+                            height: '64px',
+                            borderRadius: '16px',
+                            background: `${jailbreakPrimary}15`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.25rem',
+                        }}>
+                            <FaBrain size={28} style={{ color: jailbreakPrimary }} />
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: '700' }}>
                             No saved scripts yet
                         </h2>
-                        <p style={{ color: theme.colors.mutedText, marginBottom: '1.5rem' }}>
+                        <p style={{ color: theme.colors.mutedText, marginBottom: '1.5rem', fontSize: '0.95rem' }}>
                             Jailbreak a neuron to save the configuration for easy script regeneration later.
                         </p>
                         <Link
@@ -479,11 +579,12 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                                 alignItems: 'center',
                                 gap: '8px',
                                 padding: '12px 24px',
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
-                                borderRadius: '10px',
+                                background: `linear-gradient(135deg, ${jailbreakPrimary}, ${jailbreakSecondary})`,
+                                color: '#fff',
+                                borderRadius: '12px',
                                 textDecoration: 'none',
                                 fontWeight: '600',
+                                boxShadow: `0 4px 16px ${jailbreakPrimary}40`,
                             }}
                         >
                             <FaPlus />
@@ -619,20 +720,34 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                 {/* Script Modal */}
                 {selectedConfig && (
                     <div style={styles.modal} onClick={() => setSelectedConfig(null)}>
-                        <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                        <div className="jailbreak-list-fade-in" style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                             <div style={styles.modalHeader}>
-                                <h2 style={{ color: theme.colors.primaryText, margin: 0 }}>
-                                    Generated Script
-                                </h2>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${jailbreakPrimary}20, ${jailbreakPrimary}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}>
+                                        <FaCode size={18} style={{ color: jailbreakPrimary }} />
+                                    </div>
+                                    <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1.25rem', fontWeight: '700' }}>
+                                        Generated Script
+                                    </h2>
+                                </div>
                                 <button
                                     onClick={() => setSelectedConfig(null)}
                                     style={{
-                                        background: 'none',
-                                        border: 'none',
+                                        background: theme.colors.tertiaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
                                         color: theme.colors.mutedText,
                                         cursor: 'pointer',
-                                        fontSize: '1.5rem',
-                                        padding: '4px',
+                                        fontSize: '1.25rem',
+                                        padding: '4px 10px',
+                                        borderRadius: '8px',
                                     }}
                                 >
                                     ×
@@ -705,8 +820,8 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                                 </div>
                             ) : (
                                 <>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
                                             Copy and paste this script into the NNS app browser console
                                         </span>
                                         <button
@@ -715,17 +830,23 @@ const NEW_CONTROLLER = "${config.target_principal.toString()}";
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '6px',
-                                                background: copied ? theme.colors.success : theme.colors.accent,
-                                                color: theme.colors.primaryBg,
+                                                background: copied 
+                                                    ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
+                                                    : `linear-gradient(135deg, ${jailbreakPrimary}, ${jailbreakSecondary})`,
+                                                color: '#fff',
                                                 border: 'none',
-                                                padding: '8px 16px',
-                                                borderRadius: '6px',
+                                                padding: '10px 18px',
+                                                borderRadius: '10px',
                                                 cursor: 'pointer',
-                                                fontWeight: '500',
+                                                fontWeight: '600',
+                                                fontSize: '0.9rem',
+                                                boxShadow: copied 
+                                                    ? `0 4px 12px ${theme.colors.success}40` 
+                                                    : `0 4px 12px ${jailbreakPrimary}40`,
                                             }}
                                         >
-                                            {copied ? <FaCheck /> : <FaCopy />}
-                                            {copied ? 'Copied!' : 'Copy'}
+                                            {copied ? <FaCheck size={14} /> : <FaCopy size={14} />}
+                                            {copied ? 'Copied!' : 'Copy Script'}
                                         </button>
                                     </div>
                                     <pre style={styles.codeBlock}>

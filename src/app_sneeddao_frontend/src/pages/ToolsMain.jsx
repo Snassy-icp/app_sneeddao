@@ -1,8 +1,48 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket } from 'react-icons/fa';
+import { FaUnlock, FaArrowRight, FaList, FaMagic, FaRocket, FaCheckCircle, FaExchangeAlt, FaBrain, FaCog } from 'react-icons/fa';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+.tools-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.tools-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.tools-fade-in-delay {
+    animation: fadeInUp 0.5s ease-out 0.2s forwards;
+    opacity: 0;
+}
+`;
+
+// Page accent colors - purple/violet theme for tools
+const toolsPrimary = '#8b5cf6';
+const toolsSecondary = '#a78bfa';
+
+// Jailbreak accent - orange
+const jailbreakPrimary = '#f97316';
+const jailbreakSecondary = '#fb923c';
 
 function ToolsMain() {
     const { theme } = useTheme();
@@ -11,179 +51,201 @@ function ToolsMain() {
         container: {
             maxWidth: '900px',
             margin: '0 auto',
-            padding: '2rem',
+            padding: '1.5rem 1rem',
             color: theme.colors.primaryText,
-        },
-        hero: {
-            textAlign: 'center',
-            marginBottom: '3rem',
-            padding: '2rem 0',
-        },
-        title: {
-            fontSize: '2.8rem',
-            marginBottom: '1rem',
-            color: theme.colors.primaryText,
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '16px',
-        },
-        subtitle: {
-            fontSize: '1.2rem',
-            color: theme.colors.mutedText,
-            maxWidth: '600px',
-            margin: '0 auto',
-            lineHeight: '1.6',
         },
         toolCard: {
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '20px',
-            padding: '2.5rem',
-            marginBottom: '1.5rem',
+            padding: '1.5rem',
+            marginBottom: '1rem',
             transition: 'all 0.3s ease',
             position: 'relative',
             overflow: 'hidden',
-        },
-        toolCardHover: {
-            transform: 'translateY(-4px)',
-            boxShadow: theme.colors.accentShadow,
-            borderColor: theme.colors.accent,
+            boxShadow: theme.colors.cardShadow,
         },
         toolIcon: {
-            width: '70px',
-            height: '70px',
-            borderRadius: '16px',
-            background: `linear-gradient(135deg, ${theme.colors.accent}20, ${theme.colors.accent}40)`,
+            width: '56px',
+            height: '56px',
+            borderRadius: '14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: '1.5rem',
+            marginBottom: '1rem',
+            flexShrink: 0,
         },
         toolTitle: {
-            fontSize: '1.8rem',
+            fontSize: '1.35rem',
             fontWeight: '700',
             color: theme.colors.primaryText,
-            marginBottom: '0.75rem',
+            marginBottom: '0.5rem',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
+            flexWrap: 'wrap',
         },
         toolDescription: {
-            fontSize: '1.05rem',
+            fontSize: '0.95rem',
             lineHeight: '1.7',
             color: theme.colors.secondaryText,
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
         },
         featureList: {
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '12px',
-            marginBottom: '1.5rem',
+            gap: '8px',
+            marginBottom: '1.25rem',
         },
-        feature: {
+        feature: (color) => ({
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            background: `${theme.colors.accent}15`,
-            padding: '8px 14px',
+            gap: '6px',
+            background: `${color}15`,
+            padding: '6px 12px',
             borderRadius: '20px',
-            fontSize: '0.9rem',
-            color: theme.colors.accent,
+            fontSize: '0.8rem',
+            color: color,
             fontWeight: '500',
-        },
+        }),
         buttonRow: {
             display: 'flex',
-            gap: '12px',
+            gap: '10px',
             flexWrap: 'wrap',
         },
-        primaryButton: {
+        primaryButton: (color) => ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '8px',
-            padding: '14px 28px',
-            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+            padding: '12px 20px',
+            background: `linear-gradient(135deg, ${color}, ${color}dd)`,
             border: 'none',
             borderRadius: '12px',
-            color: theme.colors.primaryBg,
-            fontSize: '1rem',
+            color: '#fff',
+            fontSize: '0.95rem',
             fontWeight: '600',
             cursor: 'pointer',
             textDecoration: 'none',
             transition: 'all 0.2s ease',
-            boxShadow: theme.colors.accentShadow,
-        },
+            boxShadow: `0 4px 16px ${color}40`,
+        }),
         secondaryButton: {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '8px',
-            padding: '14px 28px',
-            background: theme.colors.secondaryBg,
+            padding: '12px 20px',
+            background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '12px',
             color: theme.colors.primaryText,
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             fontWeight: '500',
             cursor: 'pointer',
             textDecoration: 'none',
             transition: 'all 0.2s ease',
         },
-        decorativeGlow: {
+        decorativeGlow: (color) => ({
             position: 'absolute',
             top: '-50%',
-            right: '-20%',
-            width: '300px',
-            height: '300px',
-            background: `radial-gradient(circle, ${theme.colors.accent}10 0%, transparent 70%)`,
+            right: '-15%',
+            width: '250px',
+            height: '250px',
+            background: `radial-gradient(circle, ${color}15 0%, transparent 70%)`,
             pointerEvents: 'none',
-        },
+        }),
+        badge: (bg) => ({
+            fontSize: '0.65rem', 
+            background: bg,
+            color: '#fff',
+            padding: '4px 10px',
+            borderRadius: '12px',
+            fontWeight: '600',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+        }),
     };
-
-    const [hoverState, setHoverState] = React.useState(false);
 
     return (
         <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
-            <main style={styles.container}>
-                {/* Hero Section */}
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
-                        <FaMagic style={{ color: theme.colors.accent }} />
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${toolsPrimary}12 50%, ${toolsSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2.5rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-30%',
+                    right: '-5%',
+                    width: '350px',
+                    height: '350px',
+                    background: `radial-gradient(circle, ${toolsPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-50%',
+                    left: '5%',
+                    width: '250px',
+                    height: '250px',
+                    background: `radial-gradient(circle, ${toolsSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div className="tools-fade-in" style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div className="tools-float" style={{
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: '18px',
+                        background: `linear-gradient(135deg, ${toolsPrimary}, ${toolsSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1.25rem',
+                        boxShadow: `0 12px 40px ${toolsPrimary}50`,
+                    }}>
+                        <FaCog size={32} style={{ color: '#fff' }} />
+                    </div>
+                    
+                    <h1 style={{
+                        fontSize: '2rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0 0 0.75rem',
+                        letterSpacing: '-0.5px'
+                    }}>
                         Sneed Tools
                     </h1>
-                    <p style={styles.subtitle}>
+                    <p style={{
+                        fontSize: '1.05rem',
+                        color: theme.colors.secondaryText,
+                        maxWidth: '550px',
+                        margin: '0 auto',
+                        lineHeight: '1.6',
+                    }}>
                         Powerful utilities to unlock the full potential of your DeFi assets on the Internet Computer
                     </p>
                 </div>
-                
+            </div>
+            
+            <main style={styles.container}>
                 {/* SNS Jailbreak Tool Card */}
-                <div 
-                    style={{
-                        ...styles.toolCard,
-                        ...(hoverState ? styles.toolCardHover : {}),
-                    }}
-                    onMouseEnter={() => setHoverState(true)}
-                    onMouseLeave={() => setHoverState(false)}
-                >
-                    <div style={styles.decorativeGlow} />
+                <div className="tools-fade-in-delay" style={styles.toolCard}>
+                    <div style={styles.decorativeGlow(jailbreakPrimary)} />
                     
-                    <div style={styles.toolIcon}>
-                        <FaUnlock size={32} style={{ color: theme.colors.accent }} />
+                    <div style={{ ...styles.toolIcon, background: `linear-gradient(135deg, ${jailbreakPrimary}25, ${jailbreakPrimary}10)` }}>
+                        <FaUnlock size={26} style={{ color: jailbreakPrimary }} />
                     </div>
                     
                     <h2 style={styles.toolTitle}>
                         SNS Jailbreak
-                        <span style={{ 
-                            fontSize: '0.7rem', 
-                            background: theme.colors.success,
-                            color: theme.colors.primaryBg,
-                            padding: '4px 10px',
-                            borderRadius: '12px',
-                            fontWeight: '600',
-                        }}>
-                            NEW
-                        </span>
+                        <span style={styles.badge(theme.colors.success)}>Premium</span>
                     </h2>
                     
                     <p style={styles.toolDescription}>
@@ -193,34 +255,62 @@ function ToolsMain() {
                     </p>
                     
                     <div style={styles.featureList}>
-                        <div style={styles.feature}>
-                            <FaRocket size={14} />
+                        <div style={styles.feature(jailbreakPrimary)}>
+                            <FaCheckCircle size={12} />
                             Full neuron control
                         </div>
-                        <div style={styles.feature}>
-                            <FaRocket size={14} />
+                        <div style={styles.feature(jailbreakPrimary)}>
+                            <FaExchangeAlt size={12} />
                             Transfer neurons
                         </div>
-                        <div style={styles.feature}>
-                            <FaRocket size={14} />
+                        <div style={styles.feature(jailbreakPrimary)}>
+                            <FaRocket size={12} />
                             Trade on Sneedex
                         </div>
-                        <div style={styles.feature}>
-                            <FaRocket size={14} />
+                        <div style={styles.feature(jailbreakPrimary)}>
+                            <FaBrain size={12} />
                             Manage from Sneed Hub
                         </div>
                     </div>
                     
                     <div style={styles.buttonRow}>
-                        <Link to="/tools/sns_jailbreak" style={styles.primaryButton}>
+                        <Link to="/tools/sns_jailbreak" style={styles.primaryButton(jailbreakPrimary)}>
                             Launch Wizard
-                            <FaArrowRight />
+                            <FaArrowRight size={14} />
                         </Link>
                         <Link to="/tools/sns_jailbreak_list" style={styles.secondaryButton}>
-                            <FaList />
+                            <FaList size={14} />
                             My Saved Scripts
                         </Link>
                     </div>
+                </div>
+                
+                {/* More tools coming soon placeholder */}
+                <div className="tools-fade-in-delay" style={{
+                    ...styles.toolCard,
+                    background: `linear-gradient(135deg, ${theme.colors.cardGradient || theme.colors.cardBackground} 0%, ${toolsPrimary}05 100%)`,
+                    border: `1px dashed ${theme.colors.border}`,
+                    textAlign: 'center',
+                    padding: '2rem',
+                }}>
+                    <div style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '12px',
+                        background: `${toolsPrimary}15`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1rem',
+                    }}>
+                        <FaMagic size={20} style={{ color: toolsPrimary }} />
+                    </div>
+                    <h3 style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                        More Tools Coming Soon
+                    </h3>
+                    <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', margin: 0 }}>
+                        We're building more powerful utilities for the IC ecosystem
+                    </p>
                 </div>
             </main>
         </div>
