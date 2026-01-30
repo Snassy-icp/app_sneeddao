@@ -534,6 +534,12 @@ export function useCollectiblesNotifications() {
 
     // Open/close modal
     const openModal = useCallback(() => {
+        // Ensure we have the latest items from cache before opening
+        // Use spread to create a new array reference so React detects the change
+        if (cachedResult.items && cachedResult.items.length > 0) {
+            setCollectiblesItems([...cachedResult.items]);
+            setCollectiblesCount(cachedResult.count);
+        }
         setIsModalOpen(true);
     }, []);
     

@@ -17,13 +17,13 @@ const ConsolidateModal = ({
     const [selectedItems, setSelectedItems] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Update selectedItems when items prop changes
+    // Initialize/update selectedItems when modal opens or items change
     useEffect(() => {
-        if (items && items.length > 0) {
+        if (isOpen && items && items.length > 0) {
             setSelectedItems(items.map(item => ({ ...item, selected: true, status: 'pending' })));
             setIsProcessing(false);
         }
-    }, [items]);
+    }, [isOpen, items]);
 
     // Reset when modal closes
     useEffect(() => {
