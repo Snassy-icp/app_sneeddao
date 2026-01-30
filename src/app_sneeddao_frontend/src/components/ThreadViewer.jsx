@@ -477,95 +477,109 @@ function ThreadViewer({
         });
     }, [allNeurons, selectedNeuronIds]);
 
-    // Calculate optimistic score after a vote action
-    // Returns the predicted new scores based on the current state and intended action
-    const calculateOptimisticScore = useCallback((post, voteType, isRetraction) => {
+    // Helper to compare neuron IDs
+    const neuronIdsMatch = useCallback((id1, id2) => {
+        if (!id1 || !id2) return false;
+        return Array.from(id1).join(',') === Array.from(id2).join(',');
+    }, []);
+
+    // Calculate optimistic state after a vote action
+    // Returns both predicted scores AND predicted neuron vote states
+    const calculateOptimisticState = useCallback((post, voteType, isRetraction) => {
         const postIdStr = post.id.toString();
-        const postVotes = threadVotes.get(postIdStr) || { upvoted_neurons: [], downvoted_neurons: [] };
+        const currentVotes = threadVotes.get(postIdStr) || { upvoted_neurons: [], downvoted_neurons: [] };
         const currentUpvoteScore = Number(post.upvote_score || 0);
         const currentDownvoteScore = Number(post.downvote_score || 0);
         
-        // For selected neurons, calculate the total voting power being added or removed
         const selectedNeurons = getSelectedNeurons();
-        let vpToAdd = 0;
-        let vpToRemove = 0;
+        
+        // Start with copies of current neuron vote lists
+        let newUpvotedNeurons = [...(currentVotes.upvoted_neurons || [])];
+        let newDownvotedNeurons = [...(currentVotes.downvoted_neurons || [])];
+        
+        // Track score changes
+        let upvoteScoreChange = 0;
+        let downvoteScoreChange = 0;
         
         selectedNeurons.forEach(neuron => {
             const neuronVP = calculateVotingPower(neuron);
             const neuronIdBytes = neuron.id[0].id;
             
-            // Check if this neuron has already voted
-            const isUpvoted = postVotes.upvoted_neurons?.some(v => {
-                const voteNeuronBytes = v.neuron_id?.id;
-                if (!voteNeuronBytes || !neuronIdBytes) return false;
-                return Array.from(voteNeuronBytes).join(',') === Array.from(neuronIdBytes).join(',');
-            });
-            const isDownvoted = postVotes.downvoted_neurons?.some(v => {
-                const voteNeuronBytes = v.neuron_id?.id;
-                if (!voteNeuronBytes || !neuronIdBytes) return false;
-                return Array.from(voteNeuronBytes).join(',') === Array.from(neuronIdBytes).join(',');
-            });
+            // Find if this neuron currently has upvoted or downvoted
+            const upvoteIndex = newUpvotedNeurons.findIndex(v => 
+                neuronIdsMatch(v.neuron_id?.id, neuronIdBytes)
+            );
+            const downvoteIndex = newDownvotedNeurons.findIndex(v => 
+                neuronIdsMatch(v.neuron_id?.id, neuronIdBytes)
+            );
+            
+            const isCurrentlyUpvoted = upvoteIndex !== -1;
+            const isCurrentlyDownvoted = downvoteIndex !== -1;
             
             if (isRetraction) {
-                // Retracting: remove the neuron's vote
-                if (isUpvoted) {
-                    vpToRemove += neuronVP;
-                } else if (isDownvoted) {
-                    vpToRemove += neuronVP;
+                // Retraction: Remove the neuron's vote regardless of type
+                if (isCurrentlyUpvoted) {
+                    newUpvotedNeurons.splice(upvoteIndex, 1);
+                    upvoteScoreChange -= neuronVP;
+                } else if (isCurrentlyDownvoted) {
+                    newDownvotedNeurons.splice(downvoteIndex, 1);
+                    downvoteScoreChange -= neuronVP;
                 }
-            } else {
-                // New vote: add the neuron's voting power
-                // If neuron already voted this way, no change; if voted opposite, it will change
-                if (voteType === 'up') {
-                    if (!isUpvoted) {
-                        vpToAdd += neuronVP;
-                        // If was downvoted, that VP will be removed from downvotes
-                        if (isDownvoted) {
-                            vpToRemove += neuronVP;
-                        }
-                    }
-                } else { // down
-                    if (!isDownvoted) {
-                        vpToAdd += neuronVP;
-                        // If was upvoted, that VP will be removed from upvotes
-                        if (isUpvoted) {
-                            vpToRemove += neuronVP;
-                        }
-                    }
+                // If not voted, retraction does nothing for this neuron
+            } else if (voteType === 'up') {
+                if (isCurrentlyUpvoted) {
+                    // Already upvoted - no change
+                } else if (isCurrentlyDownvoted) {
+                    // Was downvoted - switch to upvote
+                    newDownvotedNeurons.splice(downvoteIndex, 1);
+                    downvoteScoreChange -= neuronVP;
+                    newUpvotedNeurons.push({
+                        neuron_id: { id: neuronIdBytes },
+                        voting_power: neuronVP
+                    });
+                    upvoteScoreChange += neuronVP;
+                } else {
+                    // Not voted - add upvote
+                    newUpvotedNeurons.push({
+                        neuron_id: { id: neuronIdBytes },
+                        voting_power: neuronVP
+                    });
+                    upvoteScoreChange += neuronVP;
+                }
+            } else { // voteType === 'down'
+                if (isCurrentlyDownvoted) {
+                    // Already downvoted - no change
+                } else if (isCurrentlyUpvoted) {
+                    // Was upvoted - switch to downvote
+                    newUpvotedNeurons.splice(upvoteIndex, 1);
+                    upvoteScoreChange -= neuronVP;
+                    newDownvotedNeurons.push({
+                        neuron_id: { id: neuronIdBytes },
+                        voting_power: neuronVP
+                    });
+                    downvoteScoreChange += neuronVP;
+                } else {
+                    // Not voted - add downvote
+                    newDownvotedNeurons.push({
+                        neuron_id: { id: neuronIdBytes },
+                        voting_power: neuronVP
+                    });
+                    downvoteScoreChange += neuronVP;
                 }
             }
         });
         
-        // Calculate new scores
-        let newUpvoteScore = currentUpvoteScore;
-        let newDownvoteScore = currentDownvoteScore;
-        
-        if (isRetraction) {
-            // When retracting, we remove from whichever type the neurons voted
-            const hasUpvotes = postVotes.upvoted_neurons?.length > 0;
-            const hasDownvotes = postVotes.downvoted_neurons?.length > 0;
-            
-            if (hasUpvotes) {
-                newUpvoteScore = Math.max(0, currentUpvoteScore - vpToRemove);
-            }
-            if (hasDownvotes) {
-                newDownvoteScore = Math.max(0, currentDownvoteScore - vpToRemove);
-            }
-        } else {
-            if (voteType === 'up') {
-                newUpvoteScore = currentUpvoteScore + vpToAdd;
-                newDownvoteScore = Math.max(0, currentDownvoteScore - vpToRemove);
-            } else {
-                newDownvoteScore = currentDownvoteScore + vpToAdd;
-                newUpvoteScore = Math.max(0, currentUpvoteScore - vpToRemove);
-            }
-        }
-        
         return {
-            upvote_score: newUpvoteScore,
-            downvote_score: newDownvoteScore
+            scores: {
+                upvote_score: Math.max(0, currentUpvoteScore + upvoteScoreChange),
+                downvote_score: Math.max(0, currentDownvoteScore + downvoteScoreChange)
+            },
+            votes: {
+                upvoted_neurons: newUpvotedNeurons,
+                downvoted_neurons: newDownvotedNeurons
+            }
         };
-    }, [threadVotes, getSelectedNeurons]);
+    }, [threadVotes, getSelectedNeurons, neuronIdsMatch]);
 
     // Helper to get the effective score for a post (optimistic if available, otherwise actual)
     const getEffectiveScore = useCallback((post) => {
@@ -584,6 +598,20 @@ function ThreadViewer({
             downvote_score: Number(post.downvote_score || 0)
         };
     }, [optimisticScores]);
+
+    // Helper to get the effective vote state for a post (optimistic if available, otherwise actual)
+    const getEffectiveVotes = useCallback((postId) => {
+        const postIdStr = postId.toString();
+        const optimistic = optimisticScores.get(postIdStr);
+        
+        // Check if we have optimistic vote state stored (we store it alongside scores)
+        if (optimistic && optimistic.votes) {
+            return optimistic.votes;
+        }
+        
+        // Fall back to actual threadVotes
+        return threadVotes.get(postIdStr) || { upvoted_neurons: [], downvoted_neurons: [] };
+    }, [optimisticScores, threadVotes]);
 
     // Sort posts based on selected criteria
     const sortPosts = useCallback((posts) => {
@@ -1127,13 +1155,17 @@ function ThreadViewer({
 
         const postIdStr = postId.toString();
         
-        // Find the post to calculate optimistic score
+        // Find the post to calculate optimistic state
         const post = discussionPosts.find(p => Number(p.id) === Number(postId));
         
-        // Apply optimistic score update immediately
+        // Apply optimistic state update immediately (both scores AND vote states)
         if (post) {
-            const optimisticScore = calculateOptimisticScore(post, voteType, false);
-            setOptimisticScores(prev => new Map(prev.set(postIdStr, optimisticScore)));
+            const optimisticState = calculateOptimisticState(post, voteType, false);
+            // Store both scores and votes together
+            setOptimisticScores(prev => new Map(prev.set(postIdStr, {
+                ...optimisticState.scores,
+                votes: optimisticState.votes
+            })));
         }
         
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
@@ -1213,7 +1245,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, getSelectedNeurons, totalVotingPower, fetchPosts, refreshPostVotes, discussionPosts, calculateOptimisticScore]);
+    }, [forumActor, getSelectedNeurons, totalVotingPower, fetchPosts, refreshPostVotes, discussionPosts, calculateOptimisticState]);
 
     const handleRetractVote = useCallback(async (postId) => {
         const selectedNeurons = getSelectedNeurons();
@@ -1221,13 +1253,16 @@ function ThreadViewer({
 
         const postIdStr = postId.toString();
         
-        // Find the post to calculate optimistic score
+        // Find the post to calculate optimistic state
         const post = discussionPosts.find(p => Number(p.id) === Number(postId));
         
-        // Apply optimistic score update immediately (retraction)
+        // Apply optimistic state update immediately (both scores AND vote states for retraction)
         if (post) {
-            const optimisticScore = calculateOptimisticScore(post, null, true);
-            setOptimisticScores(prev => new Map(prev.set(postIdStr, optimisticScore)));
+            const optimisticState = calculateOptimisticState(post, null, true);
+            setOptimisticScores(prev => new Map(prev.set(postIdStr, {
+                ...optimisticState.scores,
+                votes: optimisticState.votes
+            })));
         }
         
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
@@ -1310,7 +1345,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, getSelectedNeurons, fetchPosts, refreshPostVotes, discussionPosts, calculateOptimisticScore]);
+    }, [forumActor, getSelectedNeurons, fetchPosts, refreshPostVotes, discussionPosts, calculateOptimisticState]);
 
     // Check if thread is linked to a proposal and fetch proposal info
     const checkProposalLink = useCallback(async () => {
@@ -1890,7 +1925,8 @@ function ThreadViewer({
     // Memoize vote button styles to prevent re-renders
     const getVoteButtonStyles = useCallback((postId, voteType) => {
         const postIdStr = postId.toString();
-        const postVotes = threadVotes.get(postIdStr);
+        // Use effective votes (optimistic if available, otherwise actual)
+        const postVotes = getEffectiveVotes(postId);
         const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
         const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
         const isVoting = votingStates.get(postIdStr) === 'voting';
@@ -1913,17 +1949,17 @@ function ThreadViewer({
             display: 'flex',
             alignItems: 'center',
             gap: '3px',
-            opacity: (isVoting || hasNoVP) ? 0.6 : 1,
+            opacity: hasNoVP ? 0.6 : 1, // Only dim if no VP, not during voting
             fontWeight: 'bold'
         };
-    }, [threadVotes, votingStates, totalVotingPower]);
+    }, [getEffectiveVotes, votingStates, totalVotingPower]);
 
     // Memoize vote button tooltips
     const getVoteButtonTooltip = useCallback((postId, voteType) => {
         if (totalVotingPower === 0) return 'You must have neurons with voting power to vote on posts';
         
-        const postIdStr = postId.toString();
-        const postVotes = threadVotes.get(postIdStr);
+        // Use effective votes (optimistic if available, otherwise actual)
+        const postVotes = getEffectiveVotes(postId);
         const isUpvote = voteType === 'up';
         const votedNeurons = isUpvote ? postVotes?.upvoted_neurons : postVotes?.downvoted_neurons;
         
@@ -1950,7 +1986,7 @@ function ThreadViewer({
         }
         
         return `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`;
-    }, [threadVotes, totalVotingPower, formatVotingPowerDisplay]);
+    }, [getEffectiveVotes, totalVotingPower, formatVotingPowerDisplay]);
 
     // Effect to update URL parameter when SNS is detected
     useEffect(() => {
@@ -3288,11 +3324,9 @@ function ThreadViewer({
                                     title={getVoteButtonTooltip(post.id, 'up')}
                                 >
                                     <FaThumbsUp size={14} />
-                                    {!isNarrowScreen && (
+                                    {!isNarrowScreen && totalVotingPower > 0 && (
                                         <span style={{ marginLeft: '2px' }}>
-                                            {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
-                                                totalVotingPower === 0 ? '' : 
-                                                formatVotingPowerDisplay(totalVotingPower)}
+                                            {formatVotingPowerDisplay(totalVotingPower)}
                                         </span>
                                     )}
                                 </button>
@@ -3343,11 +3377,9 @@ function ThreadViewer({
                                     title={getVoteButtonTooltip(post.id, 'down')}
                                 >
                                     <FaThumbsDown size={14} />
-                                    {!isNarrowScreen && (
+                                    {!isNarrowScreen && totalVotingPower > 0 && (
                                         <span style={{ marginLeft: '2px' }}>
-                                            {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
-                                                totalVotingPower === 0 ? '' : 
-                                                formatVotingPowerDisplay(totalVotingPower)}
+                                            {formatVotingPowerDisplay(totalVotingPower)}
                                         </span>
                                     )}
                                 </button>
