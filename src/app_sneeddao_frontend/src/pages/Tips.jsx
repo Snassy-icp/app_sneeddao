@@ -17,7 +17,79 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
-import './Tips.css';
+import { FaGift, FaArrowDown, FaArrowUp, FaSync, FaLock, FaExternalLinkAlt, FaComment } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes newTipGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    50% { box-shadow: 0 0 20px 5px rgba(245, 158, 11, 0.3); }
+}
+
+.tips-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.tips-card {
+    transition: all 0.3s ease;
+}
+
+.tips-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(245, 158, 11, 0.15);
+}
+
+.tips-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.tips-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.tips-new-glow {
+    animation: newTipGlow 2s ease-in-out 3;
+}
+
+.tips-tab {
+    transition: all 0.2s ease;
+}
+
+.tips-tab:hover {
+    transform: translateY(-1px);
+}
+`;
+
+// Accent colors for this page
+const tipsPrimary = '#f59e0b'; // Amber/Gold
+const tipsSecondary = '#d97706'; // Darker amber
+const tipsAccent = '#fbbf24'; // Light amber
 
 const Tips = () => {
     const { theme } = useTheme();
@@ -430,149 +502,548 @@ const Tips = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className="tips-page" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className="page-container">
+                <style>{customStyles}</style>
                 <Header showSnsDropdown={false} />
-                <div className="tips-container">
-                    <div className="tips-content">
-                        <div className="auth-required">
-                            <p>Please log in to view your tips.</p>
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${tipsPrimary}15 50%, ${tipsSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            top: '-50%',
+                            right: '-10%',
+                            width: '400px',
+                            height: '400px',
+                            background: `radial-gradient(circle, ${tipsPrimary}20 0%, transparent 70%)`,
+                            borderRadius: '50%',
+                            pointerEvents: 'none'
+                        }} />
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div className="tips-float" style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${tipsPrimary}, ${tipsSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 30px ${tipsPrimary}40`
+                                }}>
+                                    <FaGift size={28} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        Tips
+                                    </h1>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        View tips you've received and given in the forum
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+
+                    {/* Login Required */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div className="tips-card-animate" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '20px',
+                            padding: '3rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`,
+                            opacity: 0,
+                            animationDelay: '0.1s'
+                        }}>
+                            <div className="tips-float" style={{
+                                width: '80px',
+                                height: '80px',
+                                margin: '0 auto 1.5rem',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${tipsPrimary}, ${tipsSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${tipsPrimary}40`
+                            }}>
+                                <FaLock size={32} color="white" />
+                            </div>
+                            <h2 style={{ color: theme.colors.primaryText, fontSize: '1.5rem', marginBottom: '1rem', fontWeight: '600' }}>
+                                Connect to View Tips
+                            </h2>
+                            <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                                Connect your wallet to view tips you've received and given in the forum.
+                            </p>
+                        </div>
+                    </div>
+                </main>
             </div>
         );
     }
 
     return (
-        <div className="tips-page" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className="page-container">
+            <style>{customStyles}</style>
             <Header showSnsDropdown={false} />
-            
-            {/* Tips Tabs - SMS style */}
-            <div style={{ 
-                padding: '20px 20px 0 20px'
-            }}>
-                <div style={{ 
-                    display: 'flex', 
-                    gap: '10px', 
-                    marginBottom: '20px',
-                    borderBottom: '1px solid #3a3a3a',
-                    paddingBottom: '0'
+            <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${tipsPrimary}15 50%, ${tipsSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    {[
-                        { key: 'received', label: '📥 Tips Received', count: tipsReceived.length },
-                        { key: 'given', label: '📤 Tips Given', count: tipsGiven.length }
-                    ].map(tab => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setActiveTab(tab.key)}
+                    {/* Background decorations */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${tipsPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${tipsSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                            <div className="tips-float" style={{
+                                width: '64px',
+                                height: '64px',
+                                minWidth: '64px',
+                                maxWidth: '64px',
+                                flexShrink: 0,
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${tipsPrimary}, ${tipsSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${tipsPrimary}40`
+                            }}>
+                                <FaGift size={28} color="white" />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0, lineHeight: '1.2' }}>
+                                    Tips
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                    View tips you've received and given in the forum
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Stats */}
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaArrowDown size={14} style={{ color: theme.colors.success }} />
+                                <span><strong style={{ color: theme.colors.success }}>{tipsReceived.length}</strong> received</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaArrowUp size={14} style={{ color: tipsPrimary }} />
+                                <span><strong style={{ color: tipsPrimary }}>{tipsGiven.length}</strong> given</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Content */}
+                <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                    {/* Tab Buttons */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.75rem',
+                        marginBottom: '1.5rem',
+                        background: theme.colors.secondaryBg,
+                        padding: '0.5rem',
+                        borderRadius: '14px',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        {[
+                            { key: 'received', label: 'Tips Received', count: tipsReceived.length, icon: <FaArrowDown size={14} />, color: theme.colors.success },
+                            { key: 'given', label: 'Tips Given', count: tipsGiven.length, icon: <FaArrowUp size={14} />, color: tipsPrimary }
+                        ].map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setActiveTab(tab.key)}
+                                className="tips-tab"
+                                style={{
+                                    flex: 1,
+                                    background: activeTab === tab.key 
+                                        ? `linear-gradient(135deg, ${tab.color}, ${tab.color}cc)` 
+                                        : 'transparent',
+                                    color: activeTab === tab.key ? 'white' : theme.colors.secondaryText,
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    padding: '0.75rem 1rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.95rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    boxShadow: activeTab === tab.key ? `0 4px 15px ${tab.color}40` : 'none'
+                                }}
+                            >
+                                {tab.icon}
+                                {tab.label}
+                                <span style={{
+                                    background: activeTab === tab.key ? 'rgba(255,255,255,0.2)' : `${tab.color}20`,
+                                    color: activeTab === tab.key ? 'white' : tab.color,
+                                    padding: '0.15rem 0.5rem',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '700'
+                                }}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Refresh Button */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                        <button 
+                            onClick={() => {
+                                refreshNotifications();
+                                fetchTipsData();
+                            }}
+                            disabled={loading}
                             style={{
-                                background: activeTab === tab.key ? '#3498db' : 'transparent',
-                                color: activeTab === tab.key ? '#ffffff' : '#888',
-                                border: 'none',
-                                borderRadius: '4px 4px 0 0',
-                                padding: '12px 20px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
-                                borderBottom: activeTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
+                                background: theme.colors.tertiaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '10px',
+                                padding: '0.6rem 1rem',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                opacity: loading ? 0.6 : 1,
+                                transition: 'all 0.2s ease'
                             }}
                         >
-                            {tab.label} ({tab.count})
+                            <FaSync size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                            Refresh
                         </button>
-                    ))}
-                </div>
-            </div>
+                    </div>
 
-            <div className="tips-container">
-
-                <div className="tips-content">
+                    {/* Content */}
                     {loading ? (
-                        <div className="loading-state">
-                            <div className="spinner"></div>
-                            <p>Loading your tips...</p>
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '4rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div className="tips-pulse" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${tipsPrimary}, ${tipsSecondary})`,
+                                margin: '0 auto 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaGift size={24} color="white" />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '1.1rem' }}>
+                                Loading your tips...
+                            </p>
                         </div>
                     ) : error ? (
-                        <div className="error-state">
-                            <p>Error loading tips: {error}</p>
-                            <button onClick={fetchTipsData} className="retry-button">
+                        <div style={{
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '16px',
+                            padding: '2rem',
+                            textAlign: 'center'
+                        }}>
+                            <p style={{ color: theme.colors.error, marginBottom: '1rem' }}>Error loading tips: {error}</p>
+                            <button 
+                                onClick={fetchTipsData}
+                                style={{
+                                    background: theme.colors.error,
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '0.6rem 1.25rem',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: '600'
+                                }}
+                            >
                                 Try Again
                             </button>
                         </div>
                     ) : (
-                        <div className="tips-list">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             {activeTab === 'received' ? (
                                 tipsReceived.length === 0 ? (
-                                    <div className="empty-state">
-                                        <p>🎁 You haven't received any tips yet.</p>
-                                        <p>Create great content in the forum to start receiving tips!</p>
-                                    </div>
-                                ) : isNarrowScreen ? (
-                                    <div className="tips-cards-container">
-                                        {tipsReceived.map(tip => renderTipCard(tip, true))}
+                                    <div className="tips-card-animate" style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '16px',
+                                        padding: '3rem 2rem',
+                                        textAlign: 'center',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        opacity: 0,
+                                        animationDelay: '0.1s'
+                                    }}>
+                                        <div className="tips-float" style={{
+                                            width: '60px',
+                                            height: '60px',
+                                            borderRadius: '50%',
+                                            background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}20)`,
+                                            margin: '0 auto 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: theme.colors.success
+                                        }}>
+                                            <FaArrowDown size={24} />
+                                        </div>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontWeight: '600' }}>
+                                            No Tips Received Yet
+                                        </h3>
+                                        <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                                            Create great content in the forum to start receiving tips from other users!
+                                        </p>
                                     </div>
                                 ) : (
-                                    <div className="tips-table-container">
-                                        <table className="tips-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Amount</th>
-                                                    <th>From</th>
-                                                    <th>Post</th>
-                                                    <th>Date</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {tipsReceived.map(tip => renderTipRow(tip, true))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    tipsReceived.map((tip, index) => renderTipCardNew(tip, true, index))
                                 )
                             ) : (
                                 tipsGiven.length === 0 ? (
-                                    <div className="empty-state">
-                                        <p>💸 You haven't given any tips yet.</p>
-                                        <p>Support other users by tipping their great posts!</p>
-                                    </div>
-                                ) : isNarrowScreen ? (
-                                    <div className="tips-cards-container">
-                                        {tipsGiven.map(tip => renderTipCard(tip, false))}
+                                    <div className="tips-card-animate" style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '16px',
+                                        padding: '3rem 2rem',
+                                        textAlign: 'center',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        opacity: 0,
+                                        animationDelay: '0.1s'
+                                    }}>
+                                        <div className="tips-float" style={{
+                                            width: '60px',
+                                            height: '60px',
+                                            borderRadius: '50%',
+                                            background: `linear-gradient(135deg, ${tipsPrimary}30, ${tipsPrimary}20)`,
+                                            margin: '0 auto 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: tipsPrimary
+                                        }}>
+                                            <FaArrowUp size={24} />
+                                        </div>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontWeight: '600' }}>
+                                            No Tips Given Yet
+                                        </h3>
+                                        <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                                            Support other users by tipping their great posts in the forum!
+                                        </p>
                                     </div>
                                 ) : (
-                                    <div className="tips-table-container">
-                                        <table className="tips-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Amount</th>
-                                                    <th>To</th>
-                                                    <th>Post</th>
-                                                    <th>Date</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {tipsGiven.map(tip => renderTipRow(tip, false))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    tipsGiven.map((tip, index) => renderTipCardNew(tip, false, index))
                                 )
                             )}
                         </div>
                     )}
                 </div>
-
-                <div className="tips-actions">
-                    <button 
-                        onClick={() => {
-                            refreshNotifications();
-                            fetchTipsData();
-                        }}
-                        className="refresh-button"
-                        disabled={loading}
-                    >
-                        🔄 Refresh
-                    </button>
-                </div>
-            </div>
+            </main>
         </div>
     );
+
+    function renderTipCardNew(tip, isReceived, index) {
+        const tokenId = tip.token_ledger_principal.toString();
+        const otherPrincipal = isReceived ? tip.from_principal : tip.to_principal;
+        const otherPrincipalStr = otherPrincipal.toString();
+        const isLoadingToken = loadingMetadata.has(tokenId);
+        const logo = getTokenLogo(tokenId);
+        const isNew = isReceived && isTipNew(tip.created_at);
+
+        return (
+            <div 
+                key={tip.id}
+                className={`tips-card tips-card-animate ${isNew ? 'tips-new-glow' : ''}`}
+                style={{
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '14px',
+                    padding: '1.25rem',
+                    border: isNew 
+                        ? `2px solid ${tipsPrimary}` 
+                        : `1px solid ${theme.colors.border}`,
+                    opacity: 0,
+                    animationDelay: `${index * 0.05}s`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    flexWrap: 'wrap'
+                }}
+            >
+                {/* Token Logo & Amount */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '150px' }}>
+                    {isLoadingToken ? (
+                        <div style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '50%',
+                            background: theme.colors.tertiaryBg,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <span className="tips-pulse">⏳</span>
+                        </div>
+                    ) : logo ? (
+                        <img 
+                            src={logo} 
+                            alt="" 
+                            style={{ 
+                                width: '44px', 
+                                height: '44px', 
+                                borderRadius: '50%',
+                                border: `2px solid ${tipsPrimary}40`
+                            }} 
+                        />
+                    ) : (
+                        <div style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: '50%',
+                            background: `linear-gradient(135deg, ${tipsPrimary}, ${tipsSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.25rem'
+                        }}>
+                            💎
+                        </div>
+                    )}
+                    <div>
+                        <div style={{ 
+                            color: tipsPrimary, 
+                            fontWeight: '700', 
+                            fontSize: '1.1rem' 
+                        }}>
+                            {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                        </div>
+                        {isNew && (
+                            <span style={{
+                                background: `${tipsPrimary}20`,
+                                color: tipsPrimary,
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '4px',
+                                fontSize: '0.7rem',
+                                fontWeight: '600',
+                                textTransform: 'uppercase'
+                            }}>
+                                New
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Principal */}
+                <div style={{ flex: 1, minWidth: '180px' }}>
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                        {isReceived ? 'From' : 'To'}
+                    </div>
+                    <PrincipalDisplay 
+                        principal={otherPrincipalStr}
+                        displayInfo={principalDisplayInfo.get(otherPrincipalStr)}
+                        showCopyButton={true}
+                        enableContextMenu={true}
+                        short={true}
+                        maxLength={20}
+                        isAuthenticated={isAuthenticated}
+                    />
+                </div>
+
+                {/* Post Links */}
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button 
+                        onClick={() => navigate(`/post?postid=${tip.post_id}`)}
+                        style={{
+                            background: `${theme.colors.accent}15`,
+                            color: theme.colors.accent,
+                            border: `1px solid ${theme.colors.accent}40`,
+                            padding: '0.4rem 0.75rem',
+                            borderRadius: '8px',
+                            fontSize: '0.8rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            transition: 'all 0.2s ease'
+                        }}
+                        title="View post"
+                    >
+                        <FaComment size={10} />
+                        Post #{tip.post_id?.toString() || 'N/A'}
+                    </button>
+                    {tip.thread_id && (
+                        <button 
+                            onClick={() => navigate(`/thread?threadid=${tip.thread_id}`)}
+                            style={{
+                                background: `${theme.colors.success}15`,
+                                color: theme.colors.success,
+                                border: `1px solid ${theme.colors.success}40`,
+                                padding: '0.4rem 0.75rem',
+                                borderRadius: '8px',
+                                fontSize: '0.8rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                transition: 'all 0.2s ease'
+                            }}
+                            title="View thread"
+                        >
+                            <FaExternalLinkAlt size={10} />
+                            Thread
+                        </button>
+                    )}
+                </div>
+
+                {/* Date */}
+                <div 
+                    style={{ 
+                        color: theme.colors.mutedText, 
+                        fontSize: '0.8rem',
+                        minWidth: '80px',
+                        textAlign: 'right'
+                    }}
+                    title={getFullDate(tip.created_at)}
+                >
+                    {getRelativeTime(tip.created_at)}
+                </div>
+            </div>
+        );
+    }
 };
 
 export default Tips;
