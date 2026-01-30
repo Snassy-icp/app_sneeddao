@@ -430,6 +430,7 @@ export default function CanistersPage() {
         }
     }, [identity, groupUsage, showUpgradeModal]);
     
+    
     // Persist collapsible states
     useEffect(() => {
         try { localStorage.setItem('canisters_customExpanded', JSON.stringify(customExpanded)); } catch {}
@@ -1232,13 +1233,9 @@ export default function CanistersPage() {
             if (isChildOf(draggedItem.id, targetId, canisterGroups.groups)) return false;
         }
         
-        // Don't allow dropping on the same source
-        if (draggedItem.type === 'canister') {
-            if (targetType === 'wallet' && draggedItem.sourceGroupId === 'wallet') return false;
-            if (targetType === 'neuron_managers' && draggedItem.sourceGroupId === 'neuron_managers') return false;
-            if (targetType === 'ungrouped' && draggedItem.sourceGroupId === 'ungrouped') return false;
-            if (targetType === 'group' && draggedItem.sourceGroupId === targetId) return false;
-        }
+        // Note: We don't check "same source" here anymore - that's handled in handleDrop.
+        // Checking it here would set dropEffect='none' and prevent the drop event from firing,
+        // even when dragging to a valid different target afterward.
         
         return true;
     };
@@ -1482,22 +1479,22 @@ export default function CanistersPage() {
                     marginBottom: '8px',
                     marginLeft: depth > 0 ? '20px' : '0',
                 }}
-                onDragEnter={(e) => {
-                    e.stopPropagation(); // Stop bubbling to parent groups
-                    onDragEnter && onDragEnter(e, 'group', group.id);
-                }}
-                onDragOver={(e) => {
-                    e.stopPropagation(); // Stop bubbling to parent groups
-                    onDragOver && onDragOver(e, 'group', group.id);
-                }}
-                onDragLeave={(e) => {
-                    e.stopPropagation(); // Stop bubbling to parent groups
-                    onDragLeave && onDragLeave(e, 'group', group.id);
-                }}
-                onDrop={(e) => {
-                    e.stopPropagation(); // Stop bubbling to parent groups
-                    onDrop && onDrop(e, 'group', group.id);
-                }}
+                                onDragEnter={(e) => {
+                                    e.stopPropagation(); // Stop bubbling to parent groups
+                                    onDragEnter && onDragEnter(e, 'group', group.id);
+                                }}
+                                onDragOver={(e) => {
+                                    e.stopPropagation(); // Stop bubbling to parent groups
+                                    onDragOver && onDragOver(e, 'group', group.id);
+                                }}
+                                onDragLeave={(e) => {
+                                    e.stopPropagation(); // Stop bubbling to parent groups
+                                    onDragLeave && onDragLeave(e, 'group', group.id);
+                                }}
+                                onDrop={(e) => {
+                                    e.stopPropagation(); // Stop bubbling to parent groups
+                                    onDrop && onDrop(e, 'group', group.id);
+                                }}
             >
                 {/* Group Header */}
                 <div 
