@@ -1246,6 +1246,65 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </button>
                         )}
                     </div>
+                    {/* Price per token row */}
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.5rem',
+                        fontSize: '0.75rem',
+                        color: theme.colors.mutedText,
+                        marginTop: '2px',
+                        flexWrap: 'wrap'
+                    }}>
+                        {token.loading ? (
+                            <span style={{ opacity: 0.6 }}>Loading prices...</span>
+                        ) : (
+                            <>
+                                {token.icp_rate > 0 && (
+                                    <span style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '3px',
+                                        background: theme.colors.tertiaryBg,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        <img 
+                                            src="/icp_symbol.svg" 
+                                            alt="ICP" 
+                                            style={{ width: '12px', height: '12px' }} 
+                                        />
+                                        {token.icp_rate < 0.0001 
+                                            ? token.icp_rate.toExponential(2) 
+                                            : token.icp_rate < 1 
+                                                ? token.icp_rate.toFixed(6).replace(/\.?0+$/, '')
+                                                : token.icp_rate.toLocaleString(undefined, { maximumFractionDigits: 4 })
+                                        }
+                                    </span>
+                                )}
+                                {token.conversion_rate > 0 && (
+                                    <span style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '2px',
+                                        background: theme.colors.tertiaryBg,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        ${token.conversion_rate < 0.01 
+                                            ? token.conversion_rate.toExponential(2) 
+                                            : token.conversion_rate < 1 
+                                                ? token.conversion_rate.toFixed(4).replace(/\.?0+$/, '')
+                                                : token.conversion_rate.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                                        }
+                                    </span>
+                                )}
+                                {(!token.icp_rate || token.icp_rate === 0) && (!token.conversion_rate || token.conversion_rate === 0) && (
+                                    <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Price unavailable</span>
+                                )}
+                            </>
+                        )}
+                    </div>
                     {/* Row 3: Status icons (left) */}
                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {/* Locks icon */}
@@ -1338,65 +1397,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </span>
                             );
                         })()}
-                    </div>
-                    {/* Price per token row */}
-                    <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.5rem',
-                        fontSize: '0.75rem',
-                        color: theme.colors.mutedText,
-                        marginTop: '4px',
-                        flexWrap: 'wrap'
-                    }}>
-                        {token.loading ? (
-                            <span style={{ opacity: 0.6 }}>Loading prices...</span>
-                        ) : (
-                            <>
-                                {token.icp_rate > 0 && (
-                                    <span style={{ 
-                                        display: 'inline-flex', 
-                                        alignItems: 'center', 
-                                        gap: '3px',
-                                        background: theme.colors.tertiaryBg,
-                                        padding: '2px 6px',
-                                        borderRadius: '4px'
-                                    }}>
-                                        <img 
-                                            src="/icp_symbol.svg" 
-                                            alt="ICP" 
-                                            style={{ width: '12px', height: '12px' }} 
-                                        />
-                                        {token.icp_rate < 0.0001 
-                                            ? token.icp_rate.toExponential(2) 
-                                            : token.icp_rate < 1 
-                                                ? token.icp_rate.toFixed(6).replace(/\.?0+$/, '')
-                                                : token.icp_rate.toLocaleString(undefined, { maximumFractionDigits: 4 })
-                                        }
-                                    </span>
-                                )}
-                                {token.conversion_rate > 0 && (
-                                    <span style={{ 
-                                        display: 'inline-flex', 
-                                        alignItems: 'center', 
-                                        gap: '2px',
-                                        background: theme.colors.tertiaryBg,
-                                        padding: '2px 6px',
-                                        borderRadius: '4px'
-                                    }}>
-                                        ${token.conversion_rate < 0.01 
-                                            ? token.conversion_rate.toExponential(2) 
-                                            : token.conversion_rate < 1 
-                                                ? token.conversion_rate.toFixed(4).replace(/\.?0+$/, '')
-                                                : token.conversion_rate.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                                        }
-                                    </span>
-                                )}
-                                {(!token.icp_rate || token.icp_rate === 0) && (!token.conversion_rate || token.conversion_rate === 0) && (
-                                    <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Price unavailable</span>
-                                )}
-                            </>
-                        )}
                     </div>
                 </div>
             </div>
