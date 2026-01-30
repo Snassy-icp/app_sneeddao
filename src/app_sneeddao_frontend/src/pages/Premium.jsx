@@ -1302,6 +1302,9 @@ export default function Premium() {
                                             </span>
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                                Peer-to-peer token exchange marketplace with auction listings and direct offers.
+                                            </p>
                                             {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1334,6 +1337,21 @@ export default function Premium() {
                                                     </div>
                                                 </div>
                                             )}
+                                            <Link 
+                                                to="/sneedex"
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: '#e74c3c',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    textDecoration: 'none',
+                                                    marginTop: '0.25rem'
+                                                }}
+                                            >
+                                                Learn more <FaArrowRight size={10} />
+                                            </Link>
                                         </div>
                                     </div>
                                 )}
@@ -1370,7 +1388,10 @@ export default function Premium() {
                                                 ICP Neuron Manager
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px' }}>
+                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                                Automate ICP neuron management with spawning, staking, and following rules.
+                                            </p>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Manager Creation Fee
@@ -1386,6 +1407,21 @@ export default function Premium() {
                                                     </span>
                                                 </div>
                                             </div>
+                                            <Link 
+                                                to="/neurons"
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: '#9b59b6',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    textDecoration: 'none',
+                                                    marginTop: '0.25rem'
+                                                }}
+                                            >
+                                                Learn more <FaArrowRight size={10} />
+                                            </Link>
                                         </div>
                                     </div>
                                 )}
@@ -1423,6 +1459,9 @@ export default function Premium() {
                                             </span>
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                                Discuss SNS governance proposals and community topics in dedicated forums.
+                                            </p>
                                             {premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Post Length</span>
@@ -1449,6 +1488,21 @@ export default function Premium() {
                                                     </div>
                                                 </div>
                                             )}
+                                            <Link 
+                                                to="/forum"
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: '#3498db',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    textDecoration: 'none',
+                                                    marginTop: '0.25rem'
+                                                }}
+                                            >
+                                                Learn more <FaArrowRight size={10} />
+                                            </Link>
                                         </div>
                                     </div>
                                 )}
@@ -1487,6 +1541,9 @@ export default function Premium() {
                                             </span>
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                                Send private on-chain messages to any Internet Computer principal.
+                                            </p>
                                             {premiumPricing.sms.premiumBodyLimit > premiumPricing.sms.regularBodyLimit && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Message Length</span>
@@ -1530,6 +1587,21 @@ export default function Premium() {
                                                     </div>
                                                 </div>
                                             )}
+                                            <Link 
+                                                to="/sms"
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: '#2ecc71',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    textDecoration: 'none',
+                                                    marginTop: '0.25rem'
+                                                }}
+                                            >
+                                                Learn more <FaArrowRight size={10} />
+                                            </Link>
                                         </div>
                                     </div>
                                 )}
@@ -1567,6 +1639,9 @@ export default function Premium() {
                                             </span>
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                                Save custom nicknames for principals and neurons to easily identify them.
+                                            </p>
                                             {premiumPricing.nicknames.premiumNeuronLimit > premiumPricing.nicknames.regularNeuronLimit && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Neuron Nicknames</span>
@@ -1593,6 +1668,21 @@ export default function Premium() {
                                                     </div>
                                                 </div>
                                             )}
+                                            <Link 
+                                                to="/names"
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: '#f39c12',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    textDecoration: 'none',
+                                                    marginTop: '0.25rem'
+                                                }}
+                                            >
+                                                Learn more <FaArrowRight size={10} />
+                                            </Link>
                                         </div>
                                     </div>
                                 )}
@@ -1631,6 +1721,9 @@ export default function Premium() {
                                             </span>
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                                Organize and monitor your canisters with folders and cycle tracking.
+                                            </p>
                                             {premiumPricing.canisterGroups.premiumMaxGroups > premiumPricing.canisterGroups.regularMaxGroups && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1672,6 +1765,21 @@ export default function Premium() {
                                                     </div>
                                                 </div>
                                             )}
+                                            <Link 
+                                                to="/canisters"
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: '#8e44ad',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    textDecoration: 'none',
+                                                    marginTop: '0.25rem'
+                                                }}
+                                            >
+                                                Learn more <FaArrowRight size={10} />
+                                            </Link>
                                         </div>
                                     </div>
                                 )}
@@ -1705,23 +1813,12 @@ export default function Premium() {
                                         <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
                                             SNS Jailbreak Tool
                                         </span>
-                                        <span style={{
-                                            marginLeft: 'auto',
-                                            background: `linear-gradient(135deg, ${premiumPrimary}, ${premiumSecondary})`,
-                                            color: '#1a1a2e',
-                                            padding: '2px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '0.7rem',
-                                            fontWeight: '700'
-                                        }}>
-                                            PREMIUM
-                                        </span>
                                     </div>
-                                    <div style={{ padding: '12px 16px' }}>
-                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.75rem', lineHeight: '1.5' }}>
+                                    <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
                                             Add full hotkey permissions to your SNS neurons, enabling NNS-dapp management with a simple browser script.
                                         </p>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Script Price
                                             </span>
@@ -1735,7 +1832,7 @@ export default function Premium() {
                                             </div>
                                         </div>
                                         <Link 
-                                            to="/sns_jailbreak"
+                                            to="/tools/sns_jailbreak"
                                             style={{
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
