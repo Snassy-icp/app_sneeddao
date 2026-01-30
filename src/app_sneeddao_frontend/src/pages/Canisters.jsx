@@ -2959,41 +2959,42 @@ export default function CanistersPage() {
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
-                                        padding: '10px 14px',
-                                        backgroundColor: theme.colors.card,
-                                        borderRadius: '8px',
+                                        padding: '0.65rem 1rem',
+                                        background: theme.colors.cardGradient,
+                                        borderRadius: '10px',
                                         border: `1px solid ${theme.colors.border}`,
-                                        marginBottom: '12px',
+                                        marginBottom: '1rem',
                                         flexWrap: 'wrap',
-                                        gap: '10px',
+                                        gap: '0.75rem',
+                                        boxShadow: theme.colors.cardShadow,
                                     }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                                            <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
                                                 Folders: <span style={{ 
-                                                    color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.text,
+                                                    color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.primaryText,
                                                     fontWeight: 600 
                                                 }}>{groupUsage.groupCount}</span> / {groupUsage.groupLimit}
                                             </span>
-                                            <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
                                                 Canisters: <span style={{ 
-                                                    color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.text,
+                                                    color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.primaryText,
                                                     fontWeight: 600 
                                                 }}>{groupUsage.totalCanisters}</span> / {groupUsage.totalLimit}
                                             </span>
-                                            <span style={{ color: theme.colors.textSecondary, fontSize: '13px' }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
                                                 Per Folder: max {groupUsage.perGroupLimit}
                                             </span>
                                         </div>
                                         {groupUsage.isPremium && (
                                             <span style={{
-                                                backgroundColor: '#ffd700',
+                                                background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
                                                 color: '#000',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '11px',
-                                                fontWeight: 600,
+                                                padding: '0.2rem 0.6rem',
+                                                borderRadius: '12px',
+                                                fontSize: '0.65rem',
+                                                fontWeight: 700,
                                             }}>
-                                                ⭐ PREMIUM LIMITS
+                                                ⭐ PREMIUM
                                             </span>
                                         )}
                                     </div>
@@ -3023,31 +3024,41 @@ export default function CanistersPage() {
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     justifyContent: 'space-between',
-                                                    padding: '12px 16px',
-                                                    backgroundColor: theme.colors.card,
-                                                    borderRadius: '8px',
+                                                    padding: '0.875rem 1.25rem',
+                                                    background: theme.colors.cardGradient,
+                                                    borderRadius: '12px',
                                                     border: `1px solid ${theme.colors.border}`,
-                                                    marginBottom: '16px',
+                                                    marginBottom: '1rem',
                                                     flexWrap: 'wrap',
-                                                    gap: '12px',
+                                                    gap: '0.75rem',
+                                                    boxShadow: theme.colors.cardShadow,
                                                 }}>
                                                     {/* Overall status lamp */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                        <span
-                                                            style={{
-                                                                width: '16px',
-                                                                height: '16px',
-                                                                borderRadius: '50%',
-                                                                backgroundColor: overallColor,
-                                                                boxShadow: stats.overallStatus !== 'unknown' ? `0 0 10px ${overallColor}` : 'none',
-                                                                flexShrink: 0,
-                                                            }}
-                                                            title={`Overall health: ${stats.overallStatus}`}
-                                                        />
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                        <div style={{
+                                                            width: '36px',
+                                                            height: '36px',
+                                                            borderRadius: '10px',
+                                                            background: `${overallColor}20`,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                        }}>
+                                                            <span
+                                                                style={{
+                                                                    width: '14px',
+                                                                    height: '14px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: overallColor,
+                                                                    boxShadow: stats.overallStatus !== 'unknown' ? `0 0 10px ${overallColor}` : 'none',
+                                                                }}
+                                                                title={`Overall health: ${stats.overallStatus}`}
+                                                            />
+                                                        </div>
                                                         <span style={{ 
                                                             fontWeight: 600, 
-                                                            color: theme.colors.text,
-                                                            fontSize: '14px',
+                                                            color: theme.colors.primaryText,
+                                                            fontSize: '0.95rem',
                                                         }}>
                                                             {stats.total} {stats.total === 1 ? 'Canister' : 'Canisters'}
                                                         </span>
@@ -3057,11 +3068,11 @@ export default function CanistersPage() {
                                                     <div style={{ 
                                                         display: 'flex', 
                                                         alignItems: 'center', 
-                                                        gap: '16px',
+                                                        gap: '1rem',
                                                         flexWrap: 'wrap',
                                                     }}>
                                                         {stats.red > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                                                 <span style={{
                                                                     width: '8px',
                                                                     height: '8px',
@@ -3069,13 +3080,13 @@ export default function CanistersPage() {
                                                                     backgroundColor: '#ef4444',
                                                                     boxShadow: '0 0 6px #ef4444',
                                                                 }} />
-                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '13px' }}>
+                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.8rem' }}>
                                                                     {stats.red} critical
                                                                 </span>
                                                             </div>
                                                         )}
                                                         {stats.orange > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                                                 <span style={{
                                                                     width: '8px',
                                                                     height: '8px',
@@ -3083,13 +3094,13 @@ export default function CanistersPage() {
                                                                     backgroundColor: '#f59e0b',
                                                                     boxShadow: '0 0 6px #f59e0b',
                                                                 }} />
-                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.8rem' }}>
                                                                     {stats.orange} warning
                                                                 </span>
                                                             </div>
                                                         )}
                                                         {stats.green > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                                                 <span style={{
                                                                     width: '8px',
                                                                     height: '8px',
@@ -3097,20 +3108,20 @@ export default function CanistersPage() {
                                                                     backgroundColor: '#22c55e',
                                                                     boxShadow: '0 0 6px #22c55e',
                                                                 }} />
-                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '13px' }}>
+                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.8rem' }}>
                                                                     {stats.green} healthy
                                                                 </span>
                                                             </div>
                                                         )}
                                                         {stats.unknown > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                                                 <span style={{
                                                                     width: '8px',
                                                                     height: '8px',
                                                                     borderRadius: '50%',
                                                                     backgroundColor: '#6b7280',
                                                                 }} />
-                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
+                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.8rem' }}>
                                                                     {stats.unknown} unknown
                                                                 </span>
                                                             </div>
@@ -3121,46 +3132,48 @@ export default function CanistersPage() {
                                                             <div style={{ 
                                                                 display: 'flex', 
                                                                 alignItems: 'center', 
-                                                                gap: '8px',
-                                                                marginLeft: '8px',
-                                                                paddingLeft: '16px',
+                                                                gap: '0.5rem',
+                                                                marginLeft: '0.5rem',
+                                                                paddingLeft: '1rem',
                                                                 borderLeft: `1px solid ${theme.colors.border}`,
                                                             }}>
                                                                 <button
                                                                     onClick={handleExpandAll}
                                                                     style={{
-                                                                        padding: '4px 10px',
-                                                                        borderRadius: '4px',
+                                                                        padding: '0.3rem 0.6rem',
+                                                                        borderRadius: '6px',
                                                                         border: `1px solid ${theme.colors.border}`,
                                                                         backgroundColor: 'transparent',
-                                                                        color: theme.colors.textSecondary,
-                                                                        fontSize: '11px',
+                                                                        color: theme.colors.secondaryText,
+                                                                        fontSize: '0.7rem',
                                                                         cursor: 'pointer',
                                                                         display: 'flex',
                                                                         alignItems: 'center',
-                                                                        gap: '4px',
+                                                                        gap: '0.25rem',
+                                                                        transition: 'all 0.2s'
                                                                     }}
                                                                     title="Expand all groups"
                                                                 >
-                                                                    <FaChevronDown size={10} /> Expand
+                                                                    <FaChevronDown size={9} /> Expand
                                                                 </button>
                                                                 <button
                                                                     onClick={handleCollapseAll}
                                                                     style={{
-                                                                        padding: '4px 10px',
-                                                                        borderRadius: '4px',
+                                                                        padding: '0.3rem 0.6rem',
+                                                                        borderRadius: '6px',
                                                                         border: `1px solid ${theme.colors.border}`,
                                                                         backgroundColor: 'transparent',
-                                                                        color: theme.colors.textSecondary,
-                                                                        fontSize: '11px',
+                                                                        color: theme.colors.secondaryText,
+                                                                        fontSize: '0.7rem',
                                                                         cursor: 'pointer',
                                                                         display: 'flex',
                                                                         alignItems: 'center',
-                                                                        gap: '4px',
+                                                                        gap: '0.25rem',
+                                                                        transition: 'all 0.2s'
                                                                     }}
                                                                     title="Collapse all groups"
                                                                 >
-                                                                    <FaChevronRight size={10} /> Collapse
+                                                                    <FaChevronRight size={9} /> Collapse
                                                                 </button>
                                                             </div>
                                                         )}

@@ -1824,7 +1824,7 @@ export default function Premium() {
                                     </div>
                                     <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
-                                            Grant full permissions to any hotkey on your SNS neurons, unlocking NNS-dapp voting and management.
+                                            Unlock the SNS neurons in your NNS wallet to make them tradable on Sneedex.
                                         </p>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>

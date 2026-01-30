@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
@@ -8,10 +8,61 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle } from 'react-icons/fa';
+import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.canister-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.canister-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.canister-card-animate {
+    opacity: 0;
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors (purple/violet for canister theme)
+const canisterPrimary = '#8b5cf6';
+const canisterSecondary = '#a78bfa';
+const canisterAccent = '#c4b5fd';
 
 // ICP Ledger constants
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -1135,31 +1186,120 @@ export default function CanisterPage() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
-            <style>{`
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            `}</style>
+            <style>{customStyles}</style>
             <Header showSnsDropdown={false} />
-            <main className="wallet-container">
+            
+            {/* Hero Section */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${canisterPrimary}15 50%, ${canisterSecondary}10 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${canisterPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '5%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${canisterSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                        <div className="canister-float" style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '16px',
+                            background: `linear-gradient(135deg, ${canisterPrimary}, ${canisterSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 24px ${canisterPrimary}40`
+                        }}>
+                            <FaCube size={28} color="#fff" />
+                        </div>
+                        <div>
+                            <h1 style={{
+                                fontSize: '1.75rem',
+                                fontWeight: '700',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                Canister Info
+                            </h1>
+                            <p style={{
+                                fontSize: '0.95rem',
+                                color: theme.colors.secondaryText,
+                                margin: '0.25rem 0 0 0'
+                            }}>
+                                View details and manage your Internet Computer canisters
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {/* Quick Links */}
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <Link 
+                            to="/canisters" 
+                            style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '0.35rem',
+                                color: canisterPrimary, 
+                                fontSize: '0.85rem', 
+                                textDecoration: 'none',
+                                padding: '0.4rem 0.75rem',
+                                background: `${canisterPrimary}15`,
+                                borderRadius: '8px',
+                                fontWeight: '500',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <FaArrowLeft size={11} /> Back to Canister Manager
+                        </Link>
+                    </div>
+                </div>
+            </div>
+            
+            <main style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem' }}>
                 {/* Search Section */}
-                <div style={{ 
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '20px',
-                    border: `1px solid ${theme.colors.border}`
+                <div className="canister-card-animate" style={{ 
+                    background: theme.colors.cardGradient,
+                    borderRadius: '16px',
+                    padding: '1.25rem 1.5rem',
+                    marginBottom: '1.25rem',
+                    border: `1px solid ${theme.colors.border}`,
+                    boxShadow: theme.colors.cardShadow
                 }}>
                     <h2 style={{ 
                         color: theme.colors.primaryText,
-                        margin: '0 0 15px 0',
-                        fontSize: '18px',
-                        fontWeight: '500'
+                        margin: '0 0 1rem 0',
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
                     }}>
+                        <FaCube style={{ color: canisterPrimary }} />
                         Canister Info Lookup
                     </h2>
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <input
                             type="text"
                             value={canisterInput}
@@ -1168,39 +1308,47 @@ export default function CanisterPage() {
                             placeholder="Enter canister ID"
                             style={{
                                 flex: '1',
-                                minWidth: '300px',
-                                padding: '10px 12px',
+                                minWidth: '280px',
+                                padding: '0.7rem 1rem',
                                 border: `1px solid ${theme.colors.border}`,
-                                borderRadius: '4px',
+                                borderRadius: '10px',
                                 backgroundColor: theme.colors.tertiaryBg,
                                 color: theme.colors.primaryText,
-                                fontSize: '14px',
-                                outline: 'none'
+                                fontSize: '0.9rem',
+                                fontFamily: 'monospace',
+                                outline: 'none',
+                                transition: 'all 0.2s'
                             }}
                         />
                         <button
                             type="submit"
                             disabled={loading}
                             style={{
-                                backgroundColor: theme.colors.accent,
-                                color: theme.colors.primaryText,
+                                background: loading ? theme.colors.mutedText : `linear-gradient(135deg, ${canisterPrimary}, ${canisterSecondary})`,
+                                color: '#fff',
                                 border: 'none',
-                                borderRadius: '4px',
-                                padding: '10px 20px',
+                                borderRadius: '10px',
+                                padding: '0.7rem 1.5rem',
                                 cursor: loading ? 'not-allowed' : 'pointer',
-                                opacity: loading ? 0.7 : 1,
-                                fontSize: '14px',
-                                fontWeight: '500'
+                                opacity: loading ? 0.6 : 1,
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                boxShadow: loading ? 'none' : `0 4px 12px ${canisterPrimary}40`,
+                                transition: 'all 0.2s'
                             }}
                         >
-                            {loading ? 'Loading...' : 'Lookup'}
+                            {loading ? <><FaSpinner className="spin" /> Loading...</> : 'Lookup'}
                         </button>
                     </form>
                     <p style={{ 
                         color: theme.colors.mutedText, 
-                        fontSize: '12px', 
-                        marginTop: '10px',
-                        marginBottom: 0 
+                        fontSize: '0.8rem', 
+                        marginTop: '0.75rem',
+                        marginBottom: 0,
+                        lineHeight: '1.5'
                     }}>
                         {isAuthenticated 
                             ? 'If you are a controller of the canister, full status will be shown. Otherwise, basic info will be retrieved from the IC.'
@@ -1210,18 +1358,21 @@ export default function CanisterPage() {
 
                 {/* Success Message */}
                 {successMessage && (
-                    <div style={{ 
-                        backgroundColor: `${theme.colors.success}20`, 
-                        border: `1px solid ${theme.colors.success}`,
-                        color: theme.colors.success,
-                        padding: '15px',
-                        borderRadius: '6px',
-                        marginBottom: '20px',
+                    <div className="canister-card-animate" style={{ 
+                        background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}08)`,
+                        border: `1px solid ${theme.colors.success}40`,
+                        borderRadius: '12px',
+                        padding: '1rem 1.25rem',
+                        marginBottom: '1rem',
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        gap: '1rem'
                     }}>
-                        {successMessage}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: theme.colors.success }}>
+                            <FaCheckCircle />
+                            <span style={{ fontSize: '0.9rem' }}>{successMessage}</span>
+                        </div>
                         <button
                             onClick={() => setSuccessMessage(null)}
                             style={{
@@ -1229,8 +1380,9 @@ export default function CanisterPage() {
                                 border: 'none',
                                 color: theme.colors.success,
                                 cursor: 'pointer',
-                                fontSize: '18px',
-                                padding: '0 5px'
+                                fontSize: '1.25rem',
+                                padding: '0',
+                                lineHeight: 1
                             }}
                         >
                             ×
@@ -1240,18 +1392,21 @@ export default function CanisterPage() {
 
                 {/* Error Display */}
                 {error && (
-                    <div style={{ 
-                        backgroundColor: `${theme.colors.error}20`, 
-                        border: `1px solid ${theme.colors.error}`,
-                        color: theme.colors.error,
-                        padding: '15px',
-                        borderRadius: '6px',
-                        marginBottom: '20px',
+                    <div className="canister-card-animate" style={{ 
+                        background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                        border: `1px solid ${theme.colors.error}40`,
+                        borderRadius: '12px',
+                        padding: '1rem 1.25rem',
+                        marginBottom: '1rem',
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        gap: '1rem'
                     }}>
-                        {error}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: theme.colors.error }}>
+                            <FaExclamationTriangle />
+                            <span style={{ fontSize: '0.9rem' }}>{error}</span>
+                        </div>
                         <button
                             onClick={() => setError(null)}
                             style={{
@@ -1259,8 +1414,9 @@ export default function CanisterPage() {
                                 border: 'none',
                                 color: theme.colors.error,
                                 cursor: 'pointer',
-                                fontSize: '18px',
-                                padding: '0 5px'
+                                fontSize: '1.25rem',
+                                padding: '0',
+                                lineHeight: 1
                             }}
                         >
                             ×
@@ -1270,14 +1426,16 @@ export default function CanisterPage() {
 
                 {/* Loading State */}
                 {loading && (
-                    <div style={{ 
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        padding: '40px',
+                    <div className="canister-card-animate" style={{ 
+                        background: theme.colors.cardGradient,
+                        borderRadius: '16px',
+                        padding: '3rem',
                         textAlign: 'center',
-                        border: `1px solid ${theme.colors.border}`
+                        border: `1px solid ${theme.colors.border}`,
+                        boxShadow: theme.colors.cardShadow
                     }}>
-                        <div style={{ color: theme.colors.mutedText, fontSize: '16px' }}>
+                        <FaSpinner className="spin" size={32} style={{ color: canisterPrimary, marginBottom: '1rem' }} />
+                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.95rem' }}>
                             Loading canister info...
                         </div>
                     </div>
@@ -1285,73 +1443,91 @@ export default function CanisterPage() {
 
                 {/* Canister Info Display */}
                 {!loading && canisterInfo && (
-                    <div style={{ 
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        padding: '20px',
-                        border: `1px solid ${theme.colors.border}`
+                    <div className="canister-card-animate" style={{ 
+                        background: theme.colors.cardGradient,
+                        borderRadius: '16px',
+                        padding: '1.5rem',
+                        border: `1px solid ${theme.colors.border}`,
+                        boxShadow: theme.colors.cardShadow
                     }}>
                         <div style={{ 
                             display: 'flex', 
                             justifyContent: 'space-between', 
                             alignItems: 'center',
-                            marginBottom: '20px',
+                            marginBottom: '1.5rem',
                             flexWrap: 'wrap',
-                            gap: '10px'
+                            gap: '0.75rem',
+                            paddingBottom: '1rem',
+                            borderBottom: `1px solid ${theme.colors.border}`
                         }}>
                             <h2 style={{ 
                                 color: theme.colors.primaryText,
                                 margin: '0',
-                                fontSize: '18px',
-                                fontWeight: '500'
+                                fontSize: '1.1rem',
+                                fontWeight: '600',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
                             }}>
+                                <FaCube style={{ color: canisterPrimary }} />
                                 Canister Details
                             </h2>
                             <span style={{
-                                backgroundColor: fetchMethod === 'canister_status' ? `${theme.colors.success}30` : `${theme.colors.accent}30`,
-                                color: fetchMethod === 'canister_status' ? theme.colors.success : theme.colors.accent,
-                                padding: '4px 8px',
-                                borderRadius: '4px',
-                                fontSize: '12px'
+                                backgroundColor: fetchMethod === 'canister_status' ? `${theme.colors.success}20` : `${canisterPrimary}20`,
+                                color: fetchMethod === 'canister_status' ? theme.colors.success : canisterPrimary,
+                                padding: '0.35rem 0.75rem',
+                                borderRadius: '20px',
+                                fontSize: '0.75rem',
+                                fontWeight: '600',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem'
                             }}>
-                                {fetchMethod === 'canister_status' ? 'Controller Access' : 'Public Info'}
+                                {fetchMethod === 'canister_status' ? <><FaUnlock size={10} /> Controller Access</> : <><FaLock size={10} /> Public Info</>}
                             </span>
                         </div>
 
                         {/* Canister ID */}
-                        <div style={{ marginBottom: '20px' }}>
+                        <div style={{ marginBottom: '1.25rem' }}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '12px',
-                                marginBottom: '4px'
+                                fontSize: '0.75rem',
+                                marginBottom: '0.4rem',
+                                textTransform: 'uppercase',
+                                fontWeight: '600',
+                                letterSpacing: '0.5px'
                             }}>
                                 Canister ID
                             </div>
                             <div style={{ 
                                 color: theme.colors.primaryText, 
-                                fontSize: '14px',
+                                fontSize: '0.9rem',
                                 fontFamily: 'monospace',
                                 backgroundColor: theme.colors.tertiaryBg,
-                                padding: '8px 12px',
-                                borderRadius: '4px',
-                                wordBreak: 'break-all'
+                                padding: '0.75rem 1rem',
+                                borderRadius: '10px',
+                                wordBreak: 'break-all',
+                                border: `1px solid ${theme.colors.border}`
                             }}>
                                 {canisterIdParam}
                             </div>
                         </div>
 
                         {/* External Links */}
-                        <div style={{ marginBottom: '20px' }}>
+                        <div style={{ marginBottom: '1.25rem' }}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '12px',
-                                marginBottom: '8px'
+                                fontSize: '0.75rem',
+                                marginBottom: '0.5rem',
+                                textTransform: 'uppercase',
+                                fontWeight: '600',
+                                letterSpacing: '0.5px'
                             }}>
                                 View on External Sites
                             </div>
                             <div style={{ 
                                 display: 'flex', 
-                                gap: '12px', 
+                                gap: '0.75rem', 
                                 flexWrap: 'wrap' 
                             }}>
                                 <a
@@ -1361,19 +1537,19 @@ export default function CanisterPage() {
                                     style={{
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '8px 14px',
-                                        backgroundColor: theme.colors.tertiaryBg,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '6px',
-                                        color: theme.colors.accent,
+                                        gap: '0.4rem',
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: `${canisterPrimary}15`,
+                                        border: `1px solid ${canisterPrimary}30`,
+                                        borderRadius: '8px',
+                                        color: canisterPrimary,
                                         textDecoration: 'none',
-                                        fontSize: '13px',
+                                        fontSize: '0.85rem',
                                         fontWeight: '500',
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    <FaExternalLinkAlt size={12} />
+                                    <FaExternalLinkAlt size={11} />
                                     ICP Dashboard
                                 </a>
                                 <a
@@ -1383,49 +1559,54 @@ export default function CanisterPage() {
                                     style={{
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '8px 14px',
-                                        backgroundColor: theme.colors.tertiaryBg,
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '6px',
-                                        color: theme.colors.accent,
+                                        gap: '0.4rem',
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: `${canisterPrimary}15`,
+                                        border: `1px solid ${canisterPrimary}30`,
+                                        borderRadius: '8px',
+                                        color: canisterPrimary,
                                         textDecoration: 'none',
-                                        fontSize: '13px',
+                                        fontSize: '0.85rem',
                                         fontWeight: '500',
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    <FaExternalLinkAlt size={12} />
+                                    <FaExternalLinkAlt size={11} />
                                     Candid UI
                                 </a>
                             </div>
                         </div>
 
                         {/* Public Name (editable by controllers) */}
-                        <div style={{ marginBottom: '20px' }}>
+                        <div style={{ marginBottom: '1.25rem' }}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '12px',
-                                marginBottom: '4px',
+                                fontSize: '0.75rem',
+                                marginBottom: '0.4rem',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '8px'
+                                gap: '0.5rem',
+                                textTransform: 'uppercase',
+                                fontWeight: '600',
+                                letterSpacing: '0.5px'
                             }}>
                                 Public Name
                                 {isVerified && (
                                     <span style={{
-                                        backgroundColor: `${theme.colors.success}30`,
+                                        backgroundColor: `${theme.colors.success}20`,
                                         color: theme.colors.success,
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        fontSize: '10px'
+                                        padding: '0.15rem 0.5rem',
+                                        borderRadius: '10px',
+                                        fontSize: '0.65rem',
+                                        fontWeight: '600',
+                                        textTransform: 'none'
                                     }}>
                                         ✓ Verified
                                     </span>
                                 )}
                             </div>
                             {isEditingName ? (
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                     <input
                                         type="text"
                                         value={nameInput}
@@ -1438,12 +1619,13 @@ export default function CanisterPage() {
                                         disabled={savingName}
                                         style={{
                                             flex: 1,
-                                            padding: '8px 12px',
+                                            minWidth: '200px',
+                                            padding: '0.65rem 1rem',
                                             border: `1px solid ${theme.colors.border}`,
-                                            borderRadius: '4px',
+                                            borderRadius: '10px',
                                             backgroundColor: theme.colors.tertiaryBg,
                                             color: theme.colors.primaryText,
-                                            fontSize: '14px',
+                                            fontSize: '0.9rem',
                                             outline: 'none'
                                         }}
                                         autoFocus
@@ -1452,18 +1634,20 @@ export default function CanisterPage() {
                                         onClick={handleSaveName}
                                         disabled={savingName}
                                         style={{
-                                            backgroundColor: theme.colors.success,
+                                            background: `linear-gradient(135deg, ${theme.colors.success}, #22c55e)`,
                                             color: '#fff',
                                             border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '8px 12px',
+                                            borderRadius: '8px',
+                                            padding: '0.6rem 1rem',
                                             cursor: savingName ? 'not-allowed' : 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '4px'
+                                            gap: '0.35rem',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500'
                                         }}
                                     >
-                                        <FaSave /> {savingName ? '...' : 'Save'}
+                                        <FaSave size={12} /> {savingName ? '...' : 'Save'}
                                     </button>
                                     <button
                                         onClick={() => setIsEditingName(false)}
@@ -1472,28 +1656,29 @@ export default function CanisterPage() {
                                             backgroundColor: 'transparent',
                                             color: theme.colors.mutedText,
                                             border: `1px solid ${theme.colors.border}`,
-                                            borderRadius: '4px',
-                                            padding: '8px 12px',
+                                            borderRadius: '8px',
+                                            padding: '0.6rem 0.75rem',
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center'
                                         }}
                                     >
-                                        <FaTimes />
+                                        <FaTimes size={12} />
                                     </button>
                                 </div>
                             ) : (
                                 <div style={{ 
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px',
+                                    gap: '0.5rem',
                                     backgroundColor: theme.colors.tertiaryBg,
-                                    padding: '8px 12px',
-                                    borderRadius: '4px'
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
                                     <span style={{ 
                                         color: currentName ? theme.colors.primaryText : theme.colors.mutedText,
-                                        fontSize: '14px',
+                                        fontSize: '0.9rem',
                                         flex: 1,
                                         fontStyle: currentName ? 'normal' : 'italic'
                                     }}>
@@ -1504,18 +1689,20 @@ export default function CanisterPage() {
                                         <button
                                             onClick={handleStartEditName}
                                             style={{
-                                                backgroundColor: 'transparent',
-                                                color: theme.colors.accent,
+                                                backgroundColor: `${canisterPrimary}15`,
+                                                color: canisterPrimary,
                                                 border: 'none',
-                                                padding: '4px 8px',
+                                                padding: '0.4rem 0.75rem',
+                                                borderRadius: '6px',
                                                 cursor: 'pointer',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '4px',
-                                                fontSize: '12px'
+                                                gap: '0.3rem',
+                                                fontSize: '0.8rem',
+                                                fontWeight: '500'
                                             }}
                                         >
-                                            <FaEdit /> Edit
+                                            <FaEdit size={10} /> Edit
                                         </button>
                                     )}
                                 </div>
@@ -1523,9 +1710,10 @@ export default function CanisterPage() {
                             {fetchMethod === 'canister_status' && (
                                 <p style={{ 
                                     color: theme.colors.mutedText, 
-                                    fontSize: '11px', 
-                                    marginTop: '4px',
-                                    marginBottom: 0 
+                                    fontSize: '0.75rem', 
+                                    marginTop: '0.4rem',
+                                    marginBottom: 0,
+                                    lineHeight: '1.4'
                                 }}>
                                     As a controller, you can set a public name visible to all users.
                                 </p>
@@ -1640,32 +1828,57 @@ export default function CanisterPage() {
 
                         {/* Status (if available from canister_status) */}
                         {canisterInfo.status && (
-                            <div style={{ marginBottom: '20px' }}>
+                            <div style={{ marginBottom: '1.25rem' }}>
                                 <div style={{ 
                                     color: theme.colors.mutedText, 
-                                    fontSize: '12px',
-                                    marginBottom: '4px'
+                                    fontSize: '0.75rem',
+                                    marginBottom: '0.4rem',
+                                    textTransform: 'uppercase',
+                                    fontWeight: '600',
+                                    letterSpacing: '0.5px'
                                 }}>
                                     Status
                                 </div>
                                 <div style={{ 
-                                    display: 'inline-block',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
                                     backgroundColor: canisterInfo.status === 'running' 
-                                        ? `${theme.colors.success}30` 
+                                        ? `${theme.colors.success}15` 
                                         : canisterInfo.status === 'stopped' 
-                                            ? `${theme.colors.error}30` 
-                                            : `${theme.colors.warning}30`,
+                                            ? `${theme.colors.error}15` 
+                                            : `${theme.colors.warning}15`,
                                     color: canisterInfo.status === 'running' 
                                         ? theme.colors.success 
                                         : canisterInfo.status === 'stopped' 
                                             ? theme.colors.error 
                                             : theme.colors.warning,
-                                    padding: '6px 12px',
-                                    borderRadius: '4px',
-                                    fontSize: '14px',
-                                    fontWeight: '500',
-                                    textTransform: 'capitalize'
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '20px',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    textTransform: 'capitalize',
+                                    border: `1px solid ${canisterInfo.status === 'running' 
+                                        ? `${theme.colors.success}30` 
+                                        : canisterInfo.status === 'stopped' 
+                                            ? `${theme.colors.error}30` 
+                                            : `${theme.colors.warning}30`}`
                                 }}>
+                                    <span style={{
+                                        width: '8px',
+                                        height: '8px',
+                                        borderRadius: '50%',
+                                        backgroundColor: canisterInfo.status === 'running' 
+                                            ? theme.colors.success 
+                                            : canisterInfo.status === 'stopped' 
+                                                ? theme.colors.error 
+                                                : theme.colors.warning,
+                                        boxShadow: `0 0 8px ${canisterInfo.status === 'running' 
+                                            ? theme.colors.success 
+                                            : canisterInfo.status === 'stopped' 
+                                                ? theme.colors.error 
+                                                : theme.colors.warning}`
+                                    }} />
                                     {canisterInfo.status}
                                 </div>
                             </div>
@@ -1673,27 +1886,47 @@ export default function CanisterPage() {
 
                         {/* Cycles (if available from canister_status) */}
                         {canisterInfo.cycles !== undefined && (
-                            <div style={{ marginBottom: '20px' }}>
+                            <div style={{ marginBottom: '1.25rem' }}>
                                 <div style={{ 
                                     color: theme.colors.mutedText, 
-                                    fontSize: '12px',
-                                    marginBottom: '4px'
+                                    fontSize: '0.75rem',
+                                    marginBottom: '0.4rem',
+                                    textTransform: 'uppercase',
+                                    fontWeight: '600',
+                                    letterSpacing: '0.5px'
                                 }}>
                                     Cycles
                                 </div>
                                 <div style={{ 
-                                    color: getCyclesColor(Number(canisterInfo.cycles), cycleSettings), 
-                                    fontSize: '18px',
-                                    fontWeight: '600'
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    background: theme.colors.tertiaryBg,
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
-                                    ⚡ {(Number(canisterInfo.cycles) / 1_000_000_000_000).toFixed(4)} T
-                                </div>
-                                <div style={{
-                                    color: theme.colors.mutedText,
-                                    fontSize: '11px',
-                                    marginTop: '4px'
-                                }}>
-                                    {Number(canisterInfo.cycles).toLocaleString()} cycles
+                                    <span style={{
+                                        width: '10px',
+                                        height: '10px',
+                                        borderRadius: '50%',
+                                        backgroundColor: getCyclesColor(Number(canisterInfo.cycles), cycleSettings),
+                                        boxShadow: `0 0 8px ${getCyclesColor(Number(canisterInfo.cycles), cycleSettings)}`
+                                    }} />
+                                    <span style={{ 
+                                        color: getCyclesColor(Number(canisterInfo.cycles), cycleSettings), 
+                                        fontSize: '1.25rem',
+                                        fontWeight: '700'
+                                    }}>
+                                        {(Number(canisterInfo.cycles) / 1_000_000_000_000).toFixed(4)} T
+                                    </span>
+                                    <span style={{
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.8rem',
+                                        marginLeft: 'auto'
+                                    }}>
+                                        {Number(canisterInfo.cycles).toLocaleString()} cycles
+                                    </span>
                                 </div>
                             </div>
                         )}
@@ -1915,41 +2148,71 @@ export default function CanisterPage() {
 
                         {/* Memory Size (if available from canister_status) */}
                         {canisterInfo.memorySize !== undefined && (
-                            <div style={{ marginBottom: '20px' }}>
+                            <div style={{ marginBottom: '1.25rem' }}>
                                 <div style={{ 
                                     color: theme.colors.mutedText, 
-                                    fontSize: '12px',
-                                    marginBottom: '4px'
+                                    fontSize: '0.75rem',
+                                    marginBottom: '0.4rem',
+                                    textTransform: 'uppercase',
+                                    fontWeight: '600',
+                                    letterSpacing: '0.5px'
                                 }}>
                                     Memory Size
                                 </div>
                                 <div style={{ 
-                                    color: theme.colors.primaryText, 
-                                    fontSize: '14px'
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    background: theme.colors.tertiaryBg,
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
-                                    {(Number(canisterInfo.memorySize) / (1024 * 1024)).toFixed(2)} MB
+                                    <FaMemory style={{ color: canisterPrimary }} />
+                                    <span style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontSize: '1rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        {(Number(canisterInfo.memorySize) / (1024 * 1024)).toFixed(2)} MB
+                                    </span>
+                                    <span style={{
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.8rem',
+                                        marginLeft: 'auto'
+                                    }}>
+                                        {Number(canisterInfo.memorySize).toLocaleString()} bytes
+                                    </span>
                                 </div>
                             </div>
                         )}
 
                         {/* Module Hash */}
-                        <div style={{ marginBottom: '20px' }}>
+                        <div style={{ marginBottom: '1.25rem' }}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '12px',
-                                marginBottom: '4px'
+                                fontSize: '0.75rem',
+                                marginBottom: '0.4rem',
+                                textTransform: 'uppercase',
+                                fontWeight: '600',
+                                letterSpacing: '0.5px'
                             }}>
                                 Module Hash
                             </div>
                             <div style={{ 
                                 color: theme.colors.primaryText, 
-                                fontSize: '14px',
+                                fontSize: '0.85rem',
                                 fontFamily: 'monospace',
                                 backgroundColor: theme.colors.tertiaryBg,
-                                padding: '8px 12px',
-                                borderRadius: '4px',
-                                wordBreak: 'break-all'
+                                padding: '0.75rem 1rem',
+                                borderRadius: '10px',
+                                wordBreak: 'break-all',
+                                border: `1px solid ${theme.colors.border}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
                             }}>
+                                <FaCode style={{ color: canisterPrimary, flexShrink: 0 }} />
                                 {canisterInfo.moduleHash || (
                                     <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
                                         No module installed
@@ -1961,24 +2224,36 @@ export default function CanisterPage() {
                         {/* WASM Upgrade Section - Only for controllers */}
                         {fetchMethod === 'canister_status' && (
                             <div style={{ 
-                                marginBottom: '20px',
-                                backgroundColor: theme.colors.tertiaryBg,
-                                borderRadius: '8px',
-                                padding: '16px',
-                                border: `1px solid ${theme.colors.border}`
+                                marginBottom: '1.25rem',
+                                background: `linear-gradient(135deg, ${canisterPrimary}08, ${canisterSecondary}05)`,
+                                borderRadius: '12px',
+                                padding: '1rem 1.25rem',
+                                border: `1px solid ${canisterPrimary}25`
                             }}>
                                 <div style={{ 
                                     display: 'flex', 
                                     justifyContent: 'space-between', 
                                     alignItems: 'center',
-                                    marginBottom: showUpgradeSection ? '16px' : '0'
+                                    marginBottom: showUpgradeSection ? '1rem' : '0',
+                                    flexWrap: 'wrap',
+                                    gap: '0.75rem'
                                 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <FaUpload style={{ color: theme.colors.accent }} />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <div style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            background: `${canisterPrimary}20`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <FaUpload style={{ color: canisterPrimary, fontSize: '14px' }} />
+                                        </div>
                                         <span style={{ 
                                             color: theme.colors.primaryText, 
-                                            fontWeight: '500',
-                                            fontSize: '14px'
+                                            fontWeight: '600',
+                                            fontSize: '0.95rem'
                                         }}>
                                             Upgrade Canister
                                         </span>
@@ -2000,14 +2275,16 @@ export default function CanisterPage() {
                                             }
                                         }}
                                         style={{
-                                            backgroundColor: showUpgradeSection ? 'transparent' : theme.colors.accent,
+                                            background: showUpgradeSection ? 'transparent' : `linear-gradient(135deg, ${canisterPrimary}, ${canisterSecondary})`,
                                             color: showUpgradeSection ? theme.colors.mutedText : '#fff',
                                             border: showUpgradeSection ? `1px solid ${theme.colors.border}` : 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
+                                            borderRadius: '8px',
+                                            padding: '0.6rem 1.25rem',
                                             cursor: 'pointer',
-                                            fontSize: '13px',
-                                            fontWeight: '500'
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            boxShadow: showUpgradeSection ? 'none' : `0 4px 12px ${canisterPrimary}30`,
+                                            transition: 'all 0.2s'
                                         }}
                                     >
                                         {showUpgradeSection ? 'Cancel' : 'Upload WASM'}
