@@ -139,6 +139,8 @@ export default function PrincipalPage() {
     const [activeTab, setActiveTab] = useState('posts'); // 'posts', 'neurons', 'transactions', 'trades'
     const [postsActiveTab, setPostsActiveTab] = useState('posts');
     const [tradesActiveTab, setTradesActiveTab] = useState('offers'); // 'offers' or 'bids'
+    const [showOnlyActiveOffers, setShowOnlyActiveOffers] = useState(false);
+    const [showOnlyActiveBids, setShowOnlyActiveBids] = useState(false);
     
     // Trades state (Sneedex offers & bids)
     const [userOffers, setUserOffers] = useState([]);
@@ -2169,49 +2171,106 @@ export default function PrincipalPage() {
                             {/* Sub-tab Navigation for Offers/Bids */}
                             <div style={{
                                 display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
                                 borderBottom: `1px solid ${theme.colors.border}`,
-                                marginBottom: '1.25rem'
+                                marginBottom: '1.25rem',
+                                flexWrap: 'wrap',
+                                gap: '0.5rem'
                             }}>
-                                <button
-                                    onClick={() => setTradesActiveTab('offers')}
-                                    style={{
-                                        background: 'transparent',
-                                        border: 'none',
-                                        color: tradesActiveTab === 'offers' ? '#8b5cf6' : theme.colors.mutedText,
-                                        fontSize: '0.95rem',
-                                        fontWeight: '600',
-                                        padding: '12px 20px',
-                                        cursor: 'pointer',
-                                        borderBottom: tradesActiveTab === 'offers' ? '2px solid #8b5cf6' : '2px solid transparent',
-                                        transition: 'all 0.2s',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px'
-                                    }}
-                                >
-                                    <FaGavel size={12} />
-                                    Offers ({userOffers.length})
-                                </button>
-                                <button
-                                    onClick={() => setTradesActiveTab('bids')}
-                                    style={{
-                                        background: 'transparent',
-                                        border: 'none',
-                                        color: tradesActiveTab === 'bids' ? '#8b5cf6' : theme.colors.mutedText,
-                                        fontSize: '0.95rem',
-                                        fontWeight: '600',
-                                        padding: '12px 20px',
-                                        cursor: 'pointer',
-                                        borderBottom: tradesActiveTab === 'bids' ? '2px solid #8b5cf6' : '2px solid transparent',
-                                        transition: 'all 0.2s',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px'
-                                    }}
-                                >
-                                    <FaHandHoldingUsd size={12} />
-                                    Bids ({userBids.length})
-                                </button>
+                                <div style={{ display: 'flex' }}>
+                                    <button
+                                        onClick={() => setTradesActiveTab('offers')}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: tradesActiveTab === 'offers' ? '#8b5cf6' : theme.colors.mutedText,
+                                            fontSize: '0.95rem',
+                                            fontWeight: '600',
+                                            padding: '12px 20px',
+                                            cursor: 'pointer',
+                                            borderBottom: tradesActiveTab === 'offers' ? '2px solid #8b5cf6' : '2px solid transparent',
+                                            transition: 'all 0.2s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}
+                                    >
+                                        <FaGavel size={12} />
+                                        Offers ({userOffers.length})
+                                    </button>
+                                    <button
+                                        onClick={() => setTradesActiveTab('bids')}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: tradesActiveTab === 'bids' ? '#8b5cf6' : theme.colors.mutedText,
+                                            fontSize: '0.95rem',
+                                            fontWeight: '600',
+                                            padding: '12px 20px',
+                                            cursor: 'pointer',
+                                            borderBottom: tradesActiveTab === 'bids' ? '2px solid #8b5cf6' : '2px solid transparent',
+                                            transition: 'all 0.2s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}
+                                    >
+                                        <FaHandHoldingUsd size={12} />
+                                        Bids ({userBids.length})
+                                    </button>
+                                </div>
+                                
+                                {/* Active Only Toggle */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.5rem 0.75rem',
+                                    marginBottom: '2px'
+                                }}>
+                                    <span style={{
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                        fontWeight: '500'
+                                    }}>
+                                        Active only
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            if (tradesActiveTab === 'offers') {
+                                                setShowOnlyActiveOffers(!showOnlyActiveOffers);
+                                            } else {
+                                                setShowOnlyActiveBids(!showOnlyActiveBids);
+                                            }
+                                        }}
+                                        style={{
+                                            width: '40px',
+                                            height: '22px',
+                                            borderRadius: '11px',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '2px',
+                                            background: (tradesActiveTab === 'offers' ? showOnlyActiveOffers : showOnlyActiveBids)
+                                                ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                                                : theme.colors.tertiaryBg,
+                                            transition: 'all 0.2s ease',
+                                            position: 'relative'
+                                        }}
+                                    >
+                                        <div style={{
+                                            width: '18px',
+                                            height: '18px',
+                                            borderRadius: '50%',
+                                            background: 'white',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                            transition: 'transform 0.2s ease',
+                                            transform: (tradesActiveTab === 'offers' ? showOnlyActiveOffers : showOnlyActiveBids)
+                                                ? 'translateX(18px)'
+                                                : 'translateX(0)'
+                                        }} />
+                                    </button>
+                                </div>
                             </div>
 
                             {loadingTrades ? (
@@ -2239,22 +2298,29 @@ export default function PrincipalPage() {
                             ) : (
                                 <div>
                                     {tradesActiveTab === 'offers' ? (
-                                        userOffers.length === 0 ? (
-                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                                No offers found
-                                            </div>
-                                        ) : (
-                                            <div style={{ 
-                                                display: 'grid',
-                                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                                                gap: '1rem'
-                                            }}>
-                                                {userOffers.map((offer) => {
-                                                    const tokenInfo = getTradeTokenInfo(offer.price_token_ledger.toString());
-                                                    const stateStr = getOfferStateString(offer.state);
-                                                    const isActive = 'Active' in offer.state;
-                                                    
-                                                    return (
+                                        (() => {
+                                            const filteredOffers = showOnlyActiveOffers 
+                                                ? userOffers.filter(o => 'Active' in o.state)
+                                                : userOffers;
+                                            
+                                            return filteredOffers.length === 0 ? (
+                                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                    {showOnlyActiveOffers && userOffers.length > 0 
+                                                        ? 'No active offers found'
+                                                        : 'No offers found'}
+                                                </div>
+                                            ) : (
+                                                <div style={{ 
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                                    gap: '1rem'
+                                                }}>
+                                                    {filteredOffers.map((offer) => {
+                                                        const tokenInfo = getTradeTokenInfo(offer.price_token_ledger.toString());
+                                                        const stateStr = getOfferStateString(offer.state);
+                                                        const isActive = 'Active' in offer.state;
+                                                        
+                                                        return (
                                                         <Link
                                                             key={Number(offer.id)}
                                                             to={`/sneedex_offer/${offer.id}`}
@@ -2387,25 +2453,33 @@ export default function PrincipalPage() {
                                                     );
                                                 })}
                                             </div>
-                                        )
+                                            );
+                                        })()
                                     ) : (
-                                        userBids.length === 0 ? (
-                                            <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                                No bids found
-                                            </div>
-                                        ) : (
-                                            <div style={{ 
-                                                display: 'grid',
-                                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                                                gap: '1rem'
-                                            }}>
-                                                {userBids.map((bid) => {
-                                                    const stateStr = getBidStateString(bid.state);
-                                                    const isWon = 'Won' in bid.state;
-                                                    const isLost = 'Lost' in bid.state;
-                                                    const isPending = 'Pending' in bid.state;
-                                                    
-                                                    return (
+                                        (() => {
+                                            const filteredBids = showOnlyActiveBids 
+                                                ? userBids.filter(b => 'Pending' in b.state)
+                                                : userBids;
+                                            
+                                            return filteredBids.length === 0 ? (
+                                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                                    {showOnlyActiveBids && userBids.length > 0 
+                                                        ? 'No active bids found'
+                                                        : 'No bids found'}
+                                                </div>
+                                            ) : (
+                                                <div style={{ 
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                                    gap: '1rem'
+                                                }}>
+                                                    {filteredBids.map((bid) => {
+                                                        const stateStr = getBidStateString(bid.state);
+                                                        const isWon = 'Won' in bid.state;
+                                                        const isLost = 'Lost' in bid.state;
+                                                        const isPending = 'Pending' in bid.state;
+                                                        
+                                                        return (
                                                         <Link
                                                             key={Number(bid.id)}
                                                             to={`/sneedex_offer/${bid.offer_id}`}
@@ -2481,10 +2555,11 @@ export default function PrincipalPage() {
                                                                 </div>
                                                             </div>
                                                         </Link>
-                                                    );
-                                                })}
-                                            </div>
-                                        )
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()
                                     )}
                                 </div>
                             )}
