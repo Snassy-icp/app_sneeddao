@@ -608,8 +608,22 @@ const Message = () => {
         const isLongMessage = message.body.length > 300;
         const displayBody = isExpanded || !isLongMessage ? message.body : message.body.substring(0, 300) + '...';
 
+        // Reddit-style nesting: use borderLeft for visual indication, minimal marginLeft
+        const nestingIndicatorColor = depth === 0 ? 'transparent' : 
+            depth === 1 ? msgPrimary : 
+            depth === 2 ? theme.colors.success : 
+            depth === 3 ? theme.colors.warning : 
+            theme.colors.accent;
+
         return (
-            <div key={messageId} style={{ marginLeft: depth > 0 ? '1.5rem' : '0' }}>
+            <div 
+                key={messageId} 
+                style={{ 
+                    marginLeft: depth > 0 ? '0.5rem' : '0',
+                    paddingLeft: depth > 0 ? '0.75rem' : '0',
+                    borderLeft: depth > 0 ? `3px solid ${nestingIndicatorColor}40` : 'none',
+                }}
+            >
                 {/* Load Context Button */}
                 {canLoadParent && (
                     <div style={{ marginBottom: '0.75rem' }}>
@@ -648,13 +662,13 @@ const Message = () => {
                         border: isFocused 
                             ? `2px solid ${msgPrimary}` 
                             : `1px solid ${theme.colors.border}`,
-                        borderRadius: '16px',
-                        padding: '1.25rem',
-                        marginBottom: '1rem',
+                        borderRadius: '12px',
+                        padding: '0.875rem',
+                        marginBottom: '0.75rem',
                         position: 'relative',
                         boxShadow: isFocused 
-                            ? `0 8px 32px ${msgPrimary}25, 0 2px 8px rgba(0,0,0,0.15)` 
-                            : '0 2px 8px rgba(0,0,0,0.1)',
+                            ? `0 6px 24px ${msgPrimary}20, 0 2px 6px rgba(0,0,0,0.12)` 
+                            : '0 1px 4px rgba(0,0,0,0.08)',
                         borderLeft: isFocused ? `4px solid ${msgPrimary}` : 'none'
                     }}
                 >
@@ -662,17 +676,17 @@ const Message = () => {
                     <div style={{ 
                         display: 'flex', 
                         alignItems: 'flex-start',
-                        gap: '1rem',
-                        marginBottom: isCollapsed ? '0' : '1rem'
+                        gap: '0.6rem',
+                        marginBottom: isCollapsed ? '0' : '0.5rem'
                     }}>
                         {/* Collapse Toggle */}
                         <button
                             onClick={() => toggleMessageCollapse(messageId)}
                             style={{
-                                width: '36px',
-                                height: '36px',
-                                minWidth: '36px',
-                                borderRadius: '10px',
+                                width: '28px',
+                                height: '28px',
+                                minWidth: '28px',
+                                borderRadius: '8px',
                                 background: isFocused 
                                     ? `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`
                                     : theme.colors.secondaryBg,
@@ -684,11 +698,11 @@ const Message = () => {
                                 justifyContent: 'center',
                                 transition: 'all 0.2s ease',
                                 flexShrink: 0,
-                                boxShadow: isFocused ? `0 4px 12px ${msgPrimary}40` : 'none'
+                                boxShadow: isFocused ? `0 3px 10px ${msgPrimary}35` : 'none'
                             }}
                             title={isCollapsed ? 'Expand message' : 'Collapse message'}
                         >
-                            {isCollapsed ? <FaChevronRight size={12} /> : <FaChevronDown size={12} />}
+                            {isCollapsed ? <FaChevronRight size={10} /> : <FaChevronDown size={10} />}
                         </button>
 
                         {/* Message Info */}
@@ -833,11 +847,11 @@ const Message = () => {
                         <>
                             {/* Message Body */}
                             <div style={{ 
-                                marginLeft: '3rem', 
+                                marginTop: '0.75rem',
                                 marginBottom: '1rem',
-                                padding: '1.25rem',
+                                padding: '1rem',
                                 background: theme.colors.primaryBg,
-                                borderRadius: '12px',
+                                borderRadius: '10px',
                                 border: `1px solid ${theme.colors.border}`,
                                 borderLeft: `3px solid ${msgAccent}40`
                             }}>
@@ -873,9 +887,8 @@ const Message = () => {
 
                             {/* Action Buttons */}
                             <div style={{ 
-                                marginLeft: '3rem',
                                 display: 'flex', 
-                                gap: '0.75rem', 
+                                gap: '0.5rem', 
                                 flexWrap: 'wrap'
                             }}>
                                 <button
@@ -884,19 +897,19 @@ const Message = () => {
                                         background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
                                         color: 'white',
                                         border: 'none',
-                                        borderRadius: '10px',
-                                        padding: '0.6rem 1.25rem',
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 1rem',
                                         cursor: 'pointer',
-                                        fontSize: '0.85rem',
+                                        fontSize: '0.8rem',
                                         fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '0.5rem',
-                                        boxShadow: `0 4px 15px ${msgPrimary}35`,
+                                        gap: '0.4rem',
+                                        boxShadow: `0 3px 10px ${msgPrimary}30`,
                                         transition: 'all 0.2s ease'
                                     }}
                                 >
-                                    <FaReply size={12} />
+                                    <FaReply size={11} />
                                     Reply
                                 </button>
                             </div>

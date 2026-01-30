@@ -1140,7 +1140,7 @@ export default function Premium() {
                                     : `linear-gradient(135deg, ${premiumPrimary}15, ${premiumSecondary}08)`,
                             border: `2px solid ${isActive ? theme.colors.success : isExpired ? theme.colors.error : premiumPrimary}`,
                             borderRadius: '20px',
-                            padding: '1.5rem 2rem',
+                            padding: '1.25rem 1.5rem',
                             marginBottom: '2rem',
                             textAlign: 'center',
                             opacity: 0,
@@ -1149,7 +1149,7 @@ export default function Premium() {
                             {isActive ? (
                                 <>
                                     <div style={{ 
-                                        fontSize: '1.4rem', 
+                                        fontSize: '1.2rem', 
                                         fontWeight: '600', 
                                         marginBottom: '0.5rem',
                                         display: 'flex',
@@ -1161,16 +1161,24 @@ export default function Premium() {
                                         <FaCheckCircle />
                                         You're a Premium Member!
                                     </div>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '1rem' }}>
-                                        Expires: <strong style={{ color: theme.colors.primaryText }}>{formatTimestamp(membershipStatus.Active.expiration)}</strong>
-                                        <span style={{ margin: '0 0.75rem' }}>•</span>
-                                        Time remaining: <strong style={{ color: theme.colors.success }}>{getTimeRemaining(membershipStatus.Active.expiration)}</strong>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '0.9rem',
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        justifyContent: 'center',
+                                        gap: '0.5rem',
+                                        alignItems: 'center'
+                                    }}>
+                                        <span>Expires: <strong style={{ color: theme.colors.primaryText }}>{formatTimestamp(membershipStatus.Active.expiration)}</strong></span>
+                                        <span style={{ color: theme.colors.border }}>•</span>
+                                        <span>Time remaining: <strong style={{ color: theme.colors.success }}>{getTimeRemaining(membershipStatus.Active.expiration)}</strong></span>
                                     </div>
                                 </>
                             ) : isExpired ? (
                                 <>
                                     <div style={{ 
-                                        fontSize: '1.4rem', 
+                                        fontSize: '1.2rem', 
                                         fontWeight: '600', 
                                         marginBottom: '0.5rem',
                                         display: 'flex',
@@ -1182,14 +1190,14 @@ export default function Premium() {
                                         <FaTimesCircle />
                                         Membership Expired
                                     </div>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '1rem' }}>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
                                         Your membership expired on {formatTimestamp(membershipStatus.Expired.expiredAt)}
                                     </div>
                                 </>
                             ) : (
                                 <>
                                     <div style={{ 
-                                        fontSize: '1.4rem', 
+                                        fontSize: '1.2rem', 
                                         fontWeight: '600', 
                                         marginBottom: '0.5rem',
                                         display: 'flex',
@@ -1201,7 +1209,7 @@ export default function Premium() {
                                         <FaCrown />
                                         Become a Premium Member
                                     </div>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '1rem' }}>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
                                         Purchase or claim your membership below
                                     </div>
                                 </>
@@ -1906,30 +1914,37 @@ export default function Premium() {
                                         background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)`,
                                         border: `1px solid ${theme.colors.success}40`,
                                         borderRadius: '12px',
-                                        padding: '1.25rem',
+                                        padding: '1rem',
                                         marginBottom: '1.5rem',
                                     }}>
                                         <h3 style={{ 
                                             color: theme.colors.success, 
                                             margin: '0 0 0.75rem 0',
-                                            fontSize: '1.1rem',
+                                            fontSize: '1rem',
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '8px',
                                         }}>
                                             <FaWallet /> Pay Directly from Wallet
                                         </h3>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                            <div>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Your Wallet Balance</div>
-                                                <div style={{ fontSize: '1.25rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'flex-start', 
+                                            marginBottom: '1rem',
+                                            flexWrap: 'wrap',
+                                            gap: '0.75rem'
+                                        }}>
+                                            <div style={{ minWidth: '120px' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Your Wallet Balance</div>
+                                                <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.primaryText }}>
                                                     {walletBalance !== null ? formatIcp(walletBalance) : '—'}
                                                 </div>
                                             </div>
                                             {selectedIcpTier !== null && (
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Selected Tier Cost</div>
-                                                    <div style={{ fontSize: '1.25rem', fontWeight: '600', color: theme.colors.accent }}>
+                                                <div style={{ minWidth: '100px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>Selected Tier Cost</div>
+                                                    <div style={{ fontSize: '1.1rem', fontWeight: '600', color: theme.colors.accent }}>
                                                         {formatIcp(icpTiers[selectedIcpTier].amountE8s)}
                                                     </div>
                                                 </div>
