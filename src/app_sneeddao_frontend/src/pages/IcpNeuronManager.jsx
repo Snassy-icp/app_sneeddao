@@ -274,6 +274,7 @@ function IcpNeuronManager() {
     const [cycleSettings] = useState(() => getNeuronManagerSettings());
     const [showTopUpSection, setShowTopUpSection] = useState(false);
     const [toppingUp, setToppingUp] = useState(false);
+    const [topUpSuccessDialog, setTopUpSuccessDialog] = useState(null); // { cyclesAdded, icpSpent }
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
@@ -959,7 +960,13 @@ function IcpNeuronManager() {
             }
             
             const cyclesAdded = Number(notifyResult.Ok);
-            setSuccess(`✅ Successfully topped up ${formatCycles(cyclesAdded)} cycles!`);
+            
+            // Show success dialog
+            setTopUpSuccessDialog({
+                cyclesAdded,
+                icpSpent: icpAmount
+            });
+            
             setTopUpAmount('');
             setShowTopUpSection(false);
             
@@ -2194,6 +2201,123 @@ function IcpNeuronManager() {
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <style>{customStyles}</style>
+            
+            {/* Top-Up Success Dialog */}
+            {topUpSuccessDialog && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'rgba(0, 0, 0, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10002,
+                    backdropFilter: 'blur(4px)',
+                }}>
+                    <div className="neuron-mgr-fade-in" style={{
+                        background: theme.colors.cardGradient || theme.colors.cardBackground,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '20px',
+                        padding: '2rem',
+                        textAlign: 'center',
+                        boxShadow: '0 12px 48px rgba(0, 0, 0, 0.4)',
+                        maxWidth: '380px',
+                        width: '90%',
+                    }}>
+                        {/* Success Icon */}
+                        <div style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '50%',
+                            background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}10)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.25rem',
+                            border: `2px solid ${theme.colors.success}40`,
+                            fontSize: '2rem'
+                        }}>
+                            ⛽
+                        </div>
+                        
+                        <h3 style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '1.25rem',
+                            fontWeight: '700',
+                            marginBottom: '0.5rem'
+                        }}>
+                            Top-Up Successful!
+                        </h3>
+                        
+                        <p style={{
+                            color: theme.colors.secondaryText,
+                            fontSize: '0.9rem',
+                            marginBottom: '1.25rem'
+                        }}>
+                            Your canister has been topped up with cycles
+                        </p>
+                        
+                        {/* Stats */}
+                        <div style={{
+                            background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)`,
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            marginBottom: '1.5rem',
+                            border: `1px solid ${theme.colors.success}25`
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                marginBottom: '0.75rem',
+                                paddingBottom: '0.75rem',
+                                borderBottom: `1px solid ${theme.colors.border}`
+                            }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                    Cycles Added
+                                </span>
+                                <span style={{ 
+                                    color: theme.colors.success, 
+                                    fontWeight: '700',
+                                    fontSize: '0.95rem'
+                                }}>
+                                    +{formatCycles(topUpSuccessDialog.cyclesAdded)}
+                                </span>
+                            </div>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between'
+                            }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                    ICP Spent
+                                </span>
+                                <span style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontWeight: '600',
+                                    fontSize: '0.95rem'
+                                }}>
+                                    {topUpSuccessDialog.icpSpent.toFixed(4)} ICP
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <button
+                            onClick={() => setTopUpSuccessDialog(null)}
+                            style={{
+                                ...buttonStyle,
+                                width: '100%',
+                                background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                boxShadow: `0 4px 16px ${theme.colors.success}40`
+                            }}
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
+            )}
+            
             <Header />
             
             {/* Hero Section */}
