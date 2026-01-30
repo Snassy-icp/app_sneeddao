@@ -121,6 +121,7 @@ export default function Me() {
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [activeTab, setActiveTab] = useState('neurons'); // 'neurons', 'transactions', 'settings'
     const [expandedGroups, setExpandedGroups] = useState(new Set(['self']));
+    const [activeNeuronGroup, setActiveNeuronGroup] = useState('self'); // Track active neuron group tab
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
@@ -1000,7 +1001,7 @@ export default function Me() {
                 <div style={{
                     maxWidth: '1000px',
                     margin: '0 auto',
-                    padding: '2rem 1.5rem'
+                    padding: '1.5rem 1rem'
                 }}>
                     {/* Quick Navigation Grid */}
                     <div style={{ marginBottom: '2rem' }}>
@@ -1047,12 +1048,13 @@ export default function Me() {
                         
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
                             gap: '0.75rem',
-                            maxHeight: quickAccessExpanded ? '500px' : '0',
+                            maxHeight: quickAccessExpanded ? '600px' : '0',
                             overflow: 'hidden',
                             opacity: quickAccessExpanded ? 1 : 0,
-                            transition: 'max-height 0.3s ease, opacity 0.3s ease'
+                            transition: 'max-height 0.3s ease, opacity 0.3s ease',
+                            paddingBottom: quickAccessExpanded ? '0.25rem' : '0'
                         }}>
                             {quickNavItems.map((item, idx) => (
                                 <Link
@@ -1061,21 +1063,21 @@ export default function Me() {
                                     className="quick-nav-item"
                                     style={{
                                         background: theme.colors.secondaryBg,
-                                        borderRadius: '14px',
-                                        padding: '1rem',
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
                                         border: `1px solid ${theme.colors.border}`,
                                         textDecoration: 'none',
                                         display: 'flex',
                                         flexDirection: 'column',
                                         alignItems: 'center',
-                                        gap: '0.5rem',
+                                        gap: '0.4rem',
                                         textAlign: 'center'
                                     }}
                                 >
                                     <div style={{
-                                        width: '44px',
-                                        height: '44px',
-                                        borderRadius: '12px',
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
                                         background: `${item.color}15`,
                                         display: 'flex',
                                         alignItems: 'center',
@@ -1086,7 +1088,7 @@ export default function Me() {
                                     </div>
                                     <span style={{
                                         color: theme.colors.primaryText,
-                                        fontSize: '0.85rem',
+                                        fontSize: '0.8rem',
                                         fontWeight: '500'
                                     }}>
                                         {item.label}
@@ -1118,6 +1120,7 @@ export default function Me() {
                         className="me-card-animate"
                         style={{
                             display: 'flex',
+                            flexWrap: 'wrap',
                             gap: '0.5rem',
                             marginBottom: '1.5rem',
                             background: theme.colors.secondaryBg,
@@ -1129,17 +1132,18 @@ export default function Me() {
                         <button
                             onClick={() => setActiveTab('neurons')}
                             style={{
-                                flex: 1,
+                                flex: '1 1 auto',
+                                minWidth: '100px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '0.5rem',
-                                padding: '0.875rem 1rem',
+                                padding: '0.75rem 0.75rem',
                                 borderRadius: '12px',
                                 border: 'none',
                                 cursor: 'pointer',
                                 fontWeight: '600',
-                                fontSize: '0.95rem',
+                                fontSize: '0.9rem',
                                 transition: 'all 0.2s ease',
                                 background: activeTab === 'neurons' 
                                     ? `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`
@@ -1151,27 +1155,28 @@ export default function Me() {
                         >
                             <TokenIcon 
                                 logo={selectedSnsLogo} 
-                                size={20} 
-                                fallbackIcon={<FaBrain size={16} />}
+                                size={18} 
+                                fallbackIcon={<FaBrain size={14} />}
                                 fallbackColor={activeTab === 'neurons' ? 'white' : theme.colors.secondaryText}
                                 rounded={false}
                             />
-                            <span style={{ whiteSpace: 'nowrap' }}>Neurons</span>
+                            <span>Neurons</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('transactions')}
                             style={{
-                                flex: 1,
+                                flex: '1 1 auto',
+                                minWidth: '100px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '0.5rem',
-                                padding: '0.875rem 1rem',
+                                padding: '0.75rem 0.75rem',
                                 borderRadius: '12px',
                                 border: 'none',
                                 cursor: 'pointer',
                                 fontWeight: '600',
-                                fontSize: '0.95rem',
+                                fontSize: '0.9rem',
                                 transition: 'all 0.2s ease',
                                 background: activeTab === 'transactions' 
                                     ? `linear-gradient(135deg, ${meAccent}, ${mePrimary})`
@@ -1181,23 +1186,24 @@ export default function Me() {
                                     : theme.colors.secondaryText,
                             }}
                         >
-                            <FaExchangeAlt size={16} />
-                            <span style={{ whiteSpace: 'nowrap' }}>Transactions</span>
+                            <FaExchangeAlt size={14} />
+                            <span>Transactions</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('settings')}
                             style={{
-                                flex: 1,
+                                flex: '1 1 auto',
+                                minWidth: '100px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '0.5rem',
-                                padding: '0.875rem 1rem',
+                                padding: '0.75rem 0.75rem',
                                 borderRadius: '12px',
                                 border: 'none',
                                 cursor: 'pointer',
                                 fontWeight: '600',
-                                fontSize: '0.95rem',
+                                fontSize: '0.9rem',
                                 transition: 'all 0.2s ease',
                                 background: activeTab === 'settings' 
                                     ? `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`
@@ -1207,8 +1213,8 @@ export default function Me() {
                                     : theme.colors.secondaryText,
                             }}
                         >
-                            <FaCog size={16} />
-                            <span style={{ whiteSpace: 'nowrap' }}>Settings</span>
+                            <FaCog size={14} />
+                            <span>Settings</span>
                         </button>
                     </div>
 
@@ -1225,7 +1231,7 @@ export default function Me() {
                     >
                         {/* Settings Tab */}
                         {activeTab === 'settings' && (
-                            <div id="settings-section" style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                            <div id="settings-section" style={{ padding: '1rem' }}>
                                 {/* General Settings */}
                                 <SettingsSection
                                     title="General Settings"
@@ -1522,7 +1528,7 @@ export default function Me() {
 
                         {/* Neurons Tab */}
                         {activeTab === 'neurons' && (
-                            <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                            <div style={{ padding: '1rem' }}>
                                 {/* Neurons Header */}
                                 <div style={{ 
                                     display: 'flex', 
@@ -1629,36 +1635,179 @@ export default function Me() {
                                         </p>
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        {Array.from(groupedNeurons.entries()).map(([groupId, group]) => {
+                                    <div>
+                                        {/* Neuron Group Tabs */}
+                                        {Array.from(groupedNeurons.entries()).length > 1 && (
+                                            <div style={{ 
+                                                display: 'flex',
+                                                flexWrap: 'wrap',
+                                                gap: '0.5rem',
+                                                marginBottom: '1rem',
+                                                background: theme.colors.tertiaryBg,
+                                                padding: '0.5rem',
+                                                borderRadius: '12px',
+                                                border: `1px solid ${theme.colors.border}`
+                                            }}>
+                                                {Array.from(groupedNeurons.entries()).map(([groupId, group]) => {
+                                                    const isMyNeurons = Boolean(group.isMy);
+                                                    const isActive = activeNeuronGroup === groupId;
+                                                    return (
+                                                        <button
+                                                            key={groupId}
+                                                            onClick={() => setActiveNeuronGroup(groupId)}
+                                                            style={{
+                                                                flex: '1 1 auto',
+                                                                minWidth: '120px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                gap: '0.4rem',
+                                                                padding: '0.6rem 0.75rem',
+                                                                borderRadius: '10px',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                fontWeight: '600',
+                                                                fontSize: '0.85rem',
+                                                                transition: 'all 0.2s ease',
+                                                                background: isActive 
+                                                                    ? `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`
+                                                                    : 'transparent',
+                                                                color: isActive ? 'white' : theme.colors.secondaryText,
+                                                                boxShadow: isActive ? `0 2px 8px ${mePrimary}30` : 'none'
+                                                            }}
+                                                        >
+                                                            <span>{isMyNeurons ? '👑' : '🔑'}</span>
+                                                            <span style={{ 
+                                                                overflow: 'hidden', 
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap',
+                                                                maxWidth: '150px'
+                                                            }}>
+                                                                {isMyNeurons ? 'My Neurons' : (
+                                                                    principalDisplayInfo.get(group.ownerPrincipal)?.display || 
+                                                                    `${group.ownerPrincipal.slice(0, 8)}...`
+                                                                )}
+                                                            </span>
+                                                            <span style={{ 
+                                                                background: isActive ? 'rgba(255,255,255,0.2)' : `${mePrimary}20`,
+                                                                padding: '0.15rem 0.4rem',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.75rem',
+                                                                color: isActive ? 'white' : mePrimary
+                                                            }}>
+                                                                {group.neurons.length}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Active Group Content */}
+                                        {(() => {
+                                            // Get the active group, fallback to first group if activeNeuronGroup not found
+                                            const entries = Array.from(groupedNeurons.entries());
+                                            let activeGroup = entries.find(([id]) => id === activeNeuronGroup);
+                                            if (!activeGroup && entries.length > 0) {
+                                                activeGroup = entries[0];
+                                            }
+                                            if (!activeGroup) return null;
+                                            
+                                            const [groupId, group] = activeGroup;
                                             const isMyNeurons = Boolean(group.isMy);
-                                            const isExpanded = expandedGroups.has(groupId);
+                                            
                                             return (
-                                                <NeuronGroup
-                                                    key={groupId}
-                                                    group={group}
-                                                    isExpanded={isExpanded}
-                                                    isMyNeurons={isMyNeurons}
-                                                    onToggle={() => toggleGroup(groupId)}
-                                                    theme={theme}
-                                                    tokenSymbol={tokenSymbol}
-                                                    principalDisplayInfo={principalDisplayInfo}
-                                                    selectedSnsRoot={selectedSnsRoot}
-                                                    identity={identity}
-                                                    getDisplayName={getDisplayName}
-                                                    editingName={editingName}
-                                                    setEditingName={setEditingName}
-                                                    nameInput={nameInput}
-                                                    setNameInput={setNameInput}
-                                                    inputError={inputError}
-                                                    setInputError={setInputError}
-                                                    validateNameInput={validateNameInput}
-                                                    handleNameSubmit={handleNameSubmit}
-                                                    isSubmitting={isSubmitting}
-                                                    nervousSystemParameters={nervousSystemParameters}
-                                                />
+                                                <div>
+                                                    {/* Group Header */}
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        marginBottom: '1rem',
+                                                        flexWrap: 'wrap',
+                                                        gap: '0.5rem'
+                                                    }}>
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '0.5rem',
+                                                            color: theme.colors.secondaryText,
+                                                            fontSize: '0.9rem'
+                                                        }}>
+                                                            {isMyNeurons ? (
+                                                                <span>Neurons you own</span>
+                                                            ) : (
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                                                    <span>Hotkey access to</span>
+                                                                    <PrincipalDisplay
+                                                                        principal={Principal.fromText(group.ownerPrincipal)}
+                                                                        displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
+                                                                        showCopyButton={false}
+                                                                        short={true}
+                                                                        noLink={true}
+                                                                        isAuthenticated={true}
+                                                                    />
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{
+                                                            color: mePrimary,
+                                                            fontSize: '1rem',
+                                                            fontWeight: '700',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {formatE8s(group.totalStake)} {tokenSymbol}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Neuron Cards Grid */}
+                                                    <div style={{
+                                                        display: 'grid',
+                                                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                                        gap: '1rem'
+                                                    }}>
+                                                        {group.neurons.map((neuron) => {
+                                                            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                                            if (!neuronId) return null;
+
+                                                            const hasHotkeyAccess = neuron.permissions.some(p => 
+                                                                p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                                p.permission_type.includes(4)
+                                                            );
+
+                                                            const { name, nickname, isVerified } = getDisplayName(neuronId);
+
+                                                            return (
+                                                                <NeuronCard
+                                                                    key={neuronId}
+                                                                    neuron={neuron}
+                                                                    neuronId={neuronId}
+                                                                    name={name}
+                                                                    nickname={nickname}
+                                                                    isVerified={isVerified}
+                                                                    hasHotkeyAccess={hasHotkeyAccess}
+                                                                    theme={theme}
+                                                                    tokenSymbol={tokenSymbol}
+                                                                    selectedSnsRoot={selectedSnsRoot}
+                                                                    identity={identity}
+                                                                    principalDisplayInfo={principalDisplayInfo}
+                                                                    editingName={editingName}
+                                                                    setEditingName={setEditingName}
+                                                                    nameInput={nameInput}
+                                                                    setNameInput={setNameInput}
+                                                                    inputError={inputError}
+                                                                    setInputError={setInputError}
+                                                                    validateNameInput={validateNameInput}
+                                                                    handleNameSubmit={handleNameSubmit}
+                                                                    isSubmitting={isSubmitting}
+                                                                    nervousSystemParameters={nervousSystemParameters}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
                                             );
-                                        })}
+                                        })()}
                                     </div>
                                 )}
                             </div>
@@ -2166,9 +2315,11 @@ function NeuronCard({
         <div style={{
             background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${mePrimary}08 100%)`,
             borderRadius: '14px',
-            padding: '1.25rem',
+            padding: '1rem',
             border: `1px solid ${theme.colors.border}`,
-            transition: 'all 0.3s ease'
+            transition: 'all 0.3s ease',
+            minWidth: 0,
+            overflow: 'hidden'
         }}>
             {/* Header */}
             <div style={{ marginBottom: '1rem' }}>
