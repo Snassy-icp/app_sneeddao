@@ -17,7 +17,79 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import Header from '../components/Header';
 import MarkdownBody from '../components/MarkdownBody';
-import './Posts.css';
+import { FaComments, FaReply, FaEdit, FaList, FaSync, FaLock, FaArrowUp, FaArrowDown, FaExternalLinkAlt } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes newReplyGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+    50% { box-shadow: 0 0 20px 5px rgba(99, 102, 241, 0.3); }
+}
+
+.posts-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.posts-card {
+    transition: all 0.3s ease;
+}
+
+.posts-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15);
+}
+
+.posts-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.posts-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.posts-new-glow {
+    animation: newReplyGlow 2s ease-in-out 3;
+}
+
+.posts-tab {
+    transition: all 0.2s ease;
+}
+
+.posts-tab:hover {
+    transform: translateY(-1px);
+}
+`;
+
+// Accent colors for this page
+const postsPrimary = '#6366f1'; // Indigo
+const postsSecondary = '#4f46e5'; // Darker indigo
+const postsAccent = '#818cf8'; // Light indigo
 
 const Posts = () => {
     const { theme } = useTheme();
@@ -471,110 +543,590 @@ const Posts = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className="posts-page">
+            <div className="page-container">
+                <style>{customStyles}</style>
                 <Header />
-                <div className="posts-container">
-                    <div className="auth-required">
-                        <h2>Authentication Required</h2>
-                        <p>Please connect your wallet to view your posts.</p>
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${postsPrimary}15 50%, ${postsSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            top: '-50%',
+                            right: '-10%',
+                            width: '400px',
+                            height: '400px',
+                            background: `radial-gradient(circle, ${postsPrimary}20 0%, transparent 70%)`,
+                            borderRadius: '50%',
+                            pointerEvents: 'none'
+                        }} />
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div className="posts-float" style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${postsPrimary}, ${postsSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 30px ${postsPrimary}40`
+                                }}>
+                                    <FaComments size={28} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        My Posts
+                                    </h1>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        View your posts, replies, and threads
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
+
+                    {/* Login Required */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div className="posts-card-animate" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '20px',
+                            padding: '3rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`,
+                            opacity: 0,
+                            animationDelay: '0.1s'
+                        }}>
+                            <div className="posts-float" style={{
+                                width: '80px',
+                                height: '80px',
+                                margin: '0 auto 1.5rem',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${postsPrimary}, ${postsSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${postsPrimary}40`
+                            }}>
+                                <FaLock size={32} color="white" />
+                            </div>
+                            <h2 style={{ color: theme.colors.primaryText, fontSize: '1.5rem', marginBottom: '1rem', fontWeight: '600' }}>
+                                Connect to View Posts
+                            </h2>
+                            <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                                Connect your wallet to view your posts, replies to your content, and threads you've created.
+                            </p>
+                        </div>
+                    </div>
+                </main>
             </div>
         );
     }
 
     return (
-        <div className="posts-page" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className="page-container">
+            <style>{customStyles}</style>
             <Header />
-            
-            {/* Posts Tabs - SMS style */}
-            <div style={{ 
-                padding: '20px 20px 0 20px'
-            }}>
-                <div style={{ 
-                    display: 'flex', 
-                    gap: '10px', 
-                    marginBottom: '20px',
+            <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${postsPrimary}15 50%, ${postsSecondary}10 100%)`,
                     borderBottom: `1px solid ${theme.colors.border}`,
-                    paddingBottom: '0'
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    {[
-                        { key: 'replies-to-me', label: 'Replies to Me', count: repliesToMe.length },
-                        { key: 'my-posts', label: 'My Posts', count: myPosts.length },
-                        { key: 'my-threads', label: 'My Threads', count: myThreads.length }
-                    ].map(tab => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setActiveTab(tab.key)}
+                    {/* Background decorations */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${postsPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${postsSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                            <div className="posts-float" style={{
+                                width: '64px',
+                                height: '64px',
+                                minWidth: '64px',
+                                maxWidth: '64px',
+                                flexShrink: 0,
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${postsPrimary}, ${postsSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${postsPrimary}40`
+                            }}>
+                                <FaComments size={28} color="white" />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0, lineHeight: '1.2' }}>
+                                    My Posts
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                    View your posts, replies, and threads
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Stats */}
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaReply size={14} style={{ color: theme.colors.accent }} />
+                                <span><strong style={{ color: theme.colors.accent }}>{repliesToMe.length}</strong> replies</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaEdit size={14} style={{ color: postsPrimary }} />
+                                <span><strong style={{ color: postsPrimary }}>{myPosts.length}</strong> posts</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaList size={14} style={{ color: theme.colors.success }} />
+                                <span><strong style={{ color: theme.colors.success }}>{myThreads.length}</strong> threads</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Content */}
+                <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                    {/* Tab Buttons */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.5rem',
+                        marginBottom: '1.5rem',
+                        background: theme.colors.secondaryBg,
+                        padding: '0.5rem',
+                        borderRadius: '14px',
+                        border: `1px solid ${theme.colors.border}`,
+                        flexWrap: 'wrap'
+                    }}>
+                        {[
+                            { key: 'replies-to-me', label: 'Replies to Me', count: repliesToMe.length, icon: <FaReply size={14} />, color: theme.colors.accent },
+                            { key: 'my-posts', label: 'My Posts', count: myPosts.length, icon: <FaEdit size={14} />, color: postsPrimary },
+                            { key: 'my-threads', label: 'My Threads', count: myThreads.length, icon: <FaList size={14} />, color: theme.colors.success }
+                        ].map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setActiveTab(tab.key)}
+                                className="posts-tab"
+                                style={{
+                                    flex: '1 1 auto',
+                                    minWidth: '120px',
+                                    background: activeTab === tab.key 
+                                        ? `linear-gradient(135deg, ${tab.color}, ${tab.color}cc)` 
+                                        : 'transparent',
+                                    color: activeTab === tab.key ? 'white' : theme.colors.secondaryText,
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    padding: '0.65rem 0.75rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.4rem',
+                                    boxShadow: activeTab === tab.key ? `0 4px 15px ${tab.color}40` : 'none'
+                                }}
+                            >
+                                {tab.icon}
+                                <span style={{ display: window.innerWidth > 480 ? 'inline' : 'none' }}>{tab.label}</span>
+                                <span style={{
+                                    background: activeTab === tab.key ? 'rgba(255,255,255,0.2)' : `${tab.color}20`,
+                                    color: activeTab === tab.key ? 'white' : tab.color,
+                                    padding: '0.1rem 0.4rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '700'
+                                }}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Refresh Button */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                        <button 
+                            onClick={fetchPostsData}
+                            disabled={loading}
                             style={{
-                                background: activeTab === tab.key ? theme.colors.accent : 'transparent',
-                                color: activeTab === tab.key ? theme.colors.primaryText : theme.colors.mutedText,
-                                border: 'none',
-                                borderRadius: '4px 4px 0 0',
-                                padding: '12px 20px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
-                                borderBottom: activeTab === tab.key ? `2px solid ${theme.colors.accent}` : '2px solid transparent'
+                                background: theme.colors.tertiaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '10px',
+                                padding: '0.6rem 1rem',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                opacity: loading ? 0.6 : 1,
+                                transition: 'all 0.2s ease'
                             }}
                         >
-                            {tab.label} ({tab.count})
+                            <FaSync size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                            Refresh
                         </button>
-                    ))}
-                </div>
-            </div>
+                    </div>
 
-            <div className="posts-container">
-
-                <div className="posts-content">
+                    {/* Content */}
                     {loading ? (
-                        <div className="loading-state">
-                            <div className="spinner"></div>
-                            <p>Loading posts...</p>
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '4rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div className="posts-pulse" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${postsPrimary}, ${postsSecondary})`,
+                                margin: '0 auto 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaComments size={24} color="white" />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '1.1rem' }}>
+                                Loading your posts...
+                            </p>
                         </div>
                     ) : error ? (
-                        <div className="error-state">
-                            <h3>Error Loading Posts</h3>
-                            <p>{error}</p>
-                            <button onClick={fetchPostsData} className="retry-button">
+                        <div style={{
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '16px',
+                            padding: '2rem',
+                            textAlign: 'center'
+                        }}>
+                            <p style={{ color: theme.colors.error, marginBottom: '1rem' }}>Error: {error}</p>
+                            <button 
+                                onClick={fetchPostsData}
+                                style={{
+                                    background: theme.colors.error,
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '0.6rem 1.25rem',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: '600'
+                                }}
+                            >
                                 Try Again
                             </button>
                         </div>
                     ) : (
-                        <div className="posts-list">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             {activeTab === 'replies-to-me' ? (
                                 repliesToMe.length === 0 ? (
-                                    <div className="empty-state">
-                                        <h3>No Replies Yet</h3>
-                                        <p>No one has replied to your posts or threads yet. Keep participating in discussions!</p>
-                                    </div>
+                                    renderEmptyState('replies')
                                 ) : (
-                                    repliesToMe.map(post => renderPost(post, true))
+                                    repliesToMe.map((post, index) => renderPostCard(post, true, index))
                                 )
                             ) : activeTab === 'my-posts' ? (
                                 myPosts.length === 0 ? (
-                                    <div className="empty-state">
-                                        <h3>No Posts Yet</h3>
-                                        <p>You haven't created any posts yet. Start participating in discussions to see your posts here!</p>
-                                    </div>
+                                    renderEmptyState('posts')
                                 ) : (
-                                    myPosts.map(post => renderPost(post, false))
+                                    myPosts.map((post, index) => renderPostCard(post, false, index))
                                 )
                             ) : (
                                 myThreads.length === 0 ? (
-                                    <div className="empty-state">
-                                        <h3>No Threads Yet</h3>
-                                        <p>You haven't created any threads yet. Start new discussions to see your threads here!</p>
-                                    </div>
+                                    renderEmptyState('threads')
                                 ) : (
-                                    myThreads.map(thread => renderThread(thread))
+                                    myThreads.map((thread, index) => renderThreadCard(thread, index))
                                 )
                             )}
                         </div>
                     )}
                 </div>
-            </div>
+            </main>
         </div>
     );
+
+    function renderEmptyState(type) {
+        const configs = {
+            replies: {
+                icon: <FaReply size={24} />,
+                color: theme.colors.accent,
+                title: 'No Replies Yet',
+                message: 'No one has replied to your posts or threads yet. Keep participating in discussions!'
+            },
+            posts: {
+                icon: <FaEdit size={24} />,
+                color: postsPrimary,
+                title: 'No Posts Yet',
+                message: 'You haven\'t created any posts yet. Start participating in discussions!'
+            },
+            threads: {
+                icon: <FaList size={24} />,
+                color: theme.colors.success,
+                title: 'No Threads Yet',
+                message: 'You haven\'t created any threads yet. Start a new discussion!'
+            }
+        };
+        const config = configs[type];
+
+        return (
+            <div className="posts-card-animate" style={{
+                background: theme.colors.secondaryBg,
+                borderRadius: '16px',
+                padding: '3rem 2rem',
+                textAlign: 'center',
+                border: `1px solid ${theme.colors.border}`,
+                opacity: 0,
+                animationDelay: '0.1s'
+            }}>
+                <div className="posts-float" style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '50%',
+                    background: `linear-gradient(135deg, ${config.color}30, ${config.color}20)`,
+                    margin: '0 auto 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: config.color
+                }}>
+                    {config.icon}
+                </div>
+                <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontWeight: '600' }}>
+                    {config.title}
+                </h3>
+                <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                    {config.message}
+                </p>
+            </div>
+        );
+    }
+
+    function renderPostCard(post, isReply, index) {
+        const netScore = calculateNetScore(post);
+        const isNegative = netScore < 0;
+        const isNew = isReply && isReplyNew(post.created_at);
+
+        return (
+            <div 
+                key={post.id}
+                className={`posts-card posts-card-animate ${isNew ? 'posts-new-glow' : ''}`}
+                onClick={() => navigateToPost(post)}
+                style={{
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '14px',
+                    padding: '1.25rem',
+                    border: isNew 
+                        ? `2px solid ${theme.colors.accent}` 
+                        : `1px solid ${theme.colors.border}`,
+                    cursor: 'pointer',
+                    opacity: 0,
+                    animationDelay: `${index * 0.05}s`
+                }}
+            >
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <span 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/post?postid=${post.id}`); }}
+                            style={{
+                                color: theme.colors.accent,
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '6px',
+                                background: `${theme.colors.accent}15`,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            #{Number(post.id)}
+                        </span>
+                        {isReply && (
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                Reply from
+                                <span onClick={(e) => e.stopPropagation()}>
+                                    <PrincipalDisplay 
+                                        principal={post.created_by.toString()}
+                                        displayInfo={principalDisplayInfo.get(post.created_by.toString())}
+                                        showCopyButton={true}
+                                        short={true}
+                                        enableContextMenu={true}
+                                        maxLength={16}
+                                        isAuthenticated={isAuthenticated}
+                                    />
+                                </span>
+                            </span>
+                        )}
+                        {!isReply && post.title && post.title.length > 0 && (
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{post.title[0]}</span>
+                        )}
+                        {isNew && (
+                            <span style={{
+                                background: `${theme.colors.accent}20`,
+                                color: theme.colors.accent,
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '4px',
+                                fontSize: '0.7rem',
+                                fontWeight: '600',
+                                textTransform: 'uppercase'
+                            }}>
+                                New
+                            </span>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{
+                            color: isNegative ? theme.colors.error : theme.colors.success,
+                            fontWeight: '600',
+                            fontSize: '0.95rem'
+                        }}>
+                            {netScore >= 0 ? '+' : ''}{formatScore(netScore)}
+                        </span>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                            <FaArrowUp size={10} style={{ color: theme.colors.success }} /> {formatScore(post.upvote_score)}
+                            {' '}
+                            <FaArrowDown size={10} style={{ color: theme.colors.error }} /> {formatScore(post.downvote_score)}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Body */}
+                <div style={{ 
+                    color: theme.colors.secondaryText, 
+                    fontSize: '0.95rem', 
+                    lineHeight: '1.6',
+                    marginBottom: '0.75rem',
+                    maxHeight: '120px',
+                    overflow: 'hidden'
+                }}>
+                    <MarkdownBody text={post.body} />
+                </div>
+
+                {/* Footer */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
+                        <span 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/post?postid=${post.reply_to_post_id[0]}`); }}
+                            style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.8rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <FaExternalLinkAlt size={10} />
+                            Reply to #{Number(post.reply_to_post_id[0])}
+                        </span>
+                    )}
+                    <span 
+                        style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: 'auto' }}
+                        title={getFullDate(post.created_at)}
+                    >
+                        {getRelativeTime(post.created_at)}
+                    </span>
+                </div>
+            </div>
+        );
+    }
+
+    function renderThreadCard(thread, index) {
+        const postCount = threadPostCounts.get(thread.id.toString());
+
+        return (
+            <div 
+                key={thread.id}
+                className="posts-card posts-card-animate"
+                onClick={() => navigateToThread(thread)}
+                style={{
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '14px',
+                    padding: '1.25rem',
+                    border: `1px solid ${theme.colors.border}`,
+                    cursor: 'pointer',
+                    opacity: 0,
+                    animationDelay: `${index * 0.05}s`
+                }}
+            >
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <span 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/thread?threadid=${thread.id}`); }}
+                            style={{
+                                color: theme.colors.success,
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '6px',
+                                background: `${theme.colors.success}15`,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Thread #{Number(thread.id)}
+                        </span>
+                        {thread.title && (
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{thread.title}</span>
+                        )}
+                    </div>
+                    <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                        {postCount !== undefined ? (
+                            <>{postCount} post{postCount !== 1 ? 's' : ''}</>
+                        ) : (
+                            <span style={{ fontStyle: 'italic' }}>Loading...</span>
+                        )}
+                    </span>
+                </div>
+
+                {/* Body */}
+                <div style={{ 
+                    color: theme.colors.secondaryText, 
+                    fontSize: '0.95rem', 
+                    lineHeight: '1.6',
+                    marginBottom: '0.75rem',
+                    maxHeight: '120px',
+                    overflow: 'hidden'
+                }}>
+                    <MarkdownBody text={thread.body} />
+                </div>
+
+                {/* Footer */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <span 
+                        style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}
+                        title={getFullDate(thread.created_at)}
+                    >
+                        {getRelativeTime(thread.created_at)}
+                    </span>
+                </div>
+            </div>
+        );
+    }
 };
 
 export default Posts;

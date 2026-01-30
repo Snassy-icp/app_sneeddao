@@ -459,12 +459,12 @@ export default function Names() {
               <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '1rem' }}>
                 Add a private nickname for any principal. Only you can see these.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
-                <div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'end' }}>
+                <div style={{ flex: '1 1 200px', minWidth: '200px' }}>
                   <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: '500' }}>Principal</div>
                   <PrincipalInput value={addPrincipal} onChange={setAddPrincipal} placeholder="Enter principal ID or search..." />
                 </div>
-                <div>
+                <div style={{ flex: '1 1 200px', minWidth: '200px' }}>
                   <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: '500' }}>Nickname</div>
                   <input 
                     value={addNickname} 
@@ -474,7 +474,7 @@ export default function Names() {
                     className="names-input"
                   />
                 </div>
-                <button type="button" onClick={onAdd} disabled={savingNickname} style={styles.btn('accent')} className="names-btn">
+                <button type="button" onClick={onAdd} disabled={savingNickname} style={{ ...styles.btn('accent'), flexShrink: 0 }} className="names-btn">
                   <FaPlus size={12} />
                   {savingNickname ? 'Saving…' : 'Add'}
                 </button>
@@ -693,8 +693,8 @@ export default function Names() {
               <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '1rem' }}>
                 Add a private nickname for any neuron. Nicknames are scoped to the selected DAO/SNS.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
-                <div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'end' }}>
+                <div style={{ flex: '1 1 200px', minWidth: '200px' }}>
                   <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: '500' }}>Neuron</div>
                   <NeuronInput
                     value={addNeuronId}
@@ -704,7 +704,7 @@ export default function Names() {
                     defaultTab="private"
                   />
                 </div>
-                <div>
+                <div style={{ flex: '1 1 200px', minWidth: '200px' }}>
                   <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: '500' }}>Nickname</div>
                   <input
                     value={addNeuronNickname}
@@ -730,7 +730,7 @@ export default function Names() {
                     }
                   }}
                   disabled={savingNeuronNickname}
-                  style={styles.btn('accent')}
+                  style={{ ...styles.btn('accent'), flexShrink: 0 }}
                   className="names-btn"
                 >
                   <FaPlus size={12} />
