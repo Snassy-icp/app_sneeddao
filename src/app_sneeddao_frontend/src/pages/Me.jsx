@@ -118,7 +118,7 @@ export default function Me() {
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
-    const [neuronsExpanded, setNeuronsExpanded] = useState(true);
+    const [activeTab, setActiveTab] = useState('neurons'); // 'neurons', 'transactions', 'settings'
     const [expandedGroups, setExpandedGroups] = useState(new Set(['self']));
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [editingName, setEditingName] = useState(null);
@@ -135,7 +135,6 @@ export default function Me() {
     const [principalNameError, setPrincipalNameError] = useState('');
     const [isSubmittingPrincipalName, setIsSubmittingPrincipalName] = useState(false);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
         try {
@@ -147,7 +146,6 @@ export default function Me() {
     });
     
     // Settings section
-    const [settingsExpanded, setSettingsExpanded] = useState(false);
     const [generalSettingsExpanded, setGeneralSettingsExpanded] = useState(false);
     const [neuronManagerSettingsExpanded, setNeuronManagerSettingsExpanded] = useState(false);
     const [cycleThresholdRed, setCycleThresholdRed] = useState('');
@@ -301,18 +299,12 @@ export default function Me() {
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
-    // Handle tab parameter to auto-expand settings
+    // Handle tab parameter to switch to settings tab
     useEffect(() => {
         const tabParam = searchParams.get('tab');
         if (tabParam === 'settings') {
-            setSettingsExpanded(true);
+            setActiveTab('settings');
             setCanisterManagerSettingsExpanded(true);
-            setTimeout(() => {
-                const settingsElement = document.getElementById('settings-section');
-                if (settingsElement) {
-                    settingsElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            }, 100);
         }
     }, [searchParams]);
 
@@ -1120,59 +1112,117 @@ export default function Me() {
                         </div>
                     )}
 
-                    {/* Settings Section */}
+                    {/* Tab Navigation */}
                     <div 
-                        id="settings-section"
+                        className="me-card-animate"
+                        style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            marginBottom: '1.5rem',
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '0.5rem',
+                            border: `1px solid ${theme.colors.border}`,
+                        }}
+                    >
+                        <button
+                            onClick={() => setActiveTab('neurons')}
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                padding: '0.875rem 1rem',
+                                borderRadius: '12px',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '0.95rem',
+                                transition: 'all 0.2s ease',
+                                background: activeTab === 'neurons' 
+                                    ? `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`
+                                    : 'transparent',
+                                color: activeTab === 'neurons' 
+                                    ? 'white' 
+                                    : theme.colors.secondaryText,
+                            }}
+                        >
+                            {selectedSnsLogo ? (
+                                <img src={selectedSnsLogo} alt="" style={{ width: '20px', height: '20px', borderRadius: '4px' }} />
+                            ) : (
+                                <FaBrain size={16} />
+                            )}
+                            <span style={{ whiteSpace: 'nowrap' }}>Neurons</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('transactions')}
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                padding: '0.875rem 1rem',
+                                borderRadius: '12px',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '0.95rem',
+                                transition: 'all 0.2s ease',
+                                background: activeTab === 'transactions' 
+                                    ? `linear-gradient(135deg, ${meAccent}, ${mePrimary})`
+                                    : 'transparent',
+                                color: activeTab === 'transactions' 
+                                    ? 'white' 
+                                    : theme.colors.secondaryText,
+                            }}
+                        >
+                            <FaExchangeAlt size={16} />
+                            <span style={{ whiteSpace: 'nowrap' }}>Transactions</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('settings')}
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                padding: '0.875rem 1rem',
+                                borderRadius: '12px',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '0.95rem',
+                                transition: 'all 0.2s ease',
+                                background: activeTab === 'settings' 
+                                    ? `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`
+                                    : 'transparent',
+                                color: activeTab === 'settings' 
+                                    ? 'white' 
+                                    : theme.colors.secondaryText,
+                            }}
+                        >
+                            <FaCog size={16} />
+                            <span style={{ whiteSpace: 'nowrap' }}>Settings</span>
+                        </button>
+                    </div>
+
+                    {/* Tab Content */}
+                    <div 
                         className="me-card-animate settings-card"
                         style={{
                             background: theme.colors.secondaryBg,
                             borderRadius: '16px',
                             border: `1px solid ${theme.colors.border}`,
-                            marginBottom: '1.5rem',
                             overflow: 'hidden',
                             transition: 'all 0.3s ease'
                         }}
                     >
-                        <div 
-                            onClick={() => setSettingsExpanded(!settingsExpanded)}
-                            style={{
-                                padding: '1.25rem 1.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                cursor: 'pointer',
-                                borderBottom: settingsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <div style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '10px',
-                                    background: `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: mePrimary
-                                }}>
-                                    <FaCog size={18} />
-                                </div>
-                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                    My Settings
-                                </span>
-                            </div>
-                            <FaChevronDown 
-                                size={16} 
-                                color={theme.colors.mutedText}
-                                style={{
-                                    transition: 'transform 0.3s ease',
-                                    transform: settingsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
-                                }}
-                            />
-                        </div>
-                        
-                        {settingsExpanded && (
-                            <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                        {/* Settings Tab */}
+                        {activeTab === 'settings' && (
+                            <div id="settings-section" style={{ padding: '1rem 1.5rem 1.5rem' }}>
                                 {/* General Settings */}
                                 <SettingsSection
                                     title="General Settings"
@@ -1466,84 +1516,56 @@ export default function Me() {
                                 </SettingsSection>
                             </div>
                         )}
-                    </div>
 
-                    {/* Neurons Section */}
-                    <div 
-                        className="me-card-animate settings-card"
-                        style={{
-                            background: theme.colors.secondaryBg,
-                            borderRadius: '16px',
-                            border: `1px solid ${theme.colors.border}`,
-                            marginBottom: '1.5rem',
-                            overflow: 'hidden',
-                            transition: 'all 0.3s ease',
-                            animationDelay: '0.1s'
-                        }}
-                    >
-                        <div
-                            onClick={() => setNeuronsExpanded(!neuronsExpanded)}
-                            style={{
-                                padding: '1.25rem 1.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                cursor: 'pointer',
-                                borderBottom: neuronsExpanded ? `1px solid ${theme.colors.border}` : 'none',
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-                                <div style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '10px',
-                                    background: selectedSnsLogo ? 'transparent' : `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: mePrimary,
-                                    overflow: 'hidden',
-                                    position: 'relative'
-                                }}>
-                                    {selectedSnsLogo ? (
-                                        <img src={selectedSnsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
-                                    ) : (
-                                        <FaBrain size={18} />
-                                    )}
-                                </div>
-                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                    My {selectedSnsInfo?.name || 'DAO'} Neurons
-                                </span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <Link
-                                    to="/help/neurons"
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                        color: mePrimary,
-                                        textDecoration: 'none',
-                                        fontSize: '0.85rem',
-                                        padding: '0.35rem 0.75rem',
-                                        borderRadius: '6px',
-                                        background: `${mePrimary}15`,
-                                        fontWeight: '500'
-                                    }}
-                                >
-                                    ❓ Help
-                                </Link>
-                                <FaChevronDown 
-                                    size={16} 
-                                    color={theme.colors.mutedText}
-                                    style={{
-                                        transition: 'transform 0.3s ease',
-                                        transform: neuronsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                        {neuronsExpanded && (
+                        {/* Neurons Tab */}
+                        {activeTab === 'neurons' && (
                             <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                                {/* Neurons Header */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    marginBottom: '1rem',
+                                    flexWrap: 'wrap',
+                                    gap: '0.75rem'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '10px',
+                                            background: selectedSnsLogo ? 'transparent' : `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: mePrimary,
+                                            overflow: 'hidden'
+                                        }}>
+                                            {selectedSnsLogo ? (
+                                                <img src={selectedSnsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+                                            ) : (
+                                                <FaBrain size={18} />
+                                            )}
+                                        </div>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                            My {selectedSnsInfo?.name || 'DAO'} Neurons
+                                        </span>
+                                    </div>
+                                    <Link
+                                        to="/help/neurons"
+                                        style={{
+                                            color: mePrimary,
+                                            textDecoration: 'none',
+                                            fontSize: '0.85rem',
+                                            padding: '0.35rem 0.75rem',
+                                            borderRadius: '6px',
+                                            background: `${mePrimary}15`,
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        ❓ Help
+                                    </Link>
+                                </div>
                                 {neurons.length > 0 && (
                                     <div style={{ marginBottom: '1rem' }}>
                                         <label style={{
@@ -1638,33 +1660,17 @@ export default function Me() {
                                 )}
                             </div>
                         )}
-                    </div>
 
-                    {/* Transactions Section */}
-                    {selectedSnsRoot && (
-                        <div 
-                            className="me-card-animate settings-card"
-                            style={{
-                                background: theme.colors.secondaryBg,
-                                borderRadius: '16px',
-                                border: `1px solid ${theme.colors.border}`,
-                                overflow: 'hidden',
-                                transition: 'all 0.3s ease',
-                                animationDelay: '0.2s'
-                            }}
-                        >
-                            <div
-                                onClick={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
-                                style={{
-                                    padding: '1.25rem 1.5rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    cursor: 'pointer',
-                                    borderBottom: !isTransactionsCollapsed ? `1px solid ${theme.colors.border}` : 'none',
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {/* Transactions Tab */}
+                        {activeTab === 'transactions' && (
+                            <div style={{ padding: '1rem 1.5rem 1.5rem' }}>
+                                {/* Transactions Header */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '0.75rem',
+                                    marginBottom: '1rem'
+                                }}>
                                     <div style={{
                                         width: '40px',
                                         height: '40px',
@@ -1686,28 +1692,28 @@ export default function Me() {
                                         My {selectedSnsInfo?.name || 'DAO'} Transactions
                                     </span>
                                 </div>
-                                <FaChevronDown 
-                                    size={16} 
-                                    color={theme.colors.mutedText}
-                                    style={{
-                                        transition: 'transform 0.3s ease',
-                                        transform: !isTransactionsCollapsed ? 'rotate(0deg)' : 'rotate(-90deg)'
-                                    }}
-                                />
+                                
+                                {selectedSnsRoot ? (
+                                    <TransactionList 
+                                        snsRootCanisterId={selectedSnsRoot}
+                                        principalId={identity?.getPrincipal().toString()}
+                                        isCollapsed={false}
+                                        onToggleCollapse={() => {}}
+                                        showHeader={false}
+                                        embedded={true}
+                                    />
+                                ) : (
+                                    <div style={{ 
+                                        textAlign: 'center', 
+                                        padding: '2rem', 
+                                        color: theme.colors.mutedText 
+                                    }}>
+                                        Select a DAO to view transactions
+                                    </div>
+                                )}
                             </div>
-
-                            <div style={{ padding: isTransactionsCollapsed ? 0 : '0.5rem 1.5rem 1.5rem' }}>
-                                <TransactionList 
-                                    snsRootCanisterId={selectedSnsRoot}
-                                    principalId={identity?.getPrincipal().toString()}
-                                    isCollapsed={isTransactionsCollapsed}
-                                    onToggleCollapse={() => {}}
-                                    showHeader={false}
-                                    embedded={true}
-                                />
-                            </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </main>
             
