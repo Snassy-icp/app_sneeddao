@@ -536,7 +536,7 @@ function HelpSnsJailbreak() {
                             <FaCheckCircle size={18} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} />
                             <div>
                                 <strong style={styles.strong}>Pro Tip:</strong> After jailbreaking, visit your{' '}
-                                <Link to="/neurons" style={styles.link}>Neurons page</Link> to see all your neurons with Sneed Wallet as controller—manage them all from one place!
+                                <Link to="/me" style={styles.link}>Me page</Link> to see all your neurons for the selected SNS—make sure to select the relevant SNS in the header dropdown! You can also see your neurons in the <Link to="/" style={styles.link}>Wallet</Link> by expanding the token card for the SNS token.
                             </div>
                         </div>
                     </div>

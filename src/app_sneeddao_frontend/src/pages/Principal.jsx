@@ -126,9 +126,7 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [isNeuronsCollapsed, setIsNeuronsCollapsed] = useState(true);
-    const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
-    const [isPostsCollapsed, setIsPostsCollapsed] = useState(true);
+    const [activeTab, setActiveTab] = useState('posts'); // 'posts', 'neurons', 'transactions'
     const [postsActiveTab, setPostsActiveTab] = useState('posts');
     const [userPosts, setUserPosts] = useState([]);
     const [userThreads, setUserThreads] = useState([]);
@@ -1499,26 +1497,120 @@ export default function PrincipalPage() {
                     )}
                 </div>
 
-                {/* Posts & Threads Section */}
-                <div className="principal-card-animate" style={{ marginBottom: '1.5rem', animationDelay: '0.3s' }}>
-                    {renderSectionHeader(
-                        'Posts & Threads',
-                        <FaComments size={16} />,
-                        isPostsCollapsed,
-                        () => setIsPostsCollapsed(!isPostsCollapsed),
-                        userPosts.length + userThreads.length,
-                        theme.colors.success
-                    )}
-                    
-                    {!isPostsCollapsed && (
-                        <div style={{
-                            background: theme.colors.secondaryBg,
-                            borderRadius: '0 0 16px 16px',
-                            padding: '1.25rem',
-                            border: `1px solid ${theme.colors.border}`,
-                            borderTop: 'none'
-                        }}>
-                            {/* Tab Navigation */}
+                {/* Tab Navigation */}
+                <div 
+                    className="principal-card-animate"
+                    style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem',
+                        marginBottom: '1.5rem',
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '16px',
+                        padding: '0.5rem',
+                        border: `1px solid ${theme.colors.border}`,
+                        animationDelay: '0.3s'
+                    }}
+                >
+                    <button
+                        onClick={() => setActiveTab('posts')}
+                        style={{
+                            flex: '1 1 auto',
+                            minWidth: '100px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 0.75rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                            background: activeTab === 'posts' 
+                                ? `linear-gradient(135deg, ${theme.colors.success}, ${principalPrimary})`
+                                : 'transparent',
+                            color: activeTab === 'posts' 
+                                ? 'white' 
+                                : theme.colors.secondaryText,
+                        }}
+                    >
+                        <FaComments size={14} />
+                        <span>Posts & Threads</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('neurons')}
+                        style={{
+                            flex: '1 1 auto',
+                            minWidth: '100px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 0.75rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                            background: activeTab === 'neurons' 
+                                ? `linear-gradient(135deg, ${principalAccent}, ${principalSecondary})`
+                                : 'transparent',
+                            color: activeTab === 'neurons' 
+                                ? 'white' 
+                                : theme.colors.secondaryText,
+                        }}
+                    >
+                        <FaBrain size={14} />
+                        <span>Hotkeyed Neurons</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('transactions')}
+                        style={{
+                            flex: '1 1 auto',
+                            minWidth: '100px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 0.75rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                            background: activeTab === 'transactions' 
+                                ? `linear-gradient(135deg, ${principalSecondary}, ${principalPrimary})`
+                                : 'transparent',
+                            color: activeTab === 'transactions' 
+                                ? 'white' 
+                                : theme.colors.secondaryText,
+                        }}
+                    >
+                        <FaExchangeAlt size={14} />
+                        <span>Transactions</span>
+                    </button>
+                </div>
+
+                {/* Tab Content */}
+                <div 
+                    className="principal-card-animate"
+                    style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '16px',
+                        border: `1px solid ${theme.colors.border}`,
+                        overflow: 'hidden',
+                        transition: 'all 0.3s ease',
+                        animationDelay: '0.4s'
+                    }}
+                >
+                    {/* Posts & Threads Tab */}
+                    {activeTab === 'posts' && (
+                        <div style={{ padding: '1.25rem' }}>
+                            {/* Sub-tab Navigation */}
                             <div style={{
                                 display: 'flex',
                                 borderBottom: `1px solid ${theme.colors.border}`,
@@ -1779,28 +1871,10 @@ export default function PrincipalPage() {
                             )}
                         </div>
                     )}
-                </div>
 
-                {/* Neurons Section */}
-                <div className="principal-card-animate" style={{ marginBottom: '1.5rem', animationDelay: '0.4s' }}>
-                    {renderSectionHeader(
-                        'Hotkeyed Neurons',
-                        renderOverlappedIcon(<FaBrain size={16} />, 36, 16, principalAccent),
-                        isNeuronsCollapsed,
-                        () => setIsNeuronsCollapsed(!isNeuronsCollapsed),
-                        neurons.length,
-                        principalAccent,
-                        true // isOverlappedIcon
-                    )}
-                    
-                    {!isNeuronsCollapsed && (
-                        <div style={{
-                            background: theme.colors.secondaryBg,
-                            borderRadius: '0 0 16px 16px',
-                            padding: '1.25rem',
-                            border: `1px solid ${theme.colors.border}`,
-                            borderTop: 'none'
-                        }}>
+                    {/* Neurons Tab */}
+                    {activeTab === 'neurons' && (
+                        <div style={{ padding: '1.25rem' }}>
                             {loadingNeurons ? (
                                 <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
                                     <div className="principal-spin" style={{
@@ -1932,17 +2006,18 @@ export default function PrincipalPage() {
                             )}
                         </div>
                     )}
-                </div>
 
-                {/* Transactions Section */}
-                <div className="principal-card-animate" style={{ animationDelay: '0.5s' }}>
-                    <TransactionList 
-                        snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
-                        principalId={stablePrincipalId.current?.toString()}
-                        isCollapsed={isTransactionsCollapsed}
-                        onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
-                        headerIcon={renderOverlappedIcon(<FaExchangeAlt size={14} color="white" />, 32, 14, '#6366f1')}
-                    />
+                    {/* Transactions Tab */}
+                    {activeTab === 'transactions' && (
+                        <div style={{ padding: '1rem' }}>
+                            <TransactionList 
+                                snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
+                                principalId={stablePrincipalId.current?.toString()}
+                                showHeader={false}
+                                embedded={true}
+                            />
+                        </div>
+                    )}
                 </div>
                 </div>
             </main>
