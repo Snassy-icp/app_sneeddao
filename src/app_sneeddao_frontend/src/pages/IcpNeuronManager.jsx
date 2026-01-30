@@ -285,6 +285,7 @@ function IcpNeuronManager() {
     // Collapsible section states
     const [canisterSectionExpanded, setCanisterSectionExpanded] = useState(true);
     const [neuronSectionExpanded, setNeuronSectionExpanded] = useState(true);
+    const [createNeuronExpanded, setCreateNeuronExpanded] = useState(false); // Default collapsed, but auto-expand if no neurons
 
     // Check if current user is a controller
     const isController = identity && controllers.length > 0 && 
@@ -3930,60 +3931,110 @@ function IcpNeuronManager() {
 
                         {/* Create Neuron Section - Only for controllers */}
                         {isController && (
-                        <div style={cardStyle}>
-                            <h2 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>
-                                {neuronIds.length === 0 ? 'Create Your First Neuron' : 'Create Another Neuron'}
-                            </h2>
-                            
-                            {/* Create new neuron */}
-                            <div style={{ marginBottom: '20px' }}>
-                                <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>
-                                    🆕 Stake to Create New Neuron
-                                </h4>
-                                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '15px' }}>
-                                    <div style={{ flex: 1, minWidth: '150px' }}>
-                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-                                            Amount to Stake (ICP)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            step="0.01"
-                                            value={stakeAmount}
-                                            onChange={(e) => setStakeAmount(e.target.value)}
-                                            style={inputStyle}
-                                            placeholder="1.0"
-                                        />
+                        <div style={{ marginBottom: '1rem' }}>
+                            {/* Section Header */}
+                            <button
+                                onClick={() => setCreateNeuronExpanded(!createNeuronExpanded)}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '1rem 1.25rem',
+                                    background: (createNeuronExpanded || neuronIds.length === 0)
+                                        ? `linear-gradient(90deg, ${theme.colors.success}15 0%, transparent 100%)`
+                                        : theme.colors.cardGradient,
+                                    border: `1px solid ${neuronIds.length === 0 ? theme.colors.success : theme.colors.border}30`,
+                                    borderRadius: (createNeuronExpanded || neuronIds.length === 0) ? '14px 14px 0 0' : '14px',
+                                    cursor: 'pointer',
+                                    color: theme.colors.primaryText,
+                                    transition: 'all 0.2s',
+                                    boxShadow: theme.colors.cardShadow,
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '16px'
+                                    }}>
+                                        ➕
                                     </div>
-                                    <div style={{ flex: 1, minWidth: '150px' }}>
-                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-                                            Dissolve Delay (days)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="183"
-                                            max="2922"
-                                            value={stakeDissolveDelay}
-                                            onChange={(e) => setStakeDissolveDelay(e.target.value)}
-                                            style={inputStyle}
-                                            placeholder="365"
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={handleStakeNeuron}
-                                        disabled={actionLoading === 'stake' || !userIcpBalance || userIcpBalance < E8S}
-                                        style={{ 
-                                            ...buttonStyle, 
-                                            opacity: (actionLoading === 'stake' || !userIcpBalance || userIcpBalance < E8S) ? 0.6 : 1,
-                                        }}
-                                    >
-                                        {actionLoading === 'stake' ? '⏳...' : '🚀 Create'}
-                                    </button>
+                                    <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>
+                                        {neuronIds.length === 0 ? 'Create Your First Neuron' : 'Create Another Neuron'}
+                                    </span>
                                 </div>
-                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', margin: 0 }}>
-                                    💡 Min 183 days to vote, max 8 years. Stakes directly from your wallet ({formatIcp(userIcpBalance)} ICP available)
-                                </p>
-                            </div>
+                                <span style={{ 
+                                    fontSize: '14px',
+                                    transform: (createNeuronExpanded || neuronIds.length === 0) ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.2s ease',
+                                    color: theme.colors.mutedText,
+                                }}>
+                                    {(createNeuronExpanded || neuronIds.length === 0) ? <FaChevronUp /> : <FaChevronDown />}
+                                </span>
+                            </button>
+                            
+                            {/* Section Content - auto-expand if no neurons */}
+                            {(createNeuronExpanded || neuronIds.length === 0) && (
+                                <div style={{
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderTop: 'none',
+                                    borderRadius: '0 0 14px 14px',
+                                    padding: '1.25rem',
+                                    background: theme.colors.cardGradient,
+                                }}>
+                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                                        <div style={{ flex: 1, minWidth: '140px' }}>
+                                            <label style={{ color: theme.colors.mutedText, fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
+                                                Amount to Stake (ICP)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                step="0.01"
+                                                value={stakeAmount}
+                                                onChange={(e) => setStakeAmount(e.target.value)}
+                                                style={inputStyle}
+                                                placeholder="1.0"
+                                            />
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: '140px' }}>
+                                            <label style={{ color: theme.colors.mutedText, fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
+                                                Dissolve Delay (days)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="183"
+                                                max="2922"
+                                                value={stakeDissolveDelay}
+                                                onChange={(e) => setStakeDissolveDelay(e.target.value)}
+                                                style={inputStyle}
+                                                placeholder="365"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleStakeNeuron}
+                                            disabled={actionLoading === 'stake' || !userIcpBalance || userIcpBalance < E8S}
+                                            style={{ 
+                                                ...buttonStyle, 
+                                                opacity: (actionLoading === 'stake' || !userIcpBalance || userIcpBalance < E8S) ? 0.6 : 1,
+                                                background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                                boxShadow: `0 4px 12px ${theme.colors.success}30`,
+                                            }}
+                                        >
+                                            {actionLoading === 'stake' ? '⏳...' : '🚀 Create Neuron'}
+                                        </button>
+                                    </div>
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '0.75rem', margin: 0 }}>
+                                        💡 Min 183 days to vote, max 8 years. Stakes directly from your wallet ({formatIcp(userIcpBalance)} ICP available)
+                                    </p>
+                                </div>
+                            )}
                         </div>
                         )}
 
