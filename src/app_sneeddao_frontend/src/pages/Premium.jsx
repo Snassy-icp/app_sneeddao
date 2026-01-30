@@ -26,8 +26,75 @@ import {
     FaCrown, FaSpinner, FaCoins, FaVoteYea, FaClock, FaCheckCircle, 
     FaTimesCircle, FaExclamationTriangle, FaArrowRight, FaWallet,
     FaGift, FaShieldAlt, FaStar, FaRocket, FaTicketAlt, FaExchangeAlt,
-    FaBrain, FaComments, FaEnvelope, FaAddressBook, FaCube, FaPercent, FaUsers, FaTachometerAlt, FaFolder
+    FaBrain, FaComments, FaEnvelope, FaAddressBook, FaCube, FaPercent, FaUsers, FaTachometerAlt, FaFolder, FaUnlock, FaLock
 } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes goldGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+    50% { box-shadow: 0 0 40px rgba(255, 215, 0, 0.5); }
+}
+
+.premium-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.premium-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.premium-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.premium-glow {
+    animation: goldGlow 2s ease-in-out infinite;
+}
+
+.premium-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,215,0,0.15) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+}
+`;
+
+// Accent colors for Premium page
+const premiumPrimary = '#FFD700'; // Gold
+const premiumSecondary = '#FFA500'; // Orange/Amber
+const premiumAccent = '#F5B041'; // Lighter gold
 
 // ICP Ledger canister ID (mainnet)
 const ICP_LEDGER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
@@ -869,12 +936,70 @@ export default function Premium() {
     
     if (loading) {
         return (
-            <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className="page-container">
+                <style>{customStyles}</style>
                 <Header />
-                <main style={styles.container}>
-                    <div style={styles.loading}>
-                        <FaSpinner className="spin" size={32} />
-                        <p style={{ marginTop: '1rem' }}>Loading Sneed Premium...</p>
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${premiumPrimary}15 50%, ${premiumSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div className="premium-float premium-glow" style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${premiumPrimary}, ${premiumSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 30px ${premiumPrimary}40`
+                                }}>
+                                    <FaCrown size={28} color="#1a1a2e" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        Sneed Premium
+                                    </h1>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        Loading premium features...
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Loading State */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '4rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div className="premium-pulse" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${premiumPrimary}, ${premiumSecondary})`,
+                                margin: '0 auto 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaCrown size={24} color="#1a1a2e" />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '1.1rem' }}>
+                                Loading Sneed Premium...
+                            </p>
+                        </div>
                     </div>
                 </main>
             </div>
@@ -885,66 +1010,204 @@ export default function Premium() {
     const isExpired = membershipStatus && 'Expired' in membershipStatus;
     
     return (
-        <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className="page-container">
+            <style>{customStyles}</style>
             <Header />
-            <main style={styles.container}>
-                {/* Hero Header */}
-                <div style={styles.header}>
-                    <h1 style={styles.title}>
-                        <FaCrown style={{ color: '#FFD700' }} />
-                        Sneed Premium
-                    </h1>
-                    <p style={styles.subtitle}>
-                        Unlock exclusive benefits, discounts, and features across the Sneed ecosystem
-                    </p>
-                </div>
-                
-                {error && (
-                    <div style={styles.error}>{error}</div>
-                )}
-                
-                {/* Membership Status */}
-                {isAuthenticated && membershipStatus && (
+            <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${premiumPrimary}15 50%, ${premiumSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Background decorations */}
                     <div style={{
-                        ...styles.statusCard,
-                        ...(isActive ? styles.statusActive : {}),
-                        ...(isExpired ? styles.statusExpired : {}),
-                    }}>
-                        {isActive ? (
-                            <>
-                                <div style={{ ...styles.statusTitle, color: theme.colors.success }}>
-                                    <FaCheckCircle />
-                                    You're a Premium Member!
-                                </div>
-                                <div style={styles.statusSubtitle}>
-                                    Your membership expires: <strong>{formatTimestamp(membershipStatus.Active.expiration)}</strong>
-                                    <br />
-                                    Time remaining: <strong>{getTimeRemaining(membershipStatus.Active.expiration)}</strong>
-                                </div>
-                            </>
-                        ) : isExpired ? (
-                            <>
-                                <div style={{ ...styles.statusTitle, color: theme.colors.error }}>
-                                    <FaTimesCircle />
-                                    Membership Expired
-                                </div>
-                                <div style={styles.statusSubtitle}>
-                                    Your premium membership expired on {formatTimestamp(membershipStatus.Expired.expiredAt)}
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div style={{ ...styles.statusTitle, color: theme.colors.accent }}>
-                                    <FaCrown />
-                                    Become a Premium Member
-                                </div>
-                                <div style={styles.statusSubtitle}>
-                                    Purchase or claim your membership below
-                                </div>
-                            </>
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${premiumPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${premiumSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                            <div className="premium-float premium-glow" style={{
+                                width: '64px',
+                                height: '64px',
+                                minWidth: '64px',
+                                maxWidth: '64px',
+                                flexShrink: 0,
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${premiumPrimary}, ${premiumSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${premiumPrimary}40`
+                            }}>
+                                <FaCrown size={28} color="#1a1a2e" />
+                            </div>
+                            <div>
+                                <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0, lineHeight: '1.2' }}>
+                                    Sneed Premium
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                    Unlock exclusive benefits, discounts, and features
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Status Badge */}
+                        {isAuthenticated && membershipStatus && (
+                            <div style={{ 
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.5rem 1rem',
+                                borderRadius: '20px',
+                                background: isActive 
+                                    ? `${theme.colors.success}20` 
+                                    : isExpired 
+                                        ? `${theme.colors.error}20` 
+                                        : `${premiumPrimary}20`,
+                                border: `1px solid ${isActive ? theme.colors.success : isExpired ? theme.colors.error : premiumPrimary}40`,
+                                fontSize: '0.9rem'
+                            }}>
+                                {isActive ? (
+                                    <>
+                                        <FaCheckCircle color={theme.colors.success} size={14} />
+                                        <span style={{ color: theme.colors.success, fontWeight: '600' }}>Premium Active</span>
+                                        <span style={{ color: theme.colors.mutedText }}>• {getTimeRemaining(membershipStatus.Active.expiration)}</span>
+                                    </>
+                                ) : isExpired ? (
+                                    <>
+                                        <FaTimesCircle color={theme.colors.error} size={14} />
+                                        <span style={{ color: theme.colors.error, fontWeight: '600' }}>Membership Expired</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <FaLock color={premiumPrimary} size={14} />
+                                        <span style={{ color: premiumPrimary, fontWeight: '600' }}>Not a member yet</span>
+                                    </>
+                                )}
+                            </div>
                         )}
                     </div>
-                )}
+                </div>
+
+                {/* Main Content */}
+                <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                    
+                    {error && (
+                        <div className="premium-card-animate" style={{
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '12px',
+                            padding: '1rem 1.25rem',
+                            marginBottom: '1.5rem',
+                            color: theme.colors.error,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            opacity: 0,
+                            animationDelay: '0.1s'
+                        }}>
+                            <FaExclamationTriangle /> {error}
+                        </div>
+                    )}
+                    
+                    {/* Membership Status Card (detailed) */}
+                    {isAuthenticated && membershipStatus && (
+                        <div className="premium-card-animate" style={{
+                            background: isActive 
+                                ? `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)` 
+                                : isExpired 
+                                    ? `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}05)`
+                                    : `linear-gradient(135deg, ${premiumPrimary}15, ${premiumSecondary}08)`,
+                            border: `2px solid ${isActive ? theme.colors.success : isExpired ? theme.colors.error : premiumPrimary}`,
+                            borderRadius: '20px',
+                            padding: '1.5rem 2rem',
+                            marginBottom: '2rem',
+                            textAlign: 'center',
+                            opacity: 0,
+                            animationDelay: '0.15s'
+                        }}>
+                            {isActive ? (
+                                <>
+                                    <div style={{ 
+                                        fontSize: '1.4rem', 
+                                        fontWeight: '600', 
+                                        marginBottom: '0.5rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '10px',
+                                        color: theme.colors.success 
+                                    }}>
+                                        <FaCheckCircle />
+                                        You're a Premium Member!
+                                    </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '1rem' }}>
+                                        Expires: <strong style={{ color: theme.colors.primaryText }}>{formatTimestamp(membershipStatus.Active.expiration)}</strong>
+                                        <span style={{ margin: '0 0.75rem' }}>•</span>
+                                        Time remaining: <strong style={{ color: theme.colors.success }}>{getTimeRemaining(membershipStatus.Active.expiration)}</strong>
+                                    </div>
+                                </>
+                            ) : isExpired ? (
+                                <>
+                                    <div style={{ 
+                                        fontSize: '1.4rem', 
+                                        fontWeight: '600', 
+                                        marginBottom: '0.5rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '10px',
+                                        color: theme.colors.error 
+                                    }}>
+                                        <FaTimesCircle />
+                                        Membership Expired
+                                    </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '1rem' }}>
+                                        Your membership expired on {formatTimestamp(membershipStatus.Expired.expiredAt)}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ 
+                                        fontSize: '1.4rem', 
+                                        fontWeight: '600', 
+                                        marginBottom: '0.5rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '10px',
+                                        color: premiumPrimary 
+                                    }}>
+                                        <FaCrown />
+                                        Become a Premium Member
+                                    </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '1rem' }}>
+                                        Purchase or claim your membership below
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 
                 {/* Premium Perks */}
                 <section style={styles.section}>
@@ -1413,6 +1676,82 @@ export default function Premium() {
                                     </div>
                                 )}
                                 
+                                {/* SNS Jailbreak Tool Section */}
+                                <div style={{
+                                    background: theme.colors.card,
+                                    borderRadius: '12px',
+                                    overflow: 'hidden',
+                                    border: `1px solid ${theme.colors.border}`,
+                                }}>
+                                    <div style={{
+                                        padding: '12px 16px',
+                                        background: `linear-gradient(90deg, #1abc9c20 0%, transparent 100%)`,
+                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                    }}>
+                                        <div style={{
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '8px',
+                                            background: '#1abc9c20',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}>
+                                            <FaUnlock style={{ color: '#1abc9c', fontSize: '12px' }} />
+                                        </div>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            SNS Jailbreak Tool
+                                        </span>
+                                        <span style={{
+                                            marginLeft: 'auto',
+                                            background: `linear-gradient(135deg, ${premiumPrimary}, ${premiumSecondary})`,
+                                            color: '#1a1a2e',
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.7rem',
+                                            fontWeight: '700'
+                                        }}>
+                                            PREMIUM
+                                        </span>
+                                    </div>
+                                    <div style={{ padding: '12px 16px' }}>
+                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.75rem', lineHeight: '1.5' }}>
+                                            Add full hotkey permissions to your SNS neurons, enabling NNS-dapp management with a simple browser script.
+                                        </p>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Script Price
+                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                    0.5 ICP
+                                                </span>
+                                                <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                    ✨ FREE
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <Link 
+                                            to="/sns_jailbreak"
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                color: '#1abc9c',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '600',
+                                                textDecoration: 'none',
+                                                marginTop: '0.25rem'
+                                            }}
+                                        >
+                                            Learn more <FaArrowRight size={10} />
+                                        </Link>
+                                    </div>
+                                </div>
+                                
                             </div>
                         </div>
                     )}
@@ -1753,6 +2092,7 @@ export default function Premium() {
                     )}
                 </section>
                 
+                </div>{/* End Main Content */}
             </main>
             
             <InfoModal
