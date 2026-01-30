@@ -1247,82 +1247,84 @@ export default function Premium() {
                             marginTop: '1.5rem',
                             background: `linear-gradient(135deg, ${theme.colors.tertiaryBg} 0%, ${theme.colors.secondaryBg}40 100%)`,
                             borderRadius: '16px',
-                            padding: '1.5rem',
+                            padding: '1rem',
                             border: `1px solid ${theme.colors.border}`,
                             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
                         }}>
                             <h3 style={{ 
                                 color: '#ffd700', 
-                                marginBottom: '1.25rem', 
-                                fontSize: '1.15rem',
+                                marginBottom: '1rem', 
+                                fontSize: '1.05rem',
                                 fontWeight: '700',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '10px',
+                                gap: '8px',
                             }}>
                                 <div style={{
-                                    width: '36px',
-                                    height: '36px',
-                                    borderRadius: '10px',
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
                                     background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     boxShadow: '0 2px 8px rgba(255, 215, 0, 0.3)',
+                                    flexShrink: 0,
                                 }}>
-                                    <FaStar style={{ color: '#000', fontSize: '16px' }} />
+                                    <FaStar style={{ color: '#000', fontSize: '14px' }} />
                                 </div>
                                 Premium Benefits & Savings
                             </h3>
                             
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 
                                 {/* Sneedex Section */}
                                 {premiumPricing.sneedex && (Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 || 
                                     Number(premiumPricing.sneedex.regularAuctionCutBps) > Number(premiumPricing.sneedex.premiumAuctionCutBps)) && (
                                     <div style={{
                                         background: theme.colors.card,
-                                        borderRadius: '12px',
+                                        borderRadius: '10px',
                                         overflow: 'hidden',
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <div style={{
-                                            padding: '12px 16px',
+                                            padding: '10px 12px',
                                             background: `linear-gradient(90deg, #e74c3c20 0%, transparent 100%)`,
                                             borderBottom: `1px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '8px',
                                         }}>
                                             <div style={{
-                                                width: '28px',
-                                                height: '28px',
-                                                borderRadius: '8px',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
                                                 background: '#e74c3c20',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
+                                                flexShrink: 0,
                                             }}>
-                                                <FaExchangeAlt style={{ color: '#e74c3c', fontSize: '12px' }} />
+                                                <FaExchangeAlt style={{ color: '#e74c3c', fontSize: '10px' }} />
                                             </div>
-                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
                                                 Sneedex Marketplace
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                                                 Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through trustless escrow auctions.
                                             </p>
                                             {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Offer Creation Fee
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <FaCoins style={{ color: '#f39c12', fontSize: '10px' }} /> Offer Creation Fee
                                                     </span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {formatIcp(premiumPricing.sneedex.regularCreationFeeE8s)} ICP
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {Number(premiumPricing.sneedex.premiumCreationFeeE8s) > 0 
                                                                 ? `${formatIcp(premiumPricing.sneedex.premiumCreationFeeE8s)} ICP`
                                                                 : '✨ FREE'}
@@ -1331,15 +1333,15 @@ export default function Premium() {
                                                 </div>
                                             )}
                                             {Number(premiumPricing.sneedex.regularAuctionCutBps) > Number(premiumPricing.sneedex.premiumAuctionCutBps) && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <FaPercent style={{ color: '#9b59b6', fontSize: '10px' }} /> Auction Cut
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <FaPercent style={{ color: '#9b59b6', fontSize: '9px' }} /> Auction Cut
                                                     </span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {(Number(premiumPricing.sneedex.regularAuctionCutBps) / 100).toFixed(2)}%
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {(Number(premiumPricing.sneedex.premiumAuctionCutBps) / 100).toFixed(2)}%
                                                         </span>
                                                     </div>
@@ -1350,15 +1352,15 @@ export default function Premium() {
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
+                                                    gap: '4px',
                                                     color: '#e74c3c',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.8rem',
                                                     fontWeight: '600',
                                                     textDecoration: 'none',
                                                     marginTop: '0.25rem'
                                                 }}
                                             >
-                                                Learn more <FaArrowRight size={10} />
+                                                Learn more <FaArrowRight size={9} />
                                             </Link>
                                         </div>
                                     </div>
@@ -1369,46 +1371,47 @@ export default function Premium() {
                                  Number(premiumPricing.neuronManager.regularFeeE8s) > Number(premiumPricing.neuronManager.premiumFeeE8s) && (
                                     <div style={{
                                         background: theme.colors.card,
-                                        borderRadius: '12px',
+                                        borderRadius: '10px',
                                         overflow: 'hidden',
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <div style={{
-                                            padding: '12px 16px',
+                                            padding: '10px 12px',
                                             background: `linear-gradient(90deg, #9b59b620 0%, transparent 100%)`,
                                             borderBottom: `1px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '8px',
                                         }}>
                                             <div style={{
-                                                width: '28px',
-                                                height: '28px',
-                                                borderRadius: '8px',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
                                                 background: '#9b59b620',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
+                                                flexShrink: 0,
                                             }}>
-                                                <FaBrain style={{ color: '#9b59b6', fontSize: '12px' }} />
+                                                <FaBrain style={{ color: '#9b59b6', fontSize: '10px' }} />
                                             </div>
-                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
                                                 ICP Neuron Manager
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                                                 Deploy a smart contract to control your ICP neurons with multi-controller support and automation.
                                             </p>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Manager Creation Fee
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <FaCoins style={{ color: '#f39c12', fontSize: '10px' }} /> Manager Creation Fee
                                                 </span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                         {formatIcp(premiumPricing.neuronManager.regularFeeE8s)} ICP
                                                     </span>
-                                                    <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                    <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                         {Number(premiumPricing.neuronManager.premiumFeeE8s) > 0 
                                                             ? `${formatIcp(premiumPricing.neuronManager.premiumFeeE8s)} ICP`
                                                             : '✨ FREE'}
@@ -1420,77 +1423,144 @@ export default function Premium() {
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
+                                                    gap: '4px',
                                                     color: '#9b59b6',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.8rem',
                                                     fontWeight: '600',
                                                     textDecoration: 'none',
                                                     marginTop: '0.25rem'
                                                 }}
                                             >
-                                                Learn more <FaArrowRight size={10} />
+                                                Learn more <FaArrowRight size={9} />
                                             </Link>
                                         </div>
                                     </div>
                                 )}
+                                
+                                {/* SNS Jailbreak Tool Section - moved here after ICP Neuron Manager */}
+                                <div style={{
+                                    background: theme.colors.card,
+                                    borderRadius: '10px',
+                                    overflow: 'hidden',
+                                    border: `1px solid ${theme.colors.border}`,
+                                }}>
+                                    <div style={{
+                                        padding: '10px 12px',
+                                        background: `linear-gradient(90deg, #1abc9c20 0%, transparent 100%)`,
+                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                    }}>
+                                        <div style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '6px',
+                                            background: '#1abc9c20',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            flexShrink: 0,
+                                        }}>
+                                            <FaUnlock style={{ color: '#1abc9c', fontSize: '10px' }} />
+                                        </div>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
+                                            SNS Jailbreak Tool
+                                        </span>
+                                    </div>
+                                    <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
+                                            Unlock the SNS neurons in your NNS wallet to make them tradable on Sneedex.
+                                        </p>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <FaCoins style={{ color: '#f39c12', fontSize: '10px' }} /> Script Price
+                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
+                                                    0.5 ICP
+                                                </span>
+                                                <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
+                                                    ✨ FREE
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <Link 
+                                            to="/tools/sns_jailbreak"
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                color: '#1abc9c',
+                                                fontSize: '0.8rem',
+                                                fontWeight: '600',
+                                                textDecoration: 'none',
+                                                marginTop: '0.25rem'
+                                            }}
+                                        >
+                                            Learn more <FaArrowRight size={9} />
+                                        </Link>
+                                    </div>
+                                </div>
                                 
                                 {/* SNS Forum Section */}
                                 {premiumPricing.forum && (premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit ||
                                     premiumPricing.forum.premiumThreadBodyLimit > premiumPricing.forum.regularThreadBodyLimit) && (
                                     <div style={{
                                         background: theme.colors.card,
-                                        borderRadius: '12px',
+                                        borderRadius: '10px',
                                         overflow: 'hidden',
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <div style={{
-                                            padding: '12px 16px',
+                                            padding: '10px 12px',
                                             background: `linear-gradient(90deg, #3498db20 0%, transparent 100%)`,
                                             borderBottom: `1px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '8px',
                                         }}>
                                             <div style={{
-                                                width: '28px',
-                                                height: '28px',
-                                                borderRadius: '8px',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
                                                 background: '#3498db20',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
+                                                flexShrink: 0,
                                             }}>
-                                                <FaComments style={{ color: '#3498db', fontSize: '12px' }} />
+                                                <FaComments style={{ color: '#3498db', fontSize: '10px' }} />
                                             </div>
-                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
                                                 SNS Forum
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                                                 Discuss SNS governance proposals and community topics in dedicated forums.
                                             </p>
                                             {premiumPricing.forum.premiumPostBodyLimit > premiumPricing.forum.regularPostBodyLimit && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Post Length</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Post Length</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.forum.regularPostBodyLimit.toLocaleString()}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.forum.premiumPostBodyLimit.toLocaleString()} chars
                                                         </span>
                                                     </div>
                                                 </div>
                                             )}
                                             {premiumPricing.forum.premiumThreadBodyLimit > premiumPricing.forum.regularThreadBodyLimit && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Thread Length</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Thread Length</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.forum.regularThreadBodyLimit.toLocaleString()}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.forum.premiumThreadBodyLimit.toLocaleString()} chars
                                                         </span>
                                                     </div>
@@ -1501,15 +1571,15 @@ export default function Premium() {
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
+                                                    gap: '4px',
                                                     color: '#3498db',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.8rem',
                                                     fontWeight: '600',
                                                     textDecoration: 'none',
                                                     marginTop: '0.25rem'
                                                 }}
                                             >
-                                                Learn more <FaArrowRight size={10} />
+                                                Learn more <FaArrowRight size={9} />
                                             </Link>
                                         </div>
                                     </div>
@@ -1521,75 +1591,76 @@ export default function Premium() {
                                     premiumPricing.sms.premiumMaxRecipients > premiumPricing.sms.regularMaxRecipients) && (
                                     <div style={{
                                         background: theme.colors.card,
-                                        borderRadius: '12px',
+                                        borderRadius: '10px',
                                         overflow: 'hidden',
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <div style={{
-                                            padding: '12px 16px',
+                                            padding: '10px 12px',
                                             background: `linear-gradient(90deg, #2ecc7120 0%, transparent 100%)`,
                                             borderBottom: `1px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '8px',
                                         }}>
                                             <div style={{
-                                                width: '28px',
-                                                height: '28px',
-                                                borderRadius: '8px',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
                                                 background: '#2ecc7120',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
+                                                flexShrink: 0,
                                             }}>
-                                                <FaEnvelope style={{ color: '#2ecc71', fontSize: '12px' }} />
+                                                <FaEnvelope style={{ color: '#2ecc71', fontSize: '10px' }} />
                                             </div>
-                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
                                                 Direct Messages
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                                                 Send private on-chain messages to any Internet Computer principal.
                                             </p>
                                             {premiumPricing.sms.premiumBodyLimit > premiumPricing.sms.regularBodyLimit && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Message Length</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Message Length</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.sms.regularBodyLimit.toLocaleString()}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.sms.premiumBodyLimit.toLocaleString()} chars
                                                         </span>
                                                     </div>
                                                 </div>
                                             )}
                                             {premiumPricing.sms.premiumRateLimit < premiumPricing.sms.regularRateLimit && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <FaTachometerAlt style={{ color: '#e67e22', fontSize: '10px' }} /> Rate Limit
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <FaTachometerAlt style={{ color: '#e67e22', fontSize: '9px' }} /> Rate Limit
                                                     </span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.sms.regularRateLimit} min
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.sms.premiumRateLimit > 0 ? `${premiumPricing.sms.premiumRateLimit} min` : '⚡ Unlimited'}
                                                         </span>
                                                     </div>
                                                 </div>
                                             )}
                                             {premiumPricing.sms.premiumMaxRecipients > premiumPricing.sms.regularMaxRecipients && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <FaUsers style={{ color: '#1abc9c', fontSize: '11px' }} /> Max Recipients
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <FaUsers style={{ color: '#1abc9c', fontSize: '9px' }} /> Max Recipients
                                                     </span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.sms.regularMaxRecipients}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.sms.premiumMaxRecipients}
                                                         </span>
                                                     </div>
@@ -1600,15 +1671,15 @@ export default function Premium() {
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
+                                                    gap: '4px',
                                                     color: '#2ecc71',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.8rem',
                                                     fontWeight: '600',
                                                     textDecoration: 'none',
                                                     marginTop: '0.25rem'
                                                 }}
                                             >
-                                                Learn more <FaArrowRight size={10} />
+                                                Learn more <FaArrowRight size={9} />
                                             </Link>
                                         </div>
                                     </div>
@@ -1619,58 +1690,59 @@ export default function Premium() {
                                     premiumPricing.nicknames.premiumPrincipalLimit > premiumPricing.nicknames.regularPrincipalLimit) && (
                                     <div style={{
                                         background: theme.colors.card,
-                                        borderRadius: '12px',
+                                        borderRadius: '10px',
                                         overflow: 'hidden',
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <div style={{
-                                            padding: '12px 16px',
+                                            padding: '10px 12px',
                                             background: `linear-gradient(90deg, #f39c1220 0%, transparent 100%)`,
                                             borderBottom: `1px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '8px',
                                         }}>
                                             <div style={{
-                                                width: '28px',
-                                                height: '28px',
-                                                borderRadius: '8px',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
                                                 background: '#f39c1220',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
+                                                flexShrink: 0,
                                             }}>
-                                                <FaAddressBook style={{ color: '#f39c12', fontSize: '12px' }} />
+                                                <FaAddressBook style={{ color: '#f39c12', fontSize: '10px' }} />
                                             </div>
-                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
                                                 Address Book
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                                                 Save custom nicknames for principals and neurons to easily identify them.
                                             </p>
                                             {premiumPricing.nicknames.premiumNeuronLimit > premiumPricing.nicknames.regularNeuronLimit && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Neuron Nicknames</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Neuron Nicknames</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.nicknames.regularNeuronLimit}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.nicknames.premiumNeuronLimit}
                                                         </span>
                                                     </div>
                                                 </div>
                                             )}
                                             {premiumPricing.nicknames.premiumPrincipalLimit > premiumPricing.nicknames.regularPrincipalLimit && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Principal Nicknames</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Principal Nicknames</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.nicknames.regularPrincipalLimit}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.nicknames.premiumPrincipalLimit}
                                                         </span>
                                                     </div>
@@ -1681,15 +1753,15 @@ export default function Premium() {
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
+                                                    gap: '4px',
                                                     color: '#f39c12',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.8rem',
                                                     fontWeight: '600',
                                                     textDecoration: 'none',
                                                     marginTop: '0.25rem'
                                                 }}
                                             >
-                                                Learn more <FaArrowRight size={10} />
+                                                Learn more <FaArrowRight size={9} />
                                             </Link>
                                         </div>
                                     </div>
@@ -1701,73 +1773,74 @@ export default function Premium() {
                                     premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal) && (
                                     <div style={{
                                         background: theme.colors.card,
-                                        borderRadius: '12px',
+                                        borderRadius: '10px',
                                         overflow: 'hidden',
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                         <div style={{
-                                            padding: '12px 16px',
+                                            padding: '10px 12px',
                                             background: `linear-gradient(90deg, #8e44ad20 0%, transparent 100%)`,
                                             borderBottom: `1px solid ${theme.colors.border}`,
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '8px',
                                         }}>
                                             <div style={{
-                                                width: '28px',
-                                                height: '28px',
-                                                borderRadius: '8px',
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
                                                 background: '#8e44ad20',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
+                                                flexShrink: 0,
                                             }}>
-                                                <FaCube style={{ color: '#8e44ad', fontSize: '12px' }} />
+                                                <FaCube style={{ color: '#8e44ad', fontSize: '10px' }} />
                                             </div>
-                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
                                                 Canister Manager
                                             </span>
                                         </div>
-                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
                                                 Organize and monitor your canisters with folders and cycle tracking.
                                             </p>
                                             {premiumPricing.canisterGroups.premiumMaxGroups > premiumPricing.canisterGroups.regularMaxGroups && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <FaFolder style={{ color: '#e67e22', fontSize: '10px' }} /> Folders
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <FaFolder style={{ color: '#e67e22', fontSize: '9px' }} /> Folders
                                                     </span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.canisterGroups.regularMaxGroups}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.canisterGroups.premiumMaxGroups}
                                                         </span>
                                                     </div>
                                                 </div>
                                             )}
                                             {premiumPricing.canisterGroups.premiumMaxPerGroup > premiumPricing.canisterGroups.regularMaxPerGroup && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Canisters per Folder</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Canisters per Folder</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.canisterGroups.regularMaxPerGroup}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.canisterGroups.premiumMaxPerGroup}
                                                         </span>
                                                     </div>
                                                 </div>
                                             )}
                                             {premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Total Canisters</span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Total Canisters</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.canisterGroups.regularMaxTotal}
                                                         </span>
-                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.85rem' }}>
                                                             {premiumPricing.canisterGroups.premiumMaxTotal}
                                                         </span>
                                                     </div>
@@ -1778,84 +1851,19 @@ export default function Premium() {
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '6px',
+                                                    gap: '4px',
                                                     color: '#8e44ad',
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.8rem',
                                                     fontWeight: '600',
                                                     textDecoration: 'none',
                                                     marginTop: '0.25rem'
                                                 }}
                                             >
-                                                Learn more <FaArrowRight size={10} />
+                                                Learn more <FaArrowRight size={9} />
                                             </Link>
                                         </div>
                                     </div>
                                 )}
-                                
-                                {/* SNS Jailbreak Tool Section */}
-                                <div style={{
-                                    background: theme.colors.card,
-                                    borderRadius: '12px',
-                                    overflow: 'hidden',
-                                    border: `1px solid ${theme.colors.border}`,
-                                }}>
-                                    <div style={{
-                                        padding: '12px 16px',
-                                        background: `linear-gradient(90deg, #1abc9c20 0%, transparent 100%)`,
-                                        borderBottom: `1px solid ${theme.colors.border}`,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                    }}>
-                                        <div style={{
-                                            width: '28px',
-                                            height: '28px',
-                                            borderRadius: '8px',
-                                            background: '#1abc9c20',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                        }}>
-                                            <FaUnlock style={{ color: '#1abc9c', fontSize: '12px' }} />
-                                        </div>
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>
-                                            SNS Jailbreak Tool
-                                        </span>
-                                    </div>
-                                    <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
-                                            Unlock the SNS neurons in your NNS wallet to make them tradable on Sneedex.
-                                        </p>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <FaCoins style={{ color: '#f39c12', fontSize: '11px' }} /> Script Price
-                                            </span>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.85rem' }}>
-                                                    0.5 ICP
-                                                </span>
-                                                <span style={{ color: '#2ecc71', fontWeight: '700', fontSize: '0.95rem' }}>
-                                                    ✨ FREE
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <Link 
-                                            to="/tools/sns_jailbreak"
-                                            style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                color: '#1abc9c',
-                                                fontSize: '0.85rem',
-                                                fontWeight: '600',
-                                                textDecoration: 'none',
-                                                marginTop: '0.25rem'
-                                            }}
-                                        >
-                                            Learn more <FaArrowRight size={10} />
-                                        </Link>
-                                    </div>
-                                </div>
                                 
                             </div>
                         </div>
