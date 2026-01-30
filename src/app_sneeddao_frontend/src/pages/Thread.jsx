@@ -8,7 +8,177 @@ import ThreadViewer from '../components/ThreadViewer';
 import Header from '../components/Header';
 import { fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
-import './Thread.css';
+import { FaComments, FaHome, FaChevronRight, FaExclamationTriangle, FaSpinner } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.thread-fade-in {
+    animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.thread-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - purple theme for forum/discussion
+const forumPrimary = '#8b5cf6';
+const forumSecondary = '#a78bfa';
+
+const getStyles = (theme) => ({
+    pageContainer: {
+        background: theme.colors.primaryGradient,
+        color: theme.colors.primaryText,
+        minHeight: '100vh',
+    },
+    forumHeader: {
+        background: `linear-gradient(135deg, ${forumPrimary}15 0%, ${forumSecondary}10 50%, transparent 100%)`,
+        borderBottom: `1px solid ${theme.colors.border}`,
+        padding: '16px 0',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        backdropFilter: 'blur(12px)',
+    },
+    forumHeaderInner: {
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '0 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '15px',
+    },
+    snsLogoWrapper: {
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        background: theme.colors.secondaryBg,
+        border: `2px solid ${theme.colors.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flexShrink: 0,
+    },
+    snsLogo: {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+    },
+    snsLogoPlaceholder: {
+        fontSize: '0.7rem',
+        color: theme.colors.mutedText,
+        fontWeight: '700',
+    },
+    forumTitle: {
+        color: theme.colors.primaryText,
+        fontSize: 'clamp(1.25rem, 3vw, 1.5rem)',
+        fontWeight: '700',
+        margin: 0,
+        flex: 1,
+    },
+    container: {
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '1.25rem',
+    },
+    breadcrumb: {
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '8px',
+        marginBottom: '1.25rem',
+        padding: '12px 16px',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
+        fontSize: '0.9rem',
+    },
+    breadcrumbLink: {
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontWeight: '500',
+        transition: 'opacity 0.2s ease',
+    },
+    breadcrumbSeparator: {
+        color: theme.colors.mutedText,
+        fontSize: '0.7rem',
+    },
+    breadcrumbCurrent: {
+        color: theme.colors.secondaryText,
+        fontWeight: '500',
+    },
+    errorCard: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '3rem 2rem',
+        textAlign: 'center',
+        boxShadow: theme.colors.cardShadow,
+    },
+    errorIcon: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '16px',
+        background: `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        margin: '0 auto 1rem',
+    },
+    errorTitle: {
+        fontSize: '1.5rem',
+        fontWeight: '700',
+        color: theme.colors.primaryText,
+        marginBottom: '0.75rem',
+    },
+    errorText: {
+        color: theme.colors.secondaryText,
+        fontSize: '1rem',
+        lineHeight: '1.6',
+    },
+    loadingCard: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '3rem 2rem',
+        textAlign: 'center',
+        boxShadow: theme.colors.cardShadow,
+    },
+    loadingIcon: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '16px',
+        background: `linear-gradient(135deg, ${forumPrimary}20, ${forumPrimary}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        margin: '0 auto 1rem',
+    },
+    loadingText: {
+        color: theme.colors.secondaryText,
+        fontSize: '1rem',
+    },
+});
 
 const Thread = () => {
     const [searchParams] = useSearchParams();
@@ -17,6 +187,7 @@ const Thread = () => {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
+    const styles = getStyles(theme);
     
     const [topicInfo, setTopicInfo] = useState(null);
     const [forumInfo, setForumInfo] = useState(null);
@@ -142,12 +313,18 @@ const Thread = () => {
 
     if (!threadId) {
         return (
-            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+            <div style={styles.pageContainer}>
+                <style>{customAnimations}</style>
                 <Header showSnsDropdown={true} />
-                <div className="thread-container">
-                    <div className="error-state">
-                        <h2>Thread Not Found</h2>
-                        <p>No thread ID provided in the URL. Please use ?threadid=123 format.</p>
+                <div style={styles.container}>
+                    <div style={styles.errorCard} className="thread-fade-in">
+                        <div style={styles.errorIcon}>
+                            <FaExclamationTriangle size={28} color={theme.colors.error} />
+                        </div>
+                        <h2 style={styles.errorTitle}>Thread Not Found</h2>
+                        <p style={styles.errorText}>
+                            No thread ID provided in the URL. Please use ?threadid=123 format.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -155,124 +332,56 @@ const Thread = () => {
     }
 
     return (
-        <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+        <div style={styles.pageContainer}>
+            <style>{customAnimations}</style>
             <Header showSnsDropdown={true} />
             
-            {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
+            {/* Forum Header */}
             {forumInfo && (
-                <div style={{
-                    backgroundColor: theme.colors.headerBg, // Match header background
-                    borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    padding: '12px 0',
-                    position: 'sticky',
-                    top: 0,
-                    zIndex: 100
-                }}>
-                    <div style={{
-                        maxWidth: '1200px',
-                        margin: '0 auto',
-                        padding: '0 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '15px'
-                    }}>
+                <div style={styles.forumHeader}>
+                    <div style={styles.forumHeaderInner}>
                         {/* SNS Logo */}
-                        {loadingLogo ? (
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                backgroundColor: theme.colors.border,
-                                border: '2px solid #3a3a3a',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.6rem',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
-                                ...
-                            </div>
-                        ) : snsLogo ? (
-                            <img
-                                src={snsLogo}
-                                alt={snsInfo?.name || 'SNS Logo'}
-                                style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    border: '2px solid #3a3a3a'
-                                }}
-                            />
-                        ) : (
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                backgroundColor: theme.colors.border,
-                                border: '2px solid #3a3a3a',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.6rem',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
-                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
-                            </div>
-                        )}
+                        <div style={styles.snsLogoWrapper}>
+                            {loadingLogo ? (
+                                <span style={styles.snsLogoPlaceholder}>...</span>
+                            ) : snsLogo ? (
+                                <img
+                                    src={snsLogo}
+                                    alt={snsInfo?.name || 'SNS Logo'}
+                                    style={styles.snsLogo}
+                                />
+                            ) : (
+                                <span style={styles.snsLogoPlaceholder}>
+                                    {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                                </span>
+                            )}
+                        </div>
                         
                         {/* Forum Title */}
-                        <h1 style={{
-                            color: theme.colors.primaryText,
-                            fontSize: '1.5rem',
-                            fontWeight: '600',
-                            margin: 0,
-                            flex: 1
-                        }}>
+                        <h1 style={styles.forumTitle}>
                             {snsInfo?.name ? `${snsInfo.name} Forum` : (forumInfo.title || 'Forum')}
                         </h1>
+                        
+                        {/* Discussion Icon */}
+                        <FaComments size={24} color={forumPrimary} style={{ opacity: 0.6 }} />
                     </div>
                 </div>
             )}
             
-            <div className="thread-container">
+            <div style={styles.container}>
                 {/* Breadcrumb */}
                 {!breadcrumbLoading && topicInfo && (
-                    <div style={{
-                        marginBottom: '20px',
-                        fontSize: '0.9rem'
-                    }}>
-                        <Link 
-                            to="/forum" 
-                            style={{
-                                color: theme.colors.accent,
-                                textDecoration: 'none'
-                            }}
-                        >
+                    <div style={styles.breadcrumb} className="thread-fade-in">
+                        <Link to="/forum" style={styles.breadcrumbLink}>
+                            <FaHome size={14} />
                             Forum
                         </Link>
-                        <span style={{
-                            color: theme.colors.mutedText,
-                            margin: '0 8px'
-                        }}>›</span>
-                        <Link 
-                            to={`/topic/${topicInfo.id}`}
-                            style={{
-                                color: theme.colors.accent,
-                                textDecoration: 'none'
-                            }}
-                        >
+                        <FaChevronRight size={10} style={styles.breadcrumbSeparator} />
+                        <Link to={`/topic/${topicInfo.id}`} style={styles.breadcrumbLink}>
                             {topicInfo.title}
                         </Link>
-                        <span style={{
-                            color: theme.colors.mutedText,
-                            margin: '0 8px'
-                        }}>›</span>
-                        <span style={{
-                            color: theme.colors.secondaryText
-                        }}>
+                        <FaChevronRight size={10} style={styles.breadcrumbSeparator} />
+                        <span style={styles.breadcrumbCurrent}>
                             Thread
                         </span>
                     </div>

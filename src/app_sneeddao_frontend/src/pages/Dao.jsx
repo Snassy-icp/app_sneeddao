@@ -512,11 +512,6 @@ function Dao() {
                                         ICPCoins <FaExternalLinkAlt size={10} />
                                     </a>
                                 </li>
-                                <li style={styles.linkItem}>
-                                    <a href="https://sneedscan.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
-                                        SneedScan <FaExternalLinkAlt size={10} />
-                                    </a>
-                                </li>
                             </ul>
                         </div>
                         <div style={styles.linkBox}>

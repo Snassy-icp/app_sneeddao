@@ -774,85 +774,65 @@ function Products() {
             
             <main style={styles.container}>
                 <div style={styles.grid}>
-                    {/* SneedLock */}
-                    <div className="products-fade-in" style={styles.product(sneedlockPrimary)}>
-                        <div style={styles.decorativeGlow(sneedlockPrimary)} />
+                    {/* Sneedex */}
+                    <div className="products-fade-in" style={styles.product(sneedexPrimary)}>
+                        <div style={styles.decorativeGlow(sneedexPrimary)} />
                         
                         <div style={styles.productHeader}>
-                            <div style={styles.productIcon(sneedlockPrimary)}>
-                                <FaLock size={24} style={{ color: '#fff' }} />
+                            <div style={styles.productIcon(sneedexPrimary)}>
+                                <FaGavel size={24} style={{ color: '#fff' }} />
                             </div>
                             <div>
-                                <h2 style={styles.productTitle(sneedlockPrimary)}>SneedLock</h2>
-                                <div style={styles.productBadge(sneedlockPrimary)}>
-                                    <FaLock size={10} />
-                                    Token Locking
+                                <h2 style={styles.productTitle(sneedexPrimary)}>Sneedex</h2>
+                                <div style={styles.productBadge(sneedexPrimary)}>
+                                    <FaExchangeAlt size={10} />
+                                    Marketplace
                                 </div>
                             </div>
                         </div>
                         
                         <p style={styles.description}>
-                            A secure and flexible token locking solution built on the Internet Computer.
-                            Create customizable token locks with various vesting schedules and conditions.
+                            A trustless marketplace for trading unique Internet Computer assets.
+                            Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through secure escrow auctions.
                         </p>
                         
                         <div style={styles.statsSection}>
-                            <div style={styles.statsGrid}>
+                            <div style={{ ...styles.statsGrid, gridTemplateColumns: 'repeat(4, 1fr)' }}>
                                 <StatCard 
-                                    value={sneedLockStats.totalTokenLocks.toString()} 
-                                    label="Token Locks"
-                                    isLoading={sneedLockStats.totalTokenLocks === 0}
+                                    value={sneedexStats.active_offers.toString()} 
+                                    label="Active Offers"
+                                    isLoading={sneedexStats.total_offers === 0}
                                     theme={theme}
-                                    accentColor={sneedlockPrimary}
+                                    accentColor={sneedexPrimary}
                                 />
                                 <StatCard 
-                                    value={sneedLockStats.totalPositionLocks.toString()} 
-                                    label="Position Locks"
-                                    isLoading={sneedLockStats.totalPositionLocks === 0}
+                                    value={sneedexStats.total_offers.toString()} 
+                                    label="Total Offers"
+                                    isLoading={sneedexStats.total_offers === 0}
                                     theme={theme}
-                                    accentColor={sneedlockPrimary}
+                                    accentColor={sneedexPrimary}
                                 />
                                 <StatCard 
-                                    value={sneedLockStats.activeUsers.toString()} 
-                                    label="Active Users"
-                                    isLoading={sneedLockStats.activeUsers === 0}
+                                    value={sneedexStats.completed_offers.toString()} 
+                                    label="Completed"
+                                    isLoading={sneedexStats.total_offers === 0}
                                     theme={theme}
-                                    accentColor={sneedlockPrimary}
+                                    accentColor={sneedexPrimary}
                                 />
-                                <div ref={setTokenRef}>
-                                    <StatCard 
-                                        value={formatUSD(sneedLockStats.tokenLocksValue)} 
-                                        label="Token Locks Value"
-                                        isLoading={false}
-                                        theme={theme}
-                                        accentColor={sneedlockPrimary}
-                                    />
-                                </div>
-                                <div ref={setPositionRef}>
-                                    <StatCard 
-                                        value={formatUSD(sneedLockStats.positionLocksValue)} 
-                                        label="Pos. Locks Value"
-                                        isLoading={false}
-                                        isFinalValue={isLastPositionProcessed}
-                                        theme={theme}
-                                        accentColor={sneedlockPrimary}
-                                    />
-                                </div>
                                 <StatCard 
-                                    value={formatUSD(sneedLockStats.totalValue)} 
-                                    label="Total Value Locked"
-                                    isLoading={false}
-                                    isParentComplete={tokenValueComplete && positionValueComplete}
+                                    value={sneedexStats.total_bids.toString()} 
+                                    label="Total Bids"
+                                    isLoading={sneedexStats.total_offers === 0}
                                     theme={theme}
-                                    accentColor={sneedlockPrimary}
+                                    accentColor={sneedexPrimary}
                                 />
                             </div>
                             
                             <Link 
-                                to="/sneedlock" 
-                                style={styles.button(sneedlockPrimary)}
+                                to="/sneedex_offers" 
+                                style={styles.button(sneedexPrimary)}
                             >
-                                Launch SneedLock
+                                Explore Sneedex
                                 <FaArrowRight size={14} />
                             </Link>
                         </div>
@@ -938,72 +918,8 @@ function Products() {
                         </div>
                     </div>
 
-                    {/* Sneedex */}
-                    <div className="products-fade-in" style={{ ...styles.product(sneedexPrimary), animationDelay: '0.2s' }}>
-                        <div style={styles.decorativeGlow(sneedexPrimary)} />
-                        
-                        <div style={styles.productHeader}>
-                            <div style={styles.productIcon(sneedexPrimary)}>
-                                <FaGavel size={24} style={{ color: '#fff' }} />
-                            </div>
-                            <div>
-                                <h2 style={styles.productTitle(sneedexPrimary)}>Sneedex</h2>
-                                <div style={styles.productBadge(sneedexPrimary)}>
-                                    <FaExchangeAlt size={10} />
-                                    Marketplace
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <p style={styles.description}>
-                            A trustless marketplace for trading unique Internet Computer assets.
-                            Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through secure escrow auctions.
-                        </p>
-                        
-                        <div style={styles.statsSection}>
-                            <div style={{ ...styles.statsGrid, gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                                <StatCard 
-                                    value={sneedexStats.active_offers.toString()} 
-                                    label="Active Offers"
-                                    isLoading={sneedexStats.total_offers === 0}
-                                    theme={theme}
-                                    accentColor={sneedexPrimary}
-                                />
-                                <StatCard 
-                                    value={sneedexStats.total_offers.toString()} 
-                                    label="Total Offers"
-                                    isLoading={sneedexStats.total_offers === 0}
-                                    theme={theme}
-                                    accentColor={sneedexPrimary}
-                                />
-                                <StatCard 
-                                    value={sneedexStats.completed_offers.toString()} 
-                                    label="Completed"
-                                    isLoading={sneedexStats.total_offers === 0}
-                                    theme={theme}
-                                    accentColor={sneedexPrimary}
-                                />
-                                <StatCard 
-                                    value={sneedexStats.total_bids.toString()} 
-                                    label="Total Bids"
-                                    isLoading={sneedexStats.total_offers === 0}
-                                    theme={theme}
-                                    accentColor={sneedexPrimary}
-                                />
-                            </div>
-                            
-                            <Link 
-                                to="/sneedex" 
-                                style={styles.button(sneedexPrimary)}
-                            >
-                                Explore Sneedex
-                                <FaArrowRight size={14} />
-                            </Link>
-                        </div>
-                    </div>
-
                     {/* Liquid Staking */}
-                    <div className="products-fade-in" style={{ ...styles.product(liquidStakingPrimary), animationDelay: '0.3s' }}>
+                    <div className="products-fade-in" style={{ ...styles.product(liquidStakingPrimary), animationDelay: '0.2s' }}>
                         <div style={styles.decorativeGlow(liquidStakingPrimary)} />
                         
                         <div style={styles.productHeader}>
@@ -1087,6 +1003,90 @@ function Products() {
                                 style={styles.button(liquidStakingPrimary)}
                             >
                                 Start Liquid Staking
+                                <FaArrowRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* SneedLock */}
+                    <div className="products-fade-in" style={{ ...styles.product(sneedlockPrimary), animationDelay: '0.3s' }}>
+                        <div style={styles.decorativeGlow(sneedlockPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(sneedlockPrimary)}>
+                                <FaLock size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(sneedlockPrimary)}>SneedLock</h2>
+                                <div style={styles.productBadge(sneedlockPrimary)}>
+                                    <FaLock size={10} />
+                                    Token Locking
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            A secure and flexible token locking solution built on the Internet Computer.
+                            Create customizable token locks with various vesting schedules and conditions.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            <div style={styles.statsGrid}>
+                                <StatCard 
+                                    value={sneedLockStats.totalTokenLocks.toString()} 
+                                    label="Token Locks"
+                                    isLoading={sneedLockStats.totalTokenLocks === 0}
+                                    theme={theme}
+                                    accentColor={sneedlockPrimary}
+                                />
+                                <StatCard 
+                                    value={sneedLockStats.totalPositionLocks.toString()} 
+                                    label="Position Locks"
+                                    isLoading={sneedLockStats.totalPositionLocks === 0}
+                                    theme={theme}
+                                    accentColor={sneedlockPrimary}
+                                />
+                                <StatCard 
+                                    value={sneedLockStats.activeUsers.toString()} 
+                                    label="Active Users"
+                                    isLoading={sneedLockStats.activeUsers === 0}
+                                    theme={theme}
+                                    accentColor={sneedlockPrimary}
+                                />
+                                <div ref={setTokenRef}>
+                                    <StatCard 
+                                        value={formatUSD(sneedLockStats.tokenLocksValue)} 
+                                        label="Token Locks Value"
+                                        isLoading={false}
+                                        theme={theme}
+                                        accentColor={sneedlockPrimary}
+                                    />
+                                </div>
+                                <div ref={setPositionRef}>
+                                    <StatCard 
+                                        value={formatUSD(sneedLockStats.positionLocksValue)} 
+                                        label="Pos. Locks Value"
+                                        isLoading={false}
+                                        isFinalValue={isLastPositionProcessed}
+                                        theme={theme}
+                                        accentColor={sneedlockPrimary}
+                                    />
+                                </div>
+                                <StatCard 
+                                    value={formatUSD(sneedLockStats.totalValue)} 
+                                    label="Total Value Locked"
+                                    isLoading={false}
+                                    isParentComplete={tokenValueComplete && positionValueComplete}
+                                    theme={theme}
+                                    accentColor={sneedlockPrimary}
+                                />
+                            </div>
+                            
+                            <Link 
+                                to="/sneedlock" 
+                                style={styles.button(sneedlockPrimary)}
+                            >
+                                Launch SneedLock
                                 <FaArrowRight size={14} />
                             </Link>
                         </div>

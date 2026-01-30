@@ -11,7 +11,314 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { formatNeuronIdLink } from '../utils/NeuronUtils';
 import { fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
-import './Post.css';
+import { 
+    FaComments, FaHome, FaChevronRight, FaExclamationTriangle, FaSpinner,
+    FaThumbsUp, FaThumbsDown, FaChevronDown, FaChevronUp, FaBrain, FaUser, FaClock
+} from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.post-fade-in {
+    animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.post-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - purple theme for forum/discussion
+const forumPrimary = '#8b5cf6';
+const forumSecondary = '#a78bfa';
+
+const getStyles = (theme) => ({
+    pageContainer: {
+        background: theme.colors.primaryGradient,
+        color: theme.colors.primaryText,
+        minHeight: '100vh',
+    },
+    forumHeader: {
+        background: `linear-gradient(135deg, ${forumPrimary}15 0%, ${forumSecondary}10 50%, transparent 100%)`,
+        borderBottom: `1px solid ${theme.colors.border}`,
+        padding: '16px 0',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        backdropFilter: 'blur(12px)',
+    },
+    forumHeaderInner: {
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '0 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '15px',
+    },
+    snsLogoWrapper: {
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        background: theme.colors.secondaryBg,
+        border: `2px solid ${theme.colors.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flexShrink: 0,
+    },
+    snsLogo: {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+    },
+    snsLogoPlaceholder: {
+        fontSize: '0.7rem',
+        color: theme.colors.mutedText,
+        fontWeight: '700',
+    },
+    forumTitle: {
+        color: theme.colors.primaryText,
+        fontSize: 'clamp(1.25rem, 3vw, 1.5rem)',
+        fontWeight: '700',
+        margin: 0,
+        flex: 1,
+    },
+    container: {
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '1.25rem',
+    },
+    breadcrumb: {
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '8px',
+        marginBottom: '1.25rem',
+        padding: '12px 16px',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
+        fontSize: '0.9rem',
+    },
+    breadcrumbLink: {
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontWeight: '500',
+        transition: 'opacity 0.2s ease',
+    },
+    breadcrumbSeparator: {
+        color: theme.colors.mutedText,
+        fontSize: '0.7rem',
+    },
+    breadcrumbCurrent: {
+        color: theme.colors.secondaryText,
+        fontWeight: '500',
+    },
+    errorCard: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '3rem 2rem',
+        textAlign: 'center',
+        boxShadow: theme.colors.cardShadow,
+    },
+    errorIcon: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '16px',
+        background: `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        margin: '0 auto 1rem',
+    },
+    errorTitle: {
+        fontSize: '1.5rem',
+        fontWeight: '700',
+        color: theme.colors.primaryText,
+        marginBottom: '0.75rem',
+    },
+    errorText: {
+        color: theme.colors.secondaryText,
+        fontSize: '1rem',
+        lineHeight: '1.6',
+    },
+    loadingCard: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '3rem 2rem',
+        textAlign: 'center',
+        boxShadow: theme.colors.cardShadow,
+    },
+    loadingIcon: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '16px',
+        background: `linear-gradient(135deg, ${forumPrimary}20, ${forumPrimary}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        margin: '0 auto 1rem',
+    },
+    loadingText: {
+        color: theme.colors.secondaryText,
+        fontSize: '1rem',
+    },
+    votesSection: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '1.25rem',
+        marginTop: '1.25rem',
+        boxShadow: theme.colors.cardShadow,
+    },
+    votesHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '1rem',
+        flexWrap: 'wrap',
+        gap: '12px',
+    },
+    votesTitle: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        margin: 0,
+        fontSize: '1.1rem',
+        fontWeight: '700',
+        color: theme.colors.primaryText,
+    },
+    votesTitleIcon: {
+        width: '36px',
+        height: '36px',
+        borderRadius: '10px',
+        background: `linear-gradient(135deg, ${forumPrimary}20, ${forumPrimary}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    toggleButton: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        background: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        color: theme.colors.accent,
+        padding: '8px 14px',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+    },
+    summaryRow: {
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '20px',
+        marginBottom: '12px',
+    },
+    summaryItem: (color) => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '8px 14px',
+        background: `${color}15`,
+        border: `1px solid ${color}30`,
+        borderRadius: '10px',
+        fontSize: '0.9rem',
+        fontWeight: '500',
+        color: color,
+    }),
+    netScoreBox: (color) => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '10px 16px',
+        background: `${color}15`,
+        border: `1px solid ${color}40`,
+        borderRadius: '10px',
+        fontSize: '1rem',
+        fontWeight: '700',
+        color: color,
+    }),
+    votesGrid: {
+        display: 'grid',
+        gap: '12px',
+        maxHeight: '400px',
+        overflowY: 'auto',
+        marginTop: '1rem',
+        paddingRight: '4px',
+    },
+    voteCard: (isUpvote, theme) => ({
+        padding: '1rem',
+        background: theme.colors.secondaryBg,
+        borderRadius: '12px',
+        border: `1px solid ${isUpvote ? theme.colors.success : theme.colors.error}30`,
+    }),
+    voteCardHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '12px',
+    },
+    voteType: (isUpvote, theme) => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: isUpvote ? theme.colors.success : theme.colors.error,
+        fontWeight: '700',
+        fontSize: '1rem',
+    }),
+    votePower: {
+        fontWeight: '700',
+        fontSize: '1rem',
+        color: theme.colors.primaryText,
+    },
+    voteDetail: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        marginBottom: '8px',
+        fontSize: '0.9rem',
+    },
+    voteDetailLabel: {
+        color: theme.colors.mutedText,
+        minWidth: '60px',
+        fontSize: '0.85rem',
+    },
+    voteDetailValue: {
+        flex: 1,
+        color: theme.colors.secondaryText,
+    },
+    emptyState: {
+        textAlign: 'center',
+        padding: '1.5rem',
+        color: theme.colors.mutedText,
+        fontSize: '0.95rem',
+    },
+});
 
 const Post = () => {
     const [searchParams] = useSearchParams();
@@ -22,6 +329,7 @@ const Post = () => {
     const { selectedSnsRoot } = useSns();
     const { principalNames, principalNicknames } = useNaming();
     const navigate = useNavigate();
+    const styles = getStyles(theme);
     
     const handleSnsChange = () => {
         navigate('/forum');
@@ -312,14 +620,189 @@ const Post = () => {
         setError(error.message || 'An error occurred');
     }, []);
 
+    // Render forum header
+    const renderForumHeader = () => {
+        if (!forumInfo) return null;
+        
+        return (
+            <div style={styles.forumHeader}>
+                <div style={styles.forumHeaderInner}>
+                    {/* SNS Logo */}
+                    <div style={styles.snsLogoWrapper}>
+                        {loadingLogo ? (
+                            <span style={styles.snsLogoPlaceholder}>...</span>
+                        ) : snsLogo ? (
+                            <img
+                                src={snsLogo}
+                                alt={snsInfo?.name || 'SNS Logo'}
+                                style={styles.snsLogo}
+                            />
+                        ) : (
+                            <span style={styles.snsLogoPlaceholder}>
+                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                            </span>
+                        )}
+                    </div>
+                    
+                    {/* Forum Title */}
+                    <h1 style={styles.forumTitle}>
+                        {snsInfo?.name ? `${snsInfo.name} Forum` : (forumInfo.title || 'Forum')}
+                    </h1>
+                    
+                    {/* Discussion Icon */}
+                    <FaComments size={24} color={forumPrimary} style={{ opacity: 0.6 }} />
+                </div>
+            </div>
+        );
+    };
+
+    // Render votes section
+    const renderVotesSection = () => {
+        if (!postDetails) return null;
+        
+        const upvotes = postVotes.filter(v => v.vote_type.upvote !== undefined);
+        const downvotes = postVotes.filter(v => v.vote_type.downvote !== undefined);
+        const totalUpVP = upvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
+        const totalDownVP = downvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
+        const netScore = totalUpVP - totalDownVP;
+        const netColor = netScore > 0 ? theme.colors.success : netScore < 0 ? theme.colors.error : theme.colors.mutedText;
+        
+        return (
+            <div style={styles.votesSection} className="post-fade-in">
+                <div style={styles.votesHeader}>
+                    <h3 style={styles.votesTitle}>
+                        <div style={styles.votesTitleIcon}>
+                            <FaThumbsUp size={18} color={forumPrimary} />
+                        </div>
+                        All Votes for This Post
+                    </h3>
+                    {postVotes.length > 0 && (
+                        <button
+                            onClick={() => setVotesExpanded(!votesExpanded)}
+                            style={styles.toggleButton}
+                            onMouseEnter={(e) => {
+                                e.target.style.borderColor = theme.colors.accent;
+                                e.target.style.background = theme.colors.tertiaryBg;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.borderColor = theme.colors.border;
+                                e.target.style.background = theme.colors.secondaryBg;
+                            }}
+                        >
+                            {votesExpanded ? 'Hide Details' : 'Show Details'}
+                            {votesExpanded ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                        </button>
+                    )}
+                </div>
+                
+                {votesLoading ? (
+                    <div style={styles.emptyState}>
+                        <FaSpinner className="post-spin" size={20} style={{ marginRight: '8px' }} />
+                        Loading votes...
+                    </div>
+                ) : postVotes.length === 0 ? (
+                    <div style={styles.emptyState}>No votes yet</div>
+                ) : (
+                    <>
+                        {/* Summary */}
+                        <div style={styles.summaryRow}>
+                            <div style={styles.summaryItem(theme.colors.success)}>
+                                <FaThumbsUp size={14} />
+                                {upvotes.length} upvotes ({formatVotingPowerDisplay(totalUpVP)} VP)
+                            </div>
+                            <div style={styles.summaryItem(theme.colors.error)}>
+                                <FaThumbsDown size={14} />
+                                {downvotes.length} downvotes ({formatVotingPowerDisplay(totalDownVP)} VP)
+                            </div>
+                        </div>
+                        <div style={styles.netScoreBox(netColor)}>
+                            Net Score: {netScore >= 0 ? '+' : ''}{formatVotingPowerDisplay(netScore)} VP
+                        </div>
+                        
+                        {/* Individual Votes */}
+                        {votesExpanded && (
+                            <div style={styles.votesGrid}>
+                                {postVotes
+                                    .sort((a, b) => Number(b.voting_power || 0) - Number(a.voting_power || 0))
+                                    .map((vote, index) => {
+                                        const isUpvote = vote.vote_type.upvote !== undefined;
+                                        const neuronId = vote.neuron_id?.id;
+                                        const votingPower = Number(vote.voting_power || 0);
+                                        
+                                        const principalDisplayInfo = getPrincipalDisplayInfoFromContext(
+                                            vote.voter_principal, 
+                                            principalNames, 
+                                            principalNicknames
+                                        );
+                                        
+                                        const neuronLink = formatNeuronIdLink(neuronId, currentSnsRoot);
+                                        
+                                        return (
+                                            <div key={index} style={styles.voteCard(isUpvote, theme)}>
+                                                <div style={styles.voteCardHeader}>
+                                                    <div style={styles.voteType(isUpvote, theme)}>
+                                                        {isUpvote ? <FaThumbsUp size={16} /> : <FaThumbsDown size={16} />}
+                                                        {isUpvote ? 'Upvote' : 'Downvote'}
+                                                    </div>
+                                                    <span style={styles.votePower}>
+                                                        {formatVotingPowerDisplay(votingPower)} VP
+                                                    </span>
+                                                </div>
+                                                
+                                                <div style={styles.voteDetail}>
+                                                    <FaBrain size={14} color={theme.colors.mutedText} />
+                                                    <span style={styles.voteDetailLabel}>Neuron:</span>
+                                                    <div style={styles.voteDetailValue}>
+                                                        {neuronLink}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div style={styles.voteDetail}>
+                                                    <FaUser size={14} color={theme.colors.mutedText} />
+                                                    <span style={styles.voteDetailLabel}>Voter:</span>
+                                                    <div style={styles.voteDetailValue}>
+                                                        <PrincipalDisplay 
+                                                            principal={vote.voter_principal}
+                                                            displayInfo={principalDisplayInfo}
+                                                            showCopyButton={false}
+                                                            style={{ fontSize: '0.9rem' }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                
+                                                <div style={{ ...styles.voteDetail, marginBottom: 0 }}>
+                                                    <FaClock size={14} color={theme.colors.mutedText} />
+                                                    <span style={styles.voteDetailLabel}>When:</span>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                                        {new Date(Number(vote.created_at) / 1000000).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                }
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        );
+    };
+
     if (!postId) {
         return (
-            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+            <div style={styles.pageContainer}>
+                <style>{customAnimations}</style>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-                <div className="post-container">
-                    <div className="error-state">
-                        <h2>Post Not Found</h2>
-                        <p>No post ID provided in the URL. Please use ?postid=123 format.</p>
+                <div style={styles.container}>
+                    <div style={styles.errorCard} className="post-fade-in">
+                        <div style={styles.errorIcon}>
+                            <FaExclamationTriangle size={28} color={theme.colors.error} />
+                        </div>
+                        <h2 style={styles.errorTitle}>Post Not Found</h2>
+                        <p style={styles.errorText}>
+                            No post ID provided in the URL. Please use ?postid=123 format.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -328,12 +811,15 @@ const Post = () => {
 
     if (loading) {
         return (
-            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+            <div style={styles.pageContainer}>
+                <style>{customAnimations}</style>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-                <div className="post-container">
-                    <div className="loading-state">
-                        <div className="spinner"></div>
-                        <p>Loading post...</p>
+                <div style={styles.container}>
+                    <div style={styles.loadingCard} className="post-fade-in">
+                        <div style={styles.loadingIcon}>
+                            <FaSpinner size={28} color={forumPrimary} className="post-spin" />
+                        </div>
+                        <p style={styles.loadingText}>Loading post...</p>
                     </div>
                 </div>
             </div>
@@ -342,12 +828,16 @@ const Post = () => {
 
     if (error) {
         return (
-            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+            <div style={styles.pageContainer}>
+                <style>{customAnimations}</style>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-                <div className="post-container">
-                    <div className="error-state">
-                        <h2>Error Loading Post</h2>
-                        <p>{error}</p>
+                <div style={styles.container}>
+                    <div style={styles.errorCard} className="post-fade-in">
+                        <div style={styles.errorIcon}>
+                            <FaExclamationTriangle size={28} color={theme.colors.error} />
+                        </div>
+                        <h2 style={styles.errorTitle}>Error Loading Post</h2>
+                        <p style={styles.errorText}>{error}</p>
                     </div>
                 </div>
             </div>
@@ -359,160 +849,55 @@ const Post = () => {
         // If we're not loading and have no error, but still no threadId, then post wasn't found
         if (!loading && !error) {
             return (
-                <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+                <div style={styles.pageContainer}>
+                    <style>{customAnimations}</style>
                     <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
-                    <div className="post-container">
-                        <div className="error-state">
-                            <h2>Post Not Found</h2>
-                            <p>Could not find the requested post or determine its thread.</p>
+                    <div style={styles.container}>
+                        <div style={styles.errorCard} className="post-fade-in">
+                            <div style={styles.errorIcon}>
+                                <FaExclamationTriangle size={28} color={theme.colors.error} />
+                            </div>
+                            <h2 style={styles.errorTitle}>Post Not Found</h2>
+                            <p style={styles.errorText}>
+                                Could not find the requested post or determine its thread.
+                            </p>
                         </div>
                     </div>
                 </div>
             );
         }
-        // Otherwise, we're still loading or there's an error (handled above)
         return null;
     }
 
     return (
-        <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
+        <div style={styles.pageContainer}>
+            <style>{customAnimations}</style>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             
-            {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
-            {forumInfo && (
-                <div style={{
-                    backgroundColor: theme.colors.headerBg, // Match header background
-                    borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    padding: '12px 0',
-                    position: 'sticky',
-                    top: 0,
-                    zIndex: 100
-                }}>
-                    <div style={{
-                        maxWidth: '1200px',
-                        margin: '0 auto',
-                        padding: '0 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '15px'
-                    }}>
-                        {/* SNS Logo */}
-                        {loadingLogo ? (
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                backgroundColor: theme.colors.border,
-                                border: '2px solid #3a3a3a',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.6rem',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
-                                ...
-                            </div>
-                        ) : snsLogo ? (
-                            <img
-                                src={snsLogo}
-                                alt={snsInfo?.name || 'SNS Logo'}
-                                style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    border: '2px solid #3a3a3a'
-                                }}
-                            />
-                        ) : (
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                backgroundColor: theme.colors.border,
-                                border: '2px solid #3a3a3a',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.6rem',
-                                color: '#888',
-                                fontWeight: '600'
-                            }}>
-                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
-                            </div>
-                        )}
-                        
-                        {/* Forum Title */}
-                        <h1 style={{
-                            color: theme.colors.primaryText,
-                            fontSize: '1.5rem',
-                            fontWeight: '600',
-                            margin: 0,
-                            flex: 1
-                        }}>
-                            {snsInfo?.name ? `${snsInfo.name} Forum` : (forumInfo.title || 'Forum')}
-                        </h1>
-                    </div>
-                </div>
-            )}
+            {renderForumHeader()}
             
-            <div className="post-container">
+            <div style={styles.container}>
                 {/* Breadcrumb */}
                 {!breadcrumbLoading && topicInfo && (
-                    <div style={{
-                        marginBottom: '20px',
-                        fontSize: '0.9rem'
-                    }}>
-                        <Link 
-                            to="/forum" 
-                            style={{
-                                color: theme.colors.accent,
-                                textDecoration: 'none'
-                            }}
-                        >
+                    <div style={styles.breadcrumb} className="post-fade-in">
+                        <Link to="/forum" style={styles.breadcrumbLink}>
+                            <FaHome size={14} />
                             Forum
                         </Link>
-                        <span style={{
-                            color: theme.colors.mutedText,
-                            margin: '0 8px'
-                        }}>›</span>
-                        <Link 
-                            to={`/topic/${topicInfo.id}`}
-                            style={{
-                                color: theme.colors.accent,
-                                textDecoration: 'none'
-                            }}
-                        >
+                        <FaChevronRight size={10} style={styles.breadcrumbSeparator} />
+                        <Link to={`/topic/${topicInfo.id}`} style={styles.breadcrumbLink}>
                             {topicInfo.title}
                         </Link>
-                        <span style={{
-                            color: theme.colors.mutedText,
-                            margin: '0 8px'
-                        }}>›</span>
-                        <Link 
-                            to={`/thread?threadid=${threadId}`}
-                            style={{
-                                color: theme.colors.accent,
-                                textDecoration: 'none'
-                            }}
-                        >
+                        <FaChevronRight size={10} style={styles.breadcrumbSeparator} />
+                        <Link to={`/thread?threadid=${threadId}`} style={styles.breadcrumbLink}>
                             Thread
                         </Link>
-                        <span style={{
-                            color: theme.colors.mutedText,
-                            margin: '0 8px'
-                        }}>›</span>
-                        <span style={{
-                            color: theme.colors.secondaryText
-                        }}>
+                        <FaChevronRight size={10} style={styles.breadcrumbSeparator} />
+                        <span style={styles.breadcrumbCurrent}>
                             Post
                         </span>
                     </div>
                 )}
-
-
-                {/* Post Votes Display - Moved to bottom after ThreadViewer */}
                 
                 <ThreadViewer
                     forumActor={forumActor}
@@ -523,237 +908,9 @@ const Post = () => {
                     isAuthenticated={isAuthenticated}
                     onError={handleError}
                     showCreatePost={true}
-
                 />
 
-                {/* Post Votes Display */}
-                {postDetails && (
-                    <div style={{
-                        marginBottom: '20px',
-                        padding: '15px',
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        border: `1px solid ${theme.colors.border}`
-                    }}>
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            marginBottom: '15px'
-                        }}>
-                            <h3 style={{ 
-                                margin: '0', 
-                                color: theme.colors.primaryText,
-                                fontSize: '1.1rem'
-                            }}>
-                                All Votes for This Post
-                            </h3>
-                            {postVotes.length > 0 && (
-                                <button
-                                    onClick={() => setVotesExpanded(!votesExpanded)}
-                                    style={{
-                                        background: 'none',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        borderRadius: '4px',
-                                        color: theme.colors.accent,
-                                        padding: '4px 8px',
-                                        fontSize: '0.8rem',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s ease'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.target.style.borderColor = theme.colors.accent;
-                                        e.target.style.backgroundColor = theme.colors.accentHover;
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.target.style.borderColor = theme.colors.border;
-                                        e.target.style.backgroundColor = 'transparent';
-                                    }}
-                                >
-                                    {votesExpanded ? 'Hide Details' : 'Show Details'} {votesExpanded ? '▲' : '▼'}
-                                </button>
-                            )}
-                        </div>
-                        
-                        {votesLoading ? (
-                            <div style={{ color: theme.colors.mutedText }}>Loading votes...</div>
-                        ) : postVotes.length === 0 ? (
-                            <div style={{ color: theme.colors.mutedText }}>No votes yet</div>
-                        ) : (
-                            <div>
-                                {/* Summary */}
-                                <div style={{ 
-                                    marginBottom: '15px',
-                                    fontSize: '0.9rem',
-                                    color: theme.colors.secondaryText
-                                }}>
-                                    {(() => {
-                                        const upvotes = postVotes.filter(v => v.vote_type.upvote !== undefined);
-                                        const downvotes = postVotes.filter(v => v.vote_type.downvote !== undefined);
-                                        const totalUpVP = upvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
-                                        const totalDownVP = downvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
-                                        
-                                        const netScore = totalUpVP - totalDownVP;
-                                                        const netColor = netScore > 0 ? theme.colors.success : netScore < 0 ? theme.colors.error : theme.colors.mutedText;
-                                        
-                                        return (
-                                            <div>
-                                                <div style={{ marginBottom: '8px' }}>
-                                                    <span style={{ color: theme.colors.success }}>
-                                                        ▲ {upvotes.length} upvotes ({formatVotingPowerDisplay(totalUpVP)} VP)
-                                                    </span>
-                                                    <span style={{ margin: '0 15px', color: theme.colors.mutedText }}>•</span>
-                                                    <span style={{ color: theme.colors.error }}>
-                                                        ▼ {downvotes.length} downvotes ({formatVotingPowerDisplay(totalDownVP)} VP)
-                                                    </span>
-                                                </div>
-                                                <div style={{ 
-                                                    fontSize: '0.95rem',
-                                                    fontWeight: 'bold',
-                                                    color: netColor
-                                                }}>
-                                                    Net Score: {netScore >= 0 ? '+' : ''}{formatVotingPowerDisplay(netScore)} VP
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                                {/* Individual Votes - Only show when expanded */}
-                                {votesExpanded && (
-                                    <div style={{ 
-                                        display: 'grid', 
-                                        gap: '12px',
-                                        maxHeight: '400px',
-                                        overflowY: 'auto',
-                                        marginTop: '15px'
-                                    }}>
-                                    {postVotes
-                                        .sort((a, b) => Number(b.voting_power || 0) - Number(a.voting_power || 0)) // Sort by voting power desc
-                                        .map((vote, index) => {
-                                            const isUpvote = vote.vote_type.upvote !== undefined;
-                                            const neuronId = vote.neuron_id?.id;
-                                            const votingPower = Number(vote.voting_power || 0);
-                                            
-                                            // Get principal display info
-                                            const principalDisplayInfo = getPrincipalDisplayInfoFromContext(
-                                                vote.voter_principal, 
-                                                principalNames, 
-                                                principalNicknames
-                                            );
-                                            
-                                            // Create neuron link using proper utility
-                                            const neuronLink = formatNeuronIdLink(neuronId, currentSnsRoot);
-                                            
-                                            return (
-                                                <div key={index} style={{
-                                                    padding: '12px',
-                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${isUpvote ? theme.colors.success + '33' : theme.colors.error + '33'}`,
-                                                    fontSize: '0.9rem'
-                                                }}>
-                                                    {/* Header row with vote type and voting power */}
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        marginBottom: '8px'
-                                                    }}>
-                                                        <div style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px'
-                                                        }}>
-                                                            <span style={{
-                                                                color: isUpvote ? theme.colors.success : theme.colors.error,
-                                                                fontWeight: 'bold',
-                                                                fontSize: '1.1rem'
-                                                            }}>
-                                                                {isUpvote ? '▲ Upvote' : '▼ Downvote'}
-                                                            </span>
-                                                        </div>
-                                                        <span style={{ 
-                                                            color: theme.colors.primaryText,
-                                                            fontWeight: 'bold',
-                                                            fontSize: '1rem'
-                                                        }}>
-                                                            {formatVotingPowerDisplay(votingPower)} VP
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    {/* Neuron row */}
-                                                    <div style={{
-                                                        marginBottom: '6px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px'
-                                                    }}>
-                                                        <span style={{ 
-                                                            color: theme.colors.mutedText,
-                                                            fontSize: '0.85rem',
-                                                            minWidth: '50px'
-                                                        }}>
-                                                            Neuron:
-                                                        </span>
-                                                        <div style={{ flex: 1 }}>
-                                                            {neuronLink}
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Principal row */}
-                                                    <div style={{
-                                                        marginBottom: '6px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px'
-                                                    }}>
-                                                        <span style={{ 
-                                                            color: theme.colors.mutedText,
-                                                            fontSize: '0.85rem',
-                                                            minWidth: '50px'
-                                                        }}>
-                                                            Voter:
-                                                        </span>
-                                                        <div style={{ flex: 1 }}>
-                                                            <PrincipalDisplay 
-                                                                principal={vote.voter_principal}
-                                                                displayInfo={principalDisplayInfo}
-                                                                showCopyButton={false}
-                                                                style={{ fontSize: '0.9rem' }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Timestamp row */}
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px'
-                                                    }}>
-                                                        <span style={{ 
-                                                            color: theme.colors.mutedText,
-                                                            fontSize: '0.85rem',
-                                                            minWidth: '50px'
-                                                        }}>
-                                                            When:
-                                                        </span>
-                                                        <span style={{ 
-                                                            color: theme.colors.secondaryText,
-                                                            fontSize: '0.85rem'
-                                                        }}>
-                                                            {new Date(Number(vote.created_at) / 1000000).toLocaleString()}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    }
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
+                {renderVotesSection()}
             </div>
         </div>
     );
