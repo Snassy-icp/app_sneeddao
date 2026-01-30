@@ -14,6 +14,7 @@ import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
 import { useReplyNotifications } from '../hooks/useReplyNotifications';
 import { useSmsNotifications } from '../hooks/useSmsNotifications';
+import { useCollectiblesNotifications } from '../hooks/useCollectiblesNotifications';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
@@ -29,6 +30,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();
     const { newMessageCount } = useSmsNotifications();
+    const { collectiblesCount } = useCollectiblesNotifications();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isQuickLinksOpen, setIsQuickLinksOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
@@ -1317,7 +1319,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Only shows when there are notifications */}
-            {!isHeaderCollapsed && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0) && (
+            {!isHeaderCollapsed && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1395,6 +1397,28 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
                             >
                                 💰 {newTipCount}
+                            </div>
+                        )}
+                        
+                        {/* Collectibles/Rewards Notifications */}
+                        {collectiblesCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/wallet')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 8px',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    border: '1px solid #10b981',
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    color: '#10b981'
+                                }}
+                                title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'reward' : 'rewards'} to collect`}
+                            >
+                                🎁 {collectiblesCount}
                             </div>
                         )}
                     </div>
