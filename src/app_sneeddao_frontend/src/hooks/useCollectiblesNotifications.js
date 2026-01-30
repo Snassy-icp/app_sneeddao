@@ -1,13 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getAllSnses } from '../utils/SnsUtils';
 import { PERM } from '../utils/NeuronPermissionUtils';
+
+// Module-level cache to persist across navigation/remounts
+let cachedResult = {
+    count: 0,
+    principalId: null,
+    lastChecked: null
+};
+
+// Minimum time between fetches (30 seconds) to prevent rapid re-fetching
+const MIN_FETCH_INTERVAL = 30 * 1000;
 
 /**
  * Custom hook for managing collectibles notifications
@@ -17,37 +26,68 @@ import { PERM } from '../utils/NeuronPermissionUtils';
  * 2. LP fees (uncollected fees from liquidity positions)
  * 3. Neuron maturity (disbursable maturity from SNS neurons)
  * 
+ * Results are cached at module level to prevent re-fetching on navigation.
+ * 
  * Provides:
  * - collectiblesCount: Total number of collectible items
  * - loading: Loading state
- * - refreshCollectibles: Function to manually refresh
+ * - refreshCollectibles: Function to manually refresh (force=true bypasses cache)
  * - lastChecked: Timestamp of last check
  */
 export function useCollectiblesNotifications() {
     const { isAuthenticated, identity } = useAuth();
     
-    const [collectiblesCount, setCollectiblesCount] = useState(0);
+    const [collectiblesCount, setCollectiblesCount] = useState(cachedResult.count);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [lastChecked, setLastChecked] = useState(null);
+    const [lastChecked, setLastChecked] = useState(cachedResult.lastChecked);
+    
+    // Track if we're currently fetching to prevent duplicate fetches
+    const isFetching = useRef(false);
+    // Track the principal we last fetched for
+    const lastFetchedPrincipal = useRef(cachedResult.principalId);
 
     // Helper to check if user has a specific permission on a neuron
-    const userHasNeuronPermission = useCallback((neuron, permissionType) => {
-        if (!identity || !neuron.permissions) return false;
-        const userPrincipal = identity.getPrincipal().toString();
+    const userHasNeuronPermission = useCallback((neuron, permissionType, userPrincipal) => {
+        if (!userPrincipal || !neuron.permissions) return false;
         const userPerms = neuron.permissions.find(p => 
             p.principal?.[0]?.toString() === userPrincipal
         );
         return userPerms?.permission_type?.includes(permissionType) || false;
-    }, [identity]);
+    }, []);
 
-    const checkForCollectibles = useCallback(async () => {
+    const checkForCollectibles = useCallback(async (force = false) => {
         if (!isAuthenticated || !identity) {
             setCollectiblesCount(0);
+            cachedResult = { count: 0, principalId: null, lastChecked: null };
+            return;
+        }
+
+        const currentPrincipal = identity.getPrincipal().toString();
+        const now = Date.now();
+        
+        // Check if we should skip this fetch (use cache)
+        if (!force) {
+            const principalChanged = currentPrincipal !== cachedResult.principalId;
+            const timeSinceLastFetch = cachedResult.lastChecked ? (now - cachedResult.lastChecked) : Infinity;
+            
+            // If same principal and fetched recently, use cached result
+            if (!principalChanged && timeSinceLastFetch < MIN_FETCH_INTERVAL) {
+                console.log('Collectibles: Using cached result (fetched', Math.round(timeSinceLastFetch / 1000), 'seconds ago)');
+                setCollectiblesCount(cachedResult.count);
+                setLastChecked(cachedResult.lastChecked);
+                return;
+            }
+        }
+        
+        // Prevent concurrent fetches
+        if (isFetching.current) {
+            console.log('Collectibles: Fetch already in progress, skipping');
             return;
         }
 
         try {
+            isFetching.current = true;
             setLoading(true);
             setError(null);
 
@@ -157,7 +197,7 @@ export function useCollectiblesNotifications() {
                                 let count = 0;
                                 for (const neuron of neurons) {
                                     const maturity = BigInt(neuron.maturity_e8s_equivalent || 0n);
-                                    if (maturity > 0n && userHasNeuronPermission(neuron, PERM.DISBURSE_MATURITY)) {
+                                    if (maturity > 0n && userHasNeuronPermission(neuron, PERM.DISBURSE_MATURITY, currentPrincipal)) {
                                         count++;
                                     }
                                 }
@@ -178,8 +218,16 @@ export function useCollectiblesNotifications() {
 
             totalCount = rewardsCount + feesCount + maturityCount;
             
+            // Update module-level cache
+            cachedResult = {
+                count: totalCount,
+                principalId: currentPrincipal,
+                lastChecked: now
+            };
+            lastFetchedPrincipal.current = currentPrincipal;
+            
             setCollectiblesCount(totalCount);
-            setLastChecked(Date.now());
+            setLastChecked(now);
             
             console.log(`Collectibles notifications: ${rewardsCount} rewards, ${feesCount} LP fees, ${maturityCount} maturity = ${totalCount} total`);
             
@@ -189,17 +237,33 @@ export function useCollectiblesNotifications() {
             setCollectiblesCount(0);
         } finally {
             setLoading(false);
+            isFetching.current = false;
         }
     }, [isAuthenticated, identity, userHasNeuronPermission]);
 
+    // Force refresh function (bypasses cache)
     const refreshCollectibles = useCallback(() => {
-        checkForCollectibles();
+        checkForCollectibles(true);
     }, [checkForCollectibles]);
 
-    // Check for collectibles when component mounts or identity changes
+    // Initial check - only fetch if cache is stale or principal changed
     useEffect(() => {
-        checkForCollectibles();
-    }, [checkForCollectibles]);
+        if (!isAuthenticated || !identity) {
+            setCollectiblesCount(0);
+            return;
+        }
+        
+        const currentPrincipal = identity.getPrincipal().toString();
+        
+        // If we have a cached result for this principal, use it immediately
+        if (cachedResult.principalId === currentPrincipal && cachedResult.lastChecked) {
+            setCollectiblesCount(cachedResult.count);
+            setLastChecked(cachedResult.lastChecked);
+        }
+        
+        // Check if we need to fetch (will use cache if recent enough)
+        checkForCollectibles(false);
+    }, [isAuthenticated, identity, checkForCollectibles]);
 
     // Periodically check for collectibles (every 5 minutes)
     useEffect(() => {
@@ -208,7 +272,7 @@ export function useCollectiblesNotifications() {
         }
 
         const interval = setInterval(() => {
-            checkForCollectibles();
+            checkForCollectibles(true); // Force refresh on interval
         }, 5 * 60 * 1000); // 5 minutes
 
         return () => clearInterval(interval);
@@ -221,4 +285,9 @@ export function useCollectiblesNotifications() {
         error,
         lastChecked
     };
+}
+
+// Export function to clear cache (useful for testing or after collecting)
+export function clearCollectiblesCache() {
+    cachedResult = { count: 0, principalId: null, lastChecked: null };
 }

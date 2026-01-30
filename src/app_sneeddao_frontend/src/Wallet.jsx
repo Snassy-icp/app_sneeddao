@@ -620,6 +620,39 @@ function Wallet() {
         }
     }, [activeWalletTab]);
 
+    // Auto-open Collect All modal from URL parameter (e.g., from header notification click)
+    const [collectAllTriggered, setCollectAllTriggered] = useState(false);
+    useEffect(() => {
+        const searchParams = new URLSearchParams(location.search);
+        const shouldCollectAll = searchParams.get('collectAll') === 'true';
+        
+        if (shouldCollectAll && !collectAllTriggered && !showTokensSpinner && !showPositionsSpinner) {
+            // Data is loaded, open the Collect All modal
+            setCollectAllTriggered(true);
+            
+            // Clear the query parameter from URL to prevent re-opening on refresh
+            const newSearchParams = new URLSearchParams(location.search);
+            newSearchParams.delete('collectAll');
+            const newUrl = newSearchParams.toString() 
+                ? `${location.pathname}?${newSearchParams.toString()}`
+                : location.pathname;
+            window.history.replaceState({}, '', newUrl);
+            
+            // Open the modal (using a small delay to ensure state is ready)
+            setTimeout(() => {
+                handleOpenConsolidateModal('all');
+            }, 100);
+        }
+    }, [location.search, showTokensSpinner, showPositionsSpinner, collectAllTriggered]);
+
+    // Reset collectAllTriggered when navigating away and back
+    useEffect(() => {
+        const searchParams = new URLSearchParams(location.search);
+        if (searchParams.get('collectAll') === 'true') {
+            setCollectAllTriggered(false);
+        }
+    }, [location.pathname]);
+
     // Load SNS data progressively (non-blocking)
     useEffect(() => {
         async function loadSnsData() {

@@ -1403,7 +1403,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         {/* Collectibles/Rewards Notifications */}
                         {collectiblesCount > 0 && (
                             <div 
-                                onClick={() => navigate('/wallet')}
+                                onClick={() => navigate('/wallet?collectAll=true')}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -1416,7 +1416,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     fontSize: '11px',
                                     color: '#10b981'
                                 }}
-                                title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'reward' : 'rewards'} to collect`}
+                                title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect (fees, rewards, maturity)`}
                             >
                                 🎁 {collectiblesCount}
                             </div>
