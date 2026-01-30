@@ -205,6 +205,16 @@ export default function Me() {
     const [canisterCycleThresholdOrange, setCanisterCycleThresholdOrange] = useState('');
     const [canisterSettingsSaved, setCanisterSettingsSaved] = useState(false);
     
+    // Quick access expanded state (persisted) - must be before any early returns
+    const [quickAccessExpanded, setQuickAccessExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('quickAccessExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            return true;
+        }
+    });
+    
     // Load neuron manager settings on mount
     useEffect(() => {
         const settings = getNeuronManagerSettings();
@@ -765,16 +775,6 @@ export default function Me() {
         { icon: <FaServer size={20} />, label: 'My Canisters', to: '/canisters', color: '#14b8a6' },
         { icon: <FaAddressBook size={20} />, label: 'My Contacts', to: '/names', color: '#f97316' },
     ];
-    
-    // Quick access expanded state (persisted)
-    const [quickAccessExpanded, setQuickAccessExpanded] = useState(() => {
-        try {
-            const saved = localStorage.getItem('quickAccessExpanded');
-            return saved !== null ? JSON.parse(saved) : true;
-        } catch (error) {
-            return true;
-        }
-    });
 
     return (
         <div className='page-container'>

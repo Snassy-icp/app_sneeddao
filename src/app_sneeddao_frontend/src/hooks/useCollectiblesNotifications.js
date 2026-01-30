@@ -26,37 +26,21 @@ const MIN_FETCH_INTERVAL = 30 * 1000;
 
 /**
  * Custom hook for managing collectibles notifications
- * 
- * Checks for collectible items from:
- * 1. RLL rewards (token rewards from Sneed neurons)
- * 2. LP fees (uncollected fees from liquidity positions)
- * 3. Neuron maturity (disbursable maturity from SNS neurons)
- * 
- * Results are cached at module level to prevent re-fetching on navigation.
- * 
- * Provides:
- * - collectiblesCount: Total number of collectible items
- * - collectiblesItems: Array of items for the modal
- * - isModalOpen: Whether the collect modal is open
- * - openModal: Function to open the modal
- * - closeModal: Function to close the modal
- * - handleConsolidate: Function to handle collecting an item
- * - loading: Loading state
- * - refreshCollectibles: Function to manually refresh (force=true bypasses cache)
- * - lastChecked: Timestamp of last check
  */
 export function useCollectiblesNotifications() {
-    const { isAuthenticated, identity } = useAuth();
-    
+    // === ALL HOOKS MUST BE CALLED UNCONDITIONALLY AT THE TOP ===
+    const authResult = useAuth();
     const [collectiblesCount, setCollectiblesCount] = useState(cachedResult.count);
     const [collectiblesItems, setCollectiblesItems] = useState(cachedResult.items);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [lastChecked, setLastChecked] = useState(cachedResult.lastChecked);
-    
-    // Track if we're currently fetching to prevent duplicate fetches
     const isFetching = useRef(false);
+    
+    // Extract auth values safely after all hooks are declared
+    const isAuthenticated = authResult?.isAuthenticated ?? false;
+    const identity = authResult?.identity ?? null;
 
     // Helper to check if user has a specific permission on a neuron
     const userHasNeuronPermission = useCallback((neuron, permissionType, userPrincipal) => {
@@ -87,7 +71,7 @@ export function useCollectiblesNotifications() {
             if (!principalChanged && timeSinceLastFetch < MIN_FETCH_INTERVAL) {
                 console.log('Collectibles: Using cached result (fetched', Math.round(timeSinceLastFetch / 1000), 'seconds ago)');
                 setCollectiblesCount(cachedResult.count);
-                setCollectiblesItems(cachedResult.items);
+                setCollectiblesItems([...cachedResult.items]);
                 setLastChecked(cachedResult.lastChecked);
                 return;
             }
@@ -557,7 +541,7 @@ export function useCollectiblesNotifications() {
         // If we have a cached result for this principal, use it immediately
         if (cachedResult.principalId === currentPrincipal && cachedResult.lastChecked) {
             setCollectiblesCount(cachedResult.count);
-            setCollectiblesItems(cachedResult.items);
+            setCollectiblesItems([...cachedResult.items]);
             setLastChecked(cachedResult.lastChecked);
         }
         
