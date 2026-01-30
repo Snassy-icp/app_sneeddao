@@ -479,9 +479,7 @@ export const PrincipalDisplay = React.memo(({
         React.createElement('span',
             {
                 style: {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
+                    display: 'inline',
                     color: principalColor,
                     verticalAlign: 'middle',
                     ...style
@@ -491,21 +489,19 @@ export const PrincipalDisplay = React.memo(({
                 React.createElement('span',
                     {
                         style: {
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
+                            display: 'inline'
                         },
                         title: formatted.fullId
                     },
                     // Principal type icon (crown for premium, user/canister otherwise)
-                    React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor }),
+                    React.createElement('span', 
+                        { style: { display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', marginRight: '4px' } },
+                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor })
+                    ),
                     formatted.name && React.createElement('span',
                         {
                             style: {
                                 fontWeight: '500',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '2px',
                                 color: principalColor
                             }
                         },
@@ -546,21 +542,24 @@ export const PrincipalDisplay = React.memo(({
                     )
                 )
             ),
-            showCopyButton && React.createElement('button',
-                {
-                    onClick: () => navigator.clipboard.writeText(formatted.fullId),
-                    style: {
-                        background: 'none',
-                        border: 'none',
-                        padding: '4px',
-                        cursor: 'pointer',
-                        color: '#888',
-                        display: 'flex',
-                        alignItems: 'center'
+            showCopyButton && React.createElement('span',
+                { style: { display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', marginLeft: '4px' } },
+                React.createElement('button',
+                    {
+                        onClick: () => navigator.clipboard.writeText(formatted.fullId),
+                        style: {
+                            background: 'none',
+                            border: 'none',
+                            padding: '4px',
+                            cursor: 'pointer',
+                            color: '#888',
+                            display: 'flex',
+                            alignItems: 'center'
+                        },
+                        title: "Copy principal ID to clipboard"
                     },
-                    title: "Copy principal ID to clipboard"
-                },
-                "📋"
+                    "📋"
+                )
             )
         ),
         // Context menu
