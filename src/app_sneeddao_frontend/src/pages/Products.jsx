@@ -13,7 +13,8 @@ import { createActor as createSwapRunnerActor } from 'external/swaprunner_backen
 import { canisterId as swapRunnerCanisterId } from 'external/swaprunner_backend';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
-import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine } from 'react-icons/fa';
+import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine, FaGavel, FaWater } from 'react-icons/fa';
+import { createSneedexActor } from '../utils/SneedexUtils';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -58,6 +59,10 @@ const sneedlockPrimary = '#8b5cf6';
 const sneedlockSecondary = '#a78bfa';
 const swaprunnerPrimary = '#f59e0b';
 const swaprunnerSecondary = '#fbbf24';
+const sneedexPrimary = '#14b8a6';
+const sneedexSecondary = '#2dd4bf';
+const liquidStakingPrimary = '#06b6d4';
+const liquidStakingSecondary = '#22d3ee';
 
 const getStyles = (theme) => ({
     container: {
@@ -315,6 +320,12 @@ function Products() {
         icpswap_swaps: 0,
         unique_users: 0,
         unique_traders: 0
+    });
+    const [sneedexStats, setSneedexStats] = useState({
+        active_offers: 0,
+        total_offers: 0,
+        completed_offers: 0,
+        total_bids: 0
     });
     const [isLoading, setIsLoading] = useState(true);
     const [conversionRates, setConversionRates] = useState({});
@@ -631,14 +642,31 @@ function Products() {
         }
     };
 
+    const fetchSneedexStats = async () => {
+        try {
+            const actor = createSneedexActor(identity);
+            const marketStats = await actor.getMarketStats();
+            setSneedexStats({
+                active_offers: Number(marketStats.active_offers),
+                total_offers: Number(marketStats.total_offers),
+                completed_offers: Number(marketStats.completed_offers),
+                total_bids: Number(marketStats.total_bids)
+            });
+        } catch (error) {
+            console.error('Error fetching Sneedex stats:', error);
+        }
+    };
+
     useEffect(() => {
         fetchSneedLockStats();
         fetchSwapRunnerStats();
+        fetchSneedexStats();
         
         // Refresh data every 5 minutes
         const interval = setInterval(() => {
             fetchSneedLockStats();
             fetchSwapRunnerStats();
+            fetchSneedexStats();
         }, 5 * 60 * 1000);
 
         return () => clearInterval(interval);
@@ -907,6 +935,160 @@ function Products() {
                                 Visit SwapRunner
                                 <FaArrowRight size={14} />
                             </a>
+                        </div>
+                    </div>
+
+                    {/* Sneedex */}
+                    <div className="products-fade-in" style={{ ...styles.product(sneedexPrimary), animationDelay: '0.2s' }}>
+                        <div style={styles.decorativeGlow(sneedexPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(sneedexPrimary)}>
+                                <FaGavel size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(sneedexPrimary)}>Sneedex</h2>
+                                <div style={styles.productBadge(sneedexPrimary)}>
+                                    <FaExchangeAlt size={10} />
+                                    Marketplace
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            A trustless marketplace for trading unique Internet Computer assets.
+                            Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through secure escrow auctions.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            <div style={{ ...styles.statsGrid, gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                                <StatCard 
+                                    value={sneedexStats.active_offers.toString()} 
+                                    label="Active Offers"
+                                    isLoading={sneedexStats.total_offers === 0}
+                                    theme={theme}
+                                    accentColor={sneedexPrimary}
+                                />
+                                <StatCard 
+                                    value={sneedexStats.total_offers.toString()} 
+                                    label="Total Offers"
+                                    isLoading={sneedexStats.total_offers === 0}
+                                    theme={theme}
+                                    accentColor={sneedexPrimary}
+                                />
+                                <StatCard 
+                                    value={sneedexStats.completed_offers.toString()} 
+                                    label="Completed"
+                                    isLoading={sneedexStats.total_offers === 0}
+                                    theme={theme}
+                                    accentColor={sneedexPrimary}
+                                />
+                                <StatCard 
+                                    value={sneedexStats.total_bids.toString()} 
+                                    label="Total Bids"
+                                    isLoading={sneedexStats.total_offers === 0}
+                                    theme={theme}
+                                    accentColor={sneedexPrimary}
+                                />
+                            </div>
+                            
+                            <Link 
+                                to="/sneedex" 
+                                style={styles.button(sneedexPrimary)}
+                            >
+                                Explore Sneedex
+                                <FaArrowRight size={14} />
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* Liquid Staking */}
+                    <div className="products-fade-in" style={{ ...styles.product(liquidStakingPrimary), animationDelay: '0.3s' }}>
+                        <div style={styles.decorativeGlow(liquidStakingPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(liquidStakingPrimary)}>
+                                <FaWater size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(liquidStakingPrimary)}>Liquid Staking</h2>
+                                <div style={styles.productBadge(liquidStakingPrimary)}>
+                                    <FaLock size={10} />
+                                    Tradable Positions
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p style={styles.description}>
+                            Transform your staking positions into tradable assets. Create ICP or SNS neurons that remain
+                            transferable and liquid — sell your position anytime on Sneedex without waiting for dissolve delays.
+                        </p>
+                        
+                        <div style={styles.statsSection}>
+                            {/* Feature highlights instead of stats */}
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '0.75rem',
+                                marginBottom: '1.25rem',
+                            }}>
+                                <div style={{
+                                    background: `${liquidStakingPrimary}08`,
+                                    border: `1px solid ${liquidStakingPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🧠</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        ICP Neuron Managers
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${liquidStakingPrimary}08`,
+                                    border: `1px solid ${liquidStakingPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🧬</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        SNS Liquid Neurons
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${liquidStakingPrimary}08`,
+                                    border: `1px solid ${liquidStakingPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>💰</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Earn Staking Rewards
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${liquidStakingPrimary}08`,
+                                    border: `1px solid ${liquidStakingPrimary}20`,
+                                    padding: '0.875rem',
+                                    borderRadius: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔓</div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
+                                        Exit Anytime
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <Link 
+                                to="/liquid_staking" 
+                                style={styles.button(liquidStakingPrimary)}
+                            >
+                                Start Liquid Staking
+                                <FaArrowRight size={14} />
+                            </Link>
                         </div>
                     </div>
                 </div>
