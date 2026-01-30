@@ -14,11 +14,52 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from '../utils/PrincipalUtils';
-import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaWallet, FaPlus, FaChevronDown, FaChevronUp, FaBrain, FaSync, FaCog, FaShieldAlt, FaExternalLinkAlt } from 'react-icons/fa';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import { useSneedMembership } from '../hooks/useSneedMembership';
 import { SneedMemberGateMessage, SneedMemberGateLoading, SneedMemberBadge, BetaWarningBanner, GATE_TYPES } from '../components/SneedMemberGate';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.neuron-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.neuron-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.neuron-card-animate {
+    animation: fadeInUp 0.4s ease-out forwards;
+}
+`;
+
+// Page accent colors - purple/violet theme for neurons/brain
+const neuronPrimary = '#8b5cf6';
+const neuronSecondary = '#a78bfa';
+const neuronAccent = '#c4b5fd';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
@@ -438,208 +479,6 @@ function CreateIcpNeuron() {
         }
     };
 
-    // Combined pay and create function - handles everything in one go
-    const handlePayAndCreate = async () => {
-        if (!isAuthenticated) {
-            login();
-            return;
-        }
-        
-        if (!identity || !paymentConfig || !paymentSubaccount) return;
-        
-        setCreating(true);
-        setError('');
-        setSuccess('');
-        
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
-            // Step 1: Send payment (if required and not already deposited)
-            if (paymentConfig.paymentRequired && !hasEnoughPayment) {
-                setCreationStep('paying');
-                setProgressMessage('Sending payment...');
-                
-                const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
-                
-                const transferResult = await ledger.icrc1_transfer({
-                    to: {
-                        owner: Principal.fromText(factoryCanisterId),
-                        subaccount: [new Uint8Array(paymentSubaccount)],
-                    },
-                    amount: BigInt(effectiveFeeE8s),
-                    fee: [BigInt(ICP_FEE)],
-                    memo: [],
-                    from_subaccount: [],
-                    created_at_time: [],
-                });
-                
-                if ('Err' in transferResult) {
-                    const err = transferResult.Err;
-                    if ('InsufficientFunds' in err) {
-                        setError(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
-                    } else {
-                        setError(`Payment failed: ${JSON.stringify(err)}`);
-                    }
-                    setCreationStep('idle');
-                    setProgressMessage('');
-                    setCreating(false);
-                    return;
-                }
-                
-                // Refresh balances after payment
-                await fetchUserBalances();
-            }
-            
-            // Step 2: Create the neuron manager
-            setCreationStep('creating');
-            setProgressMessage('Creating your neuron manager...');
-            
-            const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.createNeuronManager();
-            
-            if ('Ok' in result) {
-                const { canisterId } = result.Ok;
-                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}`);
-                setCreationStep('done');
-                setProgressMessage('');
-                fetchMyManagers();
-                fetchFactoryInfo();
-                fetchUserBalances();
-            } else if ('Err' in result) {
-                const err = result.Err;
-                if ('InsufficientCycles' in err) {
-                    setError('Factory has insufficient cycles to create a new canister. Please try again later.');
-                } else if ('CanisterCreationFailed' in err) {
-                    setError(`Canister creation failed: ${err.CanisterCreationFailed}`);
-                } else if ('NotAuthorized' in err) {
-                    setError('Not authorized to create a neuron manager.');
-                } else if ('InsufficientPayment' in err) {
-                    setError(`Insufficient payment: Required ${formatIcp(Number(err.InsufficientPayment.required))} ICP, provided ${formatIcp(Number(err.InsufficientPayment.provided))} ICP`);
-                } else if ('TransferFailed' in err) {
-                    setError(`Transfer failed: ${err.TransferFailed}`);
-                } else if ('CyclesTopUpFailed' in err) {
-                    setError(`Cycles top-up failed: ${err.CyclesTopUpFailed}`);
-                } else {
-                    setError('Failed to create neuron manager');
-                }
-                setCreationStep('idle');
-                setProgressMessage('');
-                // Refresh to show any deposited balance
-                fetchUserBalances();
-            }
-        } catch (err) {
-            console.error('Error in pay and create:', err);
-            setError(`Error: ${err.message || 'Failed to create neuron manager'}`);
-            setCreationStep('idle');
-            setProgressMessage('');
-            // Refresh to show any deposited balance
-            fetchUserBalances();
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    // Withdraw deposited payment
-    const [withdrawing, setWithdrawing] = useState(false);
-    
-    const handleWithdrawDeposit = async () => {
-        if (!identity) return;
-        
-        setWithdrawing(true);
-        setError('');
-        setSuccess('');
-        
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
-            const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.withdrawUserPayment();
-            
-            if ('Ok' in result) {
-                setSuccess('✅ Deposit withdrawn successfully!');
-                await fetchUserBalances();
-            } else if ('Err' in result) {
-                const err = result.Err;
-                if ('InsufficientFunds' in err) {
-                    setError('Nothing to withdraw (balance too low to cover fee)');
-                } else {
-                    setError(`Withdrawal failed: ${JSON.stringify(err)}`);
-                }
-            }
-        } catch (err) {
-            console.error('Error withdrawing deposit:', err);
-            setError(`Withdrawal error: ${err.message}`);
-        } finally {
-            setWithdrawing(false);
-        }
-    };
-
-    // Create manager when payment is already deposited
-    const handleCreateFromDeposit = async () => {
-        if (!isAuthenticated) {
-            login();
-            return;
-        }
-
-        setCreating(true);
-        setError('');
-        setSuccess('');
-        setCreationStep('creating');
-        setProgressMessage('Creating your neuron manager...');
-        
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const factory = createFactoryActor(factoryCanisterId, { agent });
-            
-            const result = await factory.createNeuronManager();
-            
-            if ('Ok' in result) {
-                const { canisterId } = result.Ok;
-                setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}`);
-                setCreationStep('done');
-                setProgressMessage('');
-                fetchMyManagers();
-                fetchFactoryInfo();
-                fetchUserBalances();
-            } else if ('Err' in result) {
-                const err = result.Err;
-                if ('InsufficientCycles' in err) {
-                    setError('Factory has insufficient cycles to create a new canister. Please try again later.');
-                } else if ('CanisterCreationFailed' in err) {
-                    setError(`Canister creation failed: ${err.CanisterCreationFailed}`);
-                } else if ('NotAuthorized' in err) {
-                    setError('Not authorized to create a neuron manager.');
-                } else if ('InsufficientPayment' in err) {
-                    setError(`Insufficient payment: Required ${formatIcp(Number(err.InsufficientPayment.required))} ICP, provided ${formatIcp(Number(err.InsufficientPayment.provided))} ICP`);
-                } else if ('TransferFailed' in err) {
-                    setError(`Transfer failed: ${err.TransferFailed}`);
-                } else if ('CyclesTopUpFailed' in err) {
-                    setError(`Cycles top-up failed: ${err.CyclesTopUpFailed}`);
-                } else {
-                    setError('Failed to create neuron manager');
-                }
-                setCreationStep('idle');
-                setProgressMessage('');
-            }
-        } catch (err) {
-            console.error('Error creating manager:', err);
-            setError(`Error: ${err.message || 'Failed to create neuron manager'}`);
-            setCreationStep('idle');
-            setProgressMessage('');
-        } finally {
-            setCreating(false);
-        }
-    };
-
     const formatIcp = (e8s) => {
         if (e8s === null || e8s === undefined) return '...';
         const icp = e8s / E8S;
@@ -655,10 +494,6 @@ function CreateIcpNeuron() {
         return cycles.toLocaleString();
     };
 
-    const copyToClipboard = (text) => {
-        navigator.clipboard.writeText(text);
-    };
-
     // Calculate effective fee (premium discount if applicable)
     const effectiveFeeE8s = isPremium && premiumFeeE8s !== null 
         ? premiumFeeE8s 
@@ -668,91 +503,145 @@ function CreateIcpNeuron() {
     const discountPercent = paymentConfig && premiumFeeE8s !== null && paymentConfig.creationFeeE8s > 0
         ? Math.round((1 - premiumFeeE8s / paymentConfig.creationFeeE8s) * 100)
         : 0;
-    
-    // Check if user has enough payment balance
-    const hasEnoughPayment = paymentConfig && paymentBalance !== null && 
-        paymentBalance >= effectiveFeeE8s;
-    
-    // Check if user has enough in wallet to send payment
-    const canSendPayment = paymentConfig && userIcpBalance !== null &&
-        userIcpBalance >= effectiveFeeE8s + ICP_FEE;
-
-    const cardStyle = {
-        background: theme.colors.cardBackground,
-        borderRadius: '12px',
-        padding: '20px',
-        marginBottom: '20px',
-        border: `1px solid ${theme.colors.border}`,
-    };
-
-    const buttonStyle = {
-        background: theme.colors.accent,
-        color: '#fff',
-        border: 'none',
-        borderRadius: '8px',
-        padding: '12px 24px',
-        fontSize: '16px',
-        fontWeight: '600',
-        cursor: 'pointer',
-        transition: 'opacity 0.2s',
-    };
-
-    const smallButtonStyle = {
-        background: 'transparent',
-        color: theme.colors.accent,
-        border: `1px solid ${theme.colors.accent}`,
-        borderRadius: '4px',
-        padding: '4px 8px',
-        fontSize: '12px',
-        cursor: 'pointer',
-        marginLeft: '8px',
-    };
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
-            <main className="wallet-container">
-                <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '2.5rem' }}>🧠</span>
-                    ICP Neuron Manager
-                </h1>
-                <p style={{ color: theme.colors.mutedText, textAlign: 'center', marginBottom: '10px' }}>
-                    Create dedicated canisters to manage your ICP NNS neurons
-                </p>
-                <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+            
+            {/* Hero Section */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${neuronPrimary}15 50%, ${neuronSecondary}10 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2.5rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${neuronPrimary}20 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${neuronSecondary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                        <div className="neuron-float" style={{
+                            width: '64px',
+                            height: '64px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 32px ${neuronPrimary}50`,
+                            fontSize: '2rem'
+                        }}>
+                            🧠
+                        </div>
+                        <div>
+                            <h1 style={{
+                                fontSize: '2rem',
+                                fontWeight: '700',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                                letterSpacing: '-0.5px'
+                            }}>
+                                ICP Neuron Manager
+                            </h1>
+                            <p style={{
+                                color: theme.colors.secondaryText,
+                                fontSize: '1rem',
+                                margin: '0.25rem 0 0 0'
+                            }}>
+                                Create dedicated canisters to manage your ICP NNS neurons
+                            </p>
+                        </div>
+                    </div>
+                    
                     <Link 
                         to="/help/icp-neuron-manager" 
-                        style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                        style={{ 
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            color: neuronPrimary, 
+                            fontSize: '0.9rem', 
+                            textDecoration: 'none',
+                            fontWeight: '500'
+                        }}
                     >
-                        Learn how it works →
+                        Learn how it works <FaArrowRight size={11} />
                     </Link>
                 </div>
+            </div>
 
-                {/* Factory Info */}
+            {/* Main Content */}
+            <main style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem' }}>
+                
+                {/* Factory Stats */}
                 {factoryInfo && (
-                    <div style={{ ...cardStyle, textAlign: 'center', marginBottom: '30px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '20px' }}>
-                            <div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Version</div>
-                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
-                                    v{factoryInfo.version}
+                    <div className="neuron-fade-in" style={{
+                        display: 'flex',
+                        gap: '1rem',
+                        marginBottom: '1.5rem',
+                        flexWrap: 'wrap'
+                    }}>
+                        <div style={{
+                            flex: '1 1 150px',
+                            background: theme.colors.cardGradient,
+                            borderRadius: '12px',
+                            padding: '1rem 1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            boxShadow: theme.colors.cardShadow,
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Version</div>
+                            <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
+                                v{factoryInfo.version}
+                            </div>
+                        </div>
+                        {isAdmin && (
+                            <div style={{
+                                flex: '1 1 150px',
+                                background: theme.colors.cardGradient,
+                                borderRadius: '12px',
+                                padding: '1rem 1.25rem',
+                                border: `1px solid ${theme.colors.border}`,
+                                boxShadow: theme.colors.cardShadow,
+                                textAlign: 'center'
+                            }}>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Managers</div>
+                                <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
+                                    {factoryInfo.managerCount}
                                 </div>
                             </div>
-                            {isAdmin && (
-                                <div>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Total Managers</div>
-                                    <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
-                                        {factoryInfo.managerCount}
-                                    </div>
-                                </div>
-                            )}
-                            <div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Factory Cycles</div>
-                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
-                                    {(factoryInfo.cyclesBalance / 1_000_000_000_000).toFixed(2)}T
-                                </div>
+                        )}
+                        <div style={{
+                            flex: '1 1 150px',
+                            background: theme.colors.cardGradient,
+                            borderRadius: '12px',
+                            padding: '1rem 1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            boxShadow: theme.colors.cardShadow,
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Factory Cycles</div>
+                            <div style={{ color: theme.colors.primaryText, fontSize: '1.25rem', fontWeight: '700' }}>
+                                {(factoryInfo.cyclesBalance / 1_000_000_000_000).toFixed(2)}T
                             </div>
                         </div>
                     </div>
@@ -760,11 +649,32 @@ function CreateIcpNeuron() {
 
                 {/* Not authenticated message */}
                 {!isAuthenticated && (
-                    <div style={{ ...cardStyle, textAlign: 'center' }}>
-                        <p style={{ color: theme.colors.mutedText, marginBottom: '20px' }}>
+                    <div className="neuron-card-animate" style={{
+                        background: theme.colors.cardGradient,
+                        borderRadius: '16px',
+                        padding: '2rem',
+                        border: `1px solid ${theme.colors.border}`,
+                        boxShadow: theme.colors.cardShadow,
+                        textAlign: 'center'
+                    }}>
+                        <FaWallet size={40} style={{ color: neuronPrimary, marginBottom: '1rem' }} />
+                        <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem' }}>
                             Please log in to create and manage your ICP neuron managers.
                         </p>
-                        <button style={buttonStyle} onClick={login}>
+                        <button 
+                            style={{
+                                background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '10px',
+                                padding: '0.85rem 2rem',
+                                fontSize: '1rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                boxShadow: `0 4px 16px ${neuronPrimary}40`
+                            }} 
+                            onClick={login}
+                        >
                             Login with Internet Identity
                         </button>
                     </div>
@@ -786,9 +696,9 @@ function CreateIcpNeuron() {
                             <div style={{ 
                                 padding: '16px',
                                 marginBottom: '20px',
-                                background: `linear-gradient(135deg, ${theme.colors.accent}10 0%, ${theme.colors.accent}05 100%)`,
+                                background: `linear-gradient(135deg, ${neuronPrimary}10 0%, ${neuronPrimary}05 100%)`,
                                 borderRadius: '10px',
-                                border: `1px solid ${theme.colors.accent}30`,
+                                border: `1px solid ${neuronPrimary}30`,
                                 textAlign: 'center'
                             }}>
                                 <div style={{ 
@@ -811,7 +721,7 @@ function CreateIcpNeuron() {
                                     <span style={{ 
                                         fontSize: '28px', 
                                         fontWeight: '700', 
-                                        color: theme.colors.accent,
+                                        color: neuronPrimary,
                                         fontFamily: 'monospace'
                                     }}>
                                         {timeUntilPublic.days}
@@ -821,7 +731,7 @@ function CreateIcpNeuron() {
                                     <span style={{ 
                                         fontSize: '28px', 
                                         fontWeight: '700', 
-                                        color: theme.colors.accent,
+                                        color: neuronPrimary,
                                         fontFamily: 'monospace'
                                     }}>
                                         {String(timeUntilPublic.hours).padStart(2, '0')}
@@ -831,7 +741,7 @@ function CreateIcpNeuron() {
                                     <span style={{ 
                                         fontSize: '28px', 
                                         fontWeight: '700', 
-                                        color: theme.colors.accent,
+                                        color: neuronPrimary,
                                         fontFamily: 'monospace'
                                     }}>
                                         {String(timeUntilPublic.minutes).padStart(2, '0')}
@@ -841,7 +751,7 @@ function CreateIcpNeuron() {
                                     <span style={{ 
                                         fontSize: '28px', 
                                         fontWeight: '700', 
-                                        color: theme.colors.accent,
+                                        color: neuronPrimary,
                                         fontFamily: 'monospace'
                                     }}>
                                         {String(timeUntilPublic.seconds).padStart(2, '0')}
@@ -877,7 +787,14 @@ function CreateIcpNeuron() {
                 {isAuthenticated && hasAccess && (
                     <>
                         {showWizard ? (
-                            <div style={{ ...cardStyle, marginBottom: '30px', padding: '30px' }}>
+                            <div className="neuron-card-animate" style={{
+                                background: theme.colors.cardGradient,
+                                borderRadius: '16px',
+                                padding: '1.5rem',
+                                border: `1px solid ${theme.colors.border}`,
+                                boxShadow: theme.colors.cardShadow,
+                                marginBottom: '1.5rem'
+                            }}>
                                 <CreateIcpNeuronWizard 
                                     onComplete={(canisterId) => {
                                         setLastCreatedCanisterId(canisterId);
@@ -888,31 +805,57 @@ function CreateIcpNeuron() {
                                 />
                             </div>
                         ) : (
-                            <div style={{ ...cardStyle, marginBottom: '30px', textAlign: 'center' }}>
-                                <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>
-                                    ➕ Create New Neuron Manager
+                            <div className="neuron-card-animate" style={{
+                                background: theme.colors.cardGradient,
+                                borderRadius: '16px',
+                                padding: '2rem',
+                                border: `2px solid ${neuronPrimary}30`,
+                                boxShadow: theme.colors.cardShadow,
+                                marginBottom: '1.5rem',
+                                textAlign: 'center'
+                            }}>
+                                <div style={{
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '14px',
+                                    background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronPrimary}10)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    margin: '0 auto 1rem'
+                                }}>
+                                    <FaPlus style={{ color: neuronPrimary, fontSize: '24px' }} />
+                                </div>
+                                <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.2rem', fontWeight: '600' }}>
+                                    Create New Neuron Manager
                                 </h3>
-                                <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginBottom: '20px' }}>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '1.5rem', maxWidth: '400px', margin: '0 auto 1.5rem' }}>
                                     Create a dedicated canister to manage your ICP neurons with full control.
                                 </p>
                                 <button
                                     style={{ 
-                                        ...buttonStyle,
-                                        padding: '16px 40px',
-                                        fontSize: '17px',
+                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: '10px',
+                                        padding: '0.9rem 2rem',
+                                        fontSize: '1rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '10px',
+                                        boxShadow: `0 4px 16px ${neuronPrimary}40`
                                     }}
                                     onClick={() => setShowWizard(true)}
                                 >
-                                    <FaPlus />
+                                    <FaPlus size={14} />
                                     Create Neuron Manager
                                 </button>
                                 
                                 {/* Quick info */}
                                 {paymentConfig && (
-                                    <div style={{ marginTop: '20px', color: theme.colors.mutedText, fontSize: '13px' }}>
+                                    <div style={{ marginTop: '1.25rem', color: theme.colors.mutedText, fontSize: '0.85rem' }}>
                                         Creation fee: <strong style={{ color: isPremium ? '#FFD700' : theme.colors.primaryText }}>
                                             {formatIcp(effectiveFeeE8s)} ICP
                                         </strong>
@@ -923,7 +866,7 @@ function CreateIcpNeuron() {
                                                 color: '#1a1a2e',
                                                 padding: '2px 8px',
                                                 borderRadius: '10px',
-                                                fontSize: '10px',
+                                                fontSize: '0.7rem',
                                                 fontWeight: '700',
                                             }}>
                                                 👑 {discountPercent}% OFF
@@ -936,34 +879,37 @@ function CreateIcpNeuron() {
                         
                         {/* Last Created Canister ID - shown prominently outside the wizard */}
                         {lastCreatedCanisterId && (
-                            <div style={{ 
-                                ...cardStyle, 
-                                marginBottom: '30px', 
-                                background: `${theme.colors.success || '#22c55e'}10`,
+                            <div className="neuron-card-animate" style={{ 
+                                background: `linear-gradient(135deg, ${theme.colors.success}10 0%, ${theme.colors.success}05 100%)`,
+                                borderRadius: '16px',
+                                padding: '1.25rem',
                                 border: `2px solid ${theme.colors.success || '#22c55e'}`,
+                                boxShadow: theme.colors.cardShadow,
+                                marginBottom: '1.5rem'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.75rem' }}>
                                     <FaCheckCircle style={{ color: theme.colors.success || '#22c55e', fontSize: '20px' }} />
-                                    <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '16px' }}>
+                                    <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1rem', fontWeight: '600' }}>
                                         ✨ Neuron Manager Created
                                     </h3>
                                 </div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '12px' }}>
+                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
                                     Your new canister ID (save this for reference):
                                 </div>
                                 <div style={{ 
                                     display: 'flex', 
                                     alignItems: 'center', 
                                     gap: '10px',
-                                    background: theme.colors.cardBackground,
-                                    padding: '12px',
-                                    borderRadius: '8px',
+                                    background: theme.colors.cardGradient,
+                                    padding: '0.75rem',
+                                    borderRadius: '10px',
                                     flexWrap: 'wrap',
+                                    border: `1px solid ${theme.colors.border}`
                                 }}>
                                     <code style={{ 
                                         flex: 1, 
                                         fontFamily: 'monospace', 
-                                        fontSize: '14px', 
+                                        fontSize: '0.9rem', 
                                         color: theme.colors.primaryText,
                                         wordBreak: 'break-all',
                                         minWidth: '200px',
@@ -977,13 +923,13 @@ function CreateIcpNeuron() {
                                             setTimeout(() => setCopiedLastCreated(false), 1500);
                                         }}
                                         style={{
-                                            padding: '8px 14px',
-                                            borderRadius: '6px',
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '8px',
                                             border: 'none',
-                                            background: theme.colors.accent,
+                                            background: neuronPrimary,
                                             color: '#fff',
                                             fontWeight: '600',
-                                            fontSize: '12px',
+                                            fontSize: '0.8rem',
                                             cursor: 'pointer',
                                         }}
                                     >
@@ -992,12 +938,12 @@ function CreateIcpNeuron() {
                                     <Link
                                         to={`/icp_neuron_manager/${lastCreatedCanisterId}`}
                                         style={{
-                                            padding: '8px 14px',
-                                            borderRadius: '6px',
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '8px',
                                             background: theme.colors.success || '#22c55e',
                                             color: '#fff',
                                             fontWeight: '600',
-                                            fontSize: '12px',
+                                            fontSize: '0.8rem',
                                             textDecoration: 'none',
                                             display: 'flex',
                                             alignItems: 'center',
@@ -1010,13 +956,13 @@ function CreateIcpNeuron() {
                                 <button
                                     onClick={() => setLastCreatedCanisterId(null)}
                                     style={{
-                                        marginTop: '12px',
-                                        padding: '6px 12px',
-                                        borderRadius: '4px',
+                                        marginTop: '0.75rem',
+                                        padding: '0.4rem 0.75rem',
+                                        borderRadius: '6px',
                                         border: `1px solid ${theme.colors.border}`,
                                         background: 'transparent',
                                         color: theme.colors.mutedText,
-                                        fontSize: '12px',
+                                        fontSize: '0.8rem',
                                         cursor: 'pointer',
                                     }}
                                 >
@@ -1030,12 +976,12 @@ function CreateIcpNeuron() {
                 {/* Success message */}
                 {success && (
                     <div style={{ 
-                        backgroundColor: `${theme.colors.success || '#22c55e'}20`, 
+                        background: `${theme.colors.success || '#22c55e'}15`, 
                         border: `1px solid ${theme.colors.success || '#22c55e'}`,
                         color: theme.colors.success || '#22c55e',
-                        padding: '20px',
-                        borderRadius: '8px',
-                        marginBottom: '20px',
+                        padding: '1rem 1.25rem',
+                        borderRadius: '12px',
+                        marginBottom: '1.5rem',
                         whiteSpace: 'pre-line',
                         fontFamily: 'monospace',
                     }}>
@@ -1046,12 +992,12 @@ function CreateIcpNeuron() {
                 {/* Error message */}
                 {error && (
                     <div style={{ 
-                        backgroundColor: `${theme.colors.error}20`, 
+                        background: `${theme.colors.error}15`, 
                         border: `1px solid ${theme.colors.error}`,
                         color: theme.colors.error,
-                        padding: '15px',
-                        borderRadius: '8px',
-                        marginBottom: '20px',
+                        padding: '1rem 1.25rem',
+                        borderRadius: '12px',
+                        marginBottom: '1.5rem',
                         textAlign: 'center'
                     }}>
                         {error}
@@ -1060,7 +1006,7 @@ function CreateIcpNeuron() {
 
                 {/* My Managers List - Collapsible */}
                 {isAuthenticated && (
-                    <div style={{ marginBottom: '30px' }}>
+                    <div style={{ marginBottom: '1.5rem' }}>
                         {/* Collapsible Header */}
                         <div 
                             onClick={() => setManagersExpanded(!managersExpanded)}
@@ -1069,12 +1015,32 @@ function CreateIcpNeuron() {
                                 alignItems: 'center', 
                                 justifyContent: 'space-between',
                                 cursor: 'pointer',
-                                marginBottom: managersExpanded ? '20px' : '0',
-                                padding: '10px 0',
+                                marginBottom: managersExpanded ? '1rem' : '0',
+                                padding: '0.75rem 0',
                             }}
                         >
-                            <h2 style={{ color: theme.colors.primaryText, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                🧠 Your Neuron Managers {managers.length > 0 && `(${managers.length})`}
+                            <h2 style={{ 
+                                color: theme.colors.primaryText, 
+                                margin: 0, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '10px',
+                                fontSize: '1.15rem',
+                                fontWeight: '600'
+                            }}>
+                                <FaBrain style={{ color: neuronPrimary }} />
+                                Your Neuron Managers {managers.length > 0 && (
+                                    <span style={{
+                                        background: `${neuronPrimary}20`,
+                                        color: neuronPrimary,
+                                        padding: '2px 10px',
+                                        borderRadius: '12px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        {managers.length}
+                                    </span>
+                                )}
                             </h2>
                             <div style={{ 
                                 display: 'flex', 
@@ -1083,7 +1049,7 @@ function CreateIcpNeuron() {
                                 color: theme.colors.mutedText,
                             }}>
                                 {!managersExpanded && managers.length > 0 && (
-                                    <span style={{ fontSize: '13px' }}>Click to expand</span>
+                                    <span style={{ fontSize: '0.8rem' }}>Click to expand</span>
                                 )}
                                 {managersExpanded ? <FaChevronUp /> : <FaChevronDown />}
                             </div>
@@ -1093,106 +1059,162 @@ function CreateIcpNeuron() {
                         {managersExpanded && (
                             <>
                                 {loading ? (
-                                    <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.primaryText }}>
-                                        Loading your managers...
+                                    <div style={{ 
+                                        textAlign: 'center', 
+                                        padding: '2.5rem', 
+                                        color: theme.colors.secondaryText,
+                                        background: theme.colors.cardGradient,
+                                        borderRadius: '16px',
+                                        border: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <FaSync className="spin" style={{ marginBottom: '0.75rem', fontSize: '1.5rem', color: neuronPrimary }} />
+                                        <div>Loading your managers...</div>
                                     </div>
                                 ) : managers.length === 0 ? (
-                                    <div style={{ ...cardStyle, textAlign: 'center' }}>
-                                        <p style={{ color: theme.colors.mutedText }}>
+                                    <div style={{
+                                        background: theme.colors.cardGradient,
+                                        borderRadius: '16px',
+                                        padding: '2rem',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        boxShadow: theme.colors.cardShadow,
+                                        textAlign: 'center'
+                                    }}>
+                                        <p style={{ color: theme.colors.secondaryText, marginBottom: '0.5rem' }}>
                                             You haven't created any neuron managers yet.
                                         </p>
-                                        <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginTop: '10px' }}>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
                                             Use the form above to create your first neuron manager!
                                         </p>
                                     </div>
                                 ) : (
-                                    <div>
-                                        {managers.map((manager) => {
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {managers.map((manager, index) => {
                                             const canisterIdText = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterIdText, principalNames, principalNicknames);
                                             return (
-                                                <div key={canisterIdText} style={cardStyle}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                                                        <div style={{ flex: 1, minWidth: '250px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                                                <span style={{ fontSize: '20px' }}>🧠</span>
-                                                                <PrincipalDisplay
-                                                                    principal={canisterIdText}
-                                                                    displayInfo={displayInfo}
-                                                                    showCopyButton={true}
-                                                                    isAuthenticated={isAuthenticated}
-                                                                    noLink={true}
-                                                                />
+                                                <div 
+                                                    key={canisterIdText} 
+                                                    className="neuron-card-animate"
+                                                    style={{
+                                                        background: theme.colors.cardGradient,
+                                                        borderRadius: '14px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        boxShadow: theme.colors.cardShadow,
+                                                        overflow: 'hidden',
+                                                        animationDelay: `${index * 0.05}s`
+                                                    }}
+                                                >
+                                                    {/* Card Header */}
+                                                    <div style={{
+                                                        padding: '1rem 1.25rem',
+                                                        background: `linear-gradient(90deg, ${neuronPrimary}08 0%, transparent 100%)`,
+                                                        borderBottom: `1px solid ${theme.colors.border}`,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        flexWrap: 'wrap',
+                                                        gap: '0.75rem'
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '250px', flex: 1 }}>
+                                                            <div style={{
+                                                                width: '32px',
+                                                                height: '32px',
+                                                                borderRadius: '8px',
+                                                                background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronPrimary}10)`,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                flexShrink: 0
+                                                            }}>
+                                                                <FaBrain style={{ color: neuronPrimary, fontSize: '14px' }} />
                                                             </div>
+                                                            <PrincipalDisplay
+                                                                principal={canisterIdText}
+                                                                displayInfo={displayInfo}
+                                                                showCopyButton={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                noLink={true}
+                                                            />
                                                         </div>
+                                                        <Link 
+                                                            to={`/icp_neuron_manager/${canisterIdText}`}
+                                                            style={{
+                                                                background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                                color: '#fff',
+                                                                padding: '0.5rem 1rem',
+                                                                borderRadius: '8px',
+                                                                textDecoration: 'none',
+                                                                fontSize: '0.85rem',
+                                                                fontWeight: '600',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                flexShrink: 0
+                                                            }}
+                                                        >
+                                                            Manage <FaArrowRight size={10} />
+                                                        </Link>
                                                     </div>
                                                     
-                                                    <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                                    {/* Card Body - Stats */}
+                                                    <div style={{ 
+                                                        padding: '0.75rem 1.25rem',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        flexWrap: 'wrap',
+                                                        gap: '0.75rem'
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
                                                             <div>
-                                                                <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neurons: </span>
+                                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.75rem' }}>Neurons: </span>
                                                                 {(() => {
                                                                     const count = neuronCounts[manager.canisterId.toText()];
                                                                     if (count === undefined || count === null) {
                                                                         return <span style={{ color: theme.colors.mutedText }}>...</span>;
                                                                     } else if (count === 0) {
-                                                                        return <span style={{ color: theme.colors.warning || '#f59e0b' }}>None yet</span>;
+                                                                        return <span style={{ color: theme.colors.warning || '#f59e0b', fontWeight: '600' }}>None yet</span>;
                                                                     } else {
-                                                                        return <span style={{ color: theme.colors.success || '#22c55e' }}>{count}</span>;
+                                                                        return <span style={{ color: theme.colors.success || '#22c55e', fontWeight: '600' }}>{count}</span>;
                                                                     }
                                                                 })()}
                                                             </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                                                {managerCycles[canisterIdText] !== undefined && managerCycles[canisterIdText] !== null && (
-                                                                    <span 
-                                                                        style={{ 
-                                                                            color: getCyclesColor(managerCycles[canisterIdText], cycleSettings), 
-                                                                            fontSize: '12px', 
-                                                                            flexShrink: 0,
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '4px',
-                                                                        }}
-                                                                        title={`${managerCycles[canisterIdText].toLocaleString()} cycles`}
-                                                                    >
-                                                                        ⚡ {formatCyclesCompact(managerCycles[canisterIdText])}
-                                                                    </span>
-                                                                )}
-                                                                {managerVersions[canisterIdText] && (
-                                                                    <span 
-                                                                        style={{ 
-                                                                            color: isVersionOutdated(managerVersions[canisterIdText]) ? '#f59e0b' : theme.colors.mutedText, 
-                                                                            fontSize: '12px', 
-                                                                            flexShrink: 0,
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '4px',
-                                                                        }}
-                                                                        title={isVersionOutdated(managerVersions[canisterIdText]) 
-                                                                            ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
-                                                                            : undefined
-                                                                        }
-                                                                    >
-                                                                        {isVersionOutdated(managerVersions[canisterIdText]) && '⚠️ '}
-                                                                        Version {Number(managerVersions[canisterIdText].major)}.{Number(managerVersions[canisterIdText].minor)}.{Number(managerVersions[canisterIdText].patch)}
-                                                                    </span>
-                                                                )}
-                                                                <Link 
-                                                                    to={`/icp_neuron_manager/${canisterIdText}`}
-                                                                    style={{
-                                                                        background: theme.colors.accent,
-                                                                        color: '#fff',
-                                                                        padding: '8px 16px',
-                                                                        borderRadius: '6px',
-                                                                        textDecoration: 'none',
-                                                                        fontSize: '13px',
-                                                                        fontWeight: '600',
+                                                            {managerCycles[canisterIdText] !== undefined && managerCycles[canisterIdText] !== null && (
+                                                                <div 
+                                                                    style={{ 
+                                                                        color: getCyclesColor(managerCycles[canisterIdText], cycleSettings), 
+                                                                        fontSize: '0.8rem', 
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
                                                                     }}
+                                                                    title={`${managerCycles[canisterIdText].toLocaleString()} cycles`}
                                                                 >
-                                                                    Manage →
-                                                                </Link>
-                                                            </div>
+                                                                    ⚡ {formatCyclesCompact(managerCycles[canisterIdText])}
+                                                                </div>
+                                                            )}
                                                         </div>
+                                                        {managerVersions[canisterIdText] && (
+                                                            <span 
+                                                                style={{ 
+                                                                    color: isVersionOutdated(managerVersions[canisterIdText]) ? '#f59e0b' : theme.colors.mutedText, 
+                                                                    fontSize: '0.75rem', 
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    background: isVersionOutdated(managerVersions[canisterIdText]) ? '#f59e0b15' : 'transparent',
+                                                                    padding: isVersionOutdated(managerVersions[canisterIdText]) ? '2px 8px' : '0',
+                                                                    borderRadius: '6px'
+                                                                }}
+                                                                title={isVersionOutdated(managerVersions[canisterIdText]) 
+                                                                    ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                                    : undefined
+                                                                }
+                                                            >
+                                                                {isVersionOutdated(managerVersions[canisterIdText]) && '⚠️ '}
+                                                                v{Number(managerVersions[canisterIdText].major)}.{Number(managerVersions[canisterIdText].minor)}.{Number(managerVersions[canisterIdText].patch)}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
@@ -1201,13 +1223,24 @@ function CreateIcpNeuron() {
                                 )}
 
                                 {managers.length > 0 && (
-                                    <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                                    <div style={{ textAlign: 'center', marginTop: '1rem' }}>
                                         <button 
-                                            style={{ ...smallButtonStyle, marginLeft: 0 }}
+                                            style={{
+                                                background: 'transparent',
+                                                color: theme.colors.secondaryText,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                padding: '0.5rem 1rem',
+                                                fontSize: '0.85rem',
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
                                             onClick={fetchMyManagers}
                                             disabled={loading}
                                         >
-                                            🔄 Refresh List
+                                            <FaSync size={11} /> Refresh List
                                         </button>
                                     </div>
                                 )}
@@ -1216,73 +1249,130 @@ function CreateIcpNeuron() {
                     </div>
                 )}
 
-                {/* Info section */}
-                <div style={{ ...cardStyle, marginTop: '40px' }}>
-                    <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>How It Works</h3>
-                    <ol style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px' }}>
-                        <li><strong>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
-                        <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that can control multiple ICP neurons.</li>
-                        <li><strong>Stake Neurons:</strong> Use the manager to stake ICP directly from your wallet and create NNS neurons.</li>
-                        <li><strong>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
-                        <li><strong>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
-                    </ol>
-                    
-                    {/* Cycles Safety Info */}
-                    <div style={{ 
-                        marginTop: '20px', 
-                        padding: '16px', 
-                        background: `${theme.colors.success || '#22c55e'}10`,
-                        borderRadius: '8px',
-                        borderLeft: `3px solid ${theme.colors.success || '#22c55e'}`,
+                {/* How It Works Section */}
+                <div className="neuron-card-animate" style={{
+                    background: theme.colors.cardGradient,
+                    borderRadius: '16px',
+                    padding: '1.5rem',
+                    border: `1px solid ${theme.colors.border}`,
+                    boxShadow: theme.colors.cardShadow,
+                    marginBottom: '1.5rem'
+                }}>
+                    <h3 style={{ 
+                        color: theme.colors.primaryText, 
+                        marginBottom: '1rem',
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
                     }}>
-                        <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span>✅</span> Your Neurons Are Always Safe
+                        <FaCog style={{ color: neuronPrimary }} />
+                        How It Works
+                    </h3>
+                    <ol style={{ 
+                        color: theme.colors.secondaryText, 
+                        lineHeight: '1.8', 
+                        paddingLeft: '1.25rem',
+                        margin: 0,
+                        fontSize: '0.9rem'
+                    }}>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Create a Manager:</strong> Each manager is a dedicated canister that can control multiple ICP neurons.</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Stake Neurons:</strong> Use the manager to stake ICP directly from your wallet and create NNS neurons.</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Manage Your Neurons:</strong> Vote, set dissolve delay, manage maturity, and more.</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Transfer Ownership:</strong> Transfer neuron ownership by transferring control of the canister.</li>
+                    </ol>
+                </div>
+                
+                {/* Safety Info */}
+                <div className="neuron-card-animate" style={{
+                    background: `linear-gradient(135deg, ${theme.colors.success}08 0%, ${theme.colors.success}03 100%)`,
+                    borderRadius: '14px',
+                    padding: '1.25rem',
+                    border: `1px solid ${theme.colors.success}25`,
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '1rem'
+                }}>
+                    <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '10px',
+                        background: `${theme.colors.success}20`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                    }}>
+                        <FaShieldAlt style={{ color: theme.colors.success, fontSize: '16px' }} />
+                    </div>
+                    <div>
+                        <h4 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem', fontSize: '0.95rem', fontWeight: '600' }}>
+                            Your Neurons Are Always Safe
                         </h4>
-                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: '1.6', marginBottom: '10px' }}>
+                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', marginBottom: '0.75rem' }}>
                             <strong>What if my canister runs out of cycles?</strong> Your neurons are stored on the NNS governance 
                             system, not in your canister. Even if your canister freezes or is deleted, your neurons remain safe, 
-                            you stay the controller, and you can always top up cycles and reinstall the code. No critical data is lost.
+                            you stay the controller, and you can always top up cycles and reinstall the code.
                         </p>
                         <Link 
                             to="/help/icp-neuron-manager#cycles-depletion" 
                             style={{ 
-                                color: theme.colors.accent, 
-                                fontSize: '12px',
+                                color: theme.colors.success, 
+                                fontSize: '0.8rem',
                                 textDecoration: 'none',
-                                fontWeight: '600'
+                                fontWeight: '600',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
                             }}
                         >
-                            Learn more about cycles and safety →
+                            Learn more about cycles and safety <FaExternalLinkAlt size={9} />
                         </Link>
                     </div>
-                    
-                    {/* Access Points Info */}
-                    <div style={{ 
-                        marginTop: '20px', 
-                        paddingTop: '16px', 
-                        borderTop: `1px solid ${theme.colors.border}`,
-                        background: `${theme.colors.accent}08`,
-                        borderRadius: '8px',
-                        padding: '16px'
+                </div>
+                
+                {/* Access Points Info */}
+                <div className="neuron-card-animate" style={{
+                    background: theme.colors.cardGradient,
+                    borderRadius: '14px',
+                    padding: '1.25rem',
+                    border: `1px solid ${theme.colors.border}`,
+                    boxShadow: theme.colors.cardShadow
+                }}>
+                    <h4 style={{ 
+                        color: theme.colors.primaryText, 
+                        marginBottom: '0.75rem', 
+                        fontSize: '0.95rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
                     }}>
-                        <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>
-                            📍 Where to Find Your Managers
-                        </h4>
-                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', lineHeight: '1.6', marginBottom: '12px' }}>
-                            Your neuron manager canisters are accessible from multiple places in the app:
-                        </p>
-                        <ul style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px', margin: 0 }}>
-                            <li>
-                                <Link to="/wallet" style={{ color: theme.colors.accent }}>Sneed Wallet</Link> – Quick access to your managers and neurons alongside your token balances
-                            </li>
-                            <li>
-                                <Link to="/canisters" style={{ color: theme.colors.accent }}>Canisters Page</Link> – Track all your canisters (including managers), monitor cycles, and organize them into groups
-                            </li>
-                            <li>
-                                This page – View and manage all your ICP Neuron Managers
-                            </li>
-                        </ul>
-                    </div>
+                        📍 Where to Find Your Managers
+                    </h4>
+                    <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', marginBottom: '0.75rem' }}>
+                        Your neuron manager canisters are accessible from multiple places:
+                    </p>
+                    <ul style={{ 
+                        color: theme.colors.secondaryText, 
+                        lineHeight: '1.8', 
+                        paddingLeft: '1.25rem', 
+                        margin: 0,
+                        fontSize: '0.85rem'
+                    }}>
+                        <li>
+                            <Link to="/wallet" style={{ color: neuronPrimary, fontWeight: '500' }}>Sneed Wallet</Link> – Quick access to your managers and neurons alongside your token balances
+                        </li>
+                        <li>
+                            <Link to="/canisters" style={{ color: neuronPrimary, fontWeight: '500' }}>Canisters Page</Link> – Track all your canisters, monitor cycles, and organize them into groups
+                        </li>
+                        <li>
+                            <span style={{ color: theme.colors.primaryText }}>This page</span> – View and manage all your ICP Neuron Managers
+                        </li>
+                    </ul>
                 </div>
             </main>
         </div>
