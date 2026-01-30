@@ -8,6 +8,58 @@ import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import MarkdownBody from '../components/MarkdownBody';
+import { getRelativeTime, getFullDate } from '../utils/DateUtils';
+import { FaEnvelope, FaArrowLeft, FaExpandAlt, FaCompressAlt, FaReply, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaClock, FaLock, FaBookOpen, FaStar } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.msg-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.msg-card {
+    transition: all 0.3s ease;
+}
+
+.msg-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.msg-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+`;
+
+// Accent colors for this page
+const msgPrimary = '#3b82f6'; // Blue
+const msgSecondary = '#1d4ed8'; // Darker blue
+const msgAccent = '#60a5fa'; // Light blue
 
 const Message = () => {
     const { theme } = useTheme();
@@ -557,171 +609,211 @@ const Message = () => {
         const displayBody = isExpanded || !isLongMessage ? message.body : message.body.substring(0, 300) + '...';
 
         return (
-            <div key={messageId} style={{ marginLeft: depth * 20 + 'px' }}>
-                {/* Action Buttons */}
+            <div key={messageId} style={{ marginLeft: depth > 0 ? '1.5rem' : '0' }}>
+                {/* Load Context Button */}
                 {canLoadParent && (
-                    <div style={{ marginBottom: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ marginBottom: '0.75rem' }}>
                         <button
                             onClick={() => loadAllParents(messageId)}
                             disabled={loadingState.loadingParent}
                             style={{
-                                backgroundColor: theme.colors.accent,
-                                color: theme.colors.primaryText,
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '6px 12px',
+                                background: `${msgPrimary}15`,
+                                color: msgPrimary,
+                                border: `1px solid ${msgPrimary}30`,
+                                borderRadius: '10px',
+                                padding: '0.5rem 1rem',
                                 cursor: loadingState.loadingParent ? 'not-allowed' : 'pointer',
                                 opacity: loadingState.loadingParent ? 0.6 : 1,
-                                fontSize: '12px'
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                transition: 'all 0.2s ease'
                             }}
                         >
-                            {loadingState.loadingParent ? '⏳ Loading...' : '📖 Load Full Context'}
+                            <FaBookOpen size={12} />
+                            {loadingState.loadingParent ? 'Loading...' : 'Load Full Context'}
                         </button>
                     </div>
                 )}
 
                 {/* Message Container */}
                 <div
+                    className="msg-card"
                     style={{
-                        backgroundColor: isFocused ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
-                        border: isFocused ? `2px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
-                        borderRadius: '8px',
-                        padding: '15px',
-                        marginBottom: '10px',
+                        background: isFocused 
+                            ? `linear-gradient(135deg, ${msgPrimary}15, ${msgPrimary}08)` 
+                            : theme.colors.tertiaryBg,
+                        border: isFocused 
+                            ? `2px solid ${msgPrimary}` 
+                            : `1px solid ${theme.colors.border}`,
+                        borderRadius: '14px',
+                        padding: '1rem',
+                        marginBottom: '0.75rem',
                         position: 'relative'
                     }}
                 >
-                    {/* Collapse/Expand Arrow */}
-                    <div
-                        onClick={() => toggleMessageCollapse(messageId)}
-                        style={{
-                            position: 'absolute',
-                            top: '8px',
-                            left: '8px',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            color: theme.colors.mutedText,
-                            userSelect: 'none',
-                            zIndex: 10,
-                            width: '20px',
-                            height: '20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderRadius: '3px',
-                            transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.tertiaryBg}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                        title={isCollapsed ? 'Expand message' : 'Collapse message'}
-                    >
-                        {isCollapsed ? '▶' : '▼'}
-                    </div>
-
+                    {/* Focus Badge */}
                     {isFocused && (
                         <div style={{
                             position: 'absolute',
                             top: '-10px',
-                            left: '35px', // Moved right to avoid arrow
-                            backgroundColor: theme.colors.accent,
-                            color: theme.colors.primaryText,
-                            padding: '4px 12px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: 'bold'
+                            left: '2.5rem',
+                            background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                            color: 'white',
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '20px',
+                            fontSize: '0.7rem',
+                            fontWeight: '700',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            boxShadow: `0 2px 10px ${msgPrimary}40`
                         }}>
-                            Focus Message
+                            <FaStar size={10} />
+                            FOCUS
                         </div>
                     )}
 
-                    {/* Always visible header (even when collapsed) */}
+                    {/* Header Row */}
                     <div style={{ 
                         display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        marginBottom: isCollapsed ? '0' : '10px',
-                        flexWrap: 'wrap',
-                        gap: '10px',
-                        paddingLeft: '25px' // Make room for arrow
+                        alignItems: 'flex-start',
+                        gap: '0.75rem',
+                        marginBottom: isCollapsed ? '0' : '0.75rem'
                     }}>
-                        <div style={{ flex: 1, minWidth: '200px' }}>
-                            <h4 style={{ 
-                                color: theme.colors.primaryText, 
-                                margin: '0', 
-                                fontSize: '16px',
-                                cursor: isCollapsed ? 'pointer' : 'default',
-                                display: 'inline',
-                                lineHeight: '1.4'
+                        {/* Collapse Toggle */}
+                        <button
+                            onClick={() => toggleMessageCollapse(messageId)}
+                            style={{
+                                width: '28px',
+                                height: '28px',
+                                minWidth: '28px',
+                                borderRadius: '8px',
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                color: theme.colors.mutedText,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s ease',
+                                flexShrink: 0
                             }}
-                            onClick={isCollapsed ? () => toggleMessageCollapse(messageId) : undefined}
-                            >
-                                {message.subject}
-                            </h4>
-                            <span style={{ 
-                                color: theme.colors.accent, 
-                                fontSize: '12px', 
-                                marginLeft: '8px',
-                                cursor: 'pointer'
-                            }}
-                            onClick={() => navigate(`/msg/${message.id}`)}
-                            title="Click to focus this message"
-                            >
-                                #{message.id.toString()}
-                            </span>
-                            <span style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '12px', 
-                                marginLeft: '8px'
-                            }}>
-                                {formatTimestamp(message.created_at)}
-                            </span>
-                            {/* Header collapse divot */}
-                            <span
-                                onClick={() => toggleHeaderCollapse(messageId)}
-                                style={{
-                                    color: theme.colors.mutedText,
-                                    fontSize: '12px',
-                                    marginLeft: '8px',
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    padding: '2px 4px',
-                                    borderRadius: '3px',
-                                    transition: 'background-color 0.2s'
+                            title={isCollapsed ? 'Expand message' : 'Collapse message'}
+                        >
+                            {isCollapsed ? <FaChevronRight size={10} /> : <FaChevronDown size={10} />}
+                        </button>
+
+                        {/* Message Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                <h4 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    margin: '0', 
+                                    fontSize: '1rem',
+                                    fontWeight: '600',
+                                    cursor: isCollapsed ? 'pointer' : 'default',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
                                 }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#444'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                                title={isHeaderCollapsed ? 'Show From/To info' : 'Hide From/To info'}
-                            >
-                                {isHeaderCollapsed ? '▶' : '▼'}
-                            </span>
+                                onClick={isCollapsed ? () => toggleMessageCollapse(messageId) : undefined}
+                                >
+                                    {message.subject}
+                                </h4>
+                                <span 
+                                    style={{ 
+                                        color: msgPrimary, 
+                                        fontSize: '0.8rem', 
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        background: `${msgPrimary}15`,
+                                        padding: '0.15rem 0.5rem',
+                                        borderRadius: '6px'
+                                    }}
+                                    onClick={() => navigate(`/msg/${message.id}`)}
+                                    title="Click to focus this message"
+                                >
+                                    #{message.id.toString()}
+                                </span>
+                            </div>
+                            
+                            {/* Time and Header Toggle */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <span style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '0.8rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem'
+                                }}
+                                title={getFullDate(message.created_at)}
+                                >
+                                    <FaClock size={10} />
+                                    {getRelativeTime(message.created_at)}
+                                </span>
+                                <button
+                                    onClick={() => toggleHeaderCollapse(messageId)}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem',
+                                        padding: '0.15rem 0.35rem',
+                                        borderRadius: '4px',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    title={isHeaderCollapsed ? 'Show details' : 'Hide details'}
+                                >
+                                    {isHeaderCollapsed ? <FaChevronRight size={8} /> : <FaChevronDown size={8} />}
+                                    Details
+                                </button>
+                            </div>
+
+                            {/* Expandable From/To Details */}
                             {!isCollapsed && !isHeaderCollapsed && (
-                                <>
-                                    <div style={{ marginTop: '5px', marginBottom: '3px' }}>
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>From: </span>
+                                <div style={{ 
+                                    marginTop: '0.75rem',
+                                    padding: '0.75rem',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FaUser size={10} style={{ color: theme.colors.mutedText }} />
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', fontWeight: '600' }}>From:</span>
                                         <PrincipalDisplay 
                                             principal={message.sender} 
                                             displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                             showCopyButton={false}
                                             short={true}
-                                            style={{ color: theme.colors.primaryText, fontSize: '14px' }}
+                                            style={{ color: msgPrimary, fontSize: '0.85rem' }}
                                         />
                                     </div>
-                                    <div style={{ marginBottom: '5px' }}>
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>To: </span>
-                                        {message.recipients.map((recipient, idx) => (
-                                            <span key={idx}>
-                                                <PrincipalDisplay 
-                                                    principal={recipient} 
-                                                    displayInfo={principalDisplayInfo.get(recipient.toString())}
-                                                    showCopyButton={false}
-                                                    short={true}
-                                                    style={{ color: theme.colors.primaryText, fontSize: '14px' }}
-                                                />
-                                                {idx < message.recipients.length - 1 && ', '}
-                                            </span>
-                                        ))}
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                        <FaUsers size={10} style={{ color: theme.colors.mutedText, marginTop: '3px' }} />
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', fontWeight: '600' }}>To:</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                                            {message.recipients.map((recipient, idx) => (
+                                                <span key={idx}>
+                                                    <PrincipalDisplay 
+                                                        principal={recipient} 
+                                                        displayInfo={principalDisplayInfo.get(recipient.toString())}
+                                                        showCopyButton={false}
+                                                        short={true}
+                                                        style={{ color: msgPrimary, fontSize: '0.85rem' }}
+                                                    />
+                                                    {idx < message.recipients.length - 1 && <span style={{ color: theme.colors.mutedText }}>, </span>}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
-                                </>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -730,12 +822,20 @@ const Message = () => {
                     {!isCollapsed && (
                         <>
                             {/* Message Body */}
-                            <div style={{ marginBottom: '10px', paddingLeft: '25px' }}>
+                            <div style={{ 
+                                marginLeft: '2.5rem', 
+                                marginBottom: '0.75rem',
+                                padding: '1rem',
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '10px',
+                                border: `1px solid ${theme.colors.border}`
+                            }}>
                                 <MarkdownBody
                                     text={displayBody}
                                     style={{
-                                        color: '#cccccc',
-                                        fontSize: '14px',
+                                        color: theme.colors.secondaryText,
+                                        fontSize: '0.9rem',
+                                        lineHeight: '1.6',
                                         wordBreak: 'break-word'
                                     }}
                                 />
@@ -745,10 +845,12 @@ const Message = () => {
                                         style={{
                                             background: 'none',
                                             border: 'none',
-                                            color: theme.colors.accent,
+                                            color: msgPrimary,
                                             cursor: 'pointer',
-                                            fontSize: '12px',
-                                            marginTop: '5px'
+                                            fontSize: '0.8rem',
+                                            fontWeight: '600',
+                                            marginTop: '0.5rem',
+                                            padding: 0
                                         }}
                                     >
                                         {isExpanded ? 'Show Less' : 'Show More'}
@@ -758,26 +860,30 @@ const Message = () => {
 
                             {/* Action Buttons */}
                             <div style={{ 
+                                marginLeft: '2.5rem',
                                 display: 'flex', 
-                                gap: '8px', 
-                                borderTop: `1px solid ${theme.colors.border}`, 
-                                paddingTop: '10px',
-                                paddingLeft: '25px',
+                                gap: '0.5rem', 
                                 flexWrap: 'wrap'
                             }}>
                                 <button
                                     onClick={() => navigate(`/sms?reply=${message.id}`)}
                                     style={{
-                                        backgroundColor: theme.colors.accent,
-                                        color: theme.colors.primaryText,
+                                        background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                        color: 'white',
                                         border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 1rem',
                                         cursor: 'pointer',
-                                        fontSize: '12px'
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        boxShadow: `0 2px 10px ${msgPrimary}30`
                                     }}
                                 >
-                                    ↩️ Reply
+                                    <FaReply size={10} />
+                                    Reply
                                 </button>
                             </div>
                         </>
@@ -792,128 +898,417 @@ const Message = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className='page-container'>
+                <style>{customStyles}</style>
                 <Header />
-                <div style={{ padding: '20px', textAlign: 'center' }}>
-                    <h2 style={{ color: theme.colors.primaryText }}>Please connect your wallet to view messages</h2>
-                </div>
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${msgPrimary}15 50%, ${msgSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            top: '-50%',
+                            right: '-10%',
+                            width: '400px',
+                            height: '400px',
+                            background: `radial-gradient(circle, ${msgPrimary}20 0%, transparent 70%)`,
+                            borderRadius: '50%',
+                            pointerEvents: 'none'
+                        }} />
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div className="msg-float" style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 30px ${msgPrimary}40`
+                                }}>
+                                    <FaEnvelope size={28} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        Message Thread
+                                    </h1>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        View conversation history
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Login Required */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div className="msg-card-animate" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '20px',
+                            padding: '3rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`,
+                            opacity: 0,
+                            animationDelay: '0.1s'
+                        }}>
+                            <div className="msg-float" style={{
+                                width: '80px',
+                                height: '80px',
+                                margin: '0 auto 1.5rem',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${msgPrimary}40`
+                            }}>
+                                <FaLock size={32} color="white" />
+                            </div>
+                            <h2 style={{ color: theme.colors.primaryText, fontSize: '1.5rem', marginBottom: '1rem', fontWeight: '600' }}>
+                                Connect to View Thread
+                            </h2>
+                            <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                                Connect your wallet to view this message thread.
+                            </p>
+                        </div>
+                    </div>
+                </main>
             </div>
         );
     }
 
     if (loading) {
         return (
-            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className='page-container'>
+                <style>{customStyles}</style>
                 <Header />
-                <div style={{ padding: '20px', textAlign: 'center' }}>
-                    <div style={{ color: theme.colors.primaryText }}>Loading message...</div>
-                </div>
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${msgPrimary}15 50%, ${msgSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div className="msg-float" style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 30px ${msgPrimary}40`
+                                }}>
+                                    <FaEnvelope size={28} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        Message Thread
+                                    </h1>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        Loading conversation...
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Loading State */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '4rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div className="msg-pulse" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                margin: '0 auto 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaEnvelope size={24} color="white" />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '1.1rem' }}>
+                                Loading message thread...
+                            </p>
+                        </div>
+                    </div>
+                </main>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className='page-container'>
+                <style>{customStyles}</style>
                 <Header />
-                <div style={{ padding: '20px' }}>
-                    <div style={{ 
-                        backgroundColor: `${theme.colors.error}20`, 
-                        border: `1px solid ${theme.colors.error}`,
-                        color: theme.colors.error,
-                        padding: '15px',
-                        borderRadius: '6px',
-                        marginBottom: '20px'
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${msgPrimary}15 50%, ${msgSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
                     }}>
-                        {error}
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}cc)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <FaEnvelope size={28} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        Message Thread
+                                    </h1>
+                                    <p style={{ color: theme.colors.error, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        Error loading thread
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <button 
-                        onClick={() => navigate('/sms')}
-                        style={{
-                            backgroundColor: theme.colors.accent,
-                            color: theme.colors.primaryText,
-                            border: 'none',
-                            borderRadius: '6px',
-                            padding: '10px 20px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        ← Back to Messages
-                    </button>
-                </div>
+
+                    {/* Error State */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div style={{
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '16px',
+                            padding: '2rem',
+                            marginBottom: '1.5rem'
+                        }}>
+                            <p style={{ color: theme.colors.error, margin: 0, fontSize: '1rem' }}>{error}</p>
+                        </div>
+                        <button 
+                            onClick={() => navigate('/sms')}
+                            style={{
+                                background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '12px',
+                                padding: '0.75rem 1.5rem',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                boxShadow: `0 4px 15px ${msgPrimary}40`
+                            }}
+                        >
+                            <FaArrowLeft size={14} />
+                            Back to Messages
+                        </button>
+                    </div>
+                </main>
             </div>
         );
     }
 
+    // Get the focus message for hero subtitle
+    const focusMessage = messageTree.get(focusMessageId);
+
     return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+        <div className='page-container'>
+            <style>{customStyles}</style>
             <Header />
-            <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
-                {/* Navigation */}
-                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <button 
-                        onClick={() => navigate('/sms')}
-                        style={{
-                            backgroundColor: theme.colors.accent,
-                            color: theme.colors.primaryText,
-                            border: 'none',
-                            borderRadius: '6px',
-                            padding: '8px 16px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        ← Back to Messages
-                    </button>
+            <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${msgPrimary}15 50%, ${msgSecondary}10 100%)`,
+                    borderBottom: `1px solid ${theme.colors.border}`,
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}>
+                    {/* Background decorations */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${msgPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${msgSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
                     
-                    <span style={{ color: theme.colors.mutedText }}>Message Thread</span>
-                    
-                    {/* Global Expand/Collapse Controls */}
-                    {messageTree.size > 1 && (
-                        <>
-                            <button
-                                onClick={expandAll}
-                                style={{
-                                    backgroundColor: '#27ae60',
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '6px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px'
-                                }}
-                            >
-                                ▼ Expand All
-                            </button>
-                            <button
-                                onClick={collapseAll}
-                                style={{
-                                    backgroundColor: '#e67e22',
-                                    color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '6px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px'
-                                }}
-                            >
-                                ▶ Collapse All
-                            </button>
-                        </>
-                    )}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                            <div className="msg-float" style={{
+                                width: '64px',
+                                height: '64px',
+                                minWidth: '64px',
+                                maxWidth: '64px',
+                                flexShrink: 0,
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${msgPrimary}, ${msgSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${msgPrimary}40`
+                            }}>
+                                <FaEnvelope size={28} color="white" />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1.5rem', 
+                                    fontWeight: '700', 
+                                    margin: 0, 
+                                    lineHeight: '1.2',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    {focusMessage?.subject || 'Message Thread'}
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', margin: '0.35rem 0 0 0' }}>
+                                    Thread #{id}
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Stats */}
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaEnvelope size={14} style={{ color: msgPrimary }} />
+                                <span><strong style={{ color: msgPrimary }}>{messageTree.size}</strong> message{messageTree.size !== 1 ? 's' : ''}</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Message Tree */}
-                {focusMessageId && messageTree.size > 0 && (
+                {/* Main Content */}
+                <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                    {/* Navigation Bar */}
                     <div style={{ 
-                        backgroundColor: theme.colors.secondaryBg,
-                        borderRadius: '8px',
-                        padding: '20px',
-                        border: `1px solid ${theme.colors.border}`
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        gap: '1rem', 
+                        marginBottom: '1.5rem',
+                        flexWrap: 'wrap'
                     }}>
-                        {renderMessage(findTreeRoot())}
+                        <button 
+                            onClick={() => navigate('/sms')}
+                            style={{
+                                background: theme.colors.tertiaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '10px',
+                                padding: '0.6rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <FaArrowLeft size={12} />
+                            Back to Messages
+                        </button>
+                        
+                        {/* Global Expand/Collapse Controls */}
+                        {messageTree.size > 1 && (
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button
+                                    onClick={expandAll}
+                                    style={{
+                                        background: `${theme.colors.success}15`,
+                                        color: theme.colors.success,
+                                        border: `1px solid ${theme.colors.success}30`,
+                                        borderRadius: '10px',
+                                        padding: '0.6rem 1rem',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaExpandAlt size={12} />
+                                    Expand All
+                                </button>
+                                <button
+                                    onClick={collapseAll}
+                                    style={{
+                                        background: `${theme.colors.warning}15`,
+                                        color: theme.colors.warning,
+                                        border: `1px solid ${theme.colors.warning}30`,
+                                        borderRadius: '10px',
+                                        padding: '0.6rem 1rem',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaCompressAlt size={12} />
+                                    Collapse All
+                                </button>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
+
+                    {/* Message Tree */}
+                    {focusMessageId && messageTree.size > 0 && (
+                        <div style={{ 
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.5rem',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            {renderMessage(findTreeRoot())}
+                        </div>
+                    )}
+                </div>
+            </main>
         </div>
     );
 };

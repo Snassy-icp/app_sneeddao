@@ -657,9 +657,8 @@ const SMS = () => {
         );
     }
 
-    // Count messages for tabs
-    const receivedCount = messages.filter(m => m.sender.toString() !== identity?.getPrincipal().toString()).length;
-    const sentCount = messages.filter(m => m.sender.toString() === identity?.getPrincipal().toString()).length;
+    // Message count for current view
+    const messageCount = messages.length;
 
     return (
         <div className='page-container'>
@@ -725,14 +724,24 @@ const SMS = () => {
                         
                         {/* Quick Stats */}
                         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                <FaInbox size={14} style={{ color: smsPrimary }} />
-                                <span><strong style={{ color: smsPrimary }}>{receivedCount}</strong> received</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                <FaPaperPlane size={14} style={{ color: theme.colors.success }} />
-                                <span><strong style={{ color: theme.colors.success }}>{sentCount}</strong> sent</span>
-                            </div>
+                            {selectedTab === 'received' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                    <FaInbox size={14} style={{ color: smsPrimary }} />
+                                    <span><strong style={{ color: smsPrimary }}>{messageCount}</strong> received</span>
+                                </div>
+                            )}
+                            {selectedTab === 'sent' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                    <FaPaperPlane size={14} style={{ color: theme.colors.success }} />
+                                    <span><strong style={{ color: theme.colors.success }}>{messageCount}</strong> sent</span>
+                                </div>
+                            )}
+                            {selectedTab === 'all' && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                    <FaFolderOpen size={14} style={{ color: smsAccent }} />
+                                    <span><strong style={{ color: smsAccent }}>{messageCount}</strong> message{messageCount !== 1 ? 's' : ''}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1374,6 +1383,7 @@ const SMS = () => {
                                             maxLength={effectiveSubjectLimit}
                                             style={{
                                                 width: '100%',
+                                                boxSizing: 'border-box',
                                                 padding: '0.75rem 1rem',
                                                 backgroundColor: theme.colors.tertiaryBg,
                                                 border: `1px solid ${composeForm.subject.length > effectiveSubjectLimit ? theme.colors.error : theme.colors.border}`,
@@ -1445,6 +1455,7 @@ const SMS = () => {
                                             ref={composeBodyRef}
                                             style={{
                                                 width: '100%',
+                                                boxSizing: 'border-box',
                                                 padding: '0.75rem 1rem',
                                                 backgroundColor: theme.colors.tertiaryBg,
                                                 border: `1px solid ${composeForm.body.length > effectiveBodyLimit ? theme.colors.error : theme.colors.border}`,
