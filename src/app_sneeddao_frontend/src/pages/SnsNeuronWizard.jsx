@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
-import { FaCoins, FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaChevronDown, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaCoins, FaArrowRight, FaArrowLeft, FaCheck, FaSpinner, FaChevronDown, FaExternalLinkAlt, FaWallet, FaRocket } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
@@ -12,6 +12,56 @@ import { useSns } from '../contexts/SnsContext';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { formatAmount } from '../utils/SneedexUtils';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.stake-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.stake-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.stake-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - amber/gold theme for staking/coins
+const stakePrimary = '#f59e0b';
+const stakeSecondary = '#fbbf24';
+const stakeAccent = '#fcd34d';
 
 export default function SnsNeuronWizard() {
     const navigate = useNavigate();
@@ -512,24 +562,24 @@ export default function SnsNeuronWizard() {
         setSearchQuery('');
     };
 
-    // Styles matching LockWizard
+    // Styles with new design
     const styles = {
         container: {
-            maxWidth: '900px',
+            maxWidth: '800px',
             margin: '0 auto',
-            padding: '2rem',
+            padding: '1.5rem 1rem',
             color: theme.colors.primaryText,
         },
         hero: {
             textAlign: 'center',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
         },
         title: {
-            fontSize: '2.2rem',
+            fontSize: '1.75rem',
             marginTop: 0,
             marginBottom: '0.5rem',
             color: theme.colors.primaryText,
-            fontWeight: 'bold',
+            fontWeight: '700',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -537,21 +587,26 @@ export default function SnsNeuronWizard() {
             lineHeight: 1,
         },
         subtitle: {
-            fontSize: '1.1rem',
-            color: theme.colors.mutedText,
+            fontSize: '1rem',
+            color: theme.colors.secondaryText,
             marginBottom: '0.5rem',
-            lineHeight: '1.5',
+            lineHeight: '1.6',
         },
         stepProgress: {
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'center',
             gap: '0',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
+            padding: '1.25rem',
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
+            border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
         },
         stepCircle: (stepNum, isActive, isCompleted) => ({
-            width: '40px',
-            height: '40px',
+            width: '44px',
+            height: '44px',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
@@ -559,45 +614,53 @@ export default function SnsNeuronWizard() {
             fontWeight: '600',
             fontSize: '1rem',
             background: isCompleted 
-                ? theme.colors.success 
+                ? `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
                 : isActive 
-                    ? theme.colors.accent 
+                    ? `linear-gradient(135deg, ${stakePrimary}, ${stakeSecondary})` 
                     : theme.colors.tertiaryBg,
-            color: isCompleted || isActive ? theme.colors.primaryBg : theme.colors.mutedText,
-            border: `2px solid ${isCompleted ? theme.colors.success : isActive ? theme.colors.accent : theme.colors.border}`,
+            color: isCompleted || isActive ? '#fff' : theme.colors.mutedText,
+            border: 'none',
             cursor: isCompleted ? 'pointer' : 'default',
             transition: 'all 0.3s ease',
+            boxShadow: isActive ? `0 4px 16px ${stakePrimary}50` : isCompleted ? `0 4px 12px ${theme.colors.success}40` : 'none',
         }),
         stepLine: (isCompleted) => ({
-            width: '60px',
+            width: '50px',
             height: '3px',
-            background: isCompleted ? theme.colors.success : theme.colors.border,
+            background: isCompleted 
+                ? `linear-gradient(90deg, ${theme.colors.success}, ${theme.colors.success}dd)` 
+                : theme.colors.border,
             transition: 'all 0.3s ease',
-            marginTop: '18px', // Half of circle height (40px/2 - line height/2) to center with circles
+            marginTop: '20px',
+            borderRadius: '2px',
         }),
         stepLabel: (isActive) => ({
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
+            fontWeight: isActive ? '600' : '500',
             color: isActive ? theme.colors.primaryText : theme.colors.mutedText,
-            marginTop: '6px',
+            marginTop: '8px',
             textAlign: 'center',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
         }),
         configCard: {
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '16px',
-            padding: '2rem',
-            marginBottom: '1.5rem',
+            padding: '1.5rem',
+            marginBottom: '1.25rem',
+            boxShadow: theme.colors.cardShadow,
         },
         dropdownContainer: {
             position: 'relative',
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
             maxWidth: '100%',
         },
         dropdownButton: (isOpen) => ({
             width: '100%',
             padding: '14px 16px',
-            background: theme.colors.secondaryBg,
-            border: `2px solid ${isOpen ? theme.colors.accent : theme.colors.border}`,
+            background: theme.colors.primaryBg,
+            border: `2px solid ${isOpen ? stakePrimary : theme.colors.border}`,
             borderRadius: '12px',
             display: 'flex',
             alignItems: 'center',
@@ -612,10 +675,10 @@ export default function SnsNeuronWizard() {
             left: 0,
             right: 0,
             marginTop: '8px',
-            background: theme.colors.secondaryBg,
+            background: theme.colors.cardGradient || theme.colors.secondaryBg,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '12px',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
+            borderRadius: '14px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
             zIndex: 100,
             maxHeight: '320px',
             overflowY: 'auto',
@@ -623,13 +686,14 @@ export default function SnsNeuronWizard() {
         },
         dropdownSearch: {
             width: '100%',
-            padding: '12px 16px',
+            padding: '14px 16px',
             background: 'transparent',
             border: 'none',
             borderBottom: `1px solid ${theme.colors.border}`,
             color: theme.colors.primaryText,
             fontSize: '0.95rem',
             outline: 'none',
+            boxSizing: 'border-box',
         },
         dropdownItem: (isSelected) => ({
             display: 'flex',
@@ -637,55 +701,61 @@ export default function SnsNeuronWizard() {
             gap: '12px',
             padding: '12px 16px',
             cursor: 'pointer',
-            background: isSelected ? `${theme.colors.accent}15` : 'transparent',
+            background: isSelected ? `${stakePrimary}15` : 'transparent',
             transition: 'background 0.15s ease',
         }),
         snsLogo: {
-            width: '32px',
-            height: '32px',
+            width: '36px',
+            height: '36px',
             borderRadius: '50%',
             objectFit: 'cover',
             background: theme.colors.tertiaryBg,
             flexShrink: 0,
+            border: `2px solid ${theme.colors.border}`,
         },
         inputGroup: {
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
         },
         label: {
             display: 'block',
             color: theme.colors.primaryText,
             marginBottom: '8px',
-            fontWeight: '500',
+            fontWeight: '600',
+            fontSize: '0.9rem',
         },
         inputRow: {
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
+            flexWrap: 'wrap',
         },
         input: {
-                  flex: 1,
-            padding: '14px',
-            background: theme.colors.secondaryBg,
+            flex: 1,
+            minWidth: '150px',
+            padding: '12px 14px',
+            background: theme.colors.primaryBg,
             border: `1px solid ${theme.colors.border}`,
-                  borderRadius: '10px',
+            borderRadius: '10px',
             color: theme.colors.primaryText,
             fontSize: '1rem',
             outline: 'none',
         },
         maxButton: {
-            background: theme.colors.accent,
-            color: theme.colors.primaryBg,
+            background: `linear-gradient(135deg, ${stakePrimary}, ${stakeSecondary})`,
+            color: '#fff',
             border: 'none',
             borderRadius: '10px',
-            padding: '14px 18px',
+            padding: '12px 16px',
             cursor: 'pointer',
             fontWeight: '600',
-            fontSize: '0.9rem',
+            fontSize: '0.85rem',
+            boxShadow: `0 4px 12px ${stakePrimary}30`,
         },
         buttonRow: {
             display: 'flex',
             gap: '12px',
-            marginTop: '2rem',
+            marginTop: '1.5rem',
+            flexWrap: 'wrap',
         },
         backButton: {
             display: 'flex',
@@ -693,12 +763,13 @@ export default function SnsNeuronWizard() {
             justifyContent: 'center',
             gap: '8px',
             flex: 1,
-            padding: '14px 24px',
-            background: theme.colors.secondaryBg,
-                  border: `1px solid ${theme.colors.border}`,
-            borderRadius: '10px',
+            minWidth: '120px',
+            padding: '14px 20px',
+            background: theme.colors.cardGradient || theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '12px',
             color: theme.colors.primaryText,
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             fontWeight: '500',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
@@ -709,40 +780,43 @@ export default function SnsNeuronWizard() {
             justifyContent: 'center',
             gap: '8px',
             flex: 2,
+            minWidth: '180px',
             padding: '14px 24px',
             background: isEnabled 
-                ? `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)` 
+                ? `linear-gradient(135deg, ${stakePrimary}, ${stakeSecondary})` 
                 : theme.colors.tertiaryBg,
             border: 'none',
-            borderRadius: '10px',
-            color: isEnabled ? theme.colors.primaryBg : theme.colors.mutedText,
-            fontSize: '1rem',
+            borderRadius: '12px',
+            color: isEnabled ? '#fff' : theme.colors.mutedText,
+            fontSize: '0.95rem',
             fontWeight: '600',
             cursor: isEnabled ? 'pointer' : 'not-allowed',
             transition: 'all 0.2s ease',
-            boxShadow: isEnabled ? `0 4px 20px ${theme.colors.accent}40` : 'none',
+            boxShadow: isEnabled ? `0 4px 20px ${stakePrimary}40` : 'none',
         }),
         errorBox: {
             color: theme.colors.error,
             padding: '14px',
             background: `${theme.colors.error}15`,
             border: `1px solid ${theme.colors.error}30`,
-            borderRadius: '10px',
+            borderRadius: '12px',
             marginBottom: '1rem',
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
         },
         successCard: {
             textAlign: 'center',
-            padding: '3rem',
-            background: theme.colors.cardGradient,
-            border: `2px solid ${theme.colors.success}`,
-            borderRadius: '16px',
+            padding: '2.5rem 1.5rem',
+            background: `linear-gradient(135deg, ${theme.colors.success}10 0%, ${theme.colors.cardGradient || theme.colors.cardBackground} 100%)`,
+            border: `2px solid ${theme.colors.success}40`,
+            borderRadius: '20px',
+            boxShadow: `0 8px 32px ${theme.colors.success}20`,
         },
         successIcon: {
             width: '80px',
             height: '80px',
             borderRadius: '50%',
-            background: `${theme.colors.success}20`,
+            background: `linear-gradient(135deg, ${theme.colors.success}30, ${theme.colors.success}10)`,
+            border: `2px solid ${theme.colors.success}40`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -753,21 +827,22 @@ export default function SnsNeuronWizard() {
         },
         loginPrompt: {
             textAlign: 'center',
-            padding: '3rem',
+            padding: '2.5rem 1.5rem',
             background: theme.colors.cardGradient,
             border: `1px solid ${theme.colors.border}`,
-            borderRadius: '16px',
+            borderRadius: '20px',
+            boxShadow: theme.colors.cardShadow,
         },
         summaryRow: {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '12px 0',
+            padding: '14px 0',
             borderBottom: `1px solid ${theme.colors.border}`,
         },
         summaryLabel: {
-            color: theme.colors.mutedText,
-            fontSize: '0.95rem',
+            color: theme.colors.secondaryText,
+            fontSize: '0.9rem',
         },
         summaryValue: {
             color: theme.colors.primaryText,
@@ -776,23 +851,31 @@ export default function SnsNeuronWizard() {
         },
     };
 
-    const spinnerKeyframes = `
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-    `;
-
     if (!isAuthenticated) {
-  return (
+        return (
             <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                <style>{customStyles}</style>
                 <Header />
                 <main style={styles.container}>
-                    <style>{spinnerKeyframes}</style>
-                    <div style={styles.loginPrompt}>
-                        <FaCoins size={48} style={{ color: theme.colors.mutedText, marginBottom: '1rem' }} />
-                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.5rem' }}>Liquid SNS Staking Wizard</h2>
-                        <p style={{ fontSize: '1.1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem' }}>
+                    <div className="stake-fade-in" style={styles.loginPrompt}>
+                        <div className="stake-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '18px',
+                            background: `linear-gradient(135deg, ${stakePrimary}, ${stakeSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 1.5rem',
+                            boxShadow: `0 8px 32px ${stakePrimary}50`,
+                            fontSize: '2rem'
+                        }}>
+                            🪙
+                        </div>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                            Liquid SNS Staking Wizard
+                        </h2>
+                        <p style={{ fontSize: '1rem', color: theme.colors.secondaryText, marginBottom: '1.5rem', lineHeight: '1.6' }}>
                             Please log in to stake your SNS tokens
                         </p>
                         <button
@@ -803,9 +886,9 @@ export default function SnsNeuronWizard() {
                                 padding: '14px 32px',
                             }}
                         >
-                            Connect Wallet
+                            <FaWallet /> Connect Wallet
                         </button>
-          </div>
+                    </div>
                 </main>
             </div>
         );
@@ -814,8 +897,7 @@ export default function SnsNeuronWizard() {
     const stepLabels = ['Select SNS', 'Configure', 'Stake'];
 
     const renderStepProgress = () => (
-        <div style={styles.stepProgress}>
-            <style>{spinnerKeyframes}</style>
+        <div className="stake-fade-in" style={styles.stepProgress}>
             {[1, 2, 3].map((stepNum, index) => (
                 <React.Fragment key={stepNum}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -838,25 +920,46 @@ export default function SnsNeuronWizard() {
     // Step 1: Select SNS
     const renderStep1 = () => (
         <>
-            <div style={styles.hero}>
-                <h1 style={styles.title}>
+            <div className="stake-fade-in" style={styles.hero}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
                     {selectedSnsLogo ? (
-                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, margin: 0, padding: 0 }} />
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ 
+                            width: '48px', 
+                            height: '48px', 
+                            borderRadius: '14px', 
+                            flexShrink: 0, 
+                            border: `2px solid ${stakePrimary}40`,
+                            boxShadow: `0 4px 16px ${stakePrimary}30`
+                        }} />
                     ) : (
-                        <FaCoins style={{ color: theme.colors.accent, flexShrink: 0, fontSize: '36px' }} />
+                        <div className="stake-float" style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${stakePrimary}, ${stakeSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 4px 16px ${stakePrimary}40`,
+                            fontSize: '1.5rem'
+                        }}>
+                            🪙
+                        </div>
                     )}
-                    <span>Liquid SNS Staking Wizard</span>
-                </h1>
+                    <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                        Liquid SNS Staking
+                    </h1>
+                </div>
                 <p style={styles.subtitle}>
                     Stake tokens in any SNS DAO to earn rewards and participate in governance.
                     <br />
-                    <span style={{ fontSize: '0.95rem' }}>
-                        Neurons created here are <strong>transferrable</strong> and <strong>tradable on Sneedex</strong>.
+                    <span style={{ fontSize: '0.9rem', color: stakePrimary }}>
+                        ✨ Neurons created here are <strong>transferrable</strong> and <strong>tradable on Sneedex</strong>.
                     </span>
                 </p>
             </div>
 
-            <div style={styles.configCard}>
+            <div className="stake-fade-in" style={styles.configCard}>
                 <div style={styles.inputGroup}>
                     <label style={styles.label}>Select an SNS to stake in:</label>
                     
@@ -1019,19 +1122,28 @@ export default function SnsNeuronWizard() {
     // Step 2: Configure Stake
     const renderStep2 = () => (
         <>
-            <div style={styles.hero}>
-                <h1 style={styles.title}>
+            <div className="stake-fade-in" style={styles.hero}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
                     {selectedSnsLogo && (
-                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, margin: 0, padding: 0 }} />
+                        <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ 
+                            width: '48px', 
+                            height: '48px', 
+                            borderRadius: '14px', 
+                            flexShrink: 0, 
+                            border: `2px solid ${stakePrimary}40`,
+                            boxShadow: `0 4px 16px ${stakePrimary}30`
+                        }} />
                     )}
-                    <span>Configure Stake</span>
-                </h1>
+                    <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                        Configure Stake
+                    </h1>
+                </div>
                 <p style={styles.subtitle}>
-                    Set your stake amount and dissolve delay for {selectedSns?.name}
+                    Set your stake amount and dissolve delay for <strong style={{ color: stakePrimary }}>{selectedSns?.name}</strong>
                 </p>
             </div>
 
-            <div style={styles.configCard}>
+            <div className="stake-fade-in" style={styles.configCard}>
                 {/* Balance display */}
                 <div style={{
                     background: theme.colors.secondaryBg,
@@ -1238,23 +1350,23 @@ export default function SnsNeuronWizard() {
     const renderStep3 = () => {
         if (stakingSuccess) {
             return (
-                <div style={styles.successCard}>
-                    <div style={styles.successIcon}>
+                <div className="stake-fade-in" style={styles.successCard}>
+                    <div className="stake-pulse" style={styles.successIcon}>
                         <FaCheck size={40} style={{ color: theme.colors.success }} />
-          </div>
-                    <h2 style={{ color: theme.colors.primaryText, marginBottom: '1rem', fontSize: '1.8rem' }}>
-                        Neuron Created Successfully!
+                    </div>
+                    <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem', fontWeight: '700' }}>
+                        🎉 Neuron Created Successfully!
                     </h2>
-                    <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1.1rem' }}>
-                        You've staked {stakeAmount} {tokenSymbol} in {selectedSns?.name}
-                        {dissolveDelayDays && ` with a ${dissolveDelayDays}-day dissolve delay`}.
+                    <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem', lineHeight: '1.6' }}>
+                        You've staked <strong style={{ color: stakePrimary }}>{stakeAmount} {tokenSymbol}</strong> in <strong>{selectedSns?.name}</strong>
+                        {dissolveDelayDays && <> with a <strong style={{ color: theme.colors.primaryText }}>{dissolveDelayDays}-day</strong> dissolve delay</>}.
                     </p>
                     <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         <button
                             style={{
                                 ...styles.backButton,
                                 flex: 'none',
-                                padding: '14px 24px',
+                                padding: '12px 20px',
                             }}
                             onClick={() => {
                                 setCurrentStep(1);
@@ -1265,29 +1377,30 @@ export default function SnsNeuronWizard() {
                                 setNeedsAutoFill(true);
                             }}
                         >
-                            Stake Another
+                            <FaRocket size={14} /> Stake Another
                         </button>
                         <button
                             style={{
                                 ...styles.backButton,
                                 flex: 'none',
-                                padding: '14px 24px',
+                                padding: '12px 20px',
                             }}
                             onClick={() => navigate('/wallet')}
                         >
-                            Go to Wallet
+                            <FaWallet size={14} /> Go to Wallet
                         </button>
                         {createdNeuronId && (
                             <button
                                 style={{
                                     ...styles.continueButton(true),
                                     flex: 'none',
-                                    padding: '14px 24px',
+                                    padding: '12px 20px',
+                                    background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                    boxShadow: `0 4px 16px ${theme.colors.success}40`,
                                 }}
                                 onClick={() => navigate(`/neuron?neuronid=${createdNeuronId}&sns=${selectedSnsRoot}`)}
                             >
-                                View Neuron
-                                <FaExternalLinkAlt size={12} />
+                                View Neuron <FaExternalLinkAlt size={12} />
                             </button>
                         )}
                     </div>
@@ -1297,19 +1410,28 @@ export default function SnsNeuronWizard() {
 
         return (
             <>
-                <div style={styles.hero}>
-                    <h1 style={styles.title}>
+                <div className="stake-fade-in" style={styles.hero}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', marginBottom: '0.75rem' }}>
                         {selectedSnsLogo && (
-                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0, margin: 0, padding: 0 }} />
+                            <img src={selectedSnsLogo} alt={selectedSns?.name} style={{ 
+                                width: '48px', 
+                                height: '48px', 
+                                borderRadius: '14px', 
+                                flexShrink: 0, 
+                                border: `2px solid ${stakePrimary}40`,
+                                boxShadow: `0 4px 16px ${stakePrimary}30`
+                            }} />
                         )}
-                        <span>Confirm & Stake</span>
-                    </h1>
+                        <h1 style={{ ...styles.title, margin: 0, justifyContent: 'flex-start' }}>
+                            Confirm & Stake
+                        </h1>
+                    </div>
                     <p style={styles.subtitle}>
                         Review your staking details before confirming
                     </p>
-            </div>
+                </div>
 
-                <div style={styles.configCard}>
+                <div className="stake-fade-in" style={styles.configCard}>
                     <div style={styles.summaryRow}>
                         <span style={styles.summaryLabel}>SNS</span>
                         <span style={styles.summaryValue}>{selectedSns?.name}</span>
@@ -1382,13 +1504,77 @@ export default function SnsNeuronWizard() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${stakePrimary}12 50%, ${stakeSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '1.5rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${stakePrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-40%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${stakeSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: `${stakePrimary}20`,
+                        color: stakePrimary,
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '0.5rem'
+                    }}>
+                        🪙 Liquid Staking
+                    </div>
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0.5rem 0',
+                        letterSpacing: '-0.5px'
+                    }}>
+                        SNS Neuron Wizard
+                    </h1>
+                    <p style={{
+                        color: theme.colors.secondaryText,
+                        fontSize: '0.95rem',
+                        margin: 0
+                    }}>
+                        Create transferable neurons in any SNS DAO
+                    </p>
+                </div>
+            </div>
+            
             <main style={styles.container}>
                 {renderStepProgress()}
                 {currentStep === 1 && renderStep1()}
                 {currentStep === 2 && renderStep2()}
                 {currentStep === 3 && renderStep3()}
-      </main>
-    </div>
-  );
+            </main>
+        </div>
+    );
 }
