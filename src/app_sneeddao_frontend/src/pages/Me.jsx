@@ -43,6 +43,7 @@ import {
 } from '../utils/NeuronManagerSettings';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
+import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel } from 'react-icons/fa';
@@ -1148,11 +1149,13 @@ export default function Me() {
                                     : theme.colors.secondaryText,
                             }}
                         >
-                            {selectedSnsLogo ? (
-                                <img src={selectedSnsLogo} alt="" style={{ width: '20px', height: '20px', borderRadius: '4px' }} />
-                            ) : (
-                                <FaBrain size={16} />
-                            )}
+                            <TokenIcon 
+                                logo={selectedSnsLogo} 
+                                size={20} 
+                                fallbackIcon={<FaBrain size={16} />}
+                                fallbackColor={activeTab === 'neurons' ? 'white' : theme.colors.secondaryText}
+                                rounded={false}
+                            />
                             <span style={{ whiteSpace: 'nowrap' }}>Neurons</span>
                         </button>
                         <button
