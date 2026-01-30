@@ -18,8 +18,81 @@ import EmojiPicker from '../components/EmojiPicker';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
+import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers } from 'react-icons/fa';
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes newMessageGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    50% { box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.3); }
+}
+
+.sms-card-animate {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.sms-card {
+    transition: all 0.3s ease;
+}
+
+.sms-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(59, 130, 246, 0.15);
+}
+
+.sms-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.sms-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.sms-new-glow {
+    animation: newMessageGlow 2s ease-in-out 3;
+}
+
+.sms-tab {
+    transition: all 0.2s ease;
+}
+
+.sms-tab:hover {
+    transform: translateY(-1px);
+}
+`;
+
+// Accent colors for this page
+const smsPrimary = '#3b82f6'; // Blue
+const smsSecondary = '#1d4ed8'; // Darker blue
+const smsAccent = '#60a5fa'; // Light blue
 
 const SMS = () => {
     const { theme } = useTheme();
@@ -498,336 +571,571 @@ const SMS = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <div className='page-container'>
+                <style>{customStyles}</style>
                 <Header />
-                <main className="wallet-container">
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Please Connect Your Wallet</h1>
-                        <p style={{ color: theme.colors.mutedText }}>You need to connect your wallet to access your messages.</p>
+                <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+                    {/* Hero Section */}
+                    <div style={{
+                        background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${smsPrimary}15 50%, ${smsSecondary}10 100%)`,
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        padding: '2rem 1.5rem',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            top: '-50%',
+                            right: '-10%',
+                            width: '400px',
+                            height: '400px',
+                            background: `radial-gradient(circle, ${smsPrimary}20 0%, transparent 70%)`,
+                            borderRadius: '50%',
+                            pointerEvents: 'none'
+                        }} />
+                        <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                                <div className="sms-float" style={{
+                                    width: '64px',
+                                    height: '64px',
+                                    minWidth: '64px',
+                                    borderRadius: '16px',
+                                    background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 30px ${smsPrimary}40`
+                                }}>
+                                    <FaEnvelope size={28} color="white" />
+                                </div>
+                                <div>
+                                    <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0 }}>
+                                        Messages
+                                    </h1>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                        Private messaging on the Internet Computer
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Login Required */}
+                    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                        <div className="sms-card-animate" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '20px',
+                            padding: '3rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`,
+                            opacity: 0,
+                            animationDelay: '0.1s'
+                        }}>
+                            <div className="sms-float" style={{
+                                width: '80px',
+                                height: '80px',
+                                margin: '0 auto 1.5rem',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${smsPrimary}40`
+                            }}>
+                                <FaLock size={32} color="white" />
+                            </div>
+                            <h2 style={{ color: theme.colors.primaryText, fontSize: '1.5rem', marginBottom: '1rem', fontWeight: '600' }}>
+                                Connect to View Messages
+                            </h2>
+                            <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                                Connect your wallet to access your private messages and send messages to other users.
+                            </p>
+                        </div>
                     </div>
                 </main>
             </div>
         );
     }
 
-    return (
-        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh', fontFamily: SYSTEM_FONT, fontSize: '14px' }}>
-            <Header />
-            <main className="wallet-container" style={{ fontFamily: SYSTEM_FONT }}>
-                {error && (
-                    <div style={{ 
-                        backgroundColor: `${theme.colors.error}20`, 
-                        border: `1px solid ${theme.colors.error}`,
-                        color: theme.colors.error,
-                        padding: '15px',
-                        borderRadius: '6px',
-                        marginBottom: '20px'
-                    }}>
-                        {error}
-                    </div>
-                )}
+    // Count messages for tabs
+    const receivedCount = messages.filter(m => m.sender.toString() !== identity?.getPrincipal().toString()).length;
+    const sentCount = messages.filter(m => m.sender.toString() === identity?.getPrincipal().toString()).length;
 
-                {/* Tabs with Compose Button */}
-                <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-end',
-                    flexWrap: 'wrap',
-                    gap: '15px',
-                    marginBottom: '20px',
+    return (
+        <div className='page-container'>
+            <style>{customStyles}</style>
+            <Header />
+            <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh', fontFamily: SYSTEM_FONT }}>
+                {/* Hero Section */}
+                <div style={{
+                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${smsPrimary}15 50%, ${smsSecondary}10 100%)`,
                     borderBottom: `1px solid ${theme.colors.border}`,
-                    paddingBottom: '0'
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
-                    <div style={{ 
-                        display: 'flex', 
-                        gap: '10px',
-                        flexWrap: 'wrap'
-                    }}>
-                        {[
-                            { key: 'received', label: 'Received' },
-                            { key: 'sent', label: 'Sent' },
-                            { key: 'all', label: 'All Messages' }
-                        ].map(tab => (
-                            <button
-                                key={tab.key}
-                                onClick={() => setSelectedTab(tab.key)}
-                                style={{
-                                    background: selectedTab === tab.key ? theme.colors.accent : 'transparent',
-                                    color: selectedTab === tab.key ? theme.colors.primaryText : theme.colors.mutedText,
-                                    border: 'none',
-                                    borderRadius: '4px 4px 0 0',
-                                    padding: '10px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    fontFamily: SYSTEM_FONT,
-                                    borderBottom: selectedTab === tab.key ? `2px solid ${theme.colors.accent}` : '2px solid transparent'
-                                }}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
+                    {/* Background decorations */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, ${smsPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-5%',
+                        width: '300px',
+                        height: '300px',
+                        background: `radial-gradient(circle, ${smsSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
+                    }} />
                     
-                    {/* Compose Button - Responsive */}
-                    <button
-                        onClick={() => setShowComposeModal(true)}
-                        style={{
-                            backgroundColor: theme.colors.accent,
-                            color: theme.colors.primaryText,
-                            border: 'none',
-                            borderRadius: '6px',
-                            padding: '10px 20px',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            fontFamily: SYSTEM_FONT,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            marginBottom: '2px',
-                            flexShrink: 0
-                        }}
-                    >
-                        ✉️ Compose Message
-                    </button>
+                    <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                            <div className="sms-float" style={{
+                                width: '64px',
+                                height: '64px',
+                                minWidth: '64px',
+                                maxWidth: '64px',
+                                flexShrink: 0,
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: `0 8px 30px ${smsPrimary}40`
+                            }}>
+                                <FaEnvelope size={28} color="white" />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <h1 style={{ color: theme.colors.primaryText, fontSize: '2rem', fontWeight: '700', margin: 0, lineHeight: '1.2' }}>
+                                    Messages
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '1rem', margin: '0.35rem 0 0 0' }}>
+                                    Private messaging on the Internet Computer
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Quick Stats */}
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaInbox size={14} style={{ color: smsPrimary }} />
+                                <span><strong style={{ color: smsPrimary }}>{receivedCount}</strong> received</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaPaperPlane size={14} style={{ color: theme.colors.success }} />
+                                <span><strong style={{ color: theme.colors.success }}>{sentCount}</strong> sent</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Messages List */}
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.primaryText }}>
-                        Loading messages...
-                    </div>
-                ) : messages.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.mutedText }}>
-                        <p>No messages found.</p>
+                {/* Main Content */}
+                <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+                    {/* Error Display */}
+                    {error && (
+                        <div style={{ 
+                            background: `linear-gradient(135deg, ${theme.colors.error}15, ${theme.colors.error}08)`,
+                            border: `1px solid ${theme.colors.error}30`,
+                            borderRadius: '12px',
+                            padding: '1rem 1.25rem',
+                            marginBottom: '1.5rem',
+                            color: theme.colors.error,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem'
+                        }}>
+                            <FaTimes size={16} />
+                            {error}
+                        </div>
+                    )}
+
+                    {/* Tab Buttons + Compose */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                        <div style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            background: theme.colors.secondaryBg,
+                            padding: '0.5rem',
+                            borderRadius: '14px',
+                            border: `1px solid ${theme.colors.border}`,
+                            flexWrap: 'wrap',
+                            flex: '1 1 auto'
+                        }}>
+                            {[
+                                { key: 'received', label: 'Inbox', icon: <FaInbox size={14} />, color: smsPrimary },
+                                { key: 'sent', label: 'Sent', icon: <FaPaperPlane size={14} />, color: theme.colors.success },
+                                { key: 'all', label: 'All', icon: <FaFolderOpen size={14} />, color: smsAccent }
+                            ].map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setSelectedTab(tab.key)}
+                                    className="sms-tab"
+                                    style={{
+                                        flex: '1 1 auto',
+                                        minWidth: '80px',
+                                        background: selectedTab === tab.key 
+                                            ? `linear-gradient(135deg, ${tab.color}, ${tab.color}cc)` 
+                                            : 'transparent',
+                                        color: selectedTab === tab.key ? 'white' : theme.colors.secondaryText,
+                                        border: 'none',
+                                        borderRadius: '10px',
+                                        padding: '0.65rem 0.75rem',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        fontFamily: SYSTEM_FONT,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '0.4rem',
+                                        boxShadow: selectedTab === tab.key ? `0 4px 15px ${tab.color}40` : 'none'
+                                    }}
+                                >
+                                    {tab.icon}
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                        
+                        {/* Compose Button */}
                         <button
                             onClick={() => setShowComposeModal(true)}
                             style={{
-                                backgroundColor: theme.colors.accent,
-                                color: theme.colors.primaryText,
+                                background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                color: 'white',
                                 border: 'none',
-                                borderRadius: '6px',
-                                padding: '10px 20px',
+                                borderRadius: '12px',
+                                padding: '0.75rem 1.25rem',
                                 cursor: 'pointer',
-                                marginTop: '15px'
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                fontFamily: SYSTEM_FONT,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                boxShadow: `0 4px 15px ${smsPrimary}40`,
+                                flexShrink: 0,
+                                transition: 'all 0.2s ease'
                             }}
                         >
-                            Send your first message
+                            <FaPen size={14} />
+                            Compose
                         </button>
                     </div>
-                ) : (
-                    <div style={{ 
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1rem',
-                        maxWidth: '900px',
-                        margin: '0 auto'
-                    }}>
-                        {messages.map((message) => {
-                            // Check if this is a received message (user is recipient, not sender)
-                            const userPrincipal = identity?.getPrincipal();
-                            const userPrincipalString = userPrincipal?.toString();
-                            const messageSenderString = message.sender.toString();
-                            const isReceivedMessage = userPrincipalString && messageSenderString !== userPrincipalString;
-                            
-                            // Check if this received message is new (only highlight received messages)
-                            const isNew = isReceivedMessage && isMessageNew(message.created_at);
-                            
-                            return (
-                                <div
-                                    key={Number(message.id)}
-                                    onClick={() => {
-                                        setSelectedMessage(message);
-                                        setShowMessageModal(true);
-                                    }}
-                                    style={{
-                                        backgroundColor: isNew ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
-                                        borderRadius: '12px',
-                                        padding: '1.5rem',
-                                        border: isNew ? `1px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
-                                        cursor: 'pointer',
-                                        transition: 'all 0.3s ease',
-                                        transform: 'translateY(0)'
-                                    }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}30` : theme.colors.accentHover;
-                                    e.currentTarget.style.borderColor = theme.colors.accent;
-                                    e.currentTarget.style.transform = 'translateY(-2px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.15)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}20` : theme.colors.secondaryBg;
-                                    e.currentTarget.style.borderColor = isNew ? theme.colors.accent : theme.colors.border;
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = 'none';
+
+                    {/* Refresh Button */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                        <button 
+                            onClick={fetchMessages}
+                            disabled={loading}
+                            style={{
+                                background: theme.colors.tertiaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '10px',
+                                padding: '0.6rem 1rem',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                fontFamily: SYSTEM_FONT,
+                                opacity: loading ? 0.6 : 1,
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <FaSync size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                            Refresh
+                        </button>
+                    </div>
+
+                    {/* Messages List */}
+                    {loading ? (
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '4rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div className="sms-pulse" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                margin: '0 auto 1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <FaEnvelope size={24} color="white" />
+                            </div>
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '1.1rem' }}>
+                                Loading messages...
+                            </p>
+                        </div>
+                    ) : messages.length === 0 ? (
+                        <div className="sms-card-animate" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '3rem 2rem',
+                            textAlign: 'center',
+                            border: `1px solid ${theme.colors.border}`,
+                            opacity: 0,
+                            animationDelay: '0.1s'
+                        }}>
+                            <div className="sms-float" style={{
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${smsPrimary}30, ${smsPrimary}20)`,
+                                margin: '0 auto 1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: smsPrimary
+                            }}>
+                                <FaInbox size={24} />
+                            </div>
+                            <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontWeight: '600' }}>
+                                No Messages Yet
+                            </h3>
+                            <p style={{ color: theme.colors.secondaryText, maxWidth: '400px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
+                                Start a conversation by sending your first message.
+                            </p>
+                            <button
+                                onClick={() => setShowComposeModal(true)}
+                                style={{
+                                    background: `linear-gradient(135deg, ${smsPrimary}, ${smsSecondary})`,
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    padding: '0.75rem 1.5rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    boxShadow: `0 4px 15px ${smsPrimary}40`
                                 }}
                             >
-                                <div style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'flex-start',
-                                    marginBottom: '1rem',
-                                    flexWrap: 'wrap',
-                                    gap: '1rem'
-                                }}>
-                                    <div style={{ 
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '0.5rem',
-                                        flex: 1
-                                    }}>
-                                        <div style={{ 
-                                            color: theme.colors.primaryText, 
-                                            fontSize: '1.1rem', 
-                                            fontWeight: '600',
-                                            fontFamily: SYSTEM_FONT,
-                                            lineHeight: '1.4'
-                                        }}>
-                                            {message.subject}
-                                        </div>
-                                        <div style={{ 
-                                            color: theme.colors.mutedText, 
-                                            fontSize: '0.85rem',
-                                            fontFamily: SYSTEM_FONT,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}>
-                                            <span style={{ fontWeight: '500' }}>From:</span>
-                                            <PrincipalDisplay 
-                                                principal={message.sender}
-                                                displayInfo={principalDisplayInfo.get(message.sender.toString())}
-                                                showCopyButton={false}
-                                                short={true}
-                                                style={{ color: theme.colors.accent, fontSize: '0.85rem' }}
-                                            />
-                                        </div>
-                                        <div style={{ 
-                                            color: theme.colors.mutedText, 
-                                            fontSize: '0.85rem',
-                                            fontFamily: SYSTEM_FONT,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            flexWrap: 'wrap'
-                                        }}>
-                                            <span style={{ fontWeight: '500' }}>To:</span>
-                                            {message.recipients.map((recipient, index) => (
-                                                <React.Fragment key={recipient.toString()}>
-                                                    <PrincipalDisplay 
-                                                        principal={recipient}
-                                                        displayInfo={principalDisplayInfo.get(recipient.toString())}
-                                                        showCopyButton={false}
-                                                        short={true}
-                                                        style={{ color: theme.colors.accent, fontSize: '0.85rem' }}
-                                                    />
-                                                    {index < message.recipients.length - 1 && <span>,</span>}
-                                                </React.Fragment>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div 
-                                        style={{ 
-                                        color: theme.colors.mutedText, 
-                                            fontSize: '0.85rem',
-                                        fontFamily: SYSTEM_FONT,
-                                            textAlign: 'right',
-                                            whiteSpace: 'nowrap',
-                                            cursor: 'default'
-                                        }}
-                                        title={getFullDate(message.created_at)}
-                                    >
-                                        {getRelativeTime(message.created_at)}
-                                    </div>
-                                </div>
-                                <div style={{ 
-                                    color: theme.colors.secondaryText, 
-                                    fontSize: '0.95rem',
-                                    fontFamily: SYSTEM_FONT,
-                                    overflow: 'hidden',
-                                    maxHeight: '60px',
-                                    lineHeight: '1.6',
-                                    marginBottom: '1rem'
-                                }}>
-                                    <MarkdownBody 
-                                        text={message.body.length > 150 ? message.body.substring(0, 150) + '...' : message.body}
-                                        style={{ fontSize: '0.95rem', lineHeight: '1.6' }}
-                                    />
-                                </div>
+                                <FaPen size={14} />
+                                Send your first message
+                            </button>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {messages.map((message, index) => {
+                                // Check if this is a received message (user is recipient, not sender)
+                                const userPrincipal = identity?.getPrincipal();
+                                const userPrincipalString = userPrincipal?.toString();
+                                const messageSenderString = message.sender.toString();
+                                const isReceivedMessage = userPrincipalString && messageSenderString !== userPrincipalString;
                                 
-                                {/* Action buttons */}
-                                <div style={{ 
-                                    display: 'flex', 
-                                    gap: '10px',
-                                    alignItems: 'center',
-                                    borderTop: `1px solid ${theme.colors.border}`,
-                                    paddingTop: '1rem'
-                                }}>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            navigate(`/msg/${message.id}`);
+                                // Check if this received message is new (only highlight received messages)
+                                const isNew = isReceivedMessage && isMessageNew(message.created_at);
+                                
+                                return (
+                                    <div
+                                        key={Number(message.id)}
+                                        className={`sms-card sms-card-animate ${isNew ? 'sms-new-glow' : ''}`}
+                                        onClick={() => {
+                                            setSelectedMessage(message);
+                                            setShowMessageModal(true);
                                         }}
                                         style={{
-                                            backgroundColor: `${theme.colors.accent}20`,
-                                            color: theme.colors.accent,
-                                            border: `1px solid ${theme.colors.accent}40`,
-                                            borderRadius: '6px',
-                                            padding: '6px 12px',
+                                            background: isNew ? `${smsPrimary}10` : theme.colors.secondaryBg,
+                                            borderRadius: '14px',
+                                            padding: '1.25rem',
+                                            border: isNew ? `2px solid ${smsPrimary}` : `1px solid ${theme.colors.border}`,
                                             cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontFamily: SYSTEM_FONT,
-                                            fontWeight: '500',
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.currentTarget.style.backgroundColor = `${theme.colors.accent}30`;
-                                            e.currentTarget.style.borderColor = theme.colors.accent;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`;
-                                            e.currentTarget.style.borderColor = `${theme.colors.accent}40`;
+                                            opacity: 0,
+                                            animationDelay: `${index * 0.05}s`
                                         }}
                                     >
-                                        🔗 View Thread
-                                    </button>
-                                    
-                                    {message.sender.toString() !== identity?.getPrincipal().toString() && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                replyToMessage(message);
-                                            }}
-                                            style={{
-                                                backgroundColor: `${theme.colors.success}20`,
-                                                color: theme.colors.success,
-                                                border: `1px solid ${theme.colors.success}40`,
-                                                borderRadius: '6px',
-                                                padding: '6px 12px',
-                                                cursor: 'pointer',
-                                                fontSize: '0.85rem',
-                                                fontFamily: SYSTEM_FONT,
-                                                fontWeight: '500',
-                                                transition: 'all 0.2s ease'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = `${theme.colors.success}30`;
-                                                e.currentTarget.style.borderColor = theme.colors.success;
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = `${theme.colors.success}20`;
-                                                e.currentTarget.style.borderColor = `${theme.colors.success}40`;
-                                            }}
-                                        >
-                                            ↩️ Reply
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                        {/* Header */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'flex-start',
+                                            marginBottom: '0.75rem',
+                                            flexWrap: 'wrap',
+                                            gap: '0.5rem'
+                                        }}>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ 
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.75rem',
+                                                    marginBottom: '0.5rem'
+                                                }}>
+                                                    <span style={{ 
+                                                        color: theme.colors.primaryText, 
+                                                        fontSize: '1.05rem', 
+                                                        fontWeight: '600',
+                                                        fontFamily: SYSTEM_FONT,
+                                                        lineHeight: '1.4',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap'
+                                                    }}>
+                                                        {message.subject}
+                                                    </span>
+                                                    {isNew && (
+                                                        <span style={{
+                                                            background: `${smsPrimary}20`,
+                                                            color: smsPrimary,
+                                                            padding: '0.15rem 0.5rem',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: '600',
+                                                            textTransform: 'uppercase',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            New
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ 
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem',
+                                                    flexWrap: 'wrap',
+                                                    fontSize: '0.85rem',
+                                                    color: theme.colors.mutedText
+                                                }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                        <FaUser size={10} />
+                                                        From:
+                                                    </span>
+                                                    <PrincipalDisplay 
+                                                        principal={message.sender}
+                                                        displayInfo={principalDisplayInfo.get(message.sender.toString())}
+                                                        showCopyButton={false}
+                                                        short={true}
+                                                        style={{ color: smsPrimary, fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                                {message.recipients.length > 1 && (
+                                                    <div style={{ 
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.35rem',
+                                                        fontSize: '0.8rem',
+                                                        color: theme.colors.mutedText,
+                                                        marginTop: '0.25rem'
+                                                    }}>
+                                                        <FaUsers size={10} />
+                                                        +{message.recipients.length - 1} recipients
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span 
+                                                style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '0.8rem',
+                                                    fontFamily: SYSTEM_FONT,
+                                                    whiteSpace: 'nowrap',
+                                                    flexShrink: 0
+                                                }}
+                                                title={getFullDate(message.created_at)}
+                                            >
+                                                {getRelativeTime(message.created_at)}
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Body Preview */}
+                                        <div style={{ 
+                                            color: theme.colors.secondaryText, 
+                                            fontSize: '0.9rem',
+                                            fontFamily: SYSTEM_FONT,
+                                            overflow: 'hidden',
+                                            maxHeight: '50px',
+                                            lineHeight: '1.5',
+                                            marginBottom: '0.75rem'
+                                        }}>
+                                            <MarkdownBody 
+                                                text={message.body.length > 120 ? message.body.substring(0, 120) + '...' : message.body}
+                                                style={{ fontSize: '0.9rem', lineHeight: '1.5' }}
+                                            />
+                                        </div>
+                                        
+                                        {/* Action buttons */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            gap: '0.5rem',
+                                            alignItems: 'center',
+                                            borderTop: `1px solid ${theme.colors.border}`,
+                                            paddingTop: '0.75rem'
+                                        }}>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigate(`/msg/${message.id}`);
+                                                }}
+                                                style={{
+                                                    background: `${smsPrimary}15`,
+                                                    color: smsPrimary,
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '0.5rem 0.75rem',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.8rem',
+                                                    fontFamily: SYSTEM_FONT,
+                                                    fontWeight: '500',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.35rem',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                <FaExternalLinkAlt size={10} />
+                                                Thread
+                                            </button>
+                                            
+                                            {message.sender.toString() !== identity?.getPrincipal().toString() && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        replyToMessage(message);
+                                                    }}
+                                                    style={{
+                                                        background: `${theme.colors.success}15`,
+                                                        color: theme.colors.success,
+                                                        border: 'none',
+                                                        borderRadius: '8px',
+                                                        padding: '0.5rem 0.75rem',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.8rem',
+                                                        fontFamily: SYSTEM_FONT,
+                                                        fontWeight: '500',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.35rem',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                >
+                                                    <FaReply size={10} />
+                                                    Reply
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
 
                 {/* Compose Modal */}
                 {showComposeModal && (
@@ -1422,15 +1730,6 @@ const SMS = () => {
                     </div>
                 )}
             </main>
-
-            <style>
-                {`
-                @keyframes spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
-                `}
-            </style>
         </div>
     );
 };

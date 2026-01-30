@@ -983,11 +983,21 @@ function Neuron() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
                             <div style={{
                                 width: '56px', height: '56px', borderRadius: '14px',
-                                background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                boxShadow: `0 4px 20px ${neuronPrimary}40`
+                                minWidth: '56px', maxWidth: '56px', flexShrink: 0,
+                                overflow: 'hidden'
                             }}>
-                                <FaUserShield size={24} color="white" />
+                                {snsLogo ? (
+                                    <img src={snsLogo} alt="SNS" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                    <div style={{
+                                        width: '100%', height: '100%',
+                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        boxShadow: `0 4px 20px ${neuronPrimary}40`
+                                    }}>
+                                        <FaUserShield size={24} color="white" />
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
