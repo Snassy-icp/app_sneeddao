@@ -282,6 +282,81 @@
     100% { transform: rotate(360deg); }
 }
 
+/* Vote button animations - subtle but satisfying */
+@keyframes vote-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+}
+
+@keyframes vote-press {
+    0% { transform: scale(1); }
+    100% { transform: scale(0.9); }
+}
+
+@keyframes score-bump {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes upvote-glow {
+    0% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 8px rgba(107, 142, 107, 0.8)); }
+    100% { filter: drop-shadow(0 0 0 transparent); }
+}
+
+@keyframes downvote-glow {
+    0% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 8px rgba(184, 92, 92, 0.8)); }
+    100% { filter: drop-shadow(0 0 0 transparent); }
+}
+
+/* Vote button base styling */
+.vote-btn {
+    transition: transform 0.1s ease, color 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.vote-btn:active:not(:disabled) {
+    animation: vote-press 0.1s ease forwards;
+}
+
+.vote-btn.vote-upvote-animate {
+    animation: vote-pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.vote-btn.vote-upvote-animate svg {
+    animation: upvote-glow 0.4s ease-out;
+}
+
+.vote-btn.vote-downvote-animate {
+    animation: vote-pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.vote-btn.vote-downvote-animate svg {
+    animation: downvote-glow 0.4s ease-out;
+}
+
+/* Score animation */
+.vote-score {
+    transition: color 0.15s ease;
+}
+
+.vote-score.score-animate {
+    animation: score-bump 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Hover effects for vote buttons */
+.vote-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+}
+
+.vote-btn:disabled {
+    cursor: not-allowed;
+}
+
 .error-state {
     text-align: center;
     padding: 3rem;

@@ -453,6 +453,7 @@ function ThreadViewer({
     const [userVotes, setUserVotes] = useState(new Map());
     const [threadVotes, setThreadVotes] = useState(new Map()); // Map<postId, {upvoted_neurons: [], downvoted_neurons: []}>
     const [optimisticScores, setOptimisticScores] = useState(new Map()); // Map<postId, {upvote_score: number, downvote_score: number}>
+    const [voteAnimations, setVoteAnimations] = useState(new Map()); // Map<postId, 'upvote' | 'downvote' | 'score'>
     
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
@@ -1168,6 +1169,22 @@ function ThreadViewer({
             })));
         }
         
+        // Trigger satisfying animation
+        setVoteAnimations(prev => new Map(prev.set(postIdStr, voteType === 'up' ? 'upvote' : 'downvote')));
+        // Also trigger score animation
+        setTimeout(() => {
+            setVoteAnimations(prev => new Map(prev.set(postIdStr + '_score', 'score')));
+        }, 50);
+        // Clear animations after they complete
+        setTimeout(() => {
+            setVoteAnimations(prev => {
+                const newState = new Map(prev);
+                newState.delete(postIdStr);
+                newState.delete(postIdStr + '_score');
+                return newState;
+            });
+        }, 400);
+        
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
         try {
@@ -1257,6 +1274,10 @@ function ThreadViewer({
         const post = discussionPosts.find(p => Number(p.id) === Number(postId));
         
         // Apply optimistic state update immediately (both scores AND vote states for retraction)
+        // Detect which type of vote is being retracted for animation
+        const currentVotes = threadVotes.get(postIdStr) || { upvoted_neurons: [], downvoted_neurons: [] };
+        const isRetractingUpvote = currentVotes.upvoted_neurons?.length > 0;
+        
         if (post) {
             const optimisticState = calculateOptimisticState(post, null, true);
             setOptimisticScores(prev => new Map(prev.set(postIdStr, {
@@ -1264,6 +1285,21 @@ function ThreadViewer({
                 votes: optimisticState.votes
             })));
         }
+        
+        // Trigger satisfying animation (use the type being retracted)
+        setVoteAnimations(prev => new Map(prev.set(postIdStr, isRetractingUpvote ? 'upvote' : 'downvote')));
+        setTimeout(() => {
+            setVoteAnimations(prev => new Map(prev.set(postIdStr + '_score', 'score')));
+        }, 50);
+        // Clear animations after they complete
+        setTimeout(() => {
+            setVoteAnimations(prev => {
+                const newState = new Map(prev);
+                newState.delete(postIdStr);
+                newState.delete(postIdStr + '_score');
+                return newState;
+            });
+        }, 400);
         
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
@@ -3306,6 +3342,7 @@ function ThreadViewer({
                             }}>
                                 {/* Upvote Button - Shows voting power */}
                                 <button
+                                    className={`vote-btn ${voteAnimations.get(post.id.toString()) === 'upvote' ? 'vote-upvote-animate' : ''}`}
                                     onClick={() => {
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
@@ -3336,21 +3373,23 @@ function ThreadViewer({
                                     const effectiveScores = getEffectiveScore(post);
                                     const score = effectiveScores.upvote_score - effectiveScores.downvote_score;
                                     const isOptimistic = optimisticScores.has(post.id.toString());
+                                    const hasScoreAnimation = voteAnimations.get(post.id.toString() + '_score') === 'score';
                                     
                                     return (
-                                        <span style={{ 
-                                            color: score > 0 ? '#6b8e6b' : 
-                                                   score < 0 ? '#b85c5c' : theme.colors.mutedText,
-                                            fontSize: '12px',
-                                            fontWeight: '600',
-                                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                                            minWidth: '24px',
-                                            textAlign: 'center',
-                                            padding: '0 2px',
-                                            opacity: isOptimistic ? 0.7 : 1,
-                                            fontStyle: isOptimistic ? 'italic' : 'normal'
-                                        }}
-                                        title={isOptimistic ? 'Updating score...' : undefined}
+                                        <span 
+                                            className={`vote-score ${hasScoreAnimation ? 'score-animate' : ''}`}
+                                            style={{ 
+                                                color: score > 0 ? '#6b8e6b' : 
+                                                       score < 0 ? '#b85c5c' : theme.colors.mutedText,
+                                                fontSize: '12px',
+                                                fontWeight: '600',
+                                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                                                minWidth: '24px',
+                                                textAlign: 'center',
+                                                padding: '0 2px',
+                                                display: 'inline-block'
+                                            }}
+                                            title={isOptimistic ? 'Updating score...' : undefined}
                                         >
                                             {(score > 0 ? '+' : '') + formatScore(score)}
                                         </span>
@@ -3359,6 +3398,7 @@ function ThreadViewer({
 
                                 {/* Downvote Button - Shows voting power */}
                                 <button
+                                    className={`vote-btn ${voteAnimations.get(post.id.toString()) === 'downvote' ? 'vote-downvote-animate' : ''}`}
                                     onClick={() => {
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
