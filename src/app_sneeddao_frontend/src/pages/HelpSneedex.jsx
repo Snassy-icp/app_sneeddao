@@ -2,483 +2,536 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
+import { 
+    FaStore, FaArrowLeft, FaShoppingCart, FaServer, FaBrain, FaCoins, 
+    FaGavel, FaLock, FaUserSecret, FaDollarSign, FaCheckCircle, 
+    FaExclamationTriangle, FaLightbulb, FaQuestionCircle
+} from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes storeFloat {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(3deg); }
+}
+
+.sneedex-help-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.sneedex-help-float {
+    animation: storeFloat 4s ease-in-out infinite;
+}
+`;
+
+// Page accent colors - teal theme for marketplace
+const sneedexPrimary = '#14b8a6';
+const sneedexSecondary = '#2dd4bf';
+
+const getStyles = (theme) => ({
+    container: {
+        maxWidth: '900px',
+        margin: '0 auto',
+        padding: '1.25rem',
+        color: theme.colors.primaryText,
+    },
+    backLink: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        fontSize: '0.9rem',
+        fontWeight: '500',
+        marginBottom: '1.5rem',
+        transition: 'opacity 0.2s ease',
+    },
+    section: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '1.25rem',
+        marginBottom: '1rem',
+        boxShadow: theme.colors.cardShadow,
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        marginBottom: '1rem',
+    },
+    sectionIcon: (color = sneedexPrimary) => ({
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        background: `linear-gradient(135deg, ${color}20, ${color}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+    }),
+    subheading: {
+        fontSize: '1.1rem',
+        fontWeight: '700',
+        color: theme.colors.primaryText,
+        margin: 0,
+    },
+    subsubheading: {
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: theme.colors.primaryText,
+        marginTop: '1rem',
+        marginBottom: '0.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
+    paragraph: {
+        marginBottom: '0.75rem',
+        lineHeight: '1.7',
+        color: theme.colors.secondaryText,
+        fontSize: '0.9rem',
+    },
+    list: {
+        marginLeft: '1.25rem',
+        marginBottom: '0.75rem',
+        paddingLeft: '0.5rem',
+    },
+    listItem: {
+        marginBottom: '0.5rem',
+        color: theme.colors.secondaryText,
+        fontSize: '0.9rem',
+        lineHeight: '1.6',
+    },
+    infoBox: {
+        background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.accent}08)`,
+        border: `1px solid ${theme.colors.accent}40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    tipBox: {
+        background: `linear-gradient(135deg, ${sneedexPrimary}15, ${sneedexPrimary}08)`,
+        border: `1px solid ${sneedexPrimary}40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    successBox: {
+        background: `linear-gradient(135deg, #10b98115, #10b98108)`,
+        border: `1px solid #10b98140`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    warningBox: {
+        background: `linear-gradient(135deg, #f59e0b15, #f59e0b08)`,
+        border: `1px solid #f59e0b40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    featureCard: {
+        background: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '0.75rem',
+    },
+    link: {
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        fontWeight: '500',
+    },
+    strong: {
+        color: theme.colors.primaryText,
+        fontWeight: '600',
+    },
+    stepList: {
+        marginLeft: '1.25rem',
+        marginTop: '0.5rem',
+    },
+    stepItem: {
+        marginBottom: '0.5rem',
+        color: theme.colors.secondaryText,
+        fontSize: '0.9rem',
+        lineHeight: '1.6',
+    },
+});
 
 function HelpSneedex() {
     const { theme } = useTheme();
-
-    const styles = {
-        container: {
-            minHeight: '100vh',
-            background: theme.colors.background,
-            color: theme.colors.primaryText
-        },
-        content: {
-            maxWidth: '900px',
-            margin: '0 auto',
-            padding: '40px 20px'
-        },
-        heading: {
-            fontSize: '2.5rem',
-            fontWeight: '700',
-            color: theme.colors.primaryText,
-            marginBottom: '1rem',
-            marginTop: '0'
-        },
-        subheading: {
-            fontSize: '1.8rem',
-            fontWeight: '600',
-            color: theme.colors.primaryText,
-            marginTop: '2.5rem',
-            marginBottom: '1rem',
-            borderBottom: `2px solid ${theme.colors.border}`,
-            paddingBottom: '0.5rem'
-        },
-        subsubheading: {
-            fontSize: '1.3rem',
-            fontWeight: '600',
-            color: theme.colors.primaryText,
-            marginTop: '1.5rem',
-            marginBottom: '0.75rem'
-        },
-        paragraph: {
-            fontSize: '1rem',
-            lineHeight: '1.7',
-            color: theme.colors.secondaryText,
-            marginBottom: '1rem'
-        },
-        list: {
-            marginLeft: '1.5rem',
-            marginBottom: '1rem',
-            color: theme.colors.secondaryText
-        },
-        listItem: {
-            marginBottom: '0.75rem',
-            lineHeight: '1.6'
-        },
-        infoBox: {
-            background: `${theme.colors.accent}15`,
-            border: `1px solid ${theme.colors.accent}50`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '1.5rem'
-        },
-        tipBox: {
-            background: `${theme.colors.success || '#4CAF50'}15`,
-            border: `1px solid ${theme.colors.success || '#4CAF50'}50`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '1.5rem'
-        },
-        warningBox: {
-            background: `${theme.colors.warning || '#FF9800'}15`,
-            border: `1px solid ${theme.colors.warning || '#FF9800'}50`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '1.5rem'
-        },
-        link: {
-            color: theme.colors.accent,
-            textDecoration: 'none',
-            fontWeight: '500',
-            transition: 'opacity 0.2s ease'
-        },
-        strong: {
-            color: theme.colors.primaryText,
-            fontWeight: '600'
-        },
-        code: {
-            background: theme.colors.secondaryBg,
-            padding: '2px 6px',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontSize: '0.9em',
-            color: theme.colors.accent
-        },
-        section: {
-            marginBottom: '2rem'
-        }
-    };
+    const styles = getStyles(theme);
 
     return (
-        <div style={styles.container}>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customAnimations}</style>
             <Header />
-            <div style={styles.content}>
-                <h1 style={styles.heading}>Sneedex Marketplace</h1>
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${sneedexPrimary}15 0%, ${sneedexSecondary}10 50%, transparent 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '3rem 1.25rem 2.5rem',
+                position: 'relative',
+                overflow: 'hidden',
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${sneedexPrimary}20 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${sneedexSecondary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
                 
-                <p style={styles.paragraph}>
-                    <strong style={styles.strong}>Sneedex</strong> is a decentralized marketplace for trading digital assets 
-                    on the Internet Computer. You can create offers to sell canisters, SNS neurons, and ICRC-1 tokens, 
-                    with all assets held securely in escrow until the sale completes.
-                </p>
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                        <div className="sneedex-help-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '20px',
+                            background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 12px 40px ${sneedexPrimary}50`,
+                        }}>
+                            <FaStore size={36} color="#fff" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: `${sneedexPrimary}20`,
+                                border: `1px solid ${sneedexPrimary}40`,
+                                borderRadius: '20px',
+                                padding: '4px 12px',
+                                marginBottom: '8px',
+                            }}>
+                                <FaShoppingCart size={12} color={sneedexPrimary} />
+                                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: sneedexPrimary }}>
+                                    Marketplace
+                                </span>
+                            </div>
+                            <h1 style={{
+                                fontSize: 'clamp(1.75rem, 4vw, 2.5rem)',
+                                fontWeight: '800',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                            }}>
+                                Sneedex Marketplace
+                            </h1>
+                        </div>
+                    </div>
+                    <p style={{
+                        fontSize: '1rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0,
+                        maxWidth: '600px',
+                        lineHeight: '1.6',
+                    }}>
+                        Trade canisters, SNS neurons, and tokens on the decentralized marketplace
+                    </p>
+                </div>
+            </div>
+
+            <main style={styles.container}>
+                <Link to="/help" style={styles.backLink}>
+                    <FaArrowLeft size={14} />
+                    Back to Help Center
+                </Link>
 
                 {/* What is Sneedex */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>What is Sneedex?</h2>
-                    
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaStore size={20} color={sneedexPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>What is Sneedex?</h2>
+                    </div>
                     <p style={styles.paragraph}>
                         Sneedex is a trustless marketplace that enables peer-to-peer trading of Internet Computer assets. 
-                        Unlike traditional marketplaces, Sneedex uses smart contract escrow to ensure safe trades—sellers 
-                        escrow their assets, and buyers pay with ICRC-1 tokens. The marketplace handles the exchange 
-                        automatically when a bid is accepted or a buyout price is met.
+                        Sellers escrow their assets, buyers pay with ICRC-1 tokens, and the marketplace handles the exchange 
+                        automatically when a bid is accepted or buyout price is met.
                     </p>
-                    
-                    <h3 style={styles.subsubheading}>Key Features</h3>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Trustless Escrow:</strong> Assets are held by the Sneedex canister 
-                            during the offer period, ensuring neither party can cheat
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Multiple Asset Types:</strong> Trade canisters, SNS neurons, 
-                            and ICRC-1 tokens
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Flexible Pricing:</strong> Set a minimum bid for auctions, 
-                            a buyout price for instant sales, or both
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Private Offers:</strong> Create offers visible only to 
-                            specific approved bidders for OTC deals
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Automatic Settlement:</strong> When offers complete, assets 
-                            and payments are transferred automatically
-                        </li>
-                    </ul>
+                    <div style={styles.infoBox}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Key Features</h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Trustless Escrow:</strong> Assets held by smart contract—neither party can cheat</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Multiple Asset Types:</strong> Trade canisters, SNS neurons, and ICRC-1 tokens</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Flexible Pricing:</strong> Minimum bid, buyout price, or both</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Private Offers:</strong> Restrict offers to specific approved bidders</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Automatic Settlement:</strong> Assets and payments transferred automatically</li>
+                        </ul>
+                    </div>
                 </div>
 
-                {/* Supported Asset Types */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Supported Asset Types</h2>
+                {/* Supported Assets */}
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#8b5cf6')}>
+                            <FaShoppingCart size={20} color="#8b5cf6" />
+                        </div>
+                        <h2 style={styles.subheading}>Supported Asset Types</h2>
+                    </div>
                     
-                    <h3 style={styles.subsubheading}>🖥️ Canisters</h3>
-                    <p style={styles.paragraph}>
-                        Sell complete Internet Computer canisters, including their code, state, and cycles. 
-                        When you escrow a canister, Sneedex becomes a controller, and upon sale completion, 
-                        control is transferred to the buyer.
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Regular Canisters:</strong> Any canister you control
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>ICP Neuron Managers:</strong> Canisters that manage ICP neurons 
-                            (created via <Link to="/create_icp_neuron" style={styles.link}>ICP Neuron Manager</Link>). 
-                            These show detailed neuron information including stake, maturity, and dissolve status
-                        </li>
-                    </ul>
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaServer size={14} color="#3b82f6" />
+                            Canisters
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Sell complete IC canisters including code, state, and cycles. ICP Neuron Manager canisters 
+                            show detailed neuron information including stake, maturity, and dissolve status.
+                        </p>
+                    </div>
                     
-                    <h3 style={styles.subsubheading}>🧠 SNS Neurons</h3>
-                    <p style={styles.paragraph}>
-                        Trade SNS governance neurons. When escrowed, Sneedex becomes the sole hotkey with full permissions. 
-                        Upon sale, the buyer receives the neuron with full control. The staked amount and any maturity 
-                        are transferred with the neuron.
-                    </p>
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaBrain size={14} color="#8b5cf6" />
+                            SNS Neurons
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Trade SNS governance neurons. The buyer receives the neuron with full control, including 
+                            staked amount and any maturity.
+                        </p>
+                    </div>
                     
-                    <h3 style={styles.subsubheading}>🪙 ICRC-1 Tokens</h3>
-                    <p style={styles.paragraph}>
-                        Bundle and sell any quantity of ICRC-1 tokens. Tokens are transferred to escrow when the offer 
-                        is created and delivered to the buyer upon sale completion.
-                    </p>
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCoins size={14} color="#f59e0b" />
+                            ICRC-1 Tokens
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Bundle and sell any quantity of ICRC-1 tokens. Tokens are escrowed and delivered upon sale.
+                        </p>
+                    </div>
                     
-                    <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
                             <strong style={styles.strong}>Bundle Multiple Assets:</strong> A single offer can include 
-                            multiple assets of different types. For example, you could sell a canister along with 
-                            some tokens as a package deal.
+                            multiple assets of different types for package deals!
                         </p>
                     </div>
                 </div>
 
                 {/* Creating an Offer */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Creating an Offer</h2>
-                    
-                    <p style={styles.paragraph}>
-                        To create an offer, go to <Link to="/sneedex_create" style={styles.link}>Create Offer</Link> and 
-                        follow these steps:
-                    </p>
-                    
-                    <h3 style={styles.subsubheading}>Step 1: Configure Pricing</h3>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Payment Token:</strong> Choose which ICRC-1 token buyers will 
-                            pay with (e.g., ICP, SNEED)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Minimum Bid:</strong> Set a starting price for auction-style 
-                            bidding (optional)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Buyout Price:</strong> Set a price for instant purchase (optional)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Expiration:</strong> Set when the offer ends (or no expiration 
-                            for permanent listings)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Minimum Bid Increment:</strong> Optionally require new bids to 
-                            exceed the current bid by a minimum amount
-                        </li>
-                    </ul>
-                    
-                    <div style={styles.tipBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>💡 Pricing Tip:</strong> You can set just a minimum bid 
-                            (auction only), just a buyout price (fixed price sale), or both (auction with buy-it-now option).
-                        </p>
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#10b981')}>
+                            <FaGavel size={20} color="#10b981" />
+                        </div>
+                        <h2 style={styles.subheading}>Creating an Offer</h2>
                     </div>
-                    
-                    <h3 style={styles.subsubheading}>Step 2: Add Assets</h3>
                     <p style={styles.paragraph}>
-                        Add the assets you want to sell. For each asset type:
+                        Go to <Link to="/sneedex_create" style={styles.link}>Create Offer</Link> to list your assets.
                     </p>
+                    
+                    <h4 style={styles.subsubheading}>Step 1: Configure Pricing</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Canisters:</strong> Select from your registered canisters, 
-                            wallet canisters, or ICP Neuron Managers. You must be a controller to auto-escrow
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>SNS Neurons:</strong> Select the SNS and neuron. You need 
-                            a hotkey with ManagePrincipals permission
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Tokens:</strong> Choose the token and amount. You need 
-                            sufficient balance plus one fee
-                        </li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Payment Token:</strong> Choose which ICRC-1 token buyers pay with</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Minimum Bid:</strong> Starting price for auction-style bidding (optional)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Buyout Price:</strong> Price for instant purchase (optional)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Expiration:</strong> When the offer ends</li>
                     </ul>
                     
-                    <h3 style={styles.subsubheading}>Step 3: Review & Create</h3>
+                    <h4 style={styles.subsubheading}>Step 2: Add Assets</h4>
                     <p style={styles.paragraph}>
-                        The system verifies you have proper ownership/permissions for all assets. If all assets pass 
-                        verification, clicking "Create Offer" will:
+                        Select canisters from your registered/wallet canisters, SNS neurons where you have ManagePrincipals 
+                        permission, or tokens with sufficient balance.
                     </p>
-                    <ol style={styles.list}>
-                        <li style={styles.listItem}>Create and finalize the offer</li>
-                        <li style={styles.listItem}>Automatically escrow all assets</li>
-                        <li style={styles.listItem}>Activate the offer in the marketplace</li>
-                    </ol>
+                    
+                    <h4 style={styles.subsubheading}>Step 3: Review & Create</h4>
+                    <p style={styles.paragraph}>
+                        The system verifies ownership/permissions. Clicking "Create Offer" will create, finalize, 
+                        escrow all assets, and activate the offer.
+                    </p>
                     
                     <div style={styles.warningBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>⚠️ Important:</strong> Once assets are escrowed, they remain 
-                            locked until the offer completes, expires, or you cancel it. Make sure you're ready to 
-                            commit the assets before creating the offer.
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>⚠️ Important:</strong> Once escrowed, assets remain locked until 
+                            the offer completes, expires, or you cancel it.
                         </p>
                     </div>
                 </div>
 
-                {/* Bidding on Offers */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Bidding on Offers</h2>
-                    
+                {/* Bidding */}
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#ec4899')}>
+                            <FaShoppingCart size={20} color="#ec4899" />
+                        </div>
+                        <h2 style={styles.subheading}>Bidding on Offers</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        Browse active offers on the <Link to="/sneedex_offers" style={styles.link}>Marketplace</Link> page. 
-                        Click on any offer to view details and place a bid.
+                        Browse active offers on the <Link to="/sneedex_offers" style={styles.link}>Marketplace</Link> page.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>How Bidding Works</h3>
+                    <h4 style={styles.subsubheading}>How Bidding Works</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Place a Bid:</strong> Enter your bid amount and click "Place Bid". 
-                            Your tokens are transferred to escrow automatically
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Outbid:</strong> If someone outbids you, your escrowed funds 
-                            are automatically refunded
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Buyout:</strong> If the offer has a buyout price, you can 
-                            purchase instantly at that price
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Winning:</strong> The seller can accept your bid, or if the 
-                            offer expires with your bid as highest, you win automatically
-                        </li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Place a Bid:</strong> Enter amount and click "Place Bid"—tokens are escrowed automatically</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Outbid:</strong> If someone outbids you, your funds are automatically refunded</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Buyout:</strong> Purchase instantly at the buyout price if available</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Winning:</strong> Seller accepts your bid, or you're highest when offer expires</li>
                     </ul>
-                    
-                    <h3 style={styles.subsubheading}>Bid Escrow</h3>
-                    <p style={styles.paragraph}>
-                        When you place a bid, tokens are transferred to a unique escrow subaccount. You can view your 
-                        escrow balance on the offer page. If you're outbid or the offer is cancelled, your funds are 
-                        automatically returned (minus one transaction fee).
-                    </p>
                     
                     <div style={styles.tipBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
                             <strong style={styles.strong}>💡 Tip:</strong> Use the "Min" button to automatically fill 
-                            in the minimum required bid amount when there's a minimum bid increment.
+                            the minimum required bid when there's a minimum bid increment.
                         </p>
                     </div>
                 </div>
 
-                {/* Offer Lifecycle */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Offer Lifecycle</h2>
-                    
-                    <h3 style={styles.subsubheading}>Offer States</h3>
+                {/* Offer States */}
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#6366f1')}>
+                            <FaLock size={20} color="#6366f1" />
+                        </div>
+                        <h2 style={styles.subheading}>Offer Lifecycle</h2>
+                    </div>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Draft:</strong> Initial state when creating an offer
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Pending Escrow:</strong> Offer created, waiting for assets to be escrowed
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Active:</strong> All assets escrowed, offer is live in the marketplace
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Completed:</strong> A bid was accepted or buyout price was met
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Expired:</strong> Offer ended without a sale (no winning bid)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Cancelled:</strong> Seller cancelled the offer
-                        </li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Draft:</strong> Initial state when creating</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Pending Escrow:</strong> Created, waiting for assets to be escrowed</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Active:</strong> All assets escrowed, live in marketplace</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Completed:</strong> Bid accepted or buyout price met</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Expired:</strong> Ended without a sale</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Cancelled:</strong> Seller cancelled the offer</li>
                     </ul>
                     
-                    <h3 style={styles.subsubheading}>Settlement</h3>
-                    <p style={styles.paragraph}>
-                        When an offer completes (via accepted bid or buyout):
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>The escrowed assets are automatically delivered to the buyer</li>
-                        <li style={styles.listItem}>The winning bid amount is transferred to the seller</li>
-                        <li style={styles.listItem}>A marketplace fee (if applicable) is deducted from the payment</li>
-                        <li style={styles.listItem}>Any losing bids are refunded automatically</li>
-                    </ul>
+                    <div style={styles.successBox}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCheckCircle size={14} color="#10b981" />
+                            Automatic Settlement
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            When an offer completes: assets delivered to buyer, payment to seller (minus marketplace fee), 
+                            and losing bids refunded automatically.
+                        </p>
+                    </div>
                 </div>
 
                 {/* Private Offers */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Private Offers (OTC)</h2>
-                    
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#f59e0b')}>
+                            <FaUserSecret size={20} color="#f59e0b" />
+                        </div>
+                        <h2 style={styles.subheading}>Private Offers (OTC)</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        Private offers allow you to restrict who can bid on your offer. This is useful for:
+                        Restrict who can bid on your offer—useful for pre-arranged deals with specific buyers, 
+                        exclusive sales to verified parties, or avoiding public price discovery.
                     </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>Pre-arranged deals with specific buyers</li>
-                        <li style={styles.listItem}>Exclusive sales to verified parties</li>
-                        <li style={styles.listItem}>Avoiding public price discovery</li>
-                    </ul>
-                    
                     <p style={styles.paragraph}>
-                        To create a private offer, enable "Private Offer" when configuring pricing and add the principal 
-                        IDs of approved bidders. Only these principals will be able to see and bid on your offer.
-                    </p>
-                    
-                    <p style={styles.paragraph}>
-                        Private offers appear in the "Private" tab of the marketplace, but only for the creator and 
-                        approved bidders.
+                        Enable "Private Offer" when configuring pricing and add approved bidder principals. 
+                        Only these principals can see and bid on your offer.
                     </p>
                 </div>
 
                 {/* Fees */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Fees</h2>
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#3b82f6')}>
+                            <FaDollarSign size={20} color="#3b82f6" />
+                        </div>
+                        <h2 style={styles.subheading}>Fees</h2>
+                    </div>
                     
-                    <h3 style={styles.subsubheading}>Marketplace Fee</h3>
+                    <h4 style={styles.subsubheading}>Marketplace Fee</h4>
                     <p style={styles.paragraph}>
-                        Sneedex charges a small percentage fee on successful sales. This fee is deducted from the 
-                        winning bid amount before the seller receives payment. The current fee rate is displayed 
-                        when creating an offer.
+                        A small percentage fee on successful sales, deducted from the winning bid before seller receives payment.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Transaction Fees</h3>
+                    <h4 style={styles.subsubheading}>Transaction Fees</h4>
                     <p style={styles.paragraph}>
-                        Standard ICRC-1 transaction fees apply for:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>Placing bids (one fee)</li>
-                        <li style={styles.listItem}>Refunding outbid amounts (one fee deducted from refund)</li>
-                        <li style={styles.listItem}>Escrowing token assets (one fee)</li>
-                        <li style={styles.listItem}>Receiving payment as seller (one fee deducted)</li>
-                    </ul>
-                </div>
-
-                {/* Managing Your Offers and Bids */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Managing Offers & Bids</h2>
-                    
-                    <p style={styles.paragraph}>
-                        Visit <Link to="/sneedex_my" style={styles.link}>My Sneedex</Link> to see all your activity:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>My Offers:</strong> View and manage offers you've created. 
-                            Accept bids, cancel offers, or reclaim assets from expired offers
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>My Bids:</strong> Track your bids across all offers. 
-                            See bid status, escrow balances, and claim won assets
-                        </li>
-                    </ul>
-                </div>
-
-                {/* Common Questions */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Common Questions</h2>
-                    
-                    <h3 style={styles.subsubheading}>What happens if no one bids on my offer?</h3>
-                    <p style={styles.paragraph}>
-                        If your offer expires without any bids, you can reclaim your escrowed assets. 
-                        Go to your offer page and click "Reclaim Assets" to return them to your control.
-                    </p>
-                    
-                    <h3 style={styles.subsubheading}>Can I cancel an active offer?</h3>
-                    <p style={styles.paragraph}>
-                        Yes, you can cancel an active offer at any time. If there are existing bids, all bidders 
-                        will be automatically refunded when you cancel.
-                    </p>
-                    
-                    <h3 style={styles.subsubheading}>How do I know if a canister is verified?</h3>
-                    <p style={styles.paragraph}>
-                        For ICP Neuron Manager canisters, Sneedex verifies the WASM hash against known official 
-                        versions. A green checkmark indicates the canister is running verified code.
-                    </p>
-                    
-                    <h3 style={styles.subsubheading}>What if the escrow transaction fails?</h3>
-                    <p style={styles.paragraph}>
-                        If auto-escrow fails during offer creation, you can manually escrow assets from the 
-                        offer details page. The page shows the status of each asset and provides instructions 
-                        for manual escrow if needed.
-                    </p>
-                    
-                    <h3 style={styles.subsubheading}>Are my funds safe?</h3>
-                    <p style={styles.paragraph}>
-                        Yes. All assets and bids are held in smart contract escrow controlled by the Sneedex canister. 
-                        The system ensures atomic swaps—either both parties get what they're owed, or the trade 
-                        doesn't happen.
+                        Standard ICRC-1 fees apply for placing bids, refunding outbid amounts, escrowing token assets, 
+                        and receiving payment.
                     </p>
                 </div>
 
-                {/* Related Help Topics */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Related Help Topics</h2>
+                {/* FAQ */}
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon(theme.colors.accent)}>
+                            <FaQuestionCircle size={20} color={theme.colors.accent} />
+                        </div>
+                        <h2 style={styles.subheading}>Common Questions</h2>
+                    </div>
                     
+                    <h4 style={styles.subsubheading}>What if no one bids?</h4>
+                    <p style={styles.paragraph}>
+                        If your offer expires without bids, reclaim your escrowed assets from the offer page.
+                    </p>
+                    
+                    <h4 style={styles.subsubheading}>Can I cancel an active offer?</h4>
+                    <p style={styles.paragraph}>
+                        Yes, at any time. Existing bidders are automatically refunded when you cancel.
+                    </p>
+                    
+                    <h4 style={styles.subsubheading}>How do I know if a canister is verified?</h4>
+                    <p style={styles.paragraph}>
+                        For ICP Neuron Manager canisters, Sneedex verifies the WASM hash against known official versions. 
+                        A green checkmark indicates verified code.
+                    </p>
+                    
+                    <h4 style={styles.subsubheading}>Are my funds safe?</h4>
+                    <p style={styles.paragraph}>
+                        Yes. All assets and bids are held in smart contract escrow. The system ensures atomic swaps—either 
+                        both parties get what they're owed, or the trade doesn't happen.
+                    </p>
+                </div>
+
+                {/* Related Topics */}
+                <div style={styles.section} className="sneedex-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaArrowLeft size={20} color={sneedexPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>Related Help Topics</h2>
+                    </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Canisters</Link> - 
-                            Learn about creating and managing ICP Neuron Manager canisters
+                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Canisters</Link> — Create and manage neuron manager canisters
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> - 
-                            Learn about SNS neuron management and hotkeys
+                            <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> — SNS neuron management and hotkeys
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help/wallet" style={styles.link}>Understanding Your Wallet</Link> - 
-                            Learn about managing tokens and assets
+                            <Link to="/help/wallet" style={styles.link}>Understanding Your Wallet</Link> — Managing tokens and assets
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help" style={styles.link}>Help Center</Link> - Browse all help topics
+                            <Link to="/help" style={styles.link}>Help Center</Link> — Browse all help topics
                         </li>
                     </ul>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }
 
 export default HelpSneedex;
-

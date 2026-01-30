@@ -3,118 +3,201 @@ import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import { 
+    FaServer, FaArrowLeft, FaNetworkWired, FaWallet, FaLock, FaVoteYea, 
+    FaCoins, FaKey, FaCut, FaShieldAlt, FaCogs, FaRocket, 
+    FaLightbulb, FaQuestionCircle, FaCheckCircle, FaExclamationTriangle
+} from 'react-icons/fa';
 
-// Theme-aware styles function
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes serverFloat {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(3deg); }
+}
+
+.icp-help-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.icp-help-float {
+    animation: serverFloat 4s ease-in-out infinite;
+}
+`;
+
+// Page accent colors - blue theme for ICP/infrastructure
+const icpPrimary = '#3b82f6';
+const icpSecondary = '#60a5fa';
+
 const getStyles = (theme) => ({
     container: {
-        maxWidth: '1200px',
+        maxWidth: '900px',
         margin: '0 auto',
-        padding: '2rem',
+        padding: '1.25rem',
         color: theme.colors.primaryText,
+    },
+    backLink: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        fontSize: '0.9rem',
+        fontWeight: '500',
+        marginBottom: '1.5rem',
+        transition: 'opacity 0.2s ease',
     },
     section: {
-        backgroundColor: theme.colors.secondaryBg,
-        borderRadius: '8px',
-        padding: '2rem',
-        marginBottom: '2rem',
-    },
-    heading: {
-        fontSize: '2.5rem',
-        marginBottom: '1.5rem',
-        color: theme.colors.primaryText,
-    },
-    subheading: {
-        fontSize: '1.8rem',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '1.25rem',
         marginBottom: '1rem',
+        boxShadow: theme.colors.cardShadow,
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        marginBottom: '1rem',
+    },
+    sectionIcon: (color = icpPrimary) => ({
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        background: `linear-gradient(135deg, ${color}20, ${color}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+    }),
+    subheading: {
+        fontSize: '1.1rem',
+        fontWeight: '700',
         color: theme.colors.primaryText,
-        marginTop: '1.5rem',
+        margin: 0,
     },
     subsubheading: {
-        fontSize: '1.4rem',
-        marginBottom: '0.8rem',
+        fontSize: '1rem',
+        fontWeight: '600',
         color: theme.colors.primaryText,
         marginTop: '1rem',
+        marginBottom: '0.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
     },
     paragraph: {
-        marginBottom: '1rem',
-        lineHeight: '1.6',
+        marginBottom: '0.75rem',
+        lineHeight: '1.7',
         color: theme.colors.secondaryText,
-        fontSize: '1.1rem',
+        fontSize: '0.9rem',
     },
     list: {
-        marginLeft: '2rem',
-        marginBottom: '1rem',
+        marginLeft: '1.25rem',
+        marginBottom: '0.75rem',
+        paddingLeft: '0.5rem',
     },
     listItem: {
-        marginBottom: '0.8rem',
+        marginBottom: '0.5rem',
         color: theme.colors.secondaryText,
-        fontSize: '1.1rem',
+        fontSize: '0.9rem',
         lineHeight: '1.6',
     },
-    highlight: {
-        backgroundColor: theme.colors.tertiaryBg,
-        padding: '1.5rem',
-        borderRadius: '8px',
-        marginBottom: '1.5rem',
-    },
-    warningBox: {
-        backgroundColor: theme.colors.warningBg || theme.colors.tertiaryBg,
-        padding: '1.5rem',
-        borderRadius: '8px',
-        marginBottom: '1.5rem',
-        borderLeft: `4px solid ${theme.colors.warning || '#f59e0b'}`,
-    },
     infoBox: {
-        backgroundColor: theme.colors.infoBg || theme.colors.tertiaryBg,
-        padding: '1.5rem',
-        borderRadius: '8px',
-        marginBottom: '1.5rem',
-        borderLeft: `4px solid ${theme.colors.info || theme.colors.accent}`,
+        background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.accent}08)`,
+        border: `1px solid ${theme.colors.accent}40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    tipBox: {
+        background: `linear-gradient(135deg, ${icpPrimary}15, ${icpPrimary}08)`,
+        border: `1px solid ${icpPrimary}40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
     },
     successBox: {
-        backgroundColor: theme.colors.successBg || theme.colors.tertiaryBg,
-        padding: '1.5rem',
-        borderRadius: '8px',
-        marginBottom: '1.5rem',
-        borderLeft: `4px solid ${theme.colors.success || '#22c55e'}`,
+        background: `linear-gradient(135deg, #10b98115, #10b98108)`,
+        border: `1px solid #10b98140`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
     },
-    strong: {
-        color: theme.colors.accent,
-        fontWeight: 'bold',
+    warningBox: {
+        background: `linear-gradient(135deg, #f59e0b15, #f59e0b08)`,
+        border: `1px solid #f59e0b40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
     },
-    code: {
-        backgroundColor: theme.colors.tertiaryBg,
-        padding: '0.2rem 0.5rem',
-        borderRadius: '4px',
-        fontFamily: 'monospace',
-        fontSize: '0.95rem',
+    featureCard: {
+        background: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '0.75rem',
     },
     link: {
         color: theme.colors.accent,
         textDecoration: 'none',
+        fontWeight: '500',
     },
-    scenarioBox: {
-        backgroundColor: theme.colors.tertiaryBg,
-        padding: '1.5rem',
-        borderRadius: '8px',
-        marginBottom: '1rem',
+    strong: {
+        color: theme.colors.primaryText,
+        fontWeight: '600',
+    },
+    code: {
+        background: theme.colors.secondaryBg,
+        padding: '2px 6px',
+        borderRadius: '4px',
+        fontFamily: 'monospace',
+        fontSize: '0.85em',
+        color: theme.colors.accent,
     },
     stepList: {
-        marginLeft: '2rem',
-        marginTop: '1rem',
+        marginLeft: '1.25rem',
+        marginTop: '0.5rem',
     },
     stepItem: {
-        marginBottom: '0.8rem',
+        marginBottom: '0.5rem',
         color: theme.colors.secondaryText,
-        fontSize: '1.05rem',
+        fontSize: '0.9rem',
         lineHeight: '1.6',
     },
-    featureCard: {
-        backgroundColor: theme.colors.tertiaryBg,
+    diagramBox: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '8px',
         padding: '1.5rem',
-        borderRadius: '8px',
         marginBottom: '1rem',
-        border: `1px solid ${theme.colors.border}`,
+    },
+    diagramItem: {
+        background: theme.colors.secondaryBg,
+        border: `2px solid ${icpPrimary}`,
+        borderRadius: '12px',
+        padding: '12px 24px',
+        textAlign: 'center',
+        minWidth: '220px',
+    },
+    diagramArrow: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        color: theme.colors.mutedText,
     },
 });
 
@@ -125,739 +208,373 @@ function HelpIcpNeuronManager() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customAnimations}</style>
             <Header />
-            <main style={styles.container}>
-                {/* Back to Help */}
-                <div style={{ marginBottom: '1.5rem' }}>
-                    <Link 
-                        to="/help" 
-                        style={styles.link}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        ← Back to Help
-                    </Link>
-                </div>
-
-                {/* Main Title */}
-                <div style={styles.section}>
-                    <h1 style={styles.heading}>ICP Neuron Manager Canisters</h1>
-                    <p style={styles.paragraph}>
-                        This guide explains how ICP Neuron Manager canisters work, how to create and manage them, 
-                        and how they enable secure, decentralized management of ICP neurons on the Network Nervous System (NNS).
-                    </p>
-                </div>
-
-                {/* What is an ICP Neuron Manager? */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>What is an ICP Neuron Manager?</h2>
-                    <p style={styles.paragraph}>
-                        An ICP Neuron Manager is a <strong style={styles.strong}>smart contract (canister)</strong> deployed on the 
-                        Internet Computer that acts as the controller of your ICP neurons. Instead of your personal wallet directly 
-                        controlling neurons, the canister becomes the neuron controller, and you control the canister.
-                    </p>
-                    
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '2rem',
-                        marginBottom: '1.5rem',
-                    }}>
-                        {/* Your Wallet Box */}
-                        <div style={{
-                            backgroundColor: theme.colors.tertiaryBg,
-                            border: `2px solid ${theme.colors.accent}`,
-                            borderRadius: '12px',
-                            padding: '16px 32px',
-                            textAlign: 'center',
-                            minWidth: '280px',
-                        }}>
-                            <div style={{ color: theme.colors.accent, fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                Your Wallet
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                (Controller of the Canister)
-                            </div>
-                        </div>
-                        
-                        {/* Arrow down */}
-                        <div style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${icpPrimary}15 0%, ${icpSecondary}10 50%, transparent 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '3rem 1.25rem 2.5rem',
+                position: 'relative',
+                overflow: 'hidden',
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${icpPrimary}20 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${icpSecondary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
+                
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                        <div className="icp-help-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '20px',
+                            background: `linear-gradient(135deg, ${icpPrimary}, ${icpSecondary})`,
+                            display: 'flex',
                             alignItems: 'center',
-                            color: theme.colors.mutedText,
+                            justifyContent: 'center',
+                            boxShadow: `0 12px 40px ${icpPrimary}50`,
                         }}>
-                            <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>controls</div>
-                            <div style={{ fontSize: '1.5rem' }}>↓</div>
+                            <FaServer size={36} color="#fff" />
                         </div>
-                        
-                        {/* Canister Box */}
-                        <div style={{
-                            backgroundColor: theme.colors.tertiaryBg,
-                            border: `2px solid ${theme.colors.accent}`,
-                            borderRadius: '12px',
-                            padding: '16px 32px',
-                            textAlign: 'center',
-                            minWidth: '280px',
-                        }}>
-                            <div style={{ color: theme.colors.accent, fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                ICP Neuron Manager Canister
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: `${icpPrimary}20`,
+                                border: `1px solid ${icpPrimary}40`,
+                                borderRadius: '20px',
+                                padding: '4px 12px',
+                                marginBottom: '8px',
+                            }}>
+                                <FaNetworkWired size={12} color={icpPrimary} />
+                                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: icpPrimary }}>
+                                    NNS Governance
+                                </span>
                             </div>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                (On-chain smart contract)
-                            </div>
-                        </div>
-                        
-                        {/* Arrow down */}
-                        <div style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            alignItems: 'center',
-                            color: theme.colors.mutedText,
-                        }}>
-                            <div style={{ fontSize: '0.85rem', marginBottom: '4px' }}>controls</div>
-                            <div style={{ fontSize: '1.5rem' }}>↓</div>
-                        </div>
-                        
-                        {/* Neurons Box */}
-                        <div style={{
-                            backgroundColor: theme.colors.tertiaryBg,
-                            border: `2px solid ${theme.colors.accent}`,
-                            borderRadius: '12px',
-                            padding: '16px 32px',
-                            textAlign: 'center',
-                            minWidth: '280px',
-                        }}>
-                            <div style={{ color: theme.colors.accent, fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                ICP Neurons
-                            </div>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                (Staked on NNS Governance)
-                            </div>
+                            <h1 style={{
+                                fontSize: 'clamp(1.75rem, 4vw, 2.5rem)',
+                                fontWeight: '800',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                            }}>
+                                ICP Neuron Manager Canisters
+                            </h1>
                         </div>
                     </div>
+                    <p style={{
+                        fontSize: '1rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0,
+                        maxWidth: '600px',
+                        lineHeight: '1.6',
+                    }}>
+                        Create and manage dedicated canisters for secure, decentralized ICP neuron control
+                    </p>
+                </div>
+            </div>
 
+            <main style={styles.container}>
+                <Link to="/help" style={styles.backLink}>
+                    <FaArrowLeft size={14} />
+                    Back to Help Center
+                </Link>
+
+                {/* What is an ICP Neuron Manager */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaServer size={20} color={icpPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>What is an ICP Neuron Manager?</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        An ICP Neuron Manager is a smart contract (canister) deployed on the Internet Computer that acts as 
+                        the controller of your ICP neurons. Instead of your personal wallet directly controlling neurons, 
+                        the canister becomes the neuron controller, and you control the canister.
+                    </p>
+                    
+                    {/* Diagram */}
+                    <div style={styles.diagramBox}>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: icpPrimary, fontWeight: 'bold' }}>Your Wallet</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(Controller of Canister)</div>
+                        </div>
+                        <div style={styles.diagramArrow}>
+                            <div style={{ fontSize: '0.8rem' }}>controls</div>
+                            <div style={{ fontSize: '1.5rem' }}>↓</div>
+                        </div>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: icpPrimary, fontWeight: 'bold' }}>ICP Neuron Manager</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(On-chain smart contract)</div>
+                        </div>
+                        <div style={styles.diagramArrow}>
+                            <div style={{ fontSize: '0.8rem' }}>controls</div>
+                            <div style={{ fontSize: '1.5rem' }}>↓</div>
+                        </div>
+                        <div style={styles.diagramItem}>
+                            <div style={{ color: icpPrimary, fontWeight: 'bold' }}>ICP Neurons</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(Staked on NNS)</div>
+                        </div>
+                    </div>
+                    
                     <div style={styles.infoBox}>
-                        <h3 style={{...styles.subsubheading, marginTop: 0}}>Key Benefits</h3>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Decentralized Control:</strong> Your neurons are controlled by 
-                                on-chain code, not a centralized service
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Multi-Controller Support:</strong> Multiple wallets can control 
-                                the same canister (and thus the same neurons)
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Programmable:</strong> The canister can automate neuron management 
-                                and implement custom logic
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Upgradeable:</strong> The canister code can be upgraded to add 
-                                new features while preserving your neurons
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Transparent:</strong> All operations are on-chain and auditable
-                            </li>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Key Benefits</h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Decentralized Control:</strong> Neurons controlled by on-chain code, not centralized services</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Multi-Controller:</strong> Multiple wallets can control the same canister and neurons</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Programmable:</strong> Automate neuron management with custom logic</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Upgradeable:</strong> Update canister code while preserving neurons</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Transparent:</strong> All operations are on-chain and auditable</li>
                         </ul>
                     </div>
                 </div>
 
-                {/* How to Create a Neuron Manager */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Creating a Neuron Manager</h2>
-                    <p style={styles.paragraph}>
-                        Creating an ICP Neuron Manager is simple and can be done directly from Sneed Hub:
-                    </p>
-
-                    <div style={styles.scenarioBox}>
-                        <h3 style={{...styles.subsubheading, marginTop: 0}}>Steps to Create</h3>
-                        <ol style={styles.stepList}>
-                            <li style={styles.stepItem}>
-                                Navigate to the <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link> page
-                            </li>
-                            <li style={styles.stepItem}>
-                                Click "Pay" to send the required ICP creation fee
-                            </li>
-                            <li style={styles.stepItem}>
-                                Once payment is confirmed, click "Create" to deploy your new canister
-                            </li>
-                            <li style={styles.stepItem}>
-                                Your new canister will be created with you as the controller
-                            </li>
-                            <li style={styles.stepItem}>
-                                The factory will automatically fund the canister with cycles for operation
-                            </li>
-                        </ol>
+                {/* Creating */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#10b981')}>
+                            <FaRocket size={20} color="#10b981" />
+                        </div>
+                        <h2 style={styles.subheading}>Creating a Neuron Manager</h2>
                     </div>
-
-                    <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>What You Get:</strong> A dedicated canister on the Internet Computer 
-                            that you fully control. The canister comes pre-funded with cycles and is ready to create and manage 
-                            ICP neurons immediately.
+                    <ol style={styles.stepList}>
+                        <li style={styles.stepItem}>Navigate to the <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link> page</li>
+                        <li style={styles.stepItem}>Click "Pay" to send the required ICP creation fee</li>
+                        <li style={styles.stepItem}>Once payment is confirmed, click "Create" to deploy your canister</li>
+                        <li style={styles.stepItem}>Your canister is created with you as the controller, funded with cycles</li>
+                    </ol>
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>What You Get:</strong> A dedicated canister you fully control, pre-funded 
+                            with cycles and ready to create/manage ICP neurons immediately.
                         </p>
                     </div>
                 </div>
 
-                {/* Managing Your Canister */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Managing Your Canister</h2>
+                {/* Neuron Operations */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#8b5cf6')}>
+                            <FaCogs size={20} color="#8b5cf6" />
+                        </div>
+                        <h2 style={styles.subheading}>Neuron Operations</h2>
+                    </div>
                     
-                    <p style={styles.paragraph}>
-                        Once created, you can access your neuron manager from multiple locations:
-                    </p>
-
-                    <h3 style={styles.subsubheading}>Access Points</h3>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Wallet Page:</strong> The <Link to="/wallet" style={styles.link}>Wallet</Link> page 
-                            shows all your ICP Neuron Managers in a dedicated section with quick access to manage them
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Canisters Page:</strong> The <Link to="/canisters" style={styles.link}>Canisters</Link> page 
-                            lists all your neuron managers under "ICP Neuron Managers"
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Direct URL:</strong> Access any manager directly at{' '}
-                            <span style={styles.code}>/icp_neuron_manager/CANISTER_ID</span>
-                        </li>
-                    </ul>
-
-                    <h3 style={styles.subsubheading}>Canister Information</h3>
-                    <p style={styles.paragraph}>
-                        The neuron manager page shows important information about your canister:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Canister ID:</strong> The unique identifier for your canister on the IC
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>ICP Balance:</strong> ICP held by the canister (for staking new neurons)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Cycles Balance:</strong> Computational resources for canister operation
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Memory Usage:</strong> How much memory the canister is using
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Module Hash:</strong> The WASM hash of the installed code (for version verification)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Version:</strong> The current software version
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Controllers:</strong> The principals that can control the canister
-                        </li>
-                    </ul>
-                </div>
-
-                {/* Creating and Managing Neurons */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Creating and Managing Neurons</h2>
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaLock size={14} color="#f59e0b" />
+                            Dissolve Management
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Start/Stop Dissolving</li>
+                            <li style={styles.listItem}>Increase Dissolve Delay</li>
+                        </ul>
+                    </div>
                     
-                    <p style={styles.paragraph}>
-                        Your neuron manager canister interacts with the NNS governance canister to create and manage ICP neurons.
-                    </p>
-
-                    <h3 style={styles.subsubheading}>Creating a Neuron</h3>
-                    <div style={styles.scenarioBox}>
-                        <ol style={styles.stepList}>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Set Stake Amount:</strong> Enter how much ICP to stake (minimum 1 ICP)
-                            </li>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Set Dissolve Delay:</strong> Choose the initial lock-up period 
-                                (minimum 6 months for voting rewards)
-                            </li>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Create:</strong> ICP is sent directly from your wallet to NNS to create the neuron
-                            </li>
-                        </ol>
-                    </div>
-
-                    <h3 style={styles.subsubheading}>Neuron Operations</h3>
-                    <p style={styles.paragraph}>
-                        Once you have neurons, you can perform all standard NNS operations through your manager:
-                    </p>
-
                     <div style={styles.featureCard}>
-                        <h4 style={{...styles.subsubheading, marginTop: 0}}>🔒 Dissolve Management</h4>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Start Dissolving:</strong> Begin the countdown to unlock your stake
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Stop Dissolving:</strong> Pause the countdown and maintain voting power
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Increase Dissolve Delay:</strong> Extend lock-up for more voting power
-                            </li>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaVoteYea size={14} color="#10b981" />
+                            Voting & Following
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Vote on NNS proposals</li>
+                            <li style={styles.listItem}>Set following for automatic voting</li>
+                            <li style={styles.listItem}>Configure different followees by topic</li>
                         </ul>
                     </div>
-
+                    
                     <div style={styles.featureCard}>
-                        <h4 style={{...styles.subsubheading, marginTop: 0}}>🗳️ Voting & Following</h4>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Vote on Proposals:</strong> Cast votes on NNS governance proposals
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Set Following:</strong> Configure neurons to follow for automatic voting
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Follow by Topic:</strong> Set different followees for different proposal topics
-                            </li>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCoins size={14} color="#3b82f6" />
+                            Stake & Rewards
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Increase stake on existing neurons</li>
+                            <li style={styles.listItem}>Spawn maturity into new neurons</li>
+                            <li style={styles.listItem}>Disburse maturity to liquid ICP</li>
+                            <li style={styles.listItem}>Disburse from dissolved neurons</li>
                         </ul>
                     </div>
-
+                    
                     <div style={styles.featureCard}>
-                        <h4 style={{...styles.subsubheading, marginTop: 0}}>💰 Stake & Rewards</h4>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Increase Stake:</strong> Add more ICP to an existing neuron
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Spawn Maturity:</strong> Convert accumulated rewards into new neurons
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Disburse Maturity:</strong> Convert rewards to liquid ICP
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Disburse:</strong> Withdraw stake from fully dissolved neurons
-                            </li>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaKey size={14} color="#ec4899" />
+                            Hotkey Management
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Add hotkeys for voting access</li>
+                            <li style={styles.listItem}>Remove hotkeys as needed</li>
                         </ul>
-                    </div>
-
-                    <div style={styles.featureCard}>
-                        <h4 style={{...styles.subsubheading, marginTop: 0}}>🔑 Hotkey Management</h4>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Add Hotkeys:</strong> Allow other principals to vote with your neurons
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Remove Hotkeys:</strong> Revoke access from principals
-                            </li>
-                        </ul>
-                        <div style={{
-                            marginTop: '12px',
-                            padding: '10px 12px',
-                            background: 'rgba(99, 102, 241, 0.1)',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            lineHeight: '1.5'
-                        }}>
-                            <strong>💡 Tip:</strong> Add your NNS principal ID as a hotkey to your neurons, and you'll be able 
-                            to vote with them directly from the{' '}
-                            <a href="https://nns.ic0.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
-                                NNS dApp
-                            </a>!
+                        <div style={{ ...styles.tipBox, marginTop: '0.5rem', marginBottom: 0 }}>
+                            <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                                <strong style={styles.strong}>💡 Tip:</strong> Add your NNS principal as a hotkey to vote directly 
+                                from the <a href="https://nns.ic0.app" target="_blank" rel="noopener noreferrer" style={styles.link}>NNS dApp</a>!
+                            </p>
                         </div>
                     </div>
-
+                    
                     <div style={styles.featureCard}>
-                        <h4 style={{...styles.subsubheading, marginTop: 0}}>✂️ Advanced Operations</h4>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Split Neuron:</strong> Divide one neuron into multiple neurons
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Merge Neurons:</strong> Combine multiple neurons into one
-                            </li>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCut size={14} color="#6366f1" />
+                            Advanced Operations
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Split neurons into multiple neurons</li>
+                            <li style={styles.listItem}>Merge neurons together</li>
                         </ul>
                     </div>
                 </div>
 
                 {/* Controllers and Security */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Controllers and Security</h2>
-                    
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#ef4444')}>
+                            <FaShieldAlt size={20} color="#ef4444" />
+                        </div>
+                        <h2 style={styles.subheading}>Controllers and Security</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        The canister uses the Internet Computer's built-in controller system for access control. 
-                        Only principals listed as controllers can perform management operations.
+                        The canister uses the IC's built-in controller system for access control. Only listed controllers 
+                        can perform management operations.
                     </p>
-
-                    <h3 style={styles.subsubheading}>Managing Controllers</h3>
+                    
+                    <h4 style={styles.subsubheading}>Managing Controllers</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Add Controller:</strong> Grant another principal full control 
-                            of the canister and its neurons
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Remove Controller:</strong> Revoke a principal's control 
-                            (requires at least one controller to remain)
-                        </li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Add Controller:</strong> Grant another principal full control</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Remove Controller:</strong> Revoke a principal's access (requires at least one to remain)</li>
                     </ul>
-
+                    
                     <div style={styles.warningBox}>
-                        <h3 style={{...styles.subsubheading, marginTop: 0}}>⚠️ Important Security Considerations</h3>
-                        <ul style={styles.list}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Controllers have full power:</strong> Anyone listed as a controller 
-                                can perform any operation, including adding/removing other controllers and managing neurons
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Never remove yourself:</strong> Removing yourself as the last 
-                                controller will make the canister permanently uncontrollable
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Only add trusted principals:</strong> Only add principals you 
-                                fully control or completely trust as controllers
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Backup access:</strong> Consider adding a backup principal you 
-                                control as a second controller for recovery purposes
-                            </li>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaExclamationTriangle size={14} color="#f59e0b" />
+                            Security Considerations
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Controllers have full power—add/remove controllers, manage neurons</li>
+                            <li style={styles.listItem}>Never remove yourself as the last controller</li>
+                            <li style={styles.listItem}>Only add principals you completely trust</li>
+                            <li style={styles.listItem}>Consider a backup controller for recovery</li>
                         </ul>
                     </div>
-
-                    <h3 style={styles.subsubheading}>Transferring Ownership</h3>
-                    <p style={styles.paragraph}>
-                        You can transfer full control of your neuron manager to another principal:
-                    </p>
-                    <ol style={styles.stepList}>
-                        <li style={styles.stepItem}>
-                            Add the new owner's principal as a controller
-                        </li>
-                        <li style={styles.stepItem}>
-                            Have the new owner verify they can access the canister
-                        </li>
-                        <li style={styles.stepItem}>
-                            Remove yourself as a controller
-                        </li>
-                    </ol>
-                    <p style={styles.paragraph}>
-                        The <Link to="/wallet" style={styles.link}>Wallet page</Link> provides a convenient "Transfer" button 
-                        that automates this process.
-                    </p>
                 </div>
 
-                {/* Cycles and Maintenance */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Cycles and Canister Maintenance</h2>
-                    
+                {/* Cycles */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#14b8a6')}>
+                            <FaCogs size={20} color="#14b8a6" />
+                        </div>
+                        <h2 style={styles.subheading}>Cycles and Maintenance</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        Like all canisters on the Internet Computer, your neuron manager requires cycles to operate. 
-                        Cycles are consumed when the canister executes operations.
+                        Like all IC canisters, your neuron manager requires cycles to operate. Monitor your cycles balance 
+                        and top up as needed.
                     </p>
-
-                    <h3 style={styles.subsubheading}>Monitoring Cycles</h3>
-                    <p style={styles.paragraph}>
-                        The canister management page displays your current cycles balance. Keep an eye on this to ensure 
-                        your canister remains operational.
-                    </p>
-
-                    <h3 style={styles.subsubheading}>Topping Up Cycles</h3>
-                    <p style={styles.paragraph}>
-                        You can add more cycles to your canister by sending ICP through the Cycles Minting Canister (CMC):
-                    </p>
-                    <ol style={styles.stepList}>
-                        <li style={styles.stepItem}>
-                            Navigate to your neuron manager page
-                        </li>
-                        <li style={styles.stepItem}>
-                            Find the "Top Up Cycles" section in the canister info
-                        </li>
-                        <li style={styles.stepItem}>
-                            Enter the amount of ICP to convert to cycles
-                        </li>
-                        <li style={styles.stepItem}>
-                            The ICP is sent to CMC and cycles are credited to your canister
-                        </li>
-                    </ol>
-
                     <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Cycles Rate:</strong> The ICP to cycles conversion rate is determined 
-                            by the CMC based on current XDR rates. The UI shows the estimated cycles you'll receive.
-                        </p>
-                    </div>
-                </div>
-
-                {/* Version Management and Upgrades */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Version Management and Upgrades</h2>
-                    
-                    <p style={styles.paragraph}>
-                        Your neuron manager canister runs open-source code that can be verified and upgraded.
-                    </p>
-
-                    <h3 style={styles.subsubheading}>Version Verification</h3>
-                    <p style={styles.paragraph}>
-                        Each canister has a <strong style={styles.strong}>module hash</strong> - a cryptographic fingerprint 
-                        of the installed WASM code. This allows you to verify that your canister is running official code:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>✓ Official:</strong> If your module hash matches a known official 
-                            version, a green checkmark and version number are displayed
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>⚠ Unverified:</strong> If the hash doesn't match any known version, 
-                            a warning is shown (this could mean custom code or an outdated version)
-                        </li>
-                    </ul>
-
-                    <h3 style={styles.subsubheading}>One-Click Upgrades</h3>
-                    <p style={styles.paragraph}>
-                        When a new official version is available, you'll see an "Upgrade Available" notification:
-                    </p>
-                    <div style={styles.successBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>🚀 Easy Upgrades:</strong> Simply click the "Upgrade Now" button to 
-                            automatically download and install the latest official version. Your neurons and data are preserved 
-                            during the upgrade.
-                        </p>
-                    </div>
-
-                    <h3 style={styles.subsubheading}>Manual Upgrades</h3>
-                    <p style={styles.paragraph}>
-                        For advanced users, the <Link to="/canister" style={styles.link}>Canister</Link> page provides 
-                        manual upgrade options:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Upload WASM:</strong> Upload a WASM file directly
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>WASM URL:</strong> Provide a URL to download and install a WASM
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Upgrade vs Reinstall:</strong> Choose between preserving state (upgrade) 
-                            or starting fresh (reinstall)
-                        </li>
-                    </ul>
-
-                    <div style={styles.warningBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Caution with Manual Upgrades:</strong> Only install code from trusted 
-                            sources. Installing malicious or buggy code could result in loss of control over your neurons.
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Top Up:</strong> Navigate to your neuron manager page, find "Top Up Cycles", 
+                            and enter ICP amount. The CMC converts ICP to cycles automatically.
                         </p>
                     </div>
                 </div>
 
                 {/* FAQ */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Frequently Asked Questions</h2>
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon(theme.colors.accent)}>
+                            <FaQuestionCircle size={20} color={theme.colors.accent} />
+                        </div>
+                        <h2 style={styles.subheading}>Common Questions</h2>
+                    </div>
                     
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>Why use a canister instead of controlling neurons directly?</h3>
-                        <p style={styles.paragraph}>
-                            Using a canister provides several advantages: multi-controller support, potential for automation, 
-                            upgradeability, and the ability to transfer control of all neurons by changing canister controllers 
-                            rather than each neuron individually.
+                    <h4 style={styles.subsubheading}>What if my canister runs out of cycles?</h4>
+                    <div style={styles.successBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
+                            <strong style={styles.strong}>Your neurons are completely safe.</strong> Neurons are stored on the NNS, 
+                            not in your canister—your canister is just a "remote control."
                         </p>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>You remain the controller even if the canister freezes</li>
+                            <li style={styles.listItem}>Top up cycles anytime to unfreeze</li>
+                            <li style={styles.listItem}>No important state is stored in the canister</li>
+                        </ul>
                     </div>
-
-                    <div style={styles.highlight} id="cycles-depletion">
-                        <h3 style={styles.subsubheading}>What happens if my canister runs out of cycles?</h3>
-                        <p style={styles.paragraph}>
-                            <strong style={styles.strong}>Your neurons are completely safe.</strong> Here's exactly what happens 
-                            and why you don't need to worry:
-                        </p>
-                        
-                        <div style={styles.successBox}>
-                            <h4 style={{...styles.subsubheading, marginTop: 0, fontSize: '1.1rem'}}>✅ What Stays Safe</h4>
-                            <ul style={{...styles.list, marginBottom: 0}}>
-                                <li style={styles.listItem}>
-                                    <strong style={styles.strong}>Your neurons are stored on the NNS, not in your canister.</strong> The 
-                                    NNS governance canister (rrkah-fqaaa-aaaaa-aaaaq-cai) holds all neuron data. Your neuron manager 
-                                    canister is just a "remote control" that sends commands to the NNS.
-                                </li>
-                                <li style={styles.listItem}>
-                                    <strong style={styles.strong}>You remain the controller.</strong> The Internet Computer's protocol-level 
-                                    controller mechanism is independent of cycles. Even if your canister is frozen or deleted, you remain 
-                                    listed as the controller and can still manage it.
-                                </li>
-                                <li style={styles.listItem}>
-                                    <strong style={styles.strong}>No important state is stored in the canister.</strong> Your canister doesn't 
-                                    store any private keys, neuron IDs, or ownership data that can't be recovered. All critical data lives on-chain 
-                                    in the NNS governance system.
-                                </li>
-                            </ul>
-                        </div>
-                        
-                        <div style={styles.infoBox}>
-                            <h4 style={{...styles.subsubheading, marginTop: 0, fontSize: '1.1rem'}}>🔄 How to Recover</h4>
-                            <p style={styles.paragraph}>
-                                If your canister runs out of cycles:
-                            </p>
-                            <ol style={{...styles.stepList, marginBottom: 0}}>
-                                <li style={styles.stepItem}>
-                                    <strong style={styles.strong}>Top up cycles:</strong> As the controller, you can always send more cycles 
-                                    to your canister using <code style={styles.code}>dfx canister deposit-cycles</code> or any wallet that supports 
-                                    ICP-to-cycles conversion. The canister will resume operation.
-                                </li>
-                                <li style={styles.stepItem}>
-                                    <strong style={styles.strong}>Reinstall if needed:</strong> Controllers can update or reinstall the WASM module 
-                                    on any canister they control, regardless of its cycles balance. You can reinstall the neuron manager code 
-                                    after topping up.
-                                </li>
-                                <li style={styles.stepItem}>
-                                    <strong style={styles.strong}>Query your neurons:</strong> Even if the canister is frozen, your neurons still 
-                                    exist on the NNS. You can query them directly using dfx or any NNS interface.
-                                </li>
-                            </ol>
-                        </div>
-                        
-                        <div style={styles.warningBox}>
-                            <h4 style={{...styles.subsubheading, marginTop: 0, fontSize: '1.1rem'}}>⏰ Freezing Threshold</h4>
-                            <p style={{...styles.paragraph, marginBottom: 0}}>
-                                When a canister's cycles balance drops below a certain threshold, it enters a "frozen" state. 
-                                While frozen, it cannot execute code, but the canister and its controllers are preserved. 
-                                Controllers can still top up the canister to unfreeze it. Only if a canister remains frozen 
-                                without sufficient cycles for an extended period may it be deleted - but even then, your neurons 
-                                remain safe on the NNS.
-                            </p>
-                        </div>
-                        
-                        <div style={{
-                            marginTop: '1rem',
-                            paddingTop: '1rem',
-                            borderTop: `1px solid ${theme.colors.border}`,
-                        }}>
-                            <p style={{...styles.paragraph, fontSize: '0.95rem', marginBottom: '0.5rem'}}>
-                                📚 <strong style={styles.strong}>Learn More:</strong> For technical details on canister lifecycle 
-                                and control, see the official ICP documentation:
-                            </p>
-                            <ul style={{...styles.list, marginBottom: 0}}>
-                                <li style={{...styles.listItem, fontSize: '0.95rem'}}>
-                                    <a 
-                                        href="https://docs.internetcomputer.org/references/ic-interface-spec" 
-                                        target="_blank" 
-                                        rel="noopener noreferrer" 
-                                        style={styles.link}
-                                    >
-                                        IC Interface Specification
-                                    </a> - Official protocol documentation
-                                </li>
-                                <li style={{...styles.listItem, fontSize: '0.95rem'}}>
-                                    <a 
-                                        href="https://learn.internetcomputer.org/hc/en-us/articles/34573932107796-Canister-Control" 
-                                        target="_blank" 
-                                        rel="noopener noreferrer" 
-                                        style={styles.link}
-                                    >
-                                        Canister Control
-                                    </a> - How canister controllers work
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>Can I have multiple neuron managers?</h3>
-                        <p style={styles.paragraph}>
-                            Yes! You can create as many neuron manager canisters as you want. This might be useful for 
-                            separating different sets of neurons, having different controller configurations, or other 
-                            organizational purposes.
-                        </p>
-                    </div>
-
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>How do I see which neurons my canister controls?</h3>
-                        <p style={styles.paragraph}>
-                            The canister queries the NNS governance canister to list all neurons where your canister is 
-                            the controller. This list is displayed in the "Neurons" section of the management page.
-                        </p>
-                    </div>
-
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>Is my data safe during upgrades?</h3>
-                        <p style={styles.paragraph}>
-                            Yes! When using the "Upgrade" mode (not "Reinstall"), the canister's stable memory is preserved. 
-                            Your neurons are stored on the NNS, not in the canister, so they're always safe regardless of 
-                            what happens to the canister.
-                        </p>
-                    </div>
-
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>Can someone else control my neurons if they're not a controller?</h3>
-                        <p style={styles.paragraph}>
-                            No. Only principals listed as controllers of the canister can issue commands to manage neurons. 
-                            The canister uses the IC's built-in controller mechanism which is enforced at the protocol level.
-                        </p>
-                    </div>
-
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>Where can I see the source code?</h3>
-                        <p style={styles.paragraph}>
-                            Official versions include links to the source code. Look for the "View Source" link next to the 
-                            version information on the canister management page. You can review the code and verify that 
-                            the WASM hash matches the published source.
-                        </p>
-                    </div>
+                    
+                    <h4 style={styles.subsubheading}>Why use a canister instead of controlling neurons directly?</h4>
+                    <p style={styles.paragraph}>
+                        Multi-controller support, potential automation, upgradeability, and transferring control of all neurons 
+                        by changing canister controllers rather than each neuron individually.
+                    </p>
+                    
+                    <h4 style={styles.subsubheading}>Can I have multiple neuron managers?</h4>
+                    <p style={styles.paragraph}>
+                        Yes! Create as many as you want for separating different neuron sets or having different controller configurations.
+                    </p>
+                    
+                    <h4 style={styles.subsubheading}>Is my data safe during upgrades?</h4>
+                    <p style={styles.paragraph}>
+                        Yes! "Upgrade" mode preserves stable memory. Neurons are on the NNS, so they're always safe regardless 
+                        of what happens to the canister.
+                    </p>
                 </div>
 
                 {/* Getting Started */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Getting Started</h2>
-                    
-                    <p style={styles.paragraph}>
-                        Ready to create your own ICP Neuron Manager? Here's how to get started:
-                    </p>
-
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#10b981')}>
+                            <FaCheckCircle size={20} color="#10b981" />
+                        </div>
+                        <h2 style={styles.subheading}>Getting Started</h2>
+                    </div>
                     <div style={styles.successBox}>
-                        <ol style={styles.stepList}>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Create a Manager:</strong> Visit the{' '}
-                                <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link> page 
-                                to deploy your canister
-                            </li>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Create Neurons:</strong> Stake ICP directly from your wallet 
-                                to create neurons with your desired dissolve delay
-                            </li>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Set Up Following:</strong> Configure automatic voting to 
-                                earn rewards
-                            </li>
-                            <li style={styles.stepItem}>
-                                <strong style={styles.strong}>Participate:</strong> Vote on proposals and watch your 
-                                rewards grow!
-                            </li>
+                        <ol style={{ ...styles.stepList, marginBottom: 0 }}>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Create a Manager:</strong> Visit <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link></li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Create Neurons:</strong> Stake ICP directly from your wallet</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Set Up Following:</strong> Configure automatic voting for rewards</li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Participate:</strong> Vote on proposals and watch your rewards grow!</li>
                         </ol>
                     </div>
                 </div>
 
-                {/* Need More Help */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Need More Help?</h2>
-                    <p style={styles.paragraph}>
-                        If you have questions or encounter issues:
-                    </p>
+                {/* Related Topics */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaArrowLeft size={20} color={icpPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>Related Help Topics</h2>
+                    </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            Visit our <Link to="/forum" style={styles.link}>Forum</Link> to ask questions and discuss with other users
+                            <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> — Comparison with DAO-specific neurons
                         </li>
                         <li style={styles.listItem}>
-                            Check out the official{' '}
-                            <a href="https://wiki.internetcomputer.org/wiki/Network_Nervous_System" 
-                               target="_blank" rel="noopener noreferrer" style={styles.link}>
-                                NNS documentation
-                            </a>
+                            <Link to="/help/canister-manager" style={styles.link}>Canister Manager</Link> — Track and organize all your canisters
                         </li>
                         <li style={styles.listItem}>
-                            Learn more about{' '}
-                            <Link to="/help/neurons" style={styles.link}>SNS Neurons</Link> for comparison with 
-                            DAO-specific neurons
+                            <Link to="/forum" style={styles.link}>Forum</Link> — Ask questions and discuss with other users
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/help" style={styles.link}>Help Center</Link> — Browse all help topics
                         </li>
                     </ul>
-                </div>
-
-                {/* Back to Help */}
-                <div style={{ textAlign: 'center', padding: '2rem' }}>
-                    <Link 
-                        to="/help" 
-                        style={{...styles.link, fontSize: '1.2rem'}}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        ← Back to Help Center
-                    </Link>
                 </div>
             </main>
         </div>
@@ -865,4 +582,3 @@ function HelpIcpNeuronManager() {
 }
 
 export default HelpIcpNeuronManager;
-

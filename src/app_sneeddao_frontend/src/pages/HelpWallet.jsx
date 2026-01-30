@@ -3,185 +3,323 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
+import { 
+    FaWallet, FaCoins, FaArrowLeft, FaPiggyBank, FaExchangeAlt, 
+    FaLock, FaGift, FaDownload, FaUpload, FaTrash, FaWater, 
+    FaBrain, FaChartPie, FaLightbulb, FaQuestionCircle, FaCopy
+} from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes walletFloat {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(3deg); }
+}
+
+.wallet-help-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.wallet-help-float {
+    animation: walletFloat 4s ease-in-out infinite;
+}
+`;
+
+// Page accent colors - green theme for wallet/money
+const walletPrimary = '#10b981';
+const walletSecondary = '#34d399';
+
+const getStyles = (theme) => ({
+    container: {
+        maxWidth: '900px',
+        margin: '0 auto',
+        padding: '1.25rem',
+        color: theme.colors.primaryText,
+    },
+    backLink: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        fontSize: '0.9rem',
+        fontWeight: '500',
+        marginBottom: '1.5rem',
+        transition: 'opacity 0.2s ease',
+    },
+    section: {
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '1.25rem',
+        marginBottom: '1rem',
+        boxShadow: theme.colors.cardShadow,
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        marginBottom: '1rem',
+    },
+    sectionIcon: (color = walletPrimary) => ({
+        width: '40px',
+        height: '40px',
+        borderRadius: '12px',
+        background: `linear-gradient(135deg, ${color}20, ${color}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+    }),
+    subheading: {
+        fontSize: '1.1rem',
+        fontWeight: '700',
+        color: theme.colors.primaryText,
+        margin: 0,
+    },
+    subsubheading: {
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: theme.colors.primaryText,
+        marginTop: '1rem',
+        marginBottom: '0.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
+    paragraph: {
+        marginBottom: '0.75rem',
+        lineHeight: '1.7',
+        color: theme.colors.secondaryText,
+        fontSize: '0.9rem',
+    },
+    list: {
+        marginLeft: '1.25rem',
+        marginBottom: '0.75rem',
+        paddingLeft: '0.5rem',
+    },
+    listItem: {
+        marginBottom: '0.5rem',
+        color: theme.colors.secondaryText,
+        fontSize: '0.9rem',
+        lineHeight: '1.6',
+    },
+    infoBox: {
+        background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.accent}08)`,
+        border: `1px solid ${theme.colors.accent}40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    tipBox: {
+        background: `linear-gradient(135deg, ${walletPrimary}15, ${walletPrimary}08)`,
+        border: `1px solid ${walletPrimary}40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    warningBox: {
+        background: `linear-gradient(135deg, #f59e0b15, #f59e0b08)`,
+        border: `1px solid #f59e0b40`,
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+    },
+    link: {
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        fontWeight: '500',
+    },
+    strong: {
+        color: theme.colors.primaryText,
+        fontWeight: '600',
+    },
+    code: {
+        background: theme.colors.secondaryBg,
+        padding: '2px 6px',
+        borderRadius: '4px',
+        fontFamily: 'monospace',
+        fontSize: '0.85em',
+        color: theme.colors.accent,
+    },
+    principalBox: {
+        background: theme.colors.secondaryBg,
+        padding: '12px',
+        borderRadius: '10px',
+        marginBottom: '12px',
+        fontFamily: 'monospace',
+        fontSize: '0.85rem',
+        wordBreak: 'break-all',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        flexWrap: 'wrap',
+    },
+    copyButton: {
+        background: walletPrimary,
+        color: '#fff',
+        border: 'none',
+        borderRadius: '8px',
+        padding: '8px 16px',
+        cursor: 'pointer',
+        fontSize: '0.85rem',
+        fontWeight: '500',
+        transition: 'all 0.2s ease',
+        whiteSpace: 'nowrap',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+    },
+});
 
 function HelpWallet() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
-
-    const styles = {
-        container: {
-            minHeight: '100vh',
-            background: theme.colors.background,
-            color: theme.colors.primaryText
-        },
-        content: {
-            maxWidth: '900px',
-            margin: '0 auto',
-            padding: '40px 20px'
-        },
-        heading: {
-            fontSize: '2.5rem',
-            fontWeight: '700',
-            color: theme.colors.primaryText,
-            marginBottom: '1rem',
-            marginTop: '0'
-        },
-        subheading: {
-            fontSize: '1.8rem',
-            fontWeight: '600',
-            color: theme.colors.primaryText,
-            marginTop: '2.5rem',
-            marginBottom: '1rem',
-            borderBottom: `2px solid ${theme.colors.border}`,
-            paddingBottom: '0.5rem'
-        },
-        subsubheading: {
-            fontSize: '1.3rem',
-            fontWeight: '600',
-            color: theme.colors.primaryText,
-            marginTop: '1.5rem',
-            marginBottom: '0.75rem'
-        },
-        paragraph: {
-            fontSize: '1rem',
-            lineHeight: '1.7',
-            color: theme.colors.secondaryText,
-            marginBottom: '1rem'
-        },
-        list: {
-            marginLeft: '1.5rem',
-            marginBottom: '1rem',
-            color: theme.colors.secondaryText
-        },
-        listItem: {
-            marginBottom: '0.75rem',
-            lineHeight: '1.6'
-        },
-        infoBox: {
-            background: `${theme.colors.accent}15`,
-            border: `1px solid ${theme.colors.accent}50`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '1.5rem'
-        },
-        tipBox: {
-            background: `${theme.colors.success || '#4CAF50'}15`,
-            border: `1px solid ${theme.colors.success || '#4CAF50'}50`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '1.5rem'
-        },
-        warningBox: {
-            background: `${theme.colors.warning || '#FF9800'}15`,
-            border: `1px solid ${theme.colors.warning || '#FF9800'}50`,
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '1.5rem'
-        },
-        link: {
-            color: theme.colors.accent,
-            textDecoration: 'none',
-            fontWeight: '500',
-            transition: 'opacity 0.2s ease'
-        },
-        strong: {
-            color: theme.colors.primaryText,
-            fontWeight: '600'
-        },
-        code: {
-            background: theme.colors.secondaryBg,
-            padding: '2px 6px',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontSize: '0.9em',
-            color: theme.colors.accent
-        },
-        section: {
-            marginBottom: '2rem'
-        }
-    };
+    const styles = getStyles(theme);
 
     return (
-        <div style={styles.container}>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customAnimations}</style>
             <Header />
-            <div style={styles.content}>
-                <h1 style={styles.heading}>Understanding Your Sneed Wallet</h1>
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${walletPrimary}15 0%, ${walletSecondary}10 50%, transparent 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '3rem 1.25rem 2.5rem',
+                position: 'relative',
+                overflow: 'hidden',
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '400px',
+                    height: '400px',
+                    background: `radial-gradient(circle, ${walletPrimary}20 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${walletSecondary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none',
+                }} />
                 
-                <p style={styles.paragraph}>
-                    The <Link to="/wallet" style={styles.link}>Wallet page</Link> is your comprehensive financial hub in Sneed Hub. 
-                    It provides a unified interface for managing tokens, liquidity positions, and SNS neurons all in one place. 
-                    You can also lock tokens and LP positions with <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>, 
-                    claim Sneed voting rewards, and wrap/unwrap GLDT/sGLDT—all directly from your wallet.
-                </p>
-
-                {/* Your Principal ID */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Your Sneed Wallet Principal</h2>
-                    
-                    {isAuthenticated && identity && (
-                        <div style={{
-                            ...styles.tipBox,
-                            marginBottom: '1.5rem'
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                        <div className="wallet-help-float" style={{
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '20px',
+                            background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 12px 40px ${walletPrimary}50`,
                         }}>
-                            <h3 style={{...styles.subsubheading, marginTop: 0}}>
-                                Your Current Principal
-                            </h3>
-                            <div style={{
-                                background: theme.colors.secondaryBg,
-                                padding: '12px',
-                                borderRadius: '8px',
-                                marginBottom: '12px',
-                                fontFamily: 'monospace',
-                                fontSize: '14px',
-                                wordBreak: 'break-all',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '12px',
-                                flexWrap: 'wrap'
-                            }}>
-                                <span style={{ flex: 1, minWidth: '200px', color: theme.colors.primaryText }}>
-                                    {identity.getPrincipal().toText()}
-                                </span>
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            await navigator.clipboard.writeText(identity.getPrincipal().toText());
-                                        } catch (err) {
-                                            console.error('Failed to copy:', err);
-                                        }
-                                    }}
-                                    style={{
-                                        background: theme.colors.accent,
-                                        color: theme.colors.primaryBg,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '8px 16px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
-                                        transition: 'all 0.2s ease',
-                                        whiteSpace: 'nowrap'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.target.style.background = theme.colors.accent;
-                                    }}
-                                >
-                                    Copy
-                                </button>
-                            </div>
+                            <FaWallet size={36} color="#fff" />
                         </div>
-                    )}
-                    
-                    <p style={styles.paragraph}>
-                        Your principal ID is your unique identifier on the Internet Computer. On the Wallet page, 
-                        you'll see your principal displayed in a collapsible section at the top.
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: `${walletPrimary}20`,
+                                border: `1px solid ${walletPrimary}40`,
+                                borderRadius: '20px',
+                                padding: '4px 12px',
+                                marginBottom: '8px',
+                            }}>
+                                <FaCoins size={12} color={walletPrimary} />
+                                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: walletPrimary }}>
+                                    Asset Management
+                                </span>
+                            </div>
+                            <h1 style={{
+                                fontSize: 'clamp(1.75rem, 4vw, 2.5rem)',
+                                fontWeight: '800',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                            }}>
+                                Understanding Your Wallet
+                            </h1>
+                        </div>
+                    </div>
+                    <p style={{
+                        fontSize: '1rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0,
+                        maxWidth: '600px',
+                        lineHeight: '1.6',
+                    }}>
+                        Your comprehensive hub for managing tokens, liquidity positions, and SNS neurons
                     </p>
-                    
-                    <h3 style={styles.subsubheading}>Why Your Principal Matters</h3>
+                </div>
+            </div>
+
+            <main style={styles.container}>
+                <Link to="/help" style={styles.backLink}>
+                    <FaArrowLeft size={14} />
+                    Back to Help Center
+                </Link>
+
+                {/* Principal Section */}
+                {isAuthenticated && identity && (
+                    <div style={styles.tipBox} className="wallet-help-fade-in">
+                        <div style={styles.sectionHeader}>
+                            <div style={styles.sectionIcon(walletPrimary)}>
+                                <FaWallet size={20} color={walletPrimary} />
+                            </div>
+                            <h3 style={styles.subheading}>Your Current Principal</h3>
+                        </div>
+                        <div style={styles.principalBox}>
+                            <span style={{ flex: 1, minWidth: '200px', color: theme.colors.primaryText }}>
+                                {identity.getPrincipal().toText()}
+                            </span>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await navigator.clipboard.writeText(identity.getPrincipal().toText());
+                                    } catch (err) {
+                                        console.error('Failed to copy:', err);
+                                    }
+                                }}
+                                style={styles.copyButton}
+                            >
+                                <FaCopy size={14} />
+                                Copy
+                            </button>
+                        </div>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            This is your unique identifier on the Internet Computer. Use it when receiving assets or setting up hotkeys.
+                        </p>
+                    </div>
+                )}
+
+                {/* Why Principal Matters */}
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaPiggyBank size={20} color={walletPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>Why Your Principal Matters</h2>
+                    </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>Receiving Assets:</strong> Use this principal as the destination 
@@ -200,15 +338,19 @@ function HelpWallet() {
                 </div>
 
                 {/* Token Management */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Token Management</h2>
-                    
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaCoins size={20} color={walletPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>Token Management</h2>
+                    </div>
                     <p style={styles.paragraph}>
                         The Wallet page displays all tokens you've added, along with their balances, locked amounts, 
                         and USD values (when available).
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Understanding Your Token Balances</h3>
+                    <h4 style={styles.subsubheading}>Understanding Your Token Balances</h4>
                     <p style={styles.paragraph}>
                         Your wallet uses a two-tier system to manage tokens:
                     </p>
@@ -219,409 +361,261 @@ function HelpWallet() {
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>Deposited:</strong> Tokens deposited to the Sneed Hub backend canister. 
                             When you lock tokens with <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>, they're 
-                            first deposited. After a lock expires, it automatically disappears and your 
-                            tokens appear under "Liquid" as deposited tokens. You can send these tokens directly (the wallet 
-                            combines both balances automatically) or withdraw them to your wallet first if preferred.
+                            first deposited. After a lock expires, tokens appear under "Liquid" as deposited tokens.
                         </li>
                     </ul>
                     
-                    <h3 style={styles.subsubheading}>Adding Tokens to Your Wallet</h3>
+                    <h4 style={styles.subsubheading}>Adding Tokens</h4>
                     <p style={styles.paragraph}>
-                        To track a token in your wallet, click the <strong style={styles.strong}>"+ Add Token"</strong> button 
-                        and enter the ICRC-1 ledger canister ID. Once added, the wallet will display:
+                        Click <strong style={styles.strong}>"+ Add Token"</strong> and enter the ICRC-1 ledger canister ID. 
+                        Once added, you'll see token symbol, name, logo, and balance breakdown including Totals, Liquid, and Locked amounts.
                     </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>Token symbol, name, and logo</li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Totals:</strong> Complete balance including liquid + locked + 
-                            rewards + staked (in neurons) + maturity
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Liquid:</strong> Tokens in your wallet and deposited balance 
-                            that are immediately available to send or lock
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Locked:</strong> Tokens currently locked in{' '}
-                            <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link> with future expiration dates
-                        </li>
-                        <li style={styles.listItem}>USD value (when conversion rates are available)</li>
-                    </ul>
+                </div>
+
+                {/* Token Operations */}
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#3b82f6')}>
+                            <FaExchangeAlt size={20} color="#3b82f6" />
+                        </div>
+                        <h2 style={styles.subheading}>Token Operations</h2>
+                    </div>
                     
-                    <h3 style={styles.subsubheading}>Token Operations</h3>
-                    
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Send Tokens</h4>
+                    <h4 style={styles.subsubheading}>
+                        <FaUpload size={14} color={walletPrimary} />
+                        Send Tokens
+                    </h4>
                     <p style={styles.paragraph}>
-                        Transfer tokens to any principal ID or account address. Click the <strong style={styles.strong}>"Send"</strong> button,
-                        enter the recipient's principal, the amount, and an optional memo. The wallet will automatically calculate 
+                        Transfer tokens to any principal ID or account address. The wallet automatically calculates 
                         the transfer fee.
                     </p>
                     <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Smart Balance Combining:</strong> The Send button automatically combines your{' '}
-                            <strong style={styles.strong}>Wallet balance</strong> and your <strong style={styles.strong}>Deposited 
-                            (unlocked) balance</strong>. This means you can send tokens from either location without needing to withdraw 
-                            deposited tokens first. The system intelligently draws from both balances to complete your transfer!
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Smart Balance Combining:</strong> Send automatically combines your
+                            Wallet balance and Deposited balance—no need to withdraw deposited tokens first!
                         </p>
                     </div>
                     
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔒 Lock Tokens</h4>
+                    <h4 style={styles.subsubheading}>
+                        <FaLock size={14} color="#f59e0b" />
+                        Lock Tokens
+                    </h4>
                     <p style={styles.paragraph}>
                         Lock tokens for a specified time period using <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>. 
-                        This is useful for commitment demonstrations, vesting schedules, or governance participation. Click the{' '}
-                        <strong style={styles.strong}>"Lock"</strong> button to specify the amount and expiration date.
+                        This is useful for commitment demonstrations, vesting schedules, or governance participation.
                     </p>
                     <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
-                            <strong style={styles.strong}>Note:</strong> SNEED tokens cannot be locked. Locked tokens 
-                            are transferred to the Sneedlock canister and can be withdrawn after the expiration date.
-                        </p>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>✨ Liquid Locking:</strong> You can transfer ownership of locked 
-                            token locks to other Sneed Wallet users! The recipient can't use the tokens until the lock expires, 
-                            but this feature makes it incredibly easy for token creators to distribute vested tokens to team members. 
-                            See <Link to="/help/sneedlock" style={styles.link}>Sneedlock Liquid Locking</Link> for details.
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Liquid Locking:</strong> You can transfer ownership of locked 
+                            token locks to other users! Great for distributing vested tokens to team members.
                         </p>
                     </div>
                     
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔄 Wrap/Unwrap</h4>
+                    <h4 style={styles.subsubheading}>
+                        <FaExchangeAlt size={14} color="#8b5cf6" />
+                        Wrap/Unwrap
+                    </h4>
                     <p style={styles.paragraph}>
-                        For certain token pairs (like GLDT/sGLDT), you can wrap and unwrap tokens. This converts tokens 
-                        between their wrapped and native forms. The wallet automatically detects wrappable tokens and 
-                        displays the appropriate buttons.
+                        For certain token pairs (like GLDT/sGLDT), convert between wrapped and native forms directly from your wallet.
                     </p>
                     
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>💰 Claim Rewards</h4>
+                    <h4 style={styles.subsubheading}>
+                        <FaGift size={14} color="#ec4899" />
+                        Claim Rewards
+                    </h4>
                     <p style={styles.paragraph}>
-                        Some tokens accumulate rewards in the backend. If rewards are available, you'll see a{' '}
-                        <strong style={styles.strong}>"Claim Rewards"</strong> button to transfer them to your wallet.
+                        Some tokens accumulate rewards in the backend. Click "Claim Rewards" to transfer them to your wallet.
                     </p>
                     
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📥 Deposit Tokens</h4>
+                    <h4 style={styles.subsubheading}>
+                        <FaDownload size={14} color={walletPrimary} />
+                        Deposit & Withdraw
+                    </h4>
                     <p style={styles.paragraph}>
-                        Move tokens from your wallet to your deposited balance in the Sneed Hub backend. Expand the{' '}
-                        <strong style={styles.strong}>"Liquid"</strong> section of a token card, and click the{' '}
-                        <strong style={styles.strong}>"Deposit"</strong> button next to your wallet balance. You can specify 
-                        the exact amount to deposit.
+                        Move tokens between your wallet and deposited balance. Depositing costs one transaction fee.
                     </p>
-                    <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
-                            <strong style={styles.strong}>Note:</strong> Depositing incurs <strong style={styles.strong}>one 
-                            transaction fee</strong>. Tokens remain under your control but are held in your subaccount in the 
-                            Sneed Hub backend canister.
-                        </p>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>💡 Pro Tip:</strong> If you plan to create <strong style={styles.strong}>multiple 
-                            locks</strong> for a token, deposit all the tokens you want to lock in one batch deposit first! Locking 
-                            already-deposited tokens is <strong style={styles.strong}>FREE</strong> (no transaction fee), so you'll only 
-                            pay one deposit fee instead of paying a deposit fee for each lock. For example: deposit 1000 tokens once (1 tx fee), 
-                            then create 5 different locks from that deposited balance (0 tx fees) = 1 tx fee total instead of 5!
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Pro Tip:</strong> If creating multiple locks, deposit all tokens in 
+                            one batch first! Locking already-deposited tokens is FREE—saving you transaction fees.
                         </p>
                     </div>
                     
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Withdraw Tokens</h4>
+                    <h4 style={styles.subsubheading}>
+                        <FaTrash size={14} color="#ef4444" />
+                        Remove Token
+                    </h4>
                     <p style={styles.paragraph}>
-                        Move tokens from your deposited balance back to your wallet. Expand the{' '}
-                        <strong style={styles.strong}>"Liquid"</strong> section and click the{' '}
-                        <strong style={styles.strong}>"Withdraw"</strong> button next to your deposited balance. You can 
-                        specify the exact amount to withdraw. When token locks expire, they automatically appear in your 
-                        deposited balance—you can withdraw them or use them directly from there.
-                    </p>
-                    <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Tip:</strong> You don't need to withdraw deposited tokens to use them. 
-                            When sending tokens, the wallet automatically combines both balances. However, withdrawing gives you 
-                            direct control in your wallet.
-                        </p>
-                    </div>
-                    
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🗑️ Remove Token</h4>
-                    <p style={styles.paragraph}>
-                        If you no longer want to track a token, expand its card and click the{' '}
-                        <strong style={styles.strong}>"Unregister Token"</strong> button. This only removes it from your 
-                        view—it doesn't affect your actual balance.
+                        Click "Unregister Token" to hide a token from your view. This only removes it from display—your actual balance is unaffected.
                     </p>
                 </div>
 
                 {/* Liquidity Positions */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Liquidity Position Management</h2>
-                    
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#14b8a6')}>
+                            <FaWater size={20} color="#14b8a6" />
+                        </div>
+                        <h2 style={styles.subheading}>Liquidity Position Management</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        If you provide liquidity on ICPSwap, your positions will appear in the Wallet page after you 
-                        add the swap canister pair.
-                    </p>
-                    
-                    <h3 style={styles.subsubheading}>Adding Swap Pairs and Receiving Positions</h3>
-                    <p style={styles.paragraph}>
-                        Click <strong style={styles.strong}>"+ Add Swap Pair"</strong> and enter the ICPSwap canister ID 
-                        for the trading pair. The wallet will display all your positions for that pair.
+                        If you provide liquidity on ICPSwap, your positions appear after you add the swap canister pair.
                     </p>
                     
                     <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
-                            <strong style={styles.strong}>Transferring Positions from ICPSwap:</strong>
-                        </p>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            Liquidity positions created on ICPSwap are initially owned by your ICPSwap wallet. To manage them 
-                            in Sneed Hub (including the ability to lock them), you need to transfer them to your Sneed Wallet 
-                            principal. Use ICPSwap's position transfer feature to send the position to your Sneed Wallet principal 
-                            (displayed in the collapsible section at the top of this page). Once transferred, the position will 
-                            appear in your Sneed Wallet.
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Transferring from ICPSwap:</strong> Positions on ICPSwap are owned by 
+                            your ICPSwap wallet. Transfer them to your Sneed Wallet principal to manage and lock them here.
                         </p>
                     </div>
                     
-                    <p style={styles.paragraph}>
-                        Once you have positions in your Sneed Wallet, you'll see:
-                    </p>
+                    <h4 style={styles.subsubheading}>Position Operations</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>Token pair (e.g., ICP/SNEED)</li>
-                        <li style={styles.listItem}>Amounts of each token in the position</li>
-                        <li style={styles.listItem}>Unclaimed fees</li>
-                        <li style={styles.listItem}>Locked positions (if any are in <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>)</li>
-                        <li style={styles.listItem}>Total USD value</li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Send Positions:</strong> Transfer LP positions to another principal—even locked ones!
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Claim Fees:</strong> Collect trading fees even from locked positions
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Lock Positions:</strong> Lock entire LP positions using Sneedlock
+                        </li>
                     </ul>
-                    
-                    <h3 style={styles.subsubheading}>Position Operations</h3>
-                    
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Send Positions (Including Locked Ones!)</h4>
-                    <p style={styles.paragraph}>
-                        Transfer liquidity positions to another principal. This allows you to move entire LP positions 
-                        without closing them, preserving the position's state and accumulated fees. You can send positions 
-                        to other users' Sneed Wallet principals or back to ICPSwap wallets.
-                    </p>
                     <div style={styles.tipBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>✨ Liquid Locking:</strong> You can even transfer{' '}
-                            <strong style={styles.strong}>locked</strong> LP positions! The position stays locked for the 
-                            recipient (they can't pull liquidity until it expires), but they CAN claim the trading fees it generates. 
-                            This creates a secondary market for locked positions while maintaining security against rugs. Learn more 
-                            about <Link to="/help/sneedlock" style={styles.link}>Liquid Locking</Link>.
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Liquid Locking:</strong> Transfer locked LP positions—recipients can't 
+                            pull liquidity but CAN claim trading fees. Creates a secondary market while preventing rugs!
                         </p>
                     </div>
-                    
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>💰 Claim Fees (Even from Locked Positions!)</h4>
-                    <p style={styles.paragraph}>
-                        Your liquidity positions continuously earn trading fees from the pool. You can claim these fees at any time 
-                        directly from your wallet—<strong style={styles.strong}>even if the position is locked!</strong> Locked positions 
-                        continue earning fees, and you retain full access to claim them while the position itself remains locked and secure.
-                    </p>
-                    
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔒 Lock Positions</h4>
-                    <p style={styles.paragraph}>
-                        Lock entire liquidity positions using <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>. 
-                        This locks both tokens in the position until the expiration date, demonstrating commitment and preventing 
-                        liquidity removal. You can still claim trading fees from locked positions! Note that you can only lock positions 
-                        that are owned by your Sneed Wallet principal—positions still on ICPSwap must be transferred to your 
-                        Sneed Wallet first. See the <Link to="/help/sneedlock" style={styles.link}>Sneedlock help page</Link> for 
-                        detailed instructions.
-                    </p>
                 </div>
 
                 {/* SNS Neurons */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>SNS Neuron Management</h2>
-                    
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#8b5cf6')}>
+                            <FaBrain size={20} color="#8b5cf6" />
+                        </div>
+                        <h2 style={styles.subheading}>SNS Neuron Management</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        The Wallet page displays all your SNS neurons across all SNS DAOs for which you've added tokens. 
-                        This provides a unified view of your governance participation across the entire Internet Computer ecosystem.
+                        The Wallet page displays all your SNS neurons across all SNS DAOs for which you've added tokens.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Neuron Operations in Wallet</h3>
-                    <p style={styles.paragraph}>
-                        The Wallet page supports comprehensive neuron management. Click on any token card that represents 
-                        an SNS governance token to see your neurons and perform these operations:
-                    </p>
-                    
+                    <h4 style={styles.subsubheading}>Neuron Operations</h4>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Create Neurons:</strong> Stake tokens to create new neurons 
-                            with your chosen dissolve delay
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Add Stake:</strong> Increase the stake of existing neurons 
-                            to boost voting power
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Set Dissolve Time:</strong> Adjust the dissolve delay, which 
-                            affects your voting power multiplier
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Start/Stop Dissolving:</strong> Control the dissolving state 
-                            to unlock your tokens or maintain voting power
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Auto-Stake Maturity:</strong> Enable automatic staking of 
-                            voting rewards to compound your voting power
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Disburse:</strong> Withdraw tokens from fully dissolved neurons 
-                            back to your wallet
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Disburse Maturity:</strong> Claim accumulated voting rewards 
-                            as liquid tokens
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Split Neurons:</strong> Split a neuron into two neurons, 
-                            useful for managing different voting strategies or transferring partial stakes
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Send Neurons:</strong> Transfer entire neurons to other users' 
-                            wallets—a unique Sneed Hub feature not available on the NNS!
-                        </li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Create Neurons:</strong> Stake tokens with your chosen dissolve delay</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Add Stake:</strong> Increase existing neurons to boost voting power</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Set Dissolve Time:</strong> Adjust dissolve delay settings</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Start/Stop Dissolving:</strong> Control the dissolving state</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Disburse:</strong> Withdraw tokens from fully dissolved neurons</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Disburse Maturity:</strong> Claim accumulated voting rewards</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Split Neurons:</strong> Divide a neuron into multiple neurons</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Send Neurons:</strong> Transfer neurons to other wallets—unique to Sneed Hub!</li>
                     </ul>
                     
                     <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Want to learn more?</strong> For detailed information about 
-                            SNS neurons, voting, hotkeys, and cross-platform management, see our comprehensive{' '}
-                            <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> guide.
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            <strong style={styles.strong}>Want more?</strong> See <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> for 
+                            detailed information about voting, hotkeys, and cross-platform management.
                         </p>
                     </div>
-                    
-                    <h3 style={styles.subsubheading}>Additional Neuron Pages</h3>
-                    <p style={styles.paragraph}>
-                        While the Wallet page provides most neuron operations, other pages offer specialized functionality:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}><Link to="/me" style={styles.link}>/me</Link>:</strong> View 
-                            only your neurons for the currently selected SNS
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}><Link to="/neurons" style={styles.link}>/neurons</Link>:</strong> Browse 
-                            all neurons in the selected SNS (public neuron browser)
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>/neuron:</strong> Inspect individual neurons, manage detailed 
-                            permissions, configure following relationships, and vote on proposals
-                        </li>
-                    </ul>
                 </div>
 
                 {/* Portfolio Overview */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Portfolio Overview</h2>
-                    
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#ec4899')}>
+                            <FaChartPie size={20} color="#ec4899" />
+                        </div>
+                        <h2 style={styles.subheading}>Portfolio Overview</h2>
+                    </div>
                     <p style={styles.paragraph}>
-                        At the top of the Wallet page, you'll see your total portfolio value in USD. This aggregates:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>All token balances (both available and locked)</li>
-                        <li style={styles.listItem}>All liquidity position values</li>
-                        <li style={styles.listItem}>All neuron stakes</li>
-                    </ul>
-                    
-                    <p style={styles.paragraph}>
-                        The portfolio value is calculated using real-time conversion rates when available. Tokens without 
-                        price data won't be included in the total but are still tracked in your wallet.
+                        At the top of the Wallet page, see your total portfolio value in USD, aggregating all token balances, 
+                        liquidity positions, and neuron stakes. Values use real-time conversion rates when available.
                     </p>
                 </div>
 
-                {/* Tips and Best Practices */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Tips and Best Practices</h2>
-                    
-                    <div style={styles.tipBox}>
-                        <h3 style={{...styles.subsubheading, marginTop: 0}}>
-                            💡 Wallet Management Tips
-                        </h3>
-                        <ul style={{...styles.list, marginBottom: 0}}>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Keep Your Principal Handy:</strong> Save your principal ID 
-                                in a secure location for easy access when receiving assets
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Verify Before Sending:</strong> Always double-check recipient 
-                                addresses before sending tokens, positions, or neurons—transfers are irreversible
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Monitor Locked Assets:</strong> Keep track of lock expiration 
-                                dates for your tokens and positions
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Understand Wallet vs Deposited:</strong> Remember that deposited tokens 
-                                (especially after lock expiration) can be withdrawn to your wallet 
-                                or sent directly from your deposited balance
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Organize Your Tokens:</strong> Remove tokens you no longer 
-                                track to keep your wallet view clean and focused
-                            </li>
-                            <li style={styles.listItem}>
-                                <strong style={styles.strong}>Enable Auto-Stake for Neurons:</strong> Consider enabling 
-                                automatic maturity staking for your neurons to compound your voting rewards
-                            </li>
-                        </ul>
+                {/* Tips */}
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#f59e0b')}>
+                            <FaLightbulb size={20} color="#f59e0b" />
+                        </div>
+                        <h2 style={styles.subheading}>Tips and Best Practices</h2>
                     </div>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Keep Your Principal Handy:</strong> Save your principal ID for easy access when receiving assets
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Verify Before Sending:</strong> Double-check recipient addresses—transfers are irreversible
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Monitor Locked Assets:</strong> Track lock expiration dates for tokens and positions
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Understand Wallet vs Deposited:</strong> Deposited tokens can be sent directly or withdrawn
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Enable Auto-Stake:</strong> Consider automatic maturity staking to compound voting rewards
+                        </li>
+                    </ul>
                 </div>
 
                 {/* Common Questions */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Common Questions</h2>
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon(theme.colors.accent)}>
+                            <FaQuestionCircle size={20} color={theme.colors.accent} />
+                        </div>
+                        <h2 style={styles.subheading}>Common Questions</h2>
+                    </div>
                     
-                    <h3 style={styles.subsubheading}>Why is my balance different from what I expect?</h3>
+                    <h4 style={styles.subsubheading}>Why is my balance different from expected?</h4>
                     <p style={styles.paragraph}>
-                        Your balance might appear different if:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>Some tokens are locked in Sneedlock</li>
-                        <li style={styles.listItem}>Tokens are staked in neurons</li>
-                        <li style={styles.listItem}>Tokens are in your deposited balance (after lock expiration or rewards)</li>
-                        <li style={styles.listItem}>You have pending transactions</li>
-                        <li style={styles.listItem}>The wallet is showing "Liquid" balance instead of "Totals"</li>
-                        <li style={styles.listItem}>You have maturity or unclaimed rewards that haven't been disbursed yet</li>
-                    </ul>
-                    
-                    <h3 style={styles.subsubheading}>Can I cancel a lock?</h3>
-                    <p style={styles.paragraph}>
-                        No, locks are immutable once created. You must wait until the expiration date to withdraw your 
-                        locked assets. This is by design to ensure commitment and prevent premature withdrawals.
+                        Your balance might differ if some tokens are locked in Sneedlock, staked in neurons, in your deposited balance, 
+                        or shown as "Liquid" instead of "Totals".
                     </p>
                     
-                    <h3 style={styles.subsubheading}>What happens if I remove a token from my wallet view?</h3>
+                    <h4 style={styles.subsubheading}>Can I cancel a lock?</h4>
                     <p style={styles.paragraph}>
-                        Removing a token only hides it from your wallet display. Your actual balance remains unchanged on 
-                        the blockchain, and you can always add the token back by entering its ledger canister ID again.
+                        No, locks are immutable. You must wait until the expiration date—this ensures commitment and trust.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>How do transfer fees work?</h3>
+                    <h4 style={styles.subsubheading}>How do transfer fees work?</h4>
                     <p style={styles.paragraph}>
-                        Each token has its own transfer fee set by the ledger. When sending tokens, the wallet automatically 
-                        deducts the fee from your balance. Make sure you have enough balance to cover both the amount you're 
-                        sending and the fee.
+                        Each token has its own transfer fee. Ensure you have enough balance for both the amount and the fee.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Can I access my wallet from multiple devices?</h3>
+                    <h4 style={styles.subsubheading}>Can I access from multiple devices?</h4>
                     <p style={styles.paragraph}>
-                        Yes! Your wallet is associated with your Internet Identity or authentication method. You can log in 
-                        from any device using the same identity to access your assets. Your principal ID remains the same 
-                        across all devices.
+                        Yes! Log in from any device with the same identity to access your assets—your principal stays the same.
                     </p>
                 </div>
 
-                {/* Related Pages */}
-                <div style={styles.section}>
-                    <h2 style={styles.subheading}>Related Help Topics</h2>
-                    
+                {/* Related Topics */}
+                <div style={styles.section} className="wallet-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon()}>
+                            <FaArrowLeft size={20} color={walletPrimary} />
+                        </div>
+                        <h2 style={styles.subheading}>Related Help Topics</h2>
+                    </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> - Learn about 
-                            neuron management, voting, and hotkeys
+                            <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> — Neuron management, voting, and hotkeys
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help/sneedlock" style={styles.link}>Understanding Sneedlock</Link> - Learn how to 
-                            lock tokens and liquidity positions
+                            <Link to="/help/sneedlock" style={styles.link}>Understanding Sneedlock</Link> — Lock tokens and liquidity positions
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help" style={styles.link}>Help Center</Link> - Browse all help topics
+                            <Link to="/help" style={styles.link}>Help Center</Link> — Browse all help topics
                         </li>
                     </ul>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }
 
 export default HelpWallet;
-
