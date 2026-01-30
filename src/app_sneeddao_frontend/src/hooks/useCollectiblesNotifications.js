@@ -441,6 +441,7 @@ export function useCollectiblesNotifications() {
                 
             } else if (subtype === 'unlocked') {
                 // Unlocked backend position - withdraw position first, then claim
+                // Note: Position stays in frontend wallet after this (same as Wallet.jsx behavior)
                 const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
                     agentOptions: { identity } 
                 });
@@ -469,15 +470,9 @@ export function useCollectiblesNotifications() {
                     throw new Error(`Failed to claim fees: ${JSON.stringify(claimResult.err || claimResult)}`);
                 }
                 
-                // Step 3: Withdraw tokens
+                // Step 3: Withdraw tokens to wallet
                 await swapActor.withdraw({ token: position.token0.toText(), amount: claimResult.ok.amount0, fee: 0n });
                 await swapActor.withdraw({ token: position.token1.toText(), amount: claimResult.ok.amount1, fee: 0n });
-                
-                // Step 4: Re-deposit position to backend
-                await sneedLockActor.deposit_position(
-                    position.swapCanisterId,
-                    positionDetails.positionId
-                );
             }
             
         } else if (item.type === 'reward') {
