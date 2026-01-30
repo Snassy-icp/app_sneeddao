@@ -452,6 +452,7 @@ function ThreadViewer({
     const [votingStates, setVotingStates] = useState(new Map());
     const [userVotes, setUserVotes] = useState(new Map());
     const [threadVotes, setThreadVotes] = useState(new Map()); // Map<postId, {upvoted_neurons: [], downvoted_neurons: []}>
+    const [optimisticScores, setOptimisticScores] = useState(new Map()); // Map<postId, {upvote_score: number, downvote_score: number}>
     
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
@@ -475,6 +476,114 @@ function ThreadViewer({
             return selectedNeuronIds.has(neuronId);
         });
     }, [allNeurons, selectedNeuronIds]);
+
+    // Calculate optimistic score after a vote action
+    // Returns the predicted new scores based on the current state and intended action
+    const calculateOptimisticScore = useCallback((post, voteType, isRetraction) => {
+        const postIdStr = post.id.toString();
+        const postVotes = threadVotes.get(postIdStr) || { upvoted_neurons: [], downvoted_neurons: [] };
+        const currentUpvoteScore = Number(post.upvote_score || 0);
+        const currentDownvoteScore = Number(post.downvote_score || 0);
+        
+        // For selected neurons, calculate the total voting power being added or removed
+        const selectedNeurons = getSelectedNeurons();
+        let vpToAdd = 0;
+        let vpToRemove = 0;
+        
+        selectedNeurons.forEach(neuron => {
+            const neuronVP = calculateVotingPower(neuron);
+            const neuronIdBytes = neuron.id[0].id;
+            
+            // Check if this neuron has already voted
+            const isUpvoted = postVotes.upvoted_neurons?.some(v => {
+                const voteNeuronBytes = v.neuron_id?.id;
+                if (!voteNeuronBytes || !neuronIdBytes) return false;
+                return Array.from(voteNeuronBytes).join(',') === Array.from(neuronIdBytes).join(',');
+            });
+            const isDownvoted = postVotes.downvoted_neurons?.some(v => {
+                const voteNeuronBytes = v.neuron_id?.id;
+                if (!voteNeuronBytes || !neuronIdBytes) return false;
+                return Array.from(voteNeuronBytes).join(',') === Array.from(neuronIdBytes).join(',');
+            });
+            
+            if (isRetraction) {
+                // Retracting: remove the neuron's vote
+                if (isUpvoted) {
+                    vpToRemove += neuronVP;
+                } else if (isDownvoted) {
+                    vpToRemove += neuronVP;
+                }
+            } else {
+                // New vote: add the neuron's voting power
+                // If neuron already voted this way, no change; if voted opposite, it will change
+                if (voteType === 'up') {
+                    if (!isUpvoted) {
+                        vpToAdd += neuronVP;
+                        // If was downvoted, that VP will be removed from downvotes
+                        if (isDownvoted) {
+                            vpToRemove += neuronVP;
+                        }
+                    }
+                } else { // down
+                    if (!isDownvoted) {
+                        vpToAdd += neuronVP;
+                        // If was upvoted, that VP will be removed from upvotes
+                        if (isUpvoted) {
+                            vpToRemove += neuronVP;
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Calculate new scores
+        let newUpvoteScore = currentUpvoteScore;
+        let newDownvoteScore = currentDownvoteScore;
+        
+        if (isRetraction) {
+            // When retracting, we remove from whichever type the neurons voted
+            const hasUpvotes = postVotes.upvoted_neurons?.length > 0;
+            const hasDownvotes = postVotes.downvoted_neurons?.length > 0;
+            
+            if (hasUpvotes) {
+                newUpvoteScore = Math.max(0, currentUpvoteScore - vpToRemove);
+            }
+            if (hasDownvotes) {
+                newDownvoteScore = Math.max(0, currentDownvoteScore - vpToRemove);
+            }
+        } else {
+            if (voteType === 'up') {
+                newUpvoteScore = currentUpvoteScore + vpToAdd;
+                newDownvoteScore = Math.max(0, currentDownvoteScore - vpToRemove);
+            } else {
+                newDownvoteScore = currentDownvoteScore + vpToAdd;
+                newUpvoteScore = Math.max(0, currentUpvoteScore - vpToRemove);
+            }
+        }
+        
+        return {
+            upvote_score: newUpvoteScore,
+            downvote_score: newDownvoteScore
+        };
+    }, [threadVotes, getSelectedNeurons]);
+
+    // Helper to get the effective score for a post (optimistic if available, otherwise actual)
+    const getEffectiveScore = useCallback((post) => {
+        const postIdStr = post.id.toString();
+        const optimistic = optimisticScores.get(postIdStr);
+        
+        if (optimistic) {
+            return {
+                upvote_score: optimistic.upvote_score,
+                downvote_score: optimistic.downvote_score
+            };
+        }
+        
+        return {
+            upvote_score: Number(post.upvote_score || 0),
+            downvote_score: Number(post.downvote_score || 0)
+        };
+    }, [optimisticScores]);
 
     // Sort posts based on selected criteria
     const sortPosts = useCallback((posts) => {
@@ -1017,6 +1126,16 @@ function ThreadViewer({
         }
 
         const postIdStr = postId.toString();
+        
+        // Find the post to calculate optimistic score
+        const post = discussionPosts.find(p => Number(p.id) === Number(postId));
+        
+        // Apply optimistic score update immediately
+        if (post) {
+            const optimisticScore = calculateOptimisticScore(post, voteType, false);
+            setOptimisticScores(prev => new Map(prev.set(postIdStr, optimisticScore)));
+        }
+        
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
         try {
@@ -1039,6 +1158,13 @@ function ThreadViewer({
                 // Refresh vote button states for this specific post
                 await refreshPostVotes(postId);
                 
+                // Clear optimistic score now that real data is loaded
+                setOptimisticScores(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
+                
                 // Clear voting state after a delay
                 setTimeout(() => {
                     setVotingStates(prev => {
@@ -1050,6 +1176,13 @@ function ThreadViewer({
             } else {
                 console.error('Vote failed:', result.err);
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+                
+                // Clear optimistic score on error (revert to actual)
+                setOptimisticScores(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
                 
                 // Clear error state after a delay
                 setTimeout(() => {
@@ -1064,6 +1197,13 @@ function ThreadViewer({
             console.error('Error voting on post:', error);
             setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
             
+            // Clear optimistic score on error (revert to actual)
+            setOptimisticScores(prev => {
+                const newState = new Map(prev);
+                newState.delete(postIdStr);
+                return newState;
+            });
+            
             // Clear error state after a delay
             setTimeout(() => {
                 setVotingStates(prev => {
@@ -1073,13 +1213,23 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, getSelectedNeurons, totalVotingPower, fetchPosts, refreshPostVotes]);
+    }, [forumActor, getSelectedNeurons, totalVotingPower, fetchPosts, refreshPostVotes, discussionPosts, calculateOptimisticScore]);
 
     const handleRetractVote = useCallback(async (postId) => {
         const selectedNeurons = getSelectedNeurons();
         if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) return;
 
         const postIdStr = postId.toString();
+        
+        // Find the post to calculate optimistic score
+        const post = discussionPosts.find(p => Number(p.id) === Number(postId));
+        
+        // Apply optimistic score update immediately (retraction)
+        if (post) {
+            const optimisticScore = calculateOptimisticScore(post, null, true);
+            setOptimisticScores(prev => new Map(prev.set(postIdStr, optimisticScore)));
+        }
+        
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
         try {
@@ -1105,6 +1255,13 @@ function ThreadViewer({
                 // Refresh vote button states for this specific post
                 await refreshPostVotes(postId);
                 
+                // Clear optimistic score now that real data is loaded
+                setOptimisticScores(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
+                
                 // Clear voting state after a delay
                 setTimeout(() => {
                     setVotingStates(prev => {
@@ -1116,6 +1273,13 @@ function ThreadViewer({
             } else {
                 console.error('Retract vote failed:', result.err);
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+                
+                // Clear optimistic score on error (revert to actual)
+                setOptimisticScores(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
                 
                 // Clear error state after a delay
                 setTimeout(() => {
@@ -1130,6 +1294,13 @@ function ThreadViewer({
             console.error('Error retracting vote:', error);
             setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
             
+            // Clear optimistic score on error (revert to actual)
+            setOptimisticScores(prev => {
+                const newState = new Map(prev);
+                newState.delete(postIdStr);
+                return newState;
+            });
+            
             // Clear error state after a delay
             setTimeout(() => {
                 setVotingStates(prev => {
@@ -1139,7 +1310,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, getSelectedNeurons, fetchPosts, refreshPostVotes]);
+    }, [forumActor, getSelectedNeurons, fetchPosts, refreshPostVotes, discussionPosts, calculateOptimisticScore]);
 
     // Check if thread is linked to a proposal and fetch proposal info
     const checkProposalLink = useCallback(async () => {
@@ -3126,34 +3297,31 @@ function ThreadViewer({
                                     )}
                                 </button>
 
-                                {/* Score Display - Shows total post score */}
-                                <span style={{ 
-                                    color: (Number(post.upvote_score) - Number(post.downvote_score)) > 0 ? '#6b8e6b' : 
-                                           (Number(post.upvote_score) - Number(post.downvote_score)) < 0 ? '#b85c5c' : theme.colors.mutedText,
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                                    minWidth: '24px',
-                                    textAlign: 'center',
-                                    padding: '0 2px'
-                                }}>
-                                    {votingStates.get(post.id.toString()) === 'voting' ? (
-                                        <div style={{ 
-                                            display: 'inline-block',
-                                            width: '12px',
-                                            height: '12px',
-                                            border: '2px solid #f3f3f3',
-                                            borderTop: '2px solid #3498db',
-                                            borderRadius: '50%',
-                                            animation: 'spin 1s linear infinite'
-                                        }} />
-                                    ) : (
-                                        (() => {
-                                            const score = Number(post.upvote_score) - Number(post.downvote_score);
-                                            return (score > 0 ? '+' : '') + formatScore(score);
-                                        })()
-                                    )}
-                                </span>
+                                {/* Score Display - Shows total post score (optimistic when voting) */}
+                                {(() => {
+                                    const effectiveScores = getEffectiveScore(post);
+                                    const score = effectiveScores.upvote_score - effectiveScores.downvote_score;
+                                    const isOptimistic = optimisticScores.has(post.id.toString());
+                                    
+                                    return (
+                                        <span style={{ 
+                                            color: score > 0 ? '#6b8e6b' : 
+                                                   score < 0 ? '#b85c5c' : theme.colors.mutedText,
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                                            minWidth: '24px',
+                                            textAlign: 'center',
+                                            padding: '0 2px',
+                                            opacity: isOptimistic ? 0.7 : 1,
+                                            fontStyle: isOptimistic ? 'italic' : 'normal'
+                                        }}
+                                        title={isOptimistic ? 'Updating score...' : undefined}
+                                        >
+                                            {(score > 0 ? '+' : '') + formatScore(score)}
+                                        </span>
+                                    );
+                                })()}
 
                                 {/* Downvote Button - Shows voting power */}
                                 <button
