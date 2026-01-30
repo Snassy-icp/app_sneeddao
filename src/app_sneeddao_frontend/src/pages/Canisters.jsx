@@ -1516,8 +1516,7 @@ export default function CanistersPage() {
                     draggable={true}
                     onDragStart={(e) => {
                         e.stopPropagation();
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('text/plain', group.id);
+                        // Let handleDragStart set the data transfer
                         if (onDragStart) {
                             onDragStart(e, 'group', group.id, null);
                         }
@@ -2128,8 +2127,8 @@ export default function CanistersPage() {
                 draggable={true}
                 onDragStart={(e) => {
                     e.stopPropagation();
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', canisterId);
+                    // Let handleDragStart set the data transfer - don't set it here
+                    // to avoid overwriting issues
                     if (onDragStart) {
                         onDragStart(e, 'canister', canisterId, groupId);
                     }
@@ -3649,8 +3648,7 @@ export default function CanistersPage() {
                                                         draggable={true}
                                                         onDragStart={(e) => {
                                                             e.stopPropagation();
-                                                            e.dataTransfer.effectAllowed = 'move';
-                                                            e.dataTransfer.setData('text/plain', canisterId);
+                                                            // Let handleDragStart set the data transfer
                                                             handleDragStart(e, 'canister', canisterId, 'wallet');
                                                         }}
                                                         onDragEnd={(e) => {
@@ -4089,8 +4087,7 @@ export default function CanistersPage() {
                                                     draggable={true}
                                                     onDragStart={(e) => {
                                                         e.stopPropagation();
-                                                        e.dataTransfer.effectAllowed = 'move';
-                                                        e.dataTransfer.setData('text/plain', canisterId);
+                                                        // Let handleDragStart set the data transfer
                                                         handleDragStart(e, 'canister', canisterId, 'neuron_managers');
                                                     }}
                                                     onDragEnd={(e) => {
