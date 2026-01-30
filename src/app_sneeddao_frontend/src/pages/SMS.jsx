@@ -106,6 +106,8 @@ const SMS = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedTab, setSelectedTab] = useState('received'); // 'received', 'sent', 'all'
+    const [receivedCount, setReceivedCount] = useState(0);
+    const [sentCount, setSentCount] = useState(0);
     const [showComposeModal, setShowComposeModal] = useState(false);
     const [composeForm, setComposeForm] = useState({
         recipients: [''], // Array of principal strings
@@ -180,13 +182,23 @@ const SMS = () => {
             const actor = getSmsActor();
             if (!actor) return;
 
+            // Fetch both counts for the header stats (in parallel with current tab data)
+            const [receivedData, sentData] = await Promise.all([
+                actor.get_received_messages(),
+                actor.get_sent_messages()
+            ]);
+            
+            setReceivedCount(receivedData.length);
+            setSentCount(sentData.length);
+
+            // Get the data for the current tab view
             let messageData = [];
             switch (selectedTab) {
                 case 'sent':
-                    messageData = await actor.get_sent_messages();
+                    messageData = sentData;
                     break;
                 case 'received':
-                    messageData = await actor.get_received_messages();
+                    messageData = receivedData;
                     break;
                 default:
                     messageData = await actor.get_all_messages();
@@ -657,8 +669,6 @@ const SMS = () => {
         );
     }
 
-    // Message count for current view
-    const messageCount = messages.length;
 
     return (
         <div className='page-container'>
@@ -724,24 +734,14 @@ const SMS = () => {
                         
                         {/* Quick Stats */}
                         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                            {selectedTab === 'received' && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <FaInbox size={14} style={{ color: smsPrimary }} />
-                                    <span><strong style={{ color: smsPrimary }}>{messageCount}</strong> received</span>
-                                </div>
-                            )}
-                            {selectedTab === 'sent' && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <FaPaperPlane size={14} style={{ color: theme.colors.success }} />
-                                    <span><strong style={{ color: theme.colors.success }}>{messageCount}</strong> sent</span>
-                                </div>
-                            )}
-                            {selectedTab === 'all' && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <FaFolderOpen size={14} style={{ color: smsAccent }} />
-                                    <span><strong style={{ color: smsAccent }}>{messageCount}</strong> message{messageCount !== 1 ? 's' : ''}</span>
-                                </div>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaInbox size={14} style={{ color: smsPrimary }} />
+                                <span><strong style={{ color: smsPrimary }}>{receivedCount}</strong> received</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                <FaPaperPlane size={14} style={{ color: theme.colors.success }} />
+                                <span><strong style={{ color: theme.colors.success }}>{sentCount}</strong> sent</span>
+                            </div>
                         </div>
                     </div>
                 </div>
