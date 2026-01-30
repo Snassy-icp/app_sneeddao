@@ -1303,7 +1303,7 @@ export default function Premium() {
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
-                                                Peer-to-peer token exchange marketplace with auction listings and direct offers.
+                                                Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through trustless escrow auctions.
                                             </p>
                                             {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1338,7 +1338,7 @@ export default function Premium() {
                                                 </div>
                                             )}
                                             <Link 
-                                                to="/sneedex"
+                                                to="/sneedex_offers"
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
@@ -1390,7 +1390,7 @@ export default function Premium() {
                                         </div>
                                         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
-                                                Automate ICP neuron management with spawning, staking, and following rules.
+                                                Deploy a smart contract to control your ICP neurons with multi-controller support and automation.
                                             </p>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1408,7 +1408,7 @@ export default function Premium() {
                                                 </div>
                                             </div>
                                             <Link 
-                                                to="/neurons"
+                                                to="/create_icp_neuron"
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
@@ -1816,7 +1816,7 @@ export default function Premium() {
                                     </div>
                                     <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '0.25rem', lineHeight: '1.5' }}>
-                                            Add full hotkey permissions to your SNS neurons, enabling NNS-dapp management with a simple browser script.
+                                            Grant full permissions to any hotkey on your SNS neurons, unlocking NNS-dapp voting and management.
                                         </p>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>

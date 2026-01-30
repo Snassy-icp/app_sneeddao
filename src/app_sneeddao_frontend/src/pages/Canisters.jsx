@@ -12,11 +12,53 @@ import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } 
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.canister-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.canister-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+`;
+
+// Page accent colors
+const canisterPrimary = '#8b5cf6'; // Purple
+const canisterSecondary = '#a78bfa';
+const canisterAccent = '#c4b5fd';
 
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
@@ -2209,263 +2251,369 @@ export default function CanistersPage() {
     const styles = {
         pageContainer: {
             minHeight: '100vh',
-            backgroundColor: theme.colors.background,
-            color: theme.colors.text,
+            background: theme.colors.primaryGradient,
+            color: theme.colors.primaryText,
         },
         container: {
             maxWidth: '900px',
             margin: '0 auto',
-            padding: '24px',
+            padding: '1.5rem 1rem',
         },
         title: {
             fontSize: '28px',
             fontWeight: 600,
             marginBottom: '24px',
-            color: theme.colors.text,
+            color: theme.colors.primaryText,
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
         },
         addSection: {
-            backgroundColor: theme.colors.card,
+            background: theme.colors.cardGradient,
             borderRadius: '12px',
-            padding: '20px',
-            marginBottom: '24px',
+            padding: '1rem 1.25rem',
+            marginBottom: '1.25rem',
             border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
         },
         addSectionTitle: {
-            fontSize: '16px',
-            fontWeight: 500,
-            marginBottom: '12px',
-            color: theme.colors.textSecondary,
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            marginBottom: '0.75rem',
+            color: theme.colors.secondaryText,
         },
         inputRow: {
             display: 'flex',
-            gap: '12px',
+            gap: '0.75rem',
             alignItems: 'center',
+            flexWrap: 'wrap',
         },
         input: {
             flex: 1,
-            padding: '12px 16px',
-            borderRadius: '8px',
+            padding: '0.65rem 1rem',
+            borderRadius: '10px',
             border: `1px solid ${theme.colors.border}`,
-            backgroundColor: theme.colors.inputBackground,
-            color: theme.colors.text,
-            fontSize: '14px',
+            backgroundColor: theme.colors.tertiaryBg,
+            color: theme.colors.primaryText,
+            fontSize: '0.9rem',
             fontFamily: 'monospace',
             outline: 'none',
+            transition: 'border-color 0.2s, box-shadow 0.2s',
         },
         addButton: {
-            padding: '12px 20px',
-            borderRadius: '8px',
+            padding: '0.65rem 1.25rem',
+            borderRadius: '10px',
             border: 'none',
-            backgroundColor: (addingCanister || !newCanisterId.trim()) ? '#6c757d' : '#28a745',
+            background: (addingCanister || !newCanisterId.trim()) ? theme.colors.mutedText : `linear-gradient(135deg, ${canisterPrimary}, ${canisterSecondary})`,
             color: '#fff',
-            fontSize: '14px',
+            fontSize: '0.9rem',
             fontWeight: 600,
             cursor: (addingCanister || !newCanisterId.trim()) ? 'not-allowed' : 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '0.5rem',
             transition: 'all 0.2s',
-            opacity: (addingCanister || !newCanisterId.trim()) ? 0.6 : 1,
+            opacity: (addingCanister || !newCanisterId.trim()) ? 0.5 : 1,
+            boxShadow: (addingCanister || !newCanisterId.trim()) ? 'none' : `0 4px 12px ${canisterPrimary}40`,
         },
         canisterList: {
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px',
+            gap: '0.5rem',
         },
         canisterCard: {
-            backgroundColor: theme.colors.card,
-            borderRadius: '12px',
-            padding: '12px 16px',
+            background: theme.colors.cardGradient,
+            borderRadius: '10px',
+            padding: '0.75rem 1rem',
             border: `1px solid ${theme.colors.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            transition: 'border-color 0.2s',
+            transition: 'all 0.2s',
             flexWrap: 'wrap',
-            gap: '10px',
+            gap: '0.5rem',
+            boxShadow: theme.colors.cardShadow,
         },
         canisterInfo: {
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '0.5rem',
             flex: '1 1 auto',
             minWidth: '200px',
             flexWrap: 'wrap',
         },
         canisterIcon: {
-            width: '40px',
-            height: '40px',
+            width: '36px',
+            height: '36px',
             borderRadius: '8px',
-            backgroundColor: theme.colors.primary + '20',
+            backgroundColor: `${canisterPrimary}20`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: theme.colors.primary,
+            color: canisterPrimary,
         },
         canisterId: {
             fontFamily: 'monospace',
-            fontSize: '14px',
-            color: theme.colors.text,
+            fontSize: '0.85rem',
+            color: theme.colors.primaryText,
             wordBreak: 'break-all',
         },
         canisterLink: {
-            color: theme.colors.primary,
+            color: canisterPrimary,
             textDecoration: 'none',
             fontFamily: 'monospace',
-            fontSize: '14px',
+            fontSize: '0.85rem',
         },
         removeButton: {
-            padding: '8px 12px',
+            padding: '0.4rem 0.6rem',
             borderRadius: '6px',
             border: `1px solid ${theme.colors.border}`,
             backgroundColor: 'transparent',
-            color: theme.colors.textSecondary,
-            fontSize: '14px',
+            color: theme.colors.mutedText,
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '0.35rem',
             transition: 'all 0.2s',
         },
         removeButtonHover: {
-            borderColor: '#dc3545',
-            color: '#dc3545',
+            borderColor: '#ef4444',
+            color: '#ef4444',
         },
         emptyState: {
             textAlign: 'center',
-            padding: '48px 24px',
-            backgroundColor: theme.colors.card,
+            padding: '2.5rem 1.5rem',
+            background: theme.colors.cardGradient,
             borderRadius: '12px',
             border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
         },
         emptyIcon: {
-            fontSize: '48px',
-            color: theme.colors.textSecondary,
-            marginBottom: '16px',
+            fontSize: '2.5rem',
+            color: theme.colors.mutedText,
+            marginBottom: '1rem',
             opacity: 0.5,
         },
         emptyText: {
-            fontSize: '16px',
-            color: theme.colors.textSecondary,
-            marginBottom: '8px',
+            fontSize: '1rem',
+            color: theme.colors.secondaryText,
+            marginBottom: '0.5rem',
+            fontWeight: '500',
         },
         emptySubtext: {
-            fontSize: '14px',
-            color: theme.colors.textSecondary,
-            opacity: 0.7,
+            fontSize: '0.85rem',
+            color: theme.colors.mutedText,
+            lineHeight: '1.5',
         },
         message: {
-            padding: '12px 16px',
-            borderRadius: '8px',
-            marginBottom: '16px',
-            fontSize: '14px',
+            padding: '0.75rem 1rem',
+            borderRadius: '10px',
+            marginBottom: '1rem',
+            fontSize: '0.9rem',
         },
         errorMessage: {
-            backgroundColor: '#dc354520',
-            color: '#dc3545',
-            border: '1px solid #dc354540',
+            backgroundColor: '#ef444420',
+            color: '#ef4444',
+            border: '1px solid #ef444440',
         },
         successMessage: {
-            backgroundColor: '#28a74520',
-            color: '#28a745',
-            border: '1px solid #28a74540',
+            backgroundColor: '#22c55e20',
+            color: '#22c55e',
+            border: '1px solid #22c55e40',
         },
         loadingSpinner: {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '48px',
-            color: theme.colors.textSecondary,
+            padding: '3rem',
+            color: theme.colors.mutedText,
         },
         notLoggedIn: {
             textAlign: 'center',
-            padding: '48px 24px',
-            backgroundColor: theme.colors.card,
-            borderRadius: '12px',
+            padding: '3rem 1.5rem',
+            background: theme.colors.cardGradient,
+            borderRadius: '16px',
             border: `1px solid ${theme.colors.border}`,
+            boxShadow: theme.colors.cardShadow,
         },
         viewLink: {
-            padding: '8px 16px',
-            borderRadius: '6px',
-            backgroundColor: theme.colors.primary + '15',
-            color: theme.colors.primary,
+            padding: '0.5rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: `${canisterPrimary}15`,
+            color: canisterPrimary,
             textDecoration: 'none',
-            fontSize: '13px',
-            fontWeight: 500,
+            fontSize: '0.8rem',
+            fontWeight: 600,
         },
         sectionHeader: {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '16px 0',
+            padding: '1rem 0',
             cursor: 'pointer',
             borderBottom: `1px solid ${theme.colors.border}`,
-            marginBottom: '16px',
+            marginBottom: '1rem',
         },
         sectionTitle: {
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
-            fontSize: '18px',
+            gap: '0.6rem',
+            fontSize: '1.1rem',
             fontWeight: 600,
-            color: theme.colors.text,
+            color: theme.colors.primaryText,
         },
         sectionCount: {
-            fontSize: '14px',
-            fontWeight: 400,
-            color: theme.colors.textSecondary,
-            backgroundColor: theme.colors.primary + '15',
-            padding: '2px 10px',
+            fontSize: '0.8rem',
+            fontWeight: 500,
+            color: canisterPrimary,
+            backgroundColor: `${canisterPrimary}15`,
+            padding: '0.15rem 0.6rem',
             borderRadius: '12px',
         },
         sectionToggle: {
-            color: theme.colors.textSecondary,
-            fontSize: '14px',
+            color: theme.colors.mutedText,
+            fontSize: '0.85rem',
         },
         managerCard: {
-            backgroundColor: theme.colors.card,
-            borderRadius: '12px',
-            padding: '12px 16px',
+            background: theme.colors.cardGradient,
+            borderRadius: '10px',
+            padding: '0.75rem 1rem',
             border: `1px solid ${theme.colors.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '10px',
+            gap: '0.5rem',
             flexWrap: 'wrap',
+            boxShadow: theme.colors.cardShadow,
         },
         managerInfo: {
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '0.5rem',
             flex: '1 1 auto',
             minWidth: '200px',
             flexWrap: 'wrap',
         },
         managerIcon: {
-            width: '40px',
-            height: '40px',
+            width: '36px',
+            height: '36px',
             borderRadius: '8px',
-            backgroundColor: '#8b5cf620',
+            backgroundColor: '#9b59b620',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#8b5cf6',
+            color: '#9b59b6',
         },
         managerVersion: {
-            fontSize: '11px',
-            color: theme.colors.textSecondary,
-            backgroundColor: theme.colors.inputBackground,
-            padding: '2px 8px',
-            borderRadius: '10px',
+            fontSize: '0.7rem',
+            color: theme.colors.secondaryText,
+            backgroundColor: theme.colors.tertiaryBg,
+            padding: '0.15rem 0.5rem',
+            borderRadius: '8px',
         },
     };
 
     return (
-        <div style={styles.pageContainer}>
+        <div className="page-container" style={styles.pageContainer}>
+            <style>{customStyles}</style>
             <Header />
+            
+            {/* Hero Section */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${canisterPrimary}15 50%, ${canisterSecondary}10 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-10%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${canisterPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '5%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${canisterSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div style={{ maxWidth: '900px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
+                        <div className="canister-float" style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '16px',
+                            background: `linear-gradient(135deg, ${canisterPrimary}, ${canisterSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 8px 24px ${canisterPrimary}40`
+                        }}>
+                            <FaCube size={28} color="#fff" />
+                        </div>
+                        <div>
+                            <h1 style={{
+                                fontSize: '1.75rem',
+                                fontWeight: '700',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                Canister Manager
+                            </h1>
+                            <p style={{
+                                fontSize: '0.95rem',
+                                color: theme.colors.secondaryText,
+                                margin: '0.25rem 0 0 0'
+                            }}>
+                                Organize and monitor your Internet Computer canisters
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {/* Quick Stats */}
+                    <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                            <FaCube size={14} style={{ color: canisterPrimary }} />
+                            <span><strong style={{ color: canisterPrimary }}>{getAllCanisterIds(canisterGroups).length}</strong> custom</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                            <FaWallet size={14} style={{ color: theme.colors.success }} />
+                            <span><strong style={{ color: theme.colors.success }}>{trackedCanisters.length}</strong> wallet</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                            <FaBrain size={14} style={{ color: '#9b59b6' }} />
+                            <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> neuron managers</span>
+                        </div>
+                        <Link 
+                            to="/help/canister-manager" 
+                            style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '0.35rem',
+                                color: theme.colors.accent, 
+                                fontSize: '0.85rem', 
+                                textDecoration: 'none',
+                                marginLeft: 'auto'
+                            }}
+                        >
+                            <FaQuestionCircle size={12} /> How it works
+                        </Link>
+                    </div>
+                </div>
+            </div>
             
             {/* Premium Upgrade Modal */}
             {showUpgradeModal && (
@@ -2614,69 +2762,56 @@ export default function CanistersPage() {
             )}
             
             <div style={styles.container}>
-                <h1 style={styles.title}>
-                    <FaCube /> Canister Manager
-                </h1>
-                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                    <Link 
-                        to="/help/canister-manager" 
-                        style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                    >
-                        Learn how it works →
-                    </Link>
-                </div>
-
                 {/* Cycle Status Legend */}
-                <div style={{
+                <div className="canister-fade-in" style={{
                     display: 'flex',
                     flexWrap: 'wrap',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '16px',
-                    padding: '12px 16px',
-                    backgroundColor: theme.colors.secondaryBg,
-                    borderRadius: '8px',
+                    gap: '1rem',
+                    padding: '0.75rem 1rem',
+                    background: theme.colors.cardGradient,
+                    borderRadius: '12px',
                     border: `1px solid ${theme.colors.border}`,
-                    marginBottom: '20px',
-                    fontSize: '13px',
+                    marginBottom: '1.25rem',
+                    fontSize: '0.8rem',
+                    boxShadow: theme.colors.cardShadow,
                 }}>
-                    <span style={{ color: theme.colors.mutedText, fontWeight: '500' }}>Cycle Status:</span>
+                    <span style={{ color: theme.colors.mutedText, fontWeight: '600', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cycle Status</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{
-                            width: '10px',
-                            height: '10px',
+                            width: '8px',
+                            height: '8px',
                             borderRadius: '50%',
                             backgroundColor: '#22c55e',
-                            boxShadow: '0 0 4px #22c55e',
+                            boxShadow: '0 0 6px #22c55e',
                         }} />
                         <span style={{ color: theme.colors.secondaryText }}>Healthy</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{
-                            width: '10px',
-                            height: '10px',
+                            width: '8px',
+                            height: '8px',
                             borderRadius: '50%',
                             backgroundColor: '#f59e0b',
-                            boxShadow: '0 0 4px #f59e0b',
+                            boxShadow: '0 0 6px #f59e0b',
                         }} />
-                        <span style={{ color: theme.colors.secondaryText }}>Low cycles</span>
+                        <span style={{ color: theme.colors.secondaryText }}>Low</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{
-                            width: '10px',
-                            height: '10px',
+                            width: '8px',
+                            height: '8px',
                             borderRadius: '50%',
                             backgroundColor: '#ef4444',
-                            boxShadow: '0 0 4px #ef4444',
+                            boxShadow: '0 0 6px #ef4444',
                         }} />
-                        <span style={{ color: theme.colors.secondaryText }}>Critical - needs top-up!</span>
+                        <span style={{ color: theme.colors.secondaryText }}>Critical</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{
-                            width: '10px',
-                            height: '10px',
+                            width: '8px',
+                            height: '8px',
                             borderRadius: '50%',
                             backgroundColor: '#6b7280',
                         }} />
@@ -2686,14 +2821,12 @@ export default function CanistersPage() {
                         to="/me?tab=settings"
                         style={{ 
                             color: theme.colors.accent, 
-                            fontSize: '12px', 
+                            fontSize: '0.75rem', 
                             textDecoration: 'none',
-                            marginLeft: '8px',
+                            fontWeight: '500',
                         }}
-                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                     >
-                        Customize thresholds →
+                        Customize →
                     </Link>
                 </div>
 
