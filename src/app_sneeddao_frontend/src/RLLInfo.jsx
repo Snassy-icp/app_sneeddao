@@ -27,7 +27,7 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import priceService from './services/PriceService';
 import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
-import { FaCoins, FaChartLine, FaWallet, FaCubes, FaArrowRight, FaSpinner, FaDollarSign, FaLayerGroup } from 'react-icons/fa';
+import { FaCoins, FaChartLine, FaWallet, FaCubes, FaArrowRight, FaSpinner, FaDollarSign, FaLayerGroup, FaLeaf } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -3255,15 +3255,21 @@ function RLLInfo() {
                         alignSelf: 'start'
                     }}>
                         <div 
-                            style={styles.sectionHeader}
+                            style={{
+                                ...styles.sectionHeader,
+                                flexDirection: 'column',
+                                alignItems: 'stretch',
+                                gap: '16px',
+                            }}
                             onClick={() => setExpandedSections(prev => ({ ...prev, totalAssets: !prev.totalAssets }))}
                         >
-                            <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                                <div style={styles.sectionIcon}>
-                                    <FaWallet size={16} style={{ color: rllPrimary }} />
-                                </div>
-                                <div>
-                                    <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '1.1rem', fontWeight: '700' }}>
+                            {/* Header Row */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={styles.sectionIcon}>
+                                        <FaWallet size={16} style={{ color: rllPrimary }} />
+                                    </div>
+                                    <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', fontWeight: '700' }}>
                                         Total Assets Overview
                                         <span 
                                             style={styles.infoIcon} 
@@ -3274,98 +3280,216 @@ function RLLInfo() {
                                         </span>
                                     </h2>
                                 </div>
-                                <div style={{ 
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                                    gap: '15px', 
-                                    fontSize: '0.9em', 
-                                    color: theme.colors.mutedText,
-                                    fontFamily: 'monospace'
+                                <button style={styles.expandButton}>
+                                    {expandedSections.totalAssets ? '▼' : '▶'}
+                                </button>
+                            </div>
+                            
+                            {/* Key Metrics Grid */}
+                            <div style={{ 
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(4, 1fr)',
+                                gap: '10px',
+                            }}>
+                                <div style={{
+                                    background: `${theme.colors.success}10`,
+                                    border: `1px solid ${theme.colors.success}30`,
+                                    borderRadius: '10px',
+                                    padding: '12px',
+                                    textAlign: 'center',
                                 }}>
-                                    <span>FDV: ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}</span>
-                                    <span>Circ. MC: ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}</span>
-                                    <span>NAV: ${formatUSD(getNAVUSDValue())}</span>
-                                    <span>TVL: ${formatUSD(getTVL())}</span>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>FDV</div>
+                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                        ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${theme.colors.accent}10`,
+                                    border: `1px solid ${theme.colors.accent}30`,
+                                    borderRadius: '10px',
+                                    padding: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>Circ. MC</div>
+                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: theme.colors.accent, fontFamily: 'monospace' }}>
+                                        ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${theme.colors.warning}10`,
+                                    border: `1px solid ${theme.colors.warning}30`,
+                                    borderRadius: '10px',
+                                    padding: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>NAV</div>
+                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: theme.colors.warning, fontFamily: 'monospace' }}>
+                                        ${formatUSD(getNAVUSDValue())}
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: `${rllPrimary}10`,
+                                    border: `1px solid ${rllPrimary}30`,
+                                    borderRadius: '10px',
+                                    padding: '12px',
+                                    textAlign: 'center',
+                                }}>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>TVL</div>
+                                    <div style={{ fontSize: '0.95rem', fontWeight: '700', color: rllPrimary, fontFamily: 'monospace' }}>
+                                        ${formatUSD(getTVL())}
+                                    </div>
                                 </div>
                             </div>
-                            <button style={styles.expandButton}>
-                                {expandedSections.totalAssets ? '▼' : '▶'}
-                            </button>
                         </div>
                         {expandedSections.totalAssets && <div style={{
-                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
-                            borderRadius: '8px',
-                            padding: '20px'
+                            background: theme.colors.cardGradient, 
+                            border: `1px solid ${theme.colors.border}`, 
+                            boxShadow: theme.colors.cardShadow,
+                            borderRadius: '14px',
+                            padding: '1.25rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1rem',
                         }}>
                             {/* Grand Total in USD */}
                             <div style={{
-                                background: theme.colors.secondaryBg, 
-                                boxShadow: theme.colors.cardShadow,
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: `1px solid ${theme.colors.warning}`,
-                                marginBottom: '20px'
+                                background: `linear-gradient(135deg, ${theme.colors.warning}08, ${theme.colors.warning}03)`, 
+                                padding: '1.25rem',
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.warning}30`,
                             }}>
-                                <h3 style={{ color: theme.colors.warning, marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span>Total Value</span>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '10px',
+                                    marginBottom: '1rem',
+                                }}>
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${theme.colors.warning}20, ${theme.colors.warning}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}>
+                                        <FaDollarSign size={16} style={{ color: theme.colors.warning }} />
+                                    </div>
+                                    <h3 style={{ color: theme.colors.warning, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                        Total Value
+                                    </h3>
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Total value of all DAO assets. GAV includes SNEED holdings in treasury, while NAV excludes them to avoid circular valuation."
                                     >
                                         i
                                     </span>
-                                </h3>
-                                {/* GAV Section */}
-                                <div style={{ marginBottom: '15px' }}>
-                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span>Gross Asset Value (GAV):</span>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO's resource pool. The gap between GAV and NAV measures how much value resides in treasury tokens (i.e. potential future deployment) that NAV strips out."
-                                        >
-                                            i
-                                        </span>
-                                    </div>
-                                    <div style={{ fontSize: '1.2em' }}>
-                                        ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal())}
-                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
-                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                </div>
+                                
+                                {/* GAV and NAV Side by Side */}
+                                <div style={{ 
+                                    display: 'grid', 
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                                    gap: '1rem',
+                                    marginBottom: '1rem',
+                                }}>
+                                    {/* GAV Card */}
+                                    <div style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '10px',
+                                        padding: '1rem',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            marginBottom: '8px',
+                                        }}>
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, fontWeight: '500' }}>
+                                                Gross Asset Value (GAV)
+                                            </span>
+                                            <span 
+                                                style={styles.infoIcon} 
+                                                title="Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO's resource pool."
+                                            >
+                                                i
+                                            </span>
                                         </div>
-                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <span>FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1)).toFixed(2)}x</span>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                            ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal())}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '6px', fontFamily: 'monospace' }}>
+                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(2)} ICP
+                                        </div>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            marginTop: '10px',
+                                            paddingTop: '10px',
+                                            borderTop: `1px solid ${theme.colors.border}`,
+                                        }}>
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>FDV/GAV</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                    {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1)).toFixed(2)}x
+                                                </span>
                                                 <span 
                                                     style={styles.infoIcon} 
-                                                    title="FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means the market values all tokens (including future unlocks) above the DAO's total treasury size—warning of dilution risk and potential sell-pressure when vesting begins. < 1 indicates a discount to on-chain assets, hinting at latent upside in self-held token reserves."
+                                                    title="FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means premium, < 1 means discount to assets."
                                                 >
                                                     i
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                                {/* NAV Section */}
-                                <div>
-                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span>Net Asset Value (NAV):</span>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="Net Asset Value: fair-value of on-chain treasury assets (ETH, stablecoins, LP positions) minus liabilities, excluding self-held tokens. Shows the true external backing per token. If P/NAV < 1, the market may be undervaluing the DAO's collateral (potential upside); if > 1, it's trading at a premium to its net reserves—revealing overconfidence or speculative sentiment."
-                                        >
-                                            i
-                                        </span>
-                                    </div>
-                                    <div style={{ fontSize: '1.2em' }}>
-                                        ${formatUSD(getNAVUSDValue())}
-                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
-                                            {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                    
+                                    {/* NAV Card */}
+                                    <div style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '10px',
+                                        padding: '1rem',
+                                        border: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            marginBottom: '8px',
+                                        }}>
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, fontWeight: '500' }}>
+                                                Net Asset Value (NAV)
+                                            </span>
+                                            <span 
+                                                style={styles.infoIcon} 
+                                                title="Net Asset Value: fair-value of on-chain treasury assets minus liabilities, excluding self-held tokens. Shows the true external backing per token."
+                                            >
+                                                i
+                                            </span>
                                         </div>
-                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <span>P/NAV: {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x</span>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                            ${formatUSD(getNAVUSDValue())}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '6px', fontFamily: 'monospace' }}>
+                                            {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(2)} ICP
+                                        </div>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between',
+                                            marginTop: '10px',
+                                            paddingTop: '10px',
+                                            borderTop: `1px solid ${theme.colors.border}`,
+                                        }}>
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>P/NAV</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                    {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
+                                                </span>
                                                 <span 
                                                     style={styles.infoIcon} 
-                                                    title="Price-to-NAV: circulating market cap divided by DAO NAV. Compares market valuation to net backing per token. A P/NAV < 1 suggests the DAO is undervalued relative to its collateral (potential upside), while > 1 shows a premium; divergences highlight where market sentiment departs from on-chain asset coverage."
+                                                    title="Price-to-NAV: circulating market cap divided by DAO NAV. < 1 suggests undervalued, > 1 shows premium."
                                                 >
                                                     i
                                                 </span>
@@ -3374,147 +3498,193 @@ function RLLInfo() {
                                     </div>
                                 </div>
 
-                                {/* NGAR Section */}
-                                <div style={{ marginTop: '15px' }}>
-                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span>Net-to-Gross Alignment Ratio (NGAR):</span>
-                                        <span 
-                                            style={styles.infoIcon} 
-                                            title="NGAR: (P/NAV) ÷ (FDV/GAV). Measures how closely net-backing valuation and fully-diluted market value move together. A ratio near 1 signals alignment—few hidden reserves or looming unlocks; < 1 implies untapped upside in treasury tokens; > 1 warns of heavy future dilution compared to current backing."
-                                        >
-                                            i
-                                        </span>
-                                    </div>
-                                    <div style={{ fontSize: '1.2em' }}>
+                                {/* NGAR Pill */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center',
+                                    gap: '10px',
+                                    padding: '10px 16px',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                }}>
+                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                                        Net-to-Gross Alignment Ratio (NGAR)
+                                    </span>
+                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.warning }}>
                                         {((getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)) / 
                                           (getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) || 1))).toFixed(2)}x
-                                    </div>
+                                    </span>
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="NGAR: (P/NAV) ÷ (FDV/GAV). Measures valuation alignment. Near 1 = aligned, < 1 = untapped upside, > 1 = dilution warning."
+                                    >
+                                        i
+                                    </span>
                                 </div>
                             </div>
 
                             {/* Market Cap Card */}
                             <div style={{
-                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: `1px solid ${theme.colors.success}`,
-                                marginBottom: '20px'
+                                background: `linear-gradient(135deg, ${theme.colors.success}08, ${theme.colors.success}03)`,
+                                padding: '1.25rem',
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.success}30`,
                             }}>
-                                <h3 style={{ color: theme.colors.success, marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span>Market Cap & Supply</span>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '10px',
+                                    marginBottom: '1rem',
+                                }}>
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}>
+                                        <FaChartLine size={16} style={{ color: theme.colors.success }} />
+                                    </div>
+                                    <h3 style={{ color: theme.colors.success, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                        Market Cap & Supply
+                                    </h3>
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Overview of SNEED token supply, market metrics, and total value locked (TVL)"
                                     >
                                         i
                                     </span>
-                                </h3>
+                                </div>
                                 {isLoadingBalances || isLoadingStakingStats || isLoadingLp ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                         <div style={styles.spinner} />
                                     </div>
                                 ) : (
                                     <>
-                                        {/* Total Supply & FDV */}
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Total Supply:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(getTotalSupply()) / 1e8).toLocaleString()} SNEED
-                                            </div>
-                                        </div>
-
-                                        {/* Fully Diluted Valuation */}
-                                        <div style={{
-                                            background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
-                                            padding: '15px',
-                                            borderRadius: '6px',
-                                            border: `1px solid ${theme.colors.success}`,
-                                            marginBottom: '20px'
-                                        }}>
-                                            <div style={{ color: theme.colors.success, marginBottom: '5px' }}>Fully Diluted Valuation (FDV):</div>
-                                            <div style={{ fontSize: '1.2em', color: theme.colors.success }}>
-                                                ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
-                                            </div>
-                                        </div>
-
-                                        {/* Total Staked */}
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Total Staked:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(getTotalStakedSneed()) / 1e8).toLocaleString()} SNEED
-                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(getTotalStakedSneed(), 8, 'SNEED'))})
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* Total in LPs */}
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Total in LPs:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(getTotalSneedInLPs()) / 1e8).toLocaleString()} SNEED
-                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(getTotalSneedInLPs(), 8, 'SNEED'))})
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* TVL */}
+                                        {/* Key Metrics Grid */}
                                         <div style={{ 
-                                            marginBottom: '20px',
-                                            padding: '10px',
-                                            background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)`, border: `1px solid ${theme.colors.success}30`,
-                                            borderRadius: '4px'
+                                            display: 'grid', 
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+                                            gap: '10px',
+                                            marginBottom: '1rem',
                                         }}>
-                                            <div style={{ color: theme.colors.success, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <span>Total Value Locked (TVL):</span>
-                                                <span 
-                                                    style={styles.infoIcon} 
-                                                    title="Total Value Locked: sum of all SNEED staked in neurons and provided to liquidity pools. Higher TVL indicates stronger price support and more sustainable yield generation."
-                                                >
-                                                    i
-                                                </span>
+                                            {/* FDV */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                textAlign: 'center',
+                                            }}>
+                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>FDV</div>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                    ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
+                                                </div>
                                             </div>
-
-                                            <div style={{ fontSize: '1.2em', color: theme.colors.success }}>
-                                                ${formatUSD(getTVL())}
-                                                <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                    <span>TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x</span>
-                                                    <span 
-                                                        style={styles.infoIcon} 
-                                                        title="TVL/Market Cap: TVL divided by circulating market cap. Indicates what share of the token supply is locked versus freely tradable. A high ratio means most tokens are earning yield or providing liquidity, reducing sell-pressure and driving sustainable returns."
-                                                    >
-                                                        i
-                                                    </span>
+                                            {/* Circ. Market Cap */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                textAlign: 'center',
+                                            }}>
+                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>Circ. Market Cap</div>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                    ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
+                                                </div>
+                                            </div>
+                                            {/* TVL */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                textAlign: 'center',
+                                            }}>
+                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>TVL</div>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                    ${formatUSD(getTVL())}
+                                                </div>
+                                            </div>
+                                            {/* TVL/MCap */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                textAlign: 'center',
+                                            }}>
+                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '4px', fontWeight: '500' }}>TVL/MCap</div>
+                                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                                    {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Circulating Supply */}
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Circulating Supply:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(getCirculatingSupply()) / 1e8).toLocaleString()} SNEED
-                                            </div>
-                                        </div>
-
-                                        {/* Circulating Market Cap */}
+                                        {/* Supply Details */}
                                         <div style={{ 
-                                            padding: '10px',
-                                            background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)`, border: `1px solid ${theme.colors.success}30`,
-                                            borderRadius: '4px'
+                                            display: 'grid', 
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                                            gap: '10px',
                                         }}>
-                                            <div style={{ color: theme.colors.success, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <span>Circulating Market Cap:</span>
-                                                <span 
-                                                    style={styles.infoIcon} 
-                                                    title="Current market value of all circulating SNEED tokens (excluding treasury holdings and LP positions). Represents the actively traded portion of the token supply."
-                                                >
-                                                    i
-                                                </span>
+                                            {/* Total Supply */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                            }}>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '6px' }}>Total Supply</div>
+                                                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                    {(Number(getTotalSupply()) / 1e8).toLocaleString()} SNEED
+                                                </div>
                                             </div>
-                                            <div style={{ fontSize: '1.2em', color: theme.colors.success }}>
-                                                ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
+                                            {/* Circulating Supply */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                            }}>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '6px' }}>Circulating Supply</div>
+                                                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                    {(Number(getCirculatingSupply()) / 1e8).toLocaleString()} SNEED
+                                                </div>
+                                            </div>
+                                            {/* Total Staked */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                            }}>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '6px' }}>Total Staked</div>
+                                                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                    {(Number(getTotalStakedSneed()) / 1e8).toLocaleString()} SNEED
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                    ${formatUSD(getUSDValue(getTotalStakedSneed(), 8, 'SNEED'))}
+                                                </div>
+                                            </div>
+                                            {/* Total in LPs */}
+                                            <div style={{
+                                                background: theme.colors.secondaryBg,
+                                                borderRadius: '10px',
+                                                padding: '0.875rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                            }}>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '6px' }}>Total in LPs</div>
+                                                <div style={{ fontSize: '0.95rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                    {(Number(getTotalSneedInLPs()) / 1e8).toLocaleString()} SNEED
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                                    ${formatUSD(getUSDValue(getTotalSneedInLPs(), 8, 'SNEED'))}
+                                                </div>
                                             </div>
                                         </div>
                                     </>
@@ -3523,28 +3693,36 @@ function RLLInfo() {
 
                             {/* ICP Assets */}
                             <div style={{
-                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: `1px solid ${theme.colors.accent}`,
-                                marginBottom: '20px'
+                                background: `linear-gradient(135deg, ${theme.colors.accent}08, ${theme.colors.accent}03)`,
+                                padding: '1.25rem',
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.accent}30`,
                             }}>
-                                <h3 
+                                <div 
                                     onClick={() => toggleSection('icpAssets')}
                                     style={{ 
-                                        color: theme.colors.accent, 
-                                        marginTop: 0,
-                                        marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
                                         justifyContent: 'space-between',
-                                        cursor: 'pointer' 
+                                        cursor: 'pointer',
+                                        marginBottom: expandedSections.icpAssets ? '1rem' : 0,
                                     }}
                                 >
-                                    <div style={styles.headerLeft}>
-                                        <span>ICP Assets</span>
-                                    </div>
-                                    <div style={styles.headerRight}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '10px',
+                                            background: `linear-gradient(135deg, ${theme.colors.accent}20, ${theme.colors.accent}10)`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}>
+                                            <FaCoins size={16} style={{ color: theme.colors.accent }} />
+                                        </div>
+                                        <h3 style={{ color: theme.colors.accent, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                            ICP Assets
+                                        </h3>
                                         <span 
                                             style={styles.infoIcon} 
                                             title="Overview of ICP holdings across treasury wallets and investment positions"
@@ -3552,13 +3730,22 @@ function RLLInfo() {
                                         >
                                             i
                                         </span>
-                                        <span style={{
-                                            display: 'inline-block',
-                                            transform: `rotate(${expandedSections.icpAssets ? '90deg' : '0deg'})`,
-                                            transition: 'transform 0.2s ease'
-                                        }}>▸</span>
                                     </div>
-                                </h3>
+                                    <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '8px',
+                                        background: theme.colors.secondaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transform: `rotate(${expandedSections.icpAssets ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                    }}>▸</span>
+                                </div>
                                 
                                 {/* Details section - collapsible */}
                                 {expandedSections.icpAssets && (
@@ -3772,28 +3959,36 @@ function RLLInfo() {
 
                             {/* SNEED Assets */}
                             <div style={{
-                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: `1px solid ${theme.colors.success}`,
-                                marginBottom: '20px'
+                                background: `linear-gradient(135deg, ${theme.colors.success}08, ${theme.colors.success}03)`,
+                                padding: '1.25rem',
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.success}30`,
                             }}>
-                                <h3 
+                                <div 
                                     onClick={() => toggleSection('sneedAssets')}
                                     style={{ 
-                                        color: theme.colors.success, 
-                                        marginTop: 0,
-                                        marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
                                         justifyContent: 'space-between',
-                                        cursor: 'pointer' 
+                                        cursor: 'pointer',
+                                        marginBottom: expandedSections.sneedAssets ? '1rem' : 0,
                                     }}
                                 >
-                                    <div style={styles.headerLeft}>
-                                        <span>SNEED Assets</span>
-                                    </div>
-                                    <div style={styles.headerRight}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '10px',
+                                            background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}>
+                                            <FaLeaf size={16} style={{ color: theme.colors.success }} />
+                                        </div>
+                                        <h3 style={{ color: theme.colors.success, margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                            SNEED Assets
+                                        </h3>
                                         <span 
                                             style={styles.infoIcon} 
                                             title="Overview of SNEED token holdings across treasury wallets and investment positions"
@@ -3801,13 +3996,22 @@ function RLLInfo() {
                                         >
                                             i
                                         </span>
-                                        <span style={{
-                                            display: 'inline-block',
-                                            transform: `rotate(${expandedSections.sneedAssets ? '90deg' : '0deg'})`,
-                                            transition: 'transform 0.2s ease'
-                                        }}>▸</span>
                                     </div>
-                                </h3>
+                                    <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '8px',
+                                        background: theme.colors.secondaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transform: `rotate(${expandedSections.sneedAssets ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                    }}>▸</span>
+                                </div>
 
                                 {/* Details section - collapsible */}
                                 {expandedSections.sneedAssets && (
@@ -3932,28 +4136,36 @@ function RLLInfo() {
 
                             {/* Other Tokens */}
                             <div style={{
-                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: '1px solid #9b59b6',
-                                marginBottom: '20px'
+                                background: `linear-gradient(135deg, #e67e2208, #e67e2203)`,
+                                padding: '1.25rem',
+                                borderRadius: '12px',
+                                border: `1px solid #e67e2230`,
                             }}>
-                                <h3 
+                                <div 
                                     onClick={() => toggleSection('otherTokens')}
                                     style={{ 
-                                        color: theme.colors.accent, 
-                                        marginTop: 0,
-                                        marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
                                         justifyContent: 'space-between',
-                                        cursor: 'pointer' 
+                                        cursor: 'pointer',
+                                        marginBottom: expandedSections.otherTokens ? '1rem' : 0,
                                     }}
                                 >
-                                    <div style={styles.headerLeft}>
-                                        <span>Other Tokens</span>
-                                    </div>
-                                    <div style={styles.headerRight}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '10px',
+                                            background: `linear-gradient(135deg, #e67e2220, #e67e2210)`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}>
+                                            <FaLayerGroup size={16} style={{ color: '#e67e22' }} />
+                                        </div>
+                                        <h3 style={{ color: '#e67e22', margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                            Other Tokens
+                                        </h3>
                                         <span 
                                             style={styles.infoIcon} 
                                             title="Overview of other token holdings in the treasury"
@@ -3961,13 +4173,22 @@ function RLLInfo() {
                                         >
                                             i
                                         </span>
-                                        <span style={{
-                                            display: 'inline-block',
-                                            transform: `rotate(${expandedSections.otherTokens ? '90deg' : '0deg'})`,
-                                            transition: 'transform 0.2s ease'
-                                        }}>▸</span>
                                     </div>
-                                </h3>
+                                    <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '8px',
+                                        background: theme.colors.secondaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transform: `rotate(${expandedSections.otherTokens ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                    }}>▸</span>
+                                </div>
                                 {expandedSections.otherTokens && (
                                     <>
                                         {isLoadingRllData ? (
@@ -4076,28 +4297,36 @@ function RLLInfo() {
 
                             {/* Other Positions */}
                             <div style={{
-                                background: theme.colors.secondaryBg, boxShadow: theme.colors.cardShadow,
-                                padding: '20px',
-                                borderRadius: '6px',
-                                border: '1px solid #9b59b6',
-                                marginBottom: '20px'
+                                background: `linear-gradient(135deg, #9b59b608, #9b59b603)`,
+                                padding: '1.25rem',
+                                borderRadius: '12px',
+                                border: `1px solid #9b59b630`,
                             }}>
-                                <h3 
+                                <div 
                                     onClick={() => toggleSection('otherPositions')}
                                     style={{ 
-                                        color: theme.colors.accent, 
-                                        marginTop: 0,
-                                        marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
                                         justifyContent: 'space-between',
-                                        cursor: 'pointer' 
+                                        cursor: 'pointer',
+                                        marginBottom: expandedSections.otherPositions ? '1rem' : 0,
                                     }}
                                 >
-                                    <div style={styles.headerLeft}>
-                                        <span>Other Positions</span>
-                                    </div>
-                                    <div style={styles.headerRight}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '10px',
+                                            background: `linear-gradient(135deg, #9b59b620, #9b59b610)`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}>
+                                            <FaCubes size={16} style={{ color: '#9b59b6' }} />
+                                        </div>
+                                        <h3 style={{ color: '#9b59b6', margin: 0, fontSize: '1rem', fontWeight: '700' }}>
+                                            Other Positions
+                                        </h3>
                                         <span 
                                             style={styles.infoIcon} 
                                             title="Overview of other investment positions and holdings"
@@ -4105,13 +4334,22 @@ function RLLInfo() {
                                         >
                                             i
                                         </span>
-                                        <span style={{
-                                            display: 'inline-block',
-                                            transform: `rotate(${expandedSections.otherPositions ? '90deg' : '0deg'})`,
-                                            transition: 'transform 0.2s ease'
-                                        }}>▸</span>
                                     </div>
-                                </h3>
+                                    <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '8px',
+                                        background: theme.colors.secondaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transform: `rotate(${expandedSections.otherPositions ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.mutedText,
+                                    }}>▸</span>
+                                </div>
 
                                 {expandedSections.otherPositions && (
                                     <>

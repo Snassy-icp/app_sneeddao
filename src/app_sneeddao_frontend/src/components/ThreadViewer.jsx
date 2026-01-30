@@ -2553,6 +2553,111 @@ function ThreadViewer({
                 </div>
             )}
 
+            {/* Display Options Bar */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+                padding: '12px 16px',
+                marginBottom: '12px',
+                background: theme.colors.cardGradient,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: '12px',
+            }}>
+                {/* View Mode Toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, fontWeight: '500' }}>View:</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        <button 
+                            onClick={() => {
+                                setViewMode('tree');
+                                try {
+                                    localStorage.setItem('discussionViewMode', 'tree');
+                                } catch (error) {
+                                    console.warn('Could not save to localStorage:', error);
+                                }
+                            }} 
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                border: `1px solid ${viewMode === 'tree' ? theme.colors.accent : theme.colors.border}`,
+                                background: viewMode === 'tree' ? `${theme.colors.accent}15` : 'transparent',
+                                color: viewMode === 'tree' ? theme.colors.accent : theme.colors.secondaryText,
+                                fontSize: '0.85rem',
+                                fontWeight: viewMode === 'tree' ? '600' : '400',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                            }}
+                        >
+                            🌳 Tree
+                        </button>
+                        <button 
+                            onClick={() => {
+                                setViewMode('flat');
+                                try {
+                                    localStorage.setItem('discussionViewMode', 'flat');
+                                } catch (error) {
+                                    console.warn('Could not save to localStorage:', error);
+                                }
+                            }} 
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                border: `1px solid ${viewMode === 'flat' ? theme.colors.accent : theme.colors.border}`,
+                                background: viewMode === 'flat' ? `${theme.colors.accent}15` : 'transparent',
+                                color: viewMode === 'flat' ? theme.colors.accent : theme.colors.secondaryText,
+                                fontSize: '0.85rem',
+                                fontWeight: viewMode === 'flat' ? '600' : '400',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                            }}
+                        >
+                            📋 Flat
+                        </button>
+                    </div>
+                </div>
+
+                {/* Sort Options */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText, fontWeight: '500' }}>Sort:</span>
+                    <select
+                        value={sortBy}
+                        onChange={(e) => {
+                            setSortBy(e.target.value);
+                            try {
+                                localStorage.setItem('threadSortBy', e.target.value);
+                            } catch (error) {
+                                console.warn('Could not save sort preference to localStorage:', error);
+                            }
+                        }}
+                        style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: `1px solid ${theme.colors.border}`,
+                            background: theme.colors.secondaryBg,
+                            color: theme.colors.primaryText,
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            outline: 'none',
+                        }}
+                    >
+                        <option value="score-best">⭐ Best Score</option>
+                        <option value="age-newest">📅 Newest First</option>
+                        <option value="age-oldest">📅 Oldest First</option>
+                        <option value="score-worst">👎 Worst Score</option>
+                        <option value="score-controversial">🔥 Most Active</option>
+                    </select>
+                </div>
+            </div>
+
             {/* Posts Display */}
             <div className="discussion-posts">
                 {displayPosts.length === 0 ? (
@@ -2574,15 +2679,15 @@ function ThreadViewer({
                 )}
             </div>
 
-            {/* Settings Section - Expandable Header */}
+            {/* Voting Settings Section - Expandable Header */}
             <div style={{
                 backgroundColor: theme.colors.secondaryBg,
-                borderRadius: '8px',
+                borderRadius: '12px',
                 border: `1px solid ${theme.colors.border}`,
                 marginTop: '12px',
                 overflow: 'hidden',
             }}>
-                {/* Settings Header */}
+                {/* Voting Settings Header */}
                 <div 
                     onClick={() => setShowSettings(!showSettings)}
                     style={{
@@ -2607,136 +2712,16 @@ function ThreadViewer({
                             fontSize: '14px',
                             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
                         }}>
-                            ⚙️ Settings
+                            🗳️ Voting Settings
                         </span>
                     </div>
                 </div>
                 
-                {/* Settings Content */}
+                {/* Voting Settings Content */}
                 {showSettings && (
                     <div style={{ padding: '16px' }}>
-                        {/* View Mode Selection */}
-                        <div style={{ marginBottom: '20px' }}>
-                            <h4 style={{
-                                color: theme.colors.primaryText,
-                                fontSize: '13px',
-                                fontWeight: '500',
-                                marginBottom: '10px',
-                                margin: '0 0 10px 0',
-                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                            }}>
-                                View Mode
-                            </h4>
-                            <div className="view-mode-controls">
-                                <button 
-                                    onClick={() => {
-                                        setViewMode('tree');
-                                        try {
-                                            localStorage.setItem('discussionViewMode', 'tree');
-                                        } catch (error) {
-                                            console.warn('Could not save to localStorage:', error);
-                                        }
-                                    }} 
-                                    className={viewMode === 'tree' ? 'active' : ''}
-                                >
-                                    🌳 Tree
-                                </button>
-                                <button 
-                                    onClick={() => {
-                                        setViewMode('flat');
-                                        try {
-                                            localStorage.setItem('discussionViewMode', 'flat');
-                                        } catch (error) {
-                                            console.warn('Could not save to localStorage:', error);
-                                        }
-                                    }} 
-                                    className={viewMode === 'flat' ? 'active' : ''}
-                                >
-                                    📋 Flat
-                                </button>
-                            </div>
-                        </div>
-                    
-                        {/* Sorting Options */}
-                        <div style={{ marginBottom: '20px' }}>
-                            <h4 style={{
-                                color: theme.colors.primaryText,
-                                fontSize: '13px',
-                                fontWeight: '500',
-                                marginBottom: '10px',
-                                margin: '0 0 10px 0',
-                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-                            }}>
-                                Sort Posts By
-                            </h4>
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                                gap: '8px'
-                            }}>
-                                {[
-                                    { value: 'age-newest', label: '📅 Newest First' },
-                                    { value: 'age-oldest', label: '📅 Oldest First' },
-                                    { value: 'score-best', label: '⭐ Best Score' },
-                                    { value: 'score-worst', label: '👎 Worst Score' },
-                                    { value: 'score-controversial', label: '🔥 Most Active' }
-                                ].map(option => (
-                                    <label 
-                                        key={option.value}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '8px 12px',
-                                            backgroundColor: sortBy === option.value ? theme.colors.accentHover : theme.colors.secondaryBg,
-                                            border: `1px solid ${sortBy === option.value ? theme.colors.accent : theme.colors.border}`,
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            if (sortBy !== option.value) {
-                                                e.target.style.backgroundColor = theme.colors.accentHover;
-                                            }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            if (sortBy !== option.value) {
-                                                e.target.style.backgroundColor = theme.colors.secondaryBg;
-                                            }
-                                        }}
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="sortBy"
-                                            value={option.value}
-                                            checked={sortBy === option.value}
-                                            onChange={(e) => {
-                                                setSortBy(e.target.value);
-                                                try {
-                                                    localStorage.setItem('threadSortBy', e.target.value);
-                                                } catch (error) {
-                                                    console.warn('Could not save sort preference to localStorage:', error);
-                                                }
-                                            }}
-                                            style={{
-                                                margin: 0,
-                                                accentColor: theme.colors.accent
-                                            }}
-                                        />
-                                        <span style={{ 
-                                            color: sortBy === option.value ? theme.colors.primaryText : theme.colors.secondaryText,
-                                            fontWeight: sortBy === option.value ? '500' : '400'
-                                        }}>
-                                            {option.label}
-                                        </span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                    
                         {/* Voting Neurons Section */}
-                        <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '16px' }}>
+                        <div>
                             <h4 style={{
                                 color: theme.colors.primaryText,
                                 fontSize: '13px',
