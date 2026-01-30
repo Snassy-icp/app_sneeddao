@@ -2255,9 +2255,11 @@ export default function CanistersPage() {
             color: theme.colors.primaryText,
         },
         container: {
+            width: '100%',
             maxWidth: '900px',
             margin: '0 auto',
             padding: '1.5rem 1rem',
+            boxSizing: 'border-box',
         },
         title: {
             fontSize: '28px',
