@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSearchParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
+import PrincipalInput from '../components/PrincipalInput';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
@@ -1300,25 +1301,14 @@ export default function CanisterPage() {
                         Canister Info Lookup
                     </h2>
                     <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <input
-                            type="text"
+                        <PrincipalInput
                             value={canisterInput}
-                            onChange={handleInputChange}
+                            onChange={setCanisterInput}
                             onKeyDown={handleKeyDown}
                             placeholder="Enter canister ID"
-                            style={{
-                                flex: '1',
-                                minWidth: '280px',
-                                padding: '0.7rem 1rem',
-                                border: `1px solid ${theme.colors.border}`,
-                                borderRadius: '10px',
-                                backgroundColor: theme.colors.tertiaryBg,
-                                color: theme.colors.primaryText,
-                                fontSize: '0.9rem',
-                                fontFamily: 'monospace',
-                                outline: 'none',
-                                transition: 'all 0.2s'
-                            }}
+                            style={{ flex: 1, minWidth: '280px', maxWidth: 'none' }}
+                            inputStyle={{ fontFamily: 'monospace' }}
+                            defaultPrincipalType="canisters"
                         />
                         <button
                             type="submit"
@@ -2658,25 +2648,19 @@ export default function CanisterPage() {
                                             {/* Principal input */}
                                             {(initArgMode === 'principal' || initArgMode === 'optPrincipal') && (
                                                 <div style={{ marginBottom: '8px' }}>
-                                                    <input
-                                                        type="text"
+                                                    <PrincipalInput
                                                         value={initArgPrincipal}
-                                                        onChange={(e) => setInitArgPrincipal(e.target.value)}
+                                                        onChange={setInitArgPrincipal}
                                                         placeholder={initArgMode === 'optPrincipal' 
                                                             ? "Principal ID (leave empty for null)" 
                                                             : "Principal ID (e.g., aaaaa-aa)"}
-                                                        style={{
-                                                            width: '100%',
-                                                            padding: '10px 12px',
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            borderRadius: '6px',
-                                                            backgroundColor: theme.colors.secondaryBg,
-                                                            color: theme.colors.primaryText,
+                                                        style={{ width: '100%', maxWidth: 'none' }}
+                                                        inputStyle={{ 
+                                                            fontFamily: 'monospace', 
                                                             fontSize: '13px',
-                                                            fontFamily: 'monospace',
-                                                            outline: 'none',
                                                             boxSizing: 'border-box'
                                                         }}
+                                                        defaultPrincipalType="principal"
                                                     />
                                                     {initArgMode === 'optPrincipal' && (
                                                         <p style={{ 
@@ -3075,11 +3059,10 @@ export default function CanisterPage() {
                                         }}>
                                             Add Controller
                                         </div>
-                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                            <input
-                                                type="text"
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                            <PrincipalInput
                                                 value={newControllerInput}
-                                                onChange={(e) => setNewControllerInput(e.target.value)}
+                                                onChange={setNewControllerInput}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
@@ -3088,17 +3071,9 @@ export default function CanisterPage() {
                                                 }}
                                                 placeholder="Enter principal ID"
                                                 disabled={updating}
-                                                style={{
-                                                    flex: '1',
-                                                    minWidth: '250px',
-                                                    padding: '8px 12px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    borderRadius: '4px',
-                                                    backgroundColor: theme.colors.secondaryBg,
-                                                    color: theme.colors.primaryText,
-                                                    fontSize: '14px',
-                                                    outline: 'none'
-                                                }}
+                                                style={{ flex: 1, minWidth: '250px', maxWidth: 'none' }}
+                                                inputStyle={{ fontFamily: 'monospace', fontSize: '14px' }}
+                                                defaultPrincipalType="principal"
                                             />
                                             <button
                                                 onClick={handleAddController}
