@@ -267,7 +267,7 @@ export function useCollectiblesNotifications() {
                         // Check each SNS for neurons with disbursable maturity
                         await Promise.all(snsList.map(async (sns) => {
                             try {
-                                const governanceId = sns.governance_canister_id;
+                                const governanceId = sns.canisters?.governance;
                                 const ledgerId = sns.canisters?.ledger;
                                 if (!governanceId || !ledgerId) return;
                                 
