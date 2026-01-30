@@ -1288,10 +1288,34 @@ export default function CanistersPage() {
         e.stopPropagation();
         setDragOverTarget(null);
         
-        if (!draggedItem) return;
+        // Read drag data from dataTransfer (more reliable than React state due to race conditions with dragend)
+        let itemType, itemId, sourceGroupId;
+        try {
+            const dragData = e.dataTransfer.getData('text/plain');
+            if (dragData) {
+                const parsed = JSON.parse(dragData);
+                itemType = parsed.type;
+                itemId = parsed.id;
+                sourceGroupId = parsed.sourceGroupId;
+            }
+        } catch (err) {
+            console.warn('Failed to parse drag data from dataTransfer:', err);
+        }
         
-        const { type: itemType, id: itemId, sourceGroupId } = draggedItem;
+        // Fallback to React state if dataTransfer didn't work
+        if (!itemType && draggedItem) {
+            itemType = draggedItem.type;
+            itemId = draggedItem.id;
+            sourceGroupId = draggedItem.sourceGroupId;
+        }
+        
         setDraggedItem(null);
+        
+        // If we still don't have the data, abort
+        if (!itemType || !itemId) {
+            console.warn('No drag data available for drop');
+            return;
+        }
         
         // Handle canister drops
         if (itemType === 'canister') {
