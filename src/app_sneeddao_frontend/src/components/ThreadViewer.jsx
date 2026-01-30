@@ -15,6 +15,7 @@ import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay }
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById } from '../utils/SnsUtils';
 import { Principal } from '@dfinity/principal';
+import { FaThumbsUp, FaThumbsDown, FaReply, FaCoins, FaEnvelope, FaEdit, FaTrash, FaPoll } from 'react-icons/fa';
 import { 
     getTipsByPost, 
     createTip,
@@ -384,18 +385,7 @@ function ThreadViewer({
         return new Date(Number(timestamp) / 1000000).toLocaleString();
     };
 
-    // Reddit-style outline arrow icons
-    const UpArrow = ({ color = 'currentColor', size = 16 }) => (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 19V5M5 12l7-7 7 7"/>
-        </svg>
-    );
-    
-    const DownArrow = ({ color = 'currentColor', size = 16 }) => (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12l7 7 7-7"/>
-        </svg>
-    );
+    // Thumb icons for voting (using react-icons)
 
 
 
@@ -1738,11 +1728,11 @@ function ThreadViewer({
         const isUpvote = voteType === 'up';
         const hasVotes = isUpvote ? hasUpvotes : hasDownvotes;
         const activeColor = isUpvote ? theme.colors.success : theme.colors.error;
-        const defaultColor = theme.colors.secondaryText;
+        const defaultColor = theme.colors.mutedText;
         
         return {
             backgroundColor: 'transparent',
-            border: hasVotes ? `1px solid ${activeColor}` : '1px solid transparent',
+            border: 'none',
             color: hasVotes ? activeColor : defaultColor,
             borderRadius: '4px',
             padding: '4px 8px',
@@ -3126,7 +3116,7 @@ function ThreadViewer({
                                     style={getVoteButtonStyles(post.id, 'up')}
                                     title={getVoteButtonTooltip(post.id, 'up')}
                                 >
-                                    <UpArrow size={16} />
+                                    <FaThumbsUp size={14} />
                                     {!isNarrowScreen && (
                                         <span style={{ marginLeft: '2px' }}>
                                             {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
@@ -3184,7 +3174,7 @@ function ThreadViewer({
                                     style={getVoteButtonStyles(post.id, 'down')}
                                     title={getVoteButtonTooltip(post.id, 'down')}
                                 >
-                                    <DownArrow size={16} />
+                                    <FaThumbsDown size={14} />
                                     {!isNarrowScreen && (
                                         <span style={{ marginLeft: '2px' }}>
                                             {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
@@ -3208,7 +3198,7 @@ function ThreadViewer({
                                 }}
                                 title={replyingTo === Number(post.id) ? 'Cancel reply' : 'Reply to this post'}
                             >
-                                💬 {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? 'Cancel' : 'Reply')}
+                                <FaReply size={12} style={{ opacity: 0.7 }} /> {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? 'Cancel' : 'Reply')}
                             </button>
 
                             {/* Desktop: Show all buttons directly */}
@@ -3221,7 +3211,7 @@ function ThreadViewer({
                                             onClick={() => openTipModal(post)}
                                             title="Send a tip to the post author"
                                         >
-                                            🪙 Tip
+                                            <FaCoins size={12} style={{ opacity: 0.7 }} /> Tip
                                         </button>
                                     )}
 
@@ -3235,7 +3225,7 @@ function ThreadViewer({
                                             }}
                                             title="Send a private message to the post author"
                                         >
-                                            📨 Message
+                                            <FaEnvelope size={12} style={{ opacity: 0.7 }} /> Message
                                         </button>
                                     )}
 
@@ -3246,7 +3236,7 @@ function ThreadViewer({
                                             onClick={() => startEditPost(post)}
                                             title="Edit this post"
                                         >
-                                            ✏️ Edit
+                                            <FaEdit size={12} style={{ opacity: 0.7 }} /> Edit
                                         </button>
                                     )}
 
@@ -3262,7 +3252,7 @@ function ThreadViewer({
                                             }}
                                             title={deletingPost === Number(post.id) ? 'Deleting post...' : 'Delete this post'}
                                         >
-                                            🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                            <FaTrash size={12} style={{ opacity: 0.7 }} /> {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
                                         </button>
                                     )}
 
@@ -3274,7 +3264,7 @@ function ThreadViewer({
                                             onClick={() => setShowPollForm(prev => new Map(prev.set(Number(post.id), true)))}
                                             title="Add a poll to this post"
                                         >
-                                            📊 Add Poll
+                                            <FaPoll size={12} style={{ opacity: 0.7 }} /> Add Poll
                                         </button>
                                     )}
                                 </>
@@ -3354,7 +3344,7 @@ function ThreadViewer({
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    💰 Tip
+                                                    <FaCoins size={14} /> Tip
                                 </button>
                             )}
 
@@ -3380,7 +3370,7 @@ function ThreadViewer({
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    📨 Message
+                                                    <FaEnvelope size={14} /> Message
                                 </button>
                             )}
 
@@ -3405,7 +3395,7 @@ function ThreadViewer({
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    ✏️ Edit
+                                                    <FaEdit size={14} /> Edit
                                 </button>
                             )}
 
@@ -3431,7 +3421,7 @@ function ThreadViewer({
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                                    <FaTrash size={14} /> {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
                                 </button>
                             )}
 
@@ -3457,7 +3447,7 @@ function ThreadViewer({
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    📊 Add Poll
+                                                    <FaPoll size={14} /> Add Poll
                                 </button>
                                             )}
                                         </div>,
